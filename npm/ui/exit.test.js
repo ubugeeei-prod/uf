@@ -103,7 +103,7 @@ function present(): HTMLElement {
 }
 
 type Overlay = {|
-  readonly name: string,
+  readonly name  : string,
   readonly render: (open: boolean) => React.Node,
   /**
    * A modal's scrim is outside the panel, so the panel makes it `inert` with
@@ -130,7 +130,7 @@ const OVERLAYS: $ReadOnlyArray<Overlay> = [
     ),
   },
   {
-    name: "Dialog.Overlay",
+    name     : "Dialog.Overlay",
     concealed: true,
     render: (open) => (
       <Dialog.Root open={open}>

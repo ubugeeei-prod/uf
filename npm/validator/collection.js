@@ -111,7 +111,7 @@ export function tuple<TItems extends Options>(
   const arity = items.length;
   const message = `expected ${String(arity)} tuple items`;
   const description = (): Description => ({
-    kind: "tuple",
+    kind : "tuple",
     items: items.map((item) => describe(item)),
   });
 
@@ -220,12 +220,12 @@ export function record<TOutput, TInput>(
  * halfway through.
  */
 export function map<TKey, TKeyInput, TValue, TValueInput>(
-  key: Schema<TKey, TKeyInput>,
+  key  : Schema<TKey, TKeyInput>,
   value: Schema<TValue, TValueInput>,
 ): Schema<$ReadOnlyMap<TKey, TValue>, $ReadOnlyMap<TKeyInput, TValueInput>> {
   const description = (): Description => ({
-    kind: "map",
-    key: describe(key),
+    kind : "map",
+    key  : describe(key),
     value: describe(value),
   });
 
@@ -298,9 +298,9 @@ export function set<TOutput, TInput>(
       }
       const collected = await collectAsync(
         Array.from(value).map((member, index) => ({
-          keys: [String(index)],
+          keys  : [String(index)],
           schema: item,
-          value: member,
+          value : member,
         })),
         path,
       );

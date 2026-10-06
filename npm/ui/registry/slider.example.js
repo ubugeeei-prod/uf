@@ -6,8 +6,8 @@ import { Slider } from "./slider.js";
 
 const styles = stylex.create({
   stack: {
-    display: "grid",
-    gap: ufTokens.space6,
+    display : "grid",
+    gap     : ufTokens.space6,
     maxWidth: "20rem",
   },
 });

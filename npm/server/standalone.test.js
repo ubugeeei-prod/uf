@@ -33,14 +33,14 @@ import type { StandaloneApp } from "@uniflowed/server/standalone";
 /** What a document is piped into: the two methods React's `pipe` calls. */
 type Destination = {
   readonly write: (chunk: Uint8Array | string) => mixed,
-  readonly end: () => mixed,
+  readonly end  : () => mixed,
   ...
 };
 
 /** What a fake render resolves to: a shell that is ready, and a body. */
 type Rendered = {|
   readonly status: number,
-  readonly pipe: (destination: Destination) => Promise<void>,
+  readonly pipe  : (destination: Destination) => Promise<void>,
   readonly stream: () => ReadableStream<Uint8Array>,
 |};
 
@@ -101,9 +101,9 @@ function rendered(status: number, html: string): Rendered {
  */
 function application() {
   const asked: {|
-    rendered: Array<string>,
+    rendered  : Array<string>,
     dispatched: Array<string>,
-    guarded: Array<string>,
+    guarded   : Array<string>,
   |} = { rendered: [], dispatched: [], guarded: [] };
   const app: StandaloneApp = {
     // The real one, because there is nothing to fake: a compiled binary gets
@@ -135,7 +135,7 @@ function application() {
         return null;
       }
       return new Response(`handled ${request.method}`, {
-        status: 201,
+        status : 201,
         headers: { "content-type": "text/plain" },
       });
     },
@@ -163,8 +163,8 @@ function recorder(options?: {| readonly full?: boolean |}) {
     // A real `ServerResponse` has both, and `send` in `./node.js` reads and
     // writes them.
     statusMessage: "",
-    headersSent: false,
-    headers: {} as { [string]: string },
+    headersSent  : false,
+    headers      : {} as { [string]: string },
     setHeader(name: string, value: string | $ReadOnlyArray<string>) {
       response.headers[name.toLowerCase()] = typeof value === "string" ? value : value.join(", ");
     },
@@ -347,9 +347,9 @@ describe("route handlers", () => {
     const handle = createHandler({
       app: {
         beginRequest,
-        render: async () => rendered(200, "<!doctype html><p>rendered</p>"),
+        render       : async () => rendered(200, "<!doctype html><p>rendered</p>"),
         runMiddleware: async () => null,
-        callAction: async () => null,
+        callAction   : async () => null,
         dispatch: async (request: Request) => {
           dispatched.push(new URL(request.url).pathname);
           return new Response("handled", { status: 201 });
@@ -413,9 +413,9 @@ describe("writing a handler's body to the socket", () => {
     const handle = createHandler({
       app: {
         beginRequest,
-        render: async () => rendered(200, "<p>unused</p>"),
+        render       : async () => rendered(200, "<p>unused</p>"),
         runMiddleware: async () => null,
-        callAction: async () => null,
+        callAction   : async () => null,
         dispatch: async () =>
           new Response(
             new ReadableStream({
@@ -553,10 +553,10 @@ describe("a render that fails after the shell", () => {
       const handle = createHandler({
         app: {
           beginRequest,
-          render: async () => failingRender(error),
+          render       : async () => failingRender(error),
           runMiddleware: async () => null,
-          callAction: async () => null,
-          dispatch: async () => null,
+          callAction   : async () => null,
+          dispatch     : async () => null,
         },
         assets,
         document,

@@ -42,38 +42,38 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   region: {
-    position: "fixed",
-    zIndex: 100,
-    insetBlockEnd: ufTokens.space4,
+    position      : "fixed",
+    zIndex        : 100,
+    insetBlockEnd : ufTokens.space4,
     insetInlineEnd: ufTokens.space4,
-    boxSizing: "border-box",
-    width: "min(24rem, calc(100vw - 32px))",
-    margin: 0,
-    padding: 0,
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "4px",
+    boxSizing     : "border-box",
+    width         : "min(24rem, calc(100vw - 32px))",
+    margin        : 0,
+    padding       : 0,
+    outlineWidth  : { default: "0", ":focus-visible": "2px" },
+    outlineStyle  : "solid",
+    outlineColor  : ufTokens.focus,
+    outlineOffset : "4px",
   },
   toast: {
-    display: "grid",
+    display            : "grid",
     gridTemplateColumns: "1fr auto",
-    alignItems: "start",
-    columnGap: ufTokens.space3,
-    rowGap: ufTokens.space1,
-    boxSizing: "border-box",
-    width: "100%",
-    marginBlockStart: ufTokens.space2,
-    padding: ufTokens.space4,
-    backgroundColor: ufTokens.surface,
-    color: ufTokens.ink,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusMd,
+    alignItems         : "start",
+    columnGap          : ufTokens.space3,
+    rowGap             : ufTokens.space1,
+    boxSizing          : "border-box",
+    width              : "100%",
+    marginBlockStart   : ufTokens.space2,
+    padding            : ufTokens.space4,
+    backgroundColor    : ufTokens.surface,
+    color              : ufTokens.ink,
+    fontFamily         : ufTokens.fontSans,
+    fontSize           : ufTokens.textSm,
+    lineHeight         : ufTokens.leadingBase,
+    borderWidth        : "1px",
+    borderStyle        : "solid",
+    borderColor        : ufTokens.border,
+    borderRadius       : ufTokens.radiusMd,
     // Enter: it rises 16px into its place in the stack as it fades in, over
     // `durationSlow`, so a notification arriving in a corner is noticed
     // without being startling. Vertical, so it reads the same in a
@@ -82,22 +82,22 @@ const styles = stylex.create({
     // dismissed notification in its place, `inert`, until that has finished.
     // Under reduced motion both only fade (`--uf-exit-travel` is 0 there).
     "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
-    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    opacity           : { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transform: {
-      default: "none",
-      "@starting-style": "translateY(16px)",
+      default                   : "none",
+      "@starting-style"         : "translateY(16px)",
       ":is([data-state=closed])": "translateY(calc(16px * var(--uf-exit-travel)))",
     },
     transitionProperty: {
-      default: "opacity, transform",
+      default                                  : "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
     transitionDuration: {
-      default: ufTokens.durationSlow,
+      default                   : ufTokens.durationSlow,
       ":is([data-state=closed])": ufTokens.durationBase,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
@@ -107,49 +107,49 @@ const styles = stylex.create({
   },
   description: {
     gridColumn: "1",
-    color: ufTokens.muted,
+    color     : ufTokens.muted,
   },
   action: {
-    gridColumn: "1",
-    justifySelf: "start",
+    gridColumn      : "1",
+    justifySelf     : "start",
     marginBlockStart: ufTokens.space2,
-    minHeight: "32px",
-    paddingBlock: ufTokens.space1,
-    paddingInline: ufTokens.space3,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    fontWeight: ufTokens.weightMedium,
-    color: ufTokens.ink,
-    backgroundColor: ufTokens.surface,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusSm,
-    cursor: "pointer",
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    minHeight       : "32px",
+    paddingBlock    : ufTokens.space1,
+    paddingInline   : ufTokens.space3,
+    fontFamily      : ufTokens.fontSans,
+    fontSize        : ufTokens.textSm,
+    fontWeight      : ufTokens.weightMedium,
+    color           : ufTokens.ink,
+    backgroundColor : ufTokens.surface,
+    borderWidth     : "1px",
+    borderStyle     : "solid",
+    borderColor     : ufTokens.border,
+    borderRadius    : ufTokens.radiusSm,
+    cursor          : "pointer",
+    outlineWidth    : { default: "0", ":focus-visible": "2px" },
+    outlineStyle    : "solid",
+    outlineColor    : ufTokens.focus,
+    outlineOffset   : "2px",
   },
   close: {
-    gridColumn: "2",
-    gridRow: "1",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "24px",
-    height: "24px",
-    margin: 0,
-    padding: 0,
-    color: { default: ufTokens.muted, ":hover": ufTokens.ink },
+    gridColumn     : "2",
+    gridRow        : "1",
+    display        : "inline-flex",
+    alignItems     : "center",
+    justifyContent : "center",
+    width          : "24px",
+    height         : "24px",
+    margin         : 0,
+    padding        : 0,
+    color          : { default: ufTokens.muted, ":hover": ufTokens.ink },
     backgroundColor: "transparent",
-    borderWidth: 0,
-    borderRadius: ufTokens.radiusSm,
-    cursor: "pointer",
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "1px",
+    borderWidth    : 0,
+    borderRadius   : ufTokens.radiusSm,
+    cursor         : "pointer",
+    outlineWidth   : { default: "0", ":focus-visible": "2px" },
+    outlineStyle   : "solid",
+    outlineColor   : ufTokens.focus,
+    outlineOffset  : "1px",
   },
 });
 
@@ -158,9 +158,9 @@ const styles = stylex.create({
  * end corner, each with a close button.
  */
 component Toaster(
-  label?: string = "Notifications",
-  limit?: number = 3,
-  xstyle?: StyleArgument,
+  label?    : string = "Notifications",
+  limit?    : number = 3,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -183,8 +183,8 @@ component Toaster(
 
 /** One notice's card. `Toast.Region` draws one for every notice. */
 component ToastRoot(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Toast.Root {
@@ -200,8 +200,8 @@ component ToastRoot(
 
 /** What happened, in a few words. It names the notice. */
 component ToastTitle(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -217,8 +217,8 @@ component ToastTitle(
 
 /** The detail under the title. It describes the notice. */
 component ToastDescription(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -234,8 +234,8 @@ component ToastDescription(
 
 /** A button that acts on the notice and then dismisses it. */
 component ToastAction(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -252,8 +252,8 @@ component ToastAction(
 
 /** The button in the corner that dismisses the notice. */
 component ToastClose(
-  label?: string = "Dismiss",
-  xstyle?: StyleArgument,
+  label?    : string = "Dismiss",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

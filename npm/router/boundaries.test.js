@@ -136,18 +136,18 @@ describe("the boundaries a route renders", () => {
     const table = {
       routes: [
         {
-          path: "/first",
-          params: [],
-          mdx: false,
-          file: "app/first/$page.js",
-          page: pageOf("the first page"),
-          layouts: [loadFrame],
-          loading: [],
+          path     : "/first",
+          params   : [],
+          mdx      : false,
+          file     : "app/first/$page.js",
+          page     : pageOf("the first page"),
+          layouts  : [loadFrame],
+          loading  : [],
           templates: [],
         },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     };
     const resolved = await resolveMatch(table, "/first");
 
@@ -155,9 +155,9 @@ describe("the boundaries a route renders", () => {
 
     expect([...found.keys()]).toEqual([ROOT_ERROR_ID, ROUTE_ERROR_ID]);
     expect(found.get(ROOT_ERROR_ID)).toEqual({
-      id: ROOT_ERROR_ID,
-      kind: "error",
-      above: 0,
+      id    : ROOT_ERROR_ID,
+      kind  : "error",
+      above : 0,
       source: SYNTHESISED_SOURCE,
     });
     expect(found.get(ROUTE_ERROR_ID)?.source).toBe("app/$error.js");
@@ -171,11 +171,11 @@ describe("the boundaries a route renders", () => {
     const table = {
       routes: [
         {
-          path: "/deep",
-          params: [],
-          mdx: false,
-          file: "app/deep/$page.js",
-          page: pageOf("the deep page"),
+          path   : "/deep",
+          params : [],
+          mdx    : false,
+          file   : "app/deep/$page.js",
+          page   : pageOf("the deep page"),
           layouts: [loadFrame, loadFrame],
           loading: [
             { above: 0, module: loadFallback },
@@ -185,7 +185,7 @@ describe("the boundaries a route renders", () => {
         },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     };
     const resolved = await resolveMatch(table, "/deep");
 
@@ -211,8 +211,8 @@ describe("the boundaries a route renders", () => {
     // subtree nothing owns.
     const resolved = {
       errorBoundary: { above: 1 },
-      loading: [],
-      error: { kind: "thrown", error: new Error("boom") },
+      loading      : [],
+      error        : { kind: "thrown", error: new Error("boom") },
     };
 
     const found = routeBoundaries(resolved, "app/$error.js");
@@ -420,9 +420,9 @@ describe("the marks a boundary renders", () => {
     // which file wrote it. Only on the opening one — the closing mark is a
     // position, and a second copy of the answer is a second thing to keep true.
     const boundary: RouteBoundary = {
-      id: ROUTE_ERROR_ID,
-      kind: "error",
-      above: 1,
+      id    : ROUTE_ERROR_ID,
+      kind  : "error",
+      above : 1,
       source: "app/docs/$error.js",
     };
 
@@ -440,20 +440,20 @@ describe("the report", () => {
     const findings: $ReadOnlyArray<BoundaryFinding> = [
       {
         boundary: { id: ROOT_ERROR_ID, kind: "error", above: 0, source: SYNTHESISED_SOURCE },
-        owns: ["div#shell"],
-        more: 0,
+        owns    : ["div#shell"],
+        more    : 0,
         rendered: true,
       },
       {
         boundary: { id: ROUTE_ERROR_ID, kind: "error", above: 1, source: "app/docs/$error.js" },
-        owns: ["article.doc", "aside.toc"],
-        more: 3,
+        owns    : ["article.doc", "aside.toc"],
+        more    : 3,
         rendered: true,
       },
       {
         boundary: { id: suspenseId(0), kind: "suspense", above: 2, source: null },
-        owns: [],
-        more: 0,
+        owns    : [],
+        more    : 0,
         rendered: false,
       },
     ];
@@ -491,9 +491,9 @@ describe("the report", () => {
       [suspenseId(0), suspense(suspenseId(0), 0)],
     ]);
     const routeError: RouteBoundary = {
-      id: ROUTE_ERROR_ID,
-      kind: "error",
-      above: 1,
+      id    : ROUTE_ERROR_ID,
+      kind  : "error",
+      above : 1,
       source: "app/$error.js",
     };
     const after: Map<string, RouteBoundary> = new Map([
@@ -582,18 +582,18 @@ describe("a bundle without `import.meta.hot`", () => {
     const table = {
       routes: [
         {
-          path: "/plain",
-          params: [],
-          mdx: false,
-          file: "app/plain/$page.js",
-          page: pageOf("the plain page"),
-          layouts: [loadFrame],
-          loading: [{ above: 1, module: loadFallback }],
+          path     : "/plain",
+          params   : [],
+          mdx      : false,
+          file     : "app/plain/$page.js",
+          page     : pageOf("the plain page"),
+          layouts  : [loadFrame],
+          loading  : [{ above: 1, module: loadFallback }],
           templates: [],
         },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     };
     const resolved = await resolveMatch(table, "/plain");
 
@@ -611,18 +611,18 @@ describe("a bundle without `import.meta.hot`", () => {
     const table = {
       routes: [
         {
-          path: "/plain",
-          params: [],
-          mdx: false,
-          file: "app/plain/$page.js",
-          page: pageOf("the plain page"),
-          layouts: [loadFrame],
-          loading: [],
+          path     : "/plain",
+          params   : [],
+          mdx      : false,
+          file     : "app/plain/$page.js",
+          page     : pageOf("the plain page"),
+          layouts  : [loadFrame],
+          loading  : [],
           templates: [],
         },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     };
     const { prerender } = createRenderer({ App: routerView("./app"), ...table });
 
@@ -653,7 +653,7 @@ function withPoster(body: () => void): $ReadOnlyArray<Posted> {
       return Promise.resolve(null);
     },
     configurable: true,
-    writable: true,
+    writable    : true,
   });
   try {
     body();

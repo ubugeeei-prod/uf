@@ -97,17 +97,17 @@ export const IN_SOURCE_GLOBAL: "__ufInSourceTests" = "__ufInSourceTests";
  * anyway because spies and the fake clock are ordinary for a unit test.
  */
 export type InSourceTests = {
-  readonly describe: typeof describe,
-  readonly it: typeof it,
-  readonly test: typeof test,
-  readonly expect: Expect,
-  readonly beforeAll: typeof beforeAll,
+  readonly describe  : typeof describe,
+  readonly it        : typeof it,
+  readonly test      : typeof test,
+  readonly expect    : Expect,
+  readonly beforeAll : typeof beforeAll,
   readonly beforeEach: typeof beforeEach,
-  readonly afterAll: typeof afterAll,
-  readonly afterEach: typeof afterEach,
-  readonly fn: typeof fn,
-  readonly spyOn: typeof spyOn,
-  readonly uft: Uft,
+  readonly afterAll  : typeof afterAll,
+  readonly afterEach : typeof afterEach,
+  readonly fn        : typeof fn,
+  readonly spyOn     : typeof spyOn,
+  readonly uft       : Uft,
 };
 
 /**

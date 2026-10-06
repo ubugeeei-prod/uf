@@ -16,74 +16,74 @@ import * as Calendar from "./calendar.js";
 const styles = stylex.create({
   root: { display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: ufTokens.space2 },
   field: {
-    boxSizing: "border-box",
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
-    backgroundColor: ufTokens.surface,
-    borderRadius: ufTokens.radiusMd,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: ufTokens.space1,
-    minHeight: "36px",
-    paddingBlock: ufTokens.space1,
-    paddingInline: ufTokens.space2,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: { default: ufTokens.border, ":is([aria-invalid=true])": ufTokens.danger },
-    outlineWidth: { default: "0", ":focus-within": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    boxSizing         : "border-box",
+    fontFamily        : ufTokens.fontSans,
+    fontSize          : ufTokens.textSm,
+    color             : ufTokens.ink,
+    backgroundColor   : ufTokens.surface,
+    borderRadius      : ufTokens.radiusMd,
+    display           : "inline-flex",
+    alignItems        : "center",
+    gap               : ufTokens.space1,
+    minHeight         : "36px",
+    paddingBlock      : ufTokens.space1,
+    paddingInline     : ufTokens.space2,
+    borderWidth       : "1px",
+    borderStyle       : "solid",
+    borderColor       : { default: ufTokens.border, ":is([aria-invalid=true])": ufTokens.danger },
+    outlineWidth      : { default: "0", ":focus-within": "2px" },
+    outlineStyle      : "solid",
+    outlineColor      : ufTokens.focus,
+    outlineOffset     : "2px",
     fontVariantNumeric: "tabular-nums",
   },
   trigger: {
-    boxSizing: "border-box",
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
-    backgroundColor: ufTokens.surface,
-    borderRadius: ufTokens.radiusMd,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: ufTokens.space1,
-    minHeight: "36px",
-    paddingBlock: ufTokens.space1,
-    paddingInline: ufTokens.space2,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: { default: ufTokens.border, ":is([aria-invalid=true])": ufTokens.danger },
-    outlineWidth: { default: "0", ":focus-within": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    boxSizing         : "border-box",
+    fontFamily        : ufTokens.fontSans,
+    fontSize          : ufTokens.textSm,
+    color             : ufTokens.ink,
+    backgroundColor   : ufTokens.surface,
+    borderRadius      : ufTokens.radiusMd,
+    display           : "inline-flex",
+    alignItems        : "center",
+    gap               : ufTokens.space1,
+    minHeight         : "36px",
+    paddingBlock      : ufTokens.space1,
+    paddingInline     : ufTokens.space2,
+    borderWidth       : "1px",
+    borderStyle       : "solid",
+    borderColor       : { default: ufTokens.border, ":is([aria-invalid=true])": ufTokens.danger },
+    outlineWidth      : { default: "0", ":focus-within": "2px" },
+    outlineStyle      : "solid",
+    outlineColor      : ufTokens.focus,
+    outlineOffset     : "2px",
     fontVariantNumeric: "tabular-nums",
-    cursor: "pointer",
+    cursor            : "pointer",
   },
   panel: {
-    boxSizing: "border-box",
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
+    boxSizing      : "border-box",
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    color          : ufTokens.ink,
     backgroundColor: ufTokens.surface,
-    borderRadius: ufTokens.radiusMd,
-    padding: ufTokens.space3,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
+    borderRadius   : ufTokens.radiusMd,
+    padding        : ufTokens.space3,
+    borderWidth    : "1px",
+    borderStyle    : "solid",
+    borderColor    : ufTokens.border,
     // Enter: it fades in while travelling 4px out of its trigger, from the
     // side `data-side` says it opened on, so the eye is led from the button
     // to what it opened. `durationBase` on the decelerating curve: most of
     // the distance is covered at once, so it is legible before it has
     // settled. Under reduced motion it only fades.
     "--uf-enter-x": {
-      default: "0px",
-      ":is([data-side=left])": "4px",
+      default                 : "0px",
+      ":is([data-side=left])" : "4px",
       ":is([data-side=right])": "-4px",
     },
     "--uf-enter-y": {
-      default: "0px",
-      ":is([data-side=top])": "4px",
+      default                  : "0px",
+      ":is([data-side=top])"   : "4px",
       ":is([data-side=bottom])": "-4px",
     },
     // Exit: back towards the trigger it came from, on the accelerating curve
@@ -92,30 +92,30 @@ const styles = stylex.create({
     // page, closed and `inert`, until this has finished. Under reduced motion
     // it only fades: `--uf-exit-travel` is 0 there, so nothing jumps either.
     "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
-    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    opacity           : { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transform: {
-      default: "none",
+      default          : "none",
       "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
       ":is([data-state=closed])":
         "translate(calc(var(--uf-enter-x) * var(--uf-exit-travel)), calc(var(--uf-enter-y) * var(--uf-exit-travel)))",
     },
     transitionProperty: {
-      default: "opacity, transform",
+      default                                  : "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
     transitionDuration: {
-      default: ufTokens.durationBase,
+      default                   : ufTokens.durationBase,
       ":is([data-state=closed])": ufTokens.durationFast,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
 });
 component DateRangePickerRoot(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -142,8 +142,8 @@ component DateRangePickerEndField(xstyle?: StyleArgument, className?: string, ..
   );
 }
 component DateRangePickerTrigger(
-  children?: React.Node,
-  xstyle?: StyleArgument,
+  children? : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -157,8 +157,8 @@ component DateRangePickerTrigger(
   );
 }
 component DateRangePickerCalendar(
-  children?: React.Node,
-  xstyle?: StyleArgument,
+  children? : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

@@ -12,31 +12,31 @@ import { crc32 } from "./hash.js";
 export type ZipCompression = "store" | "deflate";
 
 export type ZipEntry = {
-  readonly path: string,
-  readonly compression: ZipCompression,
-  readonly size: number,
+  readonly path          : string,
+  readonly compression   : ZipCompression,
+  readonly size          : number,
   readonly compressedSize: number,
-  readonly crc32: number,
+  readonly crc32         : number,
 };
 
 type ZipRecord = {
-  readonly entry: ZipEntry,
+  readonly entry            : ZipEntry,
   readonly localHeaderOffset: number,
 };
 
 type WriteRecord = {
   readonly entry: ZipEntry,
-  readonly data: Uint8Array,
+  readonly data : Uint8Array,
 };
 
 type StreamReadStep = {
-  readonly done?: boolean,
+  readonly done? : boolean,
   readonly value?: mixed,
   ...
 };
 
 type StreamReader = {
-  readonly read: () => Promise<StreamReadStep>,
+  readonly read   : () => Promise<StreamReadStep>,
   readonly cancel?: (reason?: mixed) => Promise<void> | void,
   ...
 };
@@ -47,8 +47,8 @@ type ReadableStreamLike = {
 };
 
 type StreamWriter = {
-  readonly write: (chunk: Uint8Array) => Promise<void> | void,
-  readonly close: () => Promise<void> | void,
+  readonly write : (chunk: Uint8Array) => Promise<void> | void,
+  readonly close : () => Promise<void> | void,
   readonly abort?: (reason?: mixed) => Promise<void> | void,
   ...
 };
@@ -67,7 +67,7 @@ type ByteTransform = {
 export type ByteTransformFactory = (format: "deflate-raw") => ByteTransform;
 
 export type ZipCodecOptions = {
-  readonly makeCompressionStream?: ByteTransformFactory,
+  readonly makeCompressionStream?  : ByteTransformFactory,
   readonly makeDecompressionStream?: ByteTransformFactory,
 };
 
@@ -76,7 +76,7 @@ export type ZipReaderOptions = {
 };
 
 export type ZipWriterOptions = {
-  readonly compression?: ZipCompression,
+  readonly compression?          : ZipCompression,
   readonly makeCompressionStream?: ByteTransformFactory,
 };
 
@@ -164,9 +164,9 @@ export class ZipWriter {
     const entry = {
       path: checked,
       compression,
-      size: owned.length,
+      size          : owned.length,
       compressedSize: data.length,
-      crc32: crc32(owned),
+      crc32         : crc32(owned),
     };
     this._records.push({ entry, data });
     return entry;
@@ -191,7 +191,7 @@ export class ZipWriter {
 }
 
 async function transformBytes(
-  bytes: Uint8Array,
+  bytes        : Uint8Array,
   makeTransform: ByteTransformFactory,
 ): Promise<Uint8Array> {
   const transform = makeTransform("deflate-raw");
@@ -280,10 +280,10 @@ function readCompressedData(bytes: Uint8Array, data: DataView, record: ZipRecord
 
 function findEnd(
   bytes: Uint8Array,
-  data: DataView,
+  data : DataView,
 ): {
-  readonly entries: number,
-  readonly centralSize: number,
+  readonly entries      : number,
+  readonly centralSize  : number,
   readonly centralOffset: number,
 } {
   for (

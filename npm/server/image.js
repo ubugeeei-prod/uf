@@ -134,9 +134,9 @@ export type ImageFetch = (url: URL, signal: AbortSignal) => Promise<Response>;
 
 /** What a transformer is handed. */
 export type TransformInput = {|
-  readonly bytes: Uint8Array,
-  readonly type: SourceType,
-  readonly width: number,
+  readonly bytes  : Uint8Array,
+  readonly type   : SourceType,
+  readonly width  : number,
   readonly quality: number,
   /** Whether the browser accepts AVIF. */
   readonly avif: boolean,
@@ -171,8 +171,8 @@ export type ImageEndpointOptions = {|
   readonly quality: number,
   /** `app.builtins.images.qualities`: the other qualities a request may name. */
   readonly qualities?: $ReadOnlyArray<number>,
-  readonly fetch: ImageFetch,
-  readonly transform: ImageTransform,
+  readonly fetch     : ImageFetch,
+  readonly transform : ImageTransform,
   /**
    * Where variants are kept. A memory store of [`MAX_MEMORY_VARIANTS`] when
    * absent; a host with a durable `rendering.cache.store` passes a store over
@@ -203,15 +203,15 @@ export class ImageRefusal extends Error {
 
 /** A source, fetched, bounded and sniffed. */
 type Fetched = {|
-  readonly bytes: Uint8Array,
-  readonly type: SourceType,
+  readonly bytes       : Uint8Array,
+  readonly type        : SourceType,
   readonly cacheControl: string | null,
 |};
 
 /** A variant, as the cache keeps it. */
 type Variant = {|
-  readonly type: string,
-  readonly body: Uint8Array,
+  readonly type    : string,
+  readonly body    : Uint8Array,
   readonly lifetime: number,
 |};
 
@@ -272,11 +272,11 @@ export function createImageEndpoint(options: ImageEndpointOptions): (
         () =>
           produce({
             patterns,
-            fetch: options.fetch,
+            fetch    : options.fetch,
             transform: options.transform,
             limit,
-            source: asked.source,
-            width: asked.width,
+            source : asked.source,
+            width  : asked.width,
             quality: asked.quality,
             avif,
           }),
@@ -295,10 +295,10 @@ export function createImageEndpoint(options: ImageEndpointOptions): (
 
 /** The parameters, checked, or an [`ImageRefusal`] naming the first bad one. */
 function parse(
-  params: URLSearchParams,
-  widths: Set<number>,
+  params   : URLSearchParams,
+  widths   : Set<number>,
   qualities: Set<number>,
-  quality: number,
+  quality  : number,
 ): {| readonly source: URL, readonly width: number, readonly quality: number |} {
   const one = (name: string): string | null => {
     const values = params.getAll(name);
@@ -380,14 +380,14 @@ export function acceptsAvif(accept: string | null): boolean {
 
 /** Fetch, bound, sniff and encode one variant: the fill behind a miss. */
 async function produce(job: {|
-  readonly patterns: $ReadOnlyArray<CompiledPattern>,
-  readonly fetch: ImageFetch,
+  readonly patterns : $ReadOnlyArray<CompiledPattern>,
+  readonly fetch    : ImageFetch,
   readonly transform: ImageTransform,
-  readonly limit: <T>(body: () => Promise<T>) => Promise<T>,
-  readonly source: URL,
-  readonly width: number,
-  readonly quality: number,
-  readonly avif: boolean,
+  readonly limit    : <T>(body: () => Promise<T>) => Promise<T>,
+  readonly source   : URL,
+  readonly width    : number,
+  readonly quality  : number,
+  readonly avif     : boolean,
 |}): Promise<Variant> {
   return job.limit(async () => {
     const fetched = await fetchSource(job.patterns, job.fetch, job.source);
@@ -398,11 +398,11 @@ async function produce(job: {|
       cacheLife({ revalidate: lifetime });
     }
     const encoded = await job.transform({
-      bytes: fetched.bytes,
-      type: fetched.type,
-      width: job.width,
+      bytes  : fetched.bytes,
+      type   : fetched.type,
+      width  : job.width,
       quality: job.quality,
-      avif: job.avif,
+      avif   : job.avif,
     });
     return { type: encoded.type, body: encoded.bytes, lifetime: lifetime ?? 0 };
   });
@@ -415,7 +415,7 @@ async function produce(job: {|
 async function fetchSource(
   patterns: $ReadOnlyArray<CompiledPattern>,
   fetchOne: ImageFetch,
-  start: URL,
+  start   : URL,
 ): Promise<Fetched> {
   // A controller and a timer rather than `AbortSignal.timeout`, so the timer is
   // cleared the moment the source has arrived instead of holding a process
@@ -433,8 +433,8 @@ async function fetchSource(
 async function fetchHops(
   patterns: $ReadOnlyArray<CompiledPattern>,
   fetchOne: ImageFetch,
-  start: URL,
-  signal: AbortSignal,
+  start   : URL,
+  signal  : AbortSignal,
 ): Promise<Fetched> {
   let current = start;
   for (let hop = 0; ; hop += 1) {
@@ -600,7 +600,7 @@ function gate(concurrency: number): <T>(body: () => Promise<T>) => Promise<T> {
 
 function variantResponse(variant: Variant, outcome: CacheOutcome, head: boolean): Response {
   const headers = new Headers({
-    "content-type": variant.type,
+    "content-type"  : variant.type,
     "content-length": String(variant.body.byteLength),
     // The response depends on `Accept`, and a shared cache in front of this
     // server that ignored it would hand an AVIF to a browser that cannot draw
@@ -612,15 +612,15 @@ function variantResponse(variant: Variant, outcome: CacheOutcome, head: boolean)
     // A raster image has nothing to run, and this says so to a browser that
     // is navigated to the URL directly rather than given it in an `<img>`.
     "content-security-policy": "default-src 'none'; sandbox",
-    "x-uf-cache": label(outcome),
+    "x-uf-cache"             : label(outcome),
   });
   return new Response(head ? null : variant.body, { status: 200, headers });
 }
 
 function refusal(status: number, message: string, allow?: string): Response {
   const headers = new Headers({
-    "content-type": "text/plain; charset=utf-8",
-    "cache-control": "no-store",
+    "content-type"          : "text/plain; charset=utf-8",
+    "cache-control"         : "no-store",
     "x-content-type-options": "nosniff",
   });
   if (allow != null) headers.set("allow", allow);
@@ -630,10 +630,10 @@ function refusal(status: number, message: string, allow?: string): Response {
 /** The header word for an outcome, the route cache's words. */
 function label(outcome: CacheOutcome): string {
   return match (outcome) {
-    "hit" => "HIT",
-    "stale" => "STALE",
-    "coalesced" => "COALESCED",
-    "miss" => "MISS",
+    "hit"         => "HIT",
+    "stale"       => "STALE",
+    "coalesced"   => "COALESCED",
+    "miss"        => "MISS",
     "uncacheable" => "BYPASS",
   };
 }

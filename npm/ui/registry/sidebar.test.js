@@ -32,8 +32,8 @@ function answerMediaQueries(matches: boolean | null): void {
       ? undefined
       : (query: string) => ({
           matches,
-          media: query,
-          addEventListener: () => {},
+          media              : query,
+          addEventListener   : () => {},
           removeEventListener: () => {},
         });
 }

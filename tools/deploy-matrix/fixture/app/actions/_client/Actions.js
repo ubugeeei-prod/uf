@@ -17,7 +17,7 @@ const NO_NOTE: NoteState = { saved: null };
 /** A JSON-path action button, and a progressively enhanced form. */
 export default component Actions() {
   const [total, setTotal] = useState<string>("");
-  const [note, submit] = useActionState<NoteState, FormData>(saveNote, NO_NOTE);
+  const [note,  submit]   = useActionState<NoteState, FormData>(saveNote, NO_NOTE);
   return (
     <section>
       <button

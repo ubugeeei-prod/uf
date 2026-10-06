@@ -66,8 +66,8 @@ function appRoot(files: $ReadOnlyArray<string>): string {
  */
 function boundaries(root: string) {
   return scanRoutes(root).errors.map((boundary) => ({
-    path: boundary.path,
-    module: boundary.module == null ? null : path.relative(root, boundary.module),
+    path   : boundary.path,
+    module : boundary.module == null ? null : path.relative(root, boundary.module),
     layouts: boundary.layouts.map((layout) => path.relative(root, layout)),
   }));
 }
@@ -85,8 +85,8 @@ describe("scanning for error boundaries", () => {
     expect(boundaries(root)).toEqual([
       { path: "/", module: "$error.js", layouts: ["$layout.js"] },
       {
-        path: "/guide",
-        module: path.join("guide", "$error.js"),
+        path   : "/guide",
+        module : path.join("guide", "$error.js"),
         layouts: ["$layout.js", path.join("guide", "$layout.js")],
       },
     ]);
@@ -126,31 +126,31 @@ component GuideError(error: RouteError, reset: () => void) {
 }
 
 const rootBoundary = {
-  path: "/",
-  file: "app/$error.js",
-  module: () => Promise.resolve({ default: SiteError, metadata: { title: "site broke" } }),
+  path   : "/",
+  file   : "app/$error.js",
+  module : () => Promise.resolve({ default: SiteError, metadata: { title: "site broke" } }),
   layouts: [loadRootLayout],
 };
 
 const guideBoundary = {
-  path: "/guide",
-  file: "app/guide/$error.js",
-  module: () => Promise.resolve({ default: GuideError, metadata: { title: "guide broke" } }),
+  path   : "/guide",
+  file   : "app/guide/$error.js",
+  module : () => Promise.resolve({ default: GuideError, metadata: { title: "guide broke" } }),
   layouts: [loadRootLayout, loadGuideLayout],
 };
 
 /** A route under `/guide` whose loader calls `thrower`. */
 const throwingRoute = (thrower: () => mixed) => ({
-  path: "/guide/broken",
-  params: [],
-  mdx: false,
-  file: "app/guide/broken/$page.js",
-  page: () => Promise.resolve({ loader: thrower }),
+  path   : "/guide/broken",
+  params : [],
+  mdx    : false,
+  file   : "app/guide/broken/$page.js",
+  page   : () => Promise.resolve({ loader: thrower }),
   layouts: [loadRootLayout, loadGuideLayout],
 });
 
 const tableWith = (route: RouteRecord, errors: RouteTable["errors"]): RouteTable => ({
-  routes: [route],
+  routes  : [route],
   notFound: [],
   errors,
 });
@@ -233,10 +233,10 @@ describe("a loader that throws", () => {
       routes: [throwingRoute(() => notFound())],
       notFound: [
         {
-          path: "/",
-          mdx: false,
-          file: "app/$not-found.js",
-          page: () => Promise.resolve({ metadata: { title: "no such page" } }),
+          path   : "/",
+          mdx    : false,
+          file   : "app/$not-found.js",
+          page   : () => Promise.resolve({ metadata: { title: "no such page" } }),
           layouts: [],
         },
       ],
@@ -282,11 +282,11 @@ describe("forbidden() and unauthorized()", () => {
 describe("the boundary a route would be caught by", () => {
   it("counts the layouts above it, which are the ones that stay mounted", async () => {
     const working = {
-      path: "/guide/ok",
-      params: [],
-      mdx: false,
-      file: "app/guide/ok/$page.js",
-      page: () => Promise.resolve({ default: () => null }),
+      path   : "/guide/ok",
+      params : [],
+      mdx    : false,
+      file   : "app/guide/ok/$page.js",
+      page   : () => Promise.resolve({ default: () => null }),
       layouts: [loadRootLayout, loadGuideLayout],
     };
 
@@ -303,11 +303,11 @@ describe("the boundary a route would be caught by", () => {
 
   it("is the root when the boundary is at the root", async () => {
     const working = {
-      path: "/guide/ok",
-      params: [],
-      mdx: false,
-      file: "app/guide/ok/$page.js",
-      page: () => Promise.resolve({ default: () => null }),
+      path   : "/guide/ok",
+      params : [],
+      mdx    : false,
+      file   : "app/guide/ok/$page.js",
+      page   : () => Promise.resolve({ default: () => null }),
       layouts: [loadRootLayout, loadGuideLayout],
     };
 
@@ -326,11 +326,11 @@ describe("the boundary a route would be caught by", () => {
     // route with a shorter layout chain than its own. An `above` past the end
     // would have `RouteView` compose layouts out of nothing.
     const bare = {
-      path: "/guide/ok",
-      params: [],
-      mdx: false,
-      file: "app/guide/ok/$page.js",
-      page: () => Promise.resolve({ default: () => null }),
+      path   : "/guide/ok",
+      params : [],
+      mdx    : false,
+      file   : "app/guide/ok/$page.js",
+      page   : () => Promise.resolve({ default: () => null }),
       layouts: [],
     };
 
@@ -369,20 +369,20 @@ describe("rendering on the server", () => {
       App: routerView("./app"),
       routes: [
         {
-          path: "/broken",
-          params: [],
-          mdx: false,
-          file: "app/broken/$page.js",
-          page: () => Promise.resolve({ default: Boom }),
+          path   : "/broken",
+          params : [],
+          mdx    : false,
+          file   : "app/broken/$page.js",
+          page   : () => Promise.resolve({ default: Boom }),
           layouts: [() => Promise.resolve({ default: SiteLayout })],
         },
       ],
       notFound: [],
       errors: [
         {
-          path: "/",
-          file: "app/$error.js",
-          module: () => Promise.resolve({ default: SiteError }),
+          path   : "/",
+          file   : "app/$error.js",
+          module : () => Promise.resolve({ default: SiteError }),
           layouts: [() => Promise.resolve({ default: SiteLayout })],
         },
       ],
@@ -406,16 +406,16 @@ describe("rendering on the server", () => {
       App: routerView("./app"),
       routes: [
         {
-          path: "/broken",
-          params: [],
-          mdx: false,
-          file: "app/broken/$page.js",
-          page: () => Promise.resolve({ default: Boom }),
+          path   : "/broken",
+          params : [],
+          mdx    : false,
+          file   : "app/broken/$page.js",
+          page   : () => Promise.resolve({ default: Boom }),
           layouts: [],
         },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     });
 
     const result = await prerender("/broken", assets);
@@ -430,16 +430,16 @@ describe("rendering on the server", () => {
       App: routerView("./app"),
       routes: [
         {
-          path: "/",
-          params: [],
-          mdx: false,
-          file: "app/$page.js",
-          page: () => Promise.resolve({ default: SiteError }),
+          path   : "/",
+          params : [],
+          mdx    : false,
+          file   : "app/$page.js",
+          page   : () => Promise.resolve({ default: SiteError }),
           layouts: [],
         },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     });
 
     const result = await prerender("/", assets);
@@ -453,16 +453,16 @@ describe("rendering on the server", () => {
       App: routerView("./app"),
       routes: [
         {
-          path: "/secret",
-          params: [],
-          mdx: false,
-          file: "app/secret/$page.js",
-          page: () => Promise.resolve({ loader: () => forbidden() }),
+          path   : "/secret",
+          params : [],
+          mdx    : false,
+          file   : "app/secret/$page.js",
+          page   : () => Promise.resolve({ loader: () => forbidden() }),
           layouts: [],
         },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     });
 
     const result = await prerender("/secret", assets);
@@ -482,7 +482,7 @@ describe("what `uf dev` says about it", () => {
     const logged = [];
     const server = {
       ssrFixStacktrace: (error: mixed) => fixed.push(error),
-      config: { logger: { error: (message: string) => logged.push(message) } },
+      config          : { logger: { error: (message: string) => logged.push(message) } },
     };
     const error = new Error("the page threw");
 
@@ -498,7 +498,7 @@ describe("what `uf dev` says about it", () => {
     const logged = [];
     const server = {
       ssrFixStacktrace: () => {},
-      config: { logger: { error: (message: string) => logged.push(message) } },
+      config          : { logger: { error: (message: string) => logged.push(message) } },
     };
 
     // `throw "nope"` is legal and a stack-trace mapper cannot be handed it.
@@ -514,20 +514,20 @@ describe("rendering in the browser", () => {
       {
         routes: [
           {
-            path: "/broken",
-            params: [],
-            mdx: false,
-            file: "app/broken/$page.js",
-            page: () => Promise.resolve({ default: Boom }),
+            path   : "/broken",
+            params : [],
+            mdx    : false,
+            file   : "app/broken/$page.js",
+            page   : () => Promise.resolve({ default: Boom }),
             layouts: [() => Promise.resolve({ default: SiteLayout })],
           },
         ],
         notFound: [],
         errors: [
           {
-            path: "/",
-            file: "app/$error.js",
-            module: () => Promise.resolve({ default: SiteError }),
+            path   : "/",
+            file   : "app/$error.js",
+            module : () => Promise.resolve({ default: SiteError }),
             layouts: [() => Promise.resolve({ default: SiteLayout })],
           },
         ],
@@ -566,20 +566,20 @@ describe("rendering in the browser", () => {
       {
         routes: [
           {
-            path: "/flaky",
-            params: [],
-            mdx: false,
-            file: "app/flaky/$page.js",
-            page: () => Promise.resolve({ default: Flaky }),
+            path   : "/flaky",
+            params : [],
+            mdx    : false,
+            file   : "app/flaky/$page.js",
+            page   : () => Promise.resolve({ default: Flaky }),
             layouts: [],
           },
         ],
         notFound: [],
         errors: [
           {
-            path: "/",
-            file: "app/$error.js",
-            module: () => Promise.resolve({ default: Retry }),
+            path   : "/",
+            file   : "app/$error.js",
+            module : () => Promise.resolve({ default: Retry }),
             layouts: [],
           },
         ],

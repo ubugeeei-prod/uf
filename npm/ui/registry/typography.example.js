@@ -7,8 +7,8 @@ import * as Typography from "./typography.js";
 
 const styles = stylex.create({
   article: {
-    display: "grid",
-    gap: ufTokens.space4,
+    display : "grid",
+    gap     : ufTokens.space4,
     maxWidth: "40rem",
   },
 });

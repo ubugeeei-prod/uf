@@ -22,9 +22,9 @@ import { type DocumentShell, bodyOfText } from "./stream.js";
 /** A redirect, as the finished document `prerender` answers with. */
 export async function redirectResult(document: RenderResult): Promise<PrerenderResult> {
   return {
-    status: document.status,
+    status : document.status,
     headers: document.headers,
-    html: await document.text(),
+    html   : await document.text(),
   };
 }
 
@@ -41,11 +41,11 @@ export function redirectDocument(error: RedirectError): RenderResult {
     `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=${target}"><title>Redirecting</title></head><body><a href="${target}">Redirecting…</a></body></html>\n`,
   );
   return {
-    status: error.permanent ? 308 : 307,
+    status : error.permanent ? 308 : 307,
     headers: { Location: address },
-    pipe: body.pipe,
-    stream: body.stream,
-    text: body.text,
+    pipe   : body.pipe,
+    stream : body.stream,
+    text   : body.text,
   };
 }
 
@@ -81,8 +81,8 @@ export function redirectDocument(error: RedirectError): RenderResult {
  * looks. Hoisting the rendered one leaves the metadata with a single source.
  */
 export function shellFor(
-  assets: RenderAssets,
-  nonce?: string | null,
+  assets    : RenderAssets,
+  nonce?    : string | null,
   formState?: FormState,
 ): DocumentShell {
   // A postback's form state goes first, before the client entry that reads it:

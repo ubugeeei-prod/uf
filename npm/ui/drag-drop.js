@@ -4,37 +4,37 @@ import { useState } from "@uniflowed/react";
 
 export type Drop = {| readonly keys: $ReadOnlyArray<string>, readonly target: string |};
 export type DragAndDrop = {
-  dragging: boolean,
+  dragging    : boolean,
   announcement: string,
-  start: (key: string, label: string) => void,
-  drop: (target: string, incoming?: $ReadOnlyArray<string>, label?: string) => void,
-  cancel: () => void,
+  start       : (key: string, label: string) => void,
+  drop        : (target: string, incoming?: $ReadOnlyArray<string>, label?: string) => void,
+  cancel      : () => void,
   getDragProps: (
-    key: string,
+    key  : string,
     label: string,
   ) => {
-    draggable: boolean,
+    draggable  : boolean,
     onDragStart: (event: $FlowFixMe) => void,
-    onDragEnd: () => void,
-    onKeyDown: (event: $FlowFixMe) => void,
+    onDragEnd  : () => void,
+    onKeyDown  : (event: $FlowFixMe) => void,
   },
   getDropProps: (
     target: string,
     label?: string,
   ) => {
     onDragOver: (event: $FlowFixMe) => void,
-    onDrop: (event: $FlowFixMe) => void,
-    onKeyDown: (event: $FlowFixMe) => void,
+    onDrop    : (event: $FlowFixMe) => void,
+    onKeyDown : (event: $FlowFixMe) => void,
   },
 };
 const MIME = "application/x-uf-collection";
 
 /** Pointer drag data and keyboard lift/drop share one validated payload. */
 export hook useDragAndDrop(options: {
-  onDrop: (drop: Drop) => void,
+  onDrop   : (drop: Drop) => void,
   disabled?: boolean,
 }): DragAndDrop {
-  const [keys, setKeys] = useState<$ReadOnlyArray<string>>([]);
+  const [keys,         setKeys]  = useState<$ReadOnlyArray<string>>([]);
   const [announcement, announce] = useState("");
   const cancel = () => {
     setKeys([]);
@@ -46,9 +46,9 @@ export hook useDragAndDrop(options: {
     announce(`Picked up ${label}. Move to a drop target and press Enter. Escape cancels.`);
   };
   const drop = (
-    target: string,
+    target  : string,
     incoming: $ReadOnlyArray<string> = keys,
-    label: string = target,
+    label   : string = target,
   ) => {
     if (options.disabled || incoming.length === 0) return;
     options.onDrop({ keys: incoming, target });

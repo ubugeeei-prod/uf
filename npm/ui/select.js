@@ -182,28 +182,28 @@ type Landing =
   | {| readonly kind: "typed", readonly key: string |};
 
 type SelectState = {|
-  readonly base: string,
-  readonly open: boolean,
-  readonly setOpen: (open: boolean) => void,
+  readonly base    : string,
+  readonly open    : boolean,
+  readonly setOpen : (open: boolean) => void,
   readonly disabled: boolean,
   /** The chosen option's value, or null when nothing is chosen. */
   readonly value: string | null,
   /** Take an option: sets the value, closes, and leaves focus on the trigger. */
   readonly choose: (value: string) => void,
   /** The id of the option `aria-activedescendant` names, if any. */
-  readonly activeId: string | null,
-  readonly setActiveId: (id: string | null) => void,
+  readonly activeId         : string | null,
+  readonly setActiveId      : (id: string | null) => void,
   readonly pendingLandingRef: { current: Landing | null },
-  readonly triggerRef: { current: HTMLElement | null },
-  readonly listRef: { current: HTMLElement | null },
+  readonly triggerRef       : { current: HTMLElement | null },
+  readonly listRef          : { current: HTMLElement | null },
   /**
    * What `Select.Value` should display for a value, learned from the options.
    *
    * See `registerLabel` for why this only ever grows.
    */
-  readonly labels: { readonly [string]: string },
-  readonly registerLabel: (value: string, label: string) => void,
-  readonly labelled: boolean,
+  readonly labels            : { readonly [string]: string },
+  readonly registerLabel     : (value: string, label: string) => void,
+  readonly labelled          : boolean,
   readonly registerFieldLabel: (present: boolean) => void,
   /**
    * Matching by the characters a reader types.
@@ -216,8 +216,8 @@ type SelectState = {|
    */
   readonly typeahead: (
     items: $ReadOnlyArray<HTMLElement>,
-    from: number,
-    key: string,
+    from : number,
+    key  : string,
   ) => HTMLElement | null,
 |};
 
@@ -233,7 +233,7 @@ hook useSelect(part: string): SelectState {
 
 /** The id of a group's label, so `Select.Group` only claims one that exists. */
 type SelectGroupState = {|
-  readonly labelId: string,
+  readonly labelId      : string,
   readonly registerLabel: (present: boolean) => void,
 |};
 
@@ -254,27 +254,27 @@ const SelectGroupContext: React.Context<SelectGroupState | null> = createContext
  * imports the other and neither needs to.
  */
 component SelectRoot(
-  children: React.Node,
-  value?: string | null,
-  defaultValue?: string | null = null,
+  children      : React.Node,
+  value?        : string | null,
+  defaultValue? : string | null = null,
   onValueChange?: (value: string | null) => void,
-  open?: boolean,
-  defaultOpen?: boolean = false,
-  onOpenChange?: (open: boolean) => void,
-  name?: string,
-  disabled?: boolean = false,
+  open?         : boolean,
+  defaultOpen?  : boolean = false,
+  onOpenChange? : (open: boolean) => void,
+  name?         : string,
+  disabled?     : boolean = false,
   ...rest: Rest
 ) {
-  const base = useId();
-  const [chosen, setChosen] = useControlled(value, defaultValue, onValueChange);
-  const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
+  const base                    = useId();
+  const [chosen,   setChosen]   = useControlled(value, defaultValue, onValueChange);
+  const [isOpen,   setOpen]     = useControlled(open, defaultOpen, onOpenChange);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [labels, setLabels] = useState<{ readonly [string]: string }>({});
+  const [labels,   setLabels]   = useState<{ readonly [string]: string }>({});
   const [labelled, setLabelled] = useState(false);
-  const pendingLandingRef = useRef<Landing | null>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
-  const listRef = useRef<HTMLElement | null>(null);
-  const typeahead = useTypeahead();
+  const pendingLandingRef       = useRef<Landing | null>(null);
+  const triggerRef              = useRef<HTMLElement | null>(null);
+  const listRef                 = useRef<HTMLElement | null>(null);
+  const typeahead               = useTypeahead();
 
   const choose = useStableCallback((next: string) => {
     setChosen(next);
@@ -627,13 +627,13 @@ component SelectValue(children?: React.Node, placeholder?: React.Node, ...rest: 
  * `aria-activedescendant` never names an option that is not in the document.
  */
 component SelectList(
-  children: renders* (SelectOption | SelectGroup | SelectSeparator),
-  align?: Align = "start",
-  alignOffset?: number = 0,
-  avoidCollisions?: boolean = true,
+  children         : renders* (SelectOption | SelectGroup | SelectSeparator),
+  align?           : Align = "start",
+  alignOffset?     : number = 0,
+  avoidCollisions? : boolean = true,
   collisionPadding?: number = 0,
-  side?: LogicalSide = "bottom",
-  sideOffset?: number = 0,
+  side?            : LogicalSide = "bottom",
+  sideOffset?      : number = 0,
   ...rest: Rest
 ) {
   const select = useSelect("Select.List");
@@ -658,7 +658,7 @@ component SelectList(
     anchorRef: triggerRef,
     avoidCollisions,
     collisionPadding,
-    open: presence.present,
+    open      : presence.present,
     overlayRef: listRef,
     side,
     sideOffset,
@@ -712,9 +712,9 @@ component SelectList(
   // is open, and a listener attached on the commit where `listRef.current` was
   // still null used to be one that never worked.
   useInteractOutside({
-    isDisabled: !select.open,
+    isDisabled       : !select.open,
     onInteractOutside: () => close(),
-    refs: [listRef, triggerRef],
+    refs             : [listRef, triggerRef],
   });
 
   if (!presence.present) {
@@ -753,14 +753,14 @@ component SelectList(
  * disagree with the page — the reason `internal/roving-focus.js` gives.
  */
 component SelectOption(
-  value: string,
-  children: React.Node,
-  label?: string,
+  value    : string,
+  children : React.Node,
+  label?   : string,
   disabled?: boolean = false,
   ...rest: Rest
 ) {
   const select = useSelect("Select.Option");
-  const id = useId();
+  const id     = useId();
   const active = select.activeId === id;
   const selected = select.value === value;
   const passed = withoutComposed(rest, ["onClick", "onPointerDown", "onPointerMove", "ref"]);
@@ -842,7 +842,7 @@ component SelectOption(
  * what this renders, because the group's element is the one below.
  */
 component SelectGroup(children: renders* (SelectOption | SelectGroupLabel), ...rest: Rest) {
-  const base = useId();
+  const base                    = useId();
   const [labelled, setLabelled] = useState(false);
 
   const group = useMemo(() => ({ labelId: `${base}-label`, registerLabel: setLabelled }), [base]);

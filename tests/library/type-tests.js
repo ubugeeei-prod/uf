@@ -126,8 +126,8 @@ export const ufBinary: string = (() => {
  */
 export type CheckDiagnostic = {
   severity?: string,
-  primary: { path: string, start: { line: number, column: number } },
-  message: Array<{ kind: string, text: string }>,
+  primary  : { path: string, start: { line: number, column: number } },
+  message  : Array<{ kind: string, text: string }>,
 };
 
 /** The part of a `uf check --json` report this suite reads. */
@@ -181,8 +181,8 @@ export type Checker = (argv: $ReadOnlyArray<string>) => CheckRun;
 /** A fresh `uf check` every time it is asked. */
 const runEveryTime: Checker = (argv) => {
   const run = spawnSync(ufBinary, [...argv], {
-    cwd: repositoryRoot,
-    encoding: "utf8",
+    cwd      : repositoryRoot,
+    encoding : "utf8",
     maxBuffer: 32 * 1024 * 1024,
   });
   // A checker that could not be started has no output at all rather than an
@@ -260,7 +260,7 @@ function checkReport(paths: $ReadOnlyArray<string>, checker: Checker): CheckRepo
 }
 
 export type CleanCheck = {
-  readonly fixture: string,
+  readonly fixture  : string,
   readonly alongside: $ReadOnlyArray<string>,
   /** As [`MisuseCheck.checker`]. */
   readonly checker?: Checker,

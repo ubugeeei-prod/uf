@@ -61,15 +61,15 @@ const cells = cellsOf(matrix, target);
 function build(dir, adapter) {
   const started = performance.now();
   const result = spawnSync(ufBinary, ["--cwd", dir, "build", "--adapter", adapter], {
-    encoding: "utf8",
-    env: { ...process.env, NO_COLOR: "1" },
+    encoding : "utf8",
+    env      : { ...process.env, NO_COLOR: "1" },
     maxBuffer: 64 * 1024 * 1024,
   });
   if (result.error != null) throw result.error;
   return {
     status: result.status,
     output: `${result.stdout}\n${result.stderr}`,
-    ms: Math.round(performance.now() - started),
+    ms    : Math.round(performance.now() - started),
   };
 }
 
@@ -120,8 +120,8 @@ for (const [mode, cell] of Object.entries(cells)) {
   if (cell.status !== "rejected" || !wanted(mode)) continue;
   const refusal = results[`${mode}#refusal`];
   results[mode] = {
-    status: "rejected",
-    ok: refusal?.ok === true,
+    status : "rejected",
+    ok     : refusal?.ok === true,
     outcome: refusal?.outcome ?? "no refusal to check",
   };
   delete results[`${mode}#refusal`];
@@ -130,7 +130,7 @@ for (const [mode, cell] of Object.entries(cells)) {
 // 2. The build the host serves.
 const shape = target.build ?? {
   features: ALL_FEATURES.filter((feature) => feature !== "s3cache"),
-  config: "full",
+  config  : "full",
 };
 const dir = makeCopy(target.id, shape);
 const built = build(dir, target.adapter);
@@ -174,7 +174,7 @@ try {
       cell.status === "planned"
         ? { ok: true, outcome: "planned, not run" }
         : {
-            ok: cell.status === "known-bug",
+            ok     : cell.status === "known-bug",
             outcome: `host did not start (#${target.knownBug.issue})`,
           },
     );
@@ -204,9 +204,9 @@ if (host != null)
           mode === "hydration"
             ? await hydration(host.base, { actions: cells["action-json"]?.status === "verified" })
             : await CHECKS[mode]({
-                base: host.base,
-                target: target.id,
-                expect: cell.expect,
+                base    : host.base,
+                target  : target.id,
+                expect  : cell.expect,
                 buildDir: dir,
                 deployDir,
                 restart: host.restart,
@@ -217,7 +217,7 @@ if (host != null)
       const ms = Math.round(performance.now() - started);
       if (cell.status === "verified") {
         record(mode, {
-          ok: error == null,
+          ok     : error == null,
           outcome: error == null ? `passed (${ms} ms)` : `failed (${ms} ms)`,
           error,
           notes,

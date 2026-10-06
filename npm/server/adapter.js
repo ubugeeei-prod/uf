@@ -89,9 +89,9 @@ export const STATIC_DIRECTORY = "static";
  * front of its own files. Absent means none.
  */
 export type HandlerModule = {|
-  readonly fetch: (request: Request) => Promise<Response>,
+  readonly fetch       : (request: Request) => Promise<Response>,
   readonly beginRequest: (request: Request) => RequestLifecycle,
-  readonly routing?: RoutingRules,
+  readonly routing?    : RoutingRules,
 |};
 
 /**
@@ -105,7 +105,7 @@ export type HandlerModule = {|
  */
 export type HostAnswer = (
   request: Request,
-  sent: (settled: () => Promise<void>) => void,
+  sent   : (settled: () => Promise<void>) => void,
 ) => Promise<Response>;
 
 /**
@@ -164,7 +164,7 @@ export function answerWith(handler: HandlerModule): HostAnswer {
     } catch (error) {
       processLogger().error("request failed", { error });
       response = new Response("500 Internal Server Error\n", {
-        status: 500,
+        status : 500,
         headers: { "content-type": "text/plain; charset=utf-8" },
       });
     }

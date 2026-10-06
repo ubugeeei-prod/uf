@@ -61,10 +61,10 @@ export const FORM_ACTION_CONTENT_TYPE = "application/x-www-form-urlencoded";
 
 /** What `$$FORM_ACTION` answers, in the shape React reads. */
 export type FormActionFields = {|
-  readonly name: string,
-  readonly method: "POST",
+  readonly name   : string,
+  readonly method : "POST",
   readonly encType: string,
-  readonly data: FormData,
+  readonly data   : FormData,
 |};
 
 /**
@@ -92,8 +92,8 @@ export type FormState = [mixed, string, string, number];
  * network call in the browser.
  */
 export function withFormAction<T extends (...args: $ReadOnlyArray<empty>) => mixed>(
-  fn: T,
-  id: string,
+  fn   : T,
+  id   : string,
   bound: $ReadOnlyArray<mixed>,
 ): T {
   const define = (name: string, value: mixed) => {
@@ -125,8 +125,8 @@ export function withFormAction<T extends (...args: $ReadOnlyArray<empty>) => mix
  * so an unencodable state costs the pre-hydration submit and nothing else.
  */
 export function formFields(
-  id: string,
-  bound: $ReadOnlyArray<mixed>,
+  id    : string,
+  bound : $ReadOnlyArray<mixed>,
   prefix: string,
 ): FormActionFields {
   const data = new FormData();
@@ -135,8 +135,8 @@ export function formFields(
     data.append(`${FORM_BOUND_FIELD}${prefix}`, encodeActionArguments(bound));
   }
   return {
-    name: `${FORM_REF_FIELD}${prefix}`,
-    method: "POST",
+    name   : `${FORM_REF_FIELD}${prefix}`,
+    method : "POST",
     encType: FORM_ACTION_CONTENT_TYPE,
     data,
   };
@@ -184,8 +184,8 @@ export function readFormPost(fields: URLSearchParams): FormPost | null {
     }
   }
   return {
-    id: fields.get(`${FORM_ID_FIELD}${prefix}`),
-    bound: fields.get(`${FORM_BOUND_FIELD}${prefix}`),
+    id      : fields.get(`${FORM_ID_FIELD}${prefix}`),
+    bound   : fields.get(`${FORM_BOUND_FIELD}${prefix}`),
     stateKey: fields.get(FORM_STATE_KEY_FIELD),
     entries,
   };

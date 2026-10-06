@@ -51,28 +51,28 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   frame: {
-    boxSizing: "border-box",
-    width: "100%",
-    overflowX: "auto",
+    boxSizing : "border-box",
+    width     : "100%",
+    overflowX : "auto",
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.muted,
+    fontSize  : ufTokens.textSm,
+    color     : ufTokens.muted,
   },
   table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
-    color: ufTokens.ink,
+    width          : "100%",
+    borderCollapse : "collapse",
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    lineHeight     : ufTokens.leadingBase,
+    color          : ufTokens.ink,
     backgroundColor: ufTokens.surface,
   },
   caption: {
-    captionSide: "top",
+    captionSide : "top",
     paddingBlock: ufTokens.space2,
-    textAlign: "start",
-    fontWeight: ufTokens.weightMedium,
-    color: ufTokens.ink,
+    textAlign   : "start",
+    fontWeight  : ufTokens.weightMedium,
+    color       : ufTokens.ink,
   },
   row: {
     borderBlockEndWidth: "1px",
@@ -82,54 +82,54 @@ const styles = stylex.create({
   head: {
     // Read by the arrow inside the sort button, which cannot see this heading.
     "--uf-table-arrow-shown": { default: "0", ":is([aria-sort])": "1" },
-    "--uf-table-arrow-turn": { default: "0deg", ":is([aria-sort=descending])": "180deg" },
-    paddingBlock: ufTokens.space2,
-    paddingInline: ufTokens.space3,
-    textAlign: "start",
-    verticalAlign: "bottom",
-    fontWeight: ufTokens.weightMedium,
-    whiteSpace: "nowrap",
-    borderBlockEndWidth: "2px",
-    borderBlockEndStyle: "solid",
-    borderBlockEndColor: ufTokens.border,
+    "--uf-table-arrow-turn" : { default: "0deg", ":is([aria-sort=descending])": "180deg" },
+    paddingBlock            : ufTokens.space2,
+    paddingInline           : ufTokens.space3,
+    textAlign               : "start",
+    verticalAlign           : "bottom",
+    fontWeight              : ufTokens.weightMedium,
+    whiteSpace              : "nowrap",
+    borderBlockEndWidth     : "2px",
+    borderBlockEndStyle     : "solid",
+    borderBlockEndColor     : ufTokens.border,
   },
   sort: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: ufTokens.space1,
-    margin: 0,
-    padding: 0,
-    fontFamily: "inherit",
-    fontSize: "inherit",
-    fontWeight: "inherit",
-    lineHeight: "inherit",
-    color: "inherit",
+    display        : "inline-flex",
+    alignItems     : "center",
+    gap            : ufTokens.space1,
+    margin         : 0,
+    padding        : 0,
+    fontFamily     : "inherit",
+    fontSize       : "inherit",
+    fontWeight     : "inherit",
+    lineHeight     : "inherit",
+    color          : "inherit",
     backgroundColor: "transparent",
-    borderWidth: 0,
-    borderRadius: ufTokens.radiusSm,
-    cursor: "pointer",
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    borderWidth    : 0,
+    borderRadius   : ufTokens.radiusSm,
+    cursor         : "pointer",
+    outlineWidth   : { default: "0", ":focus-visible": "2px" },
+    outlineStyle   : "solid",
+    outlineColor   : ufTokens.focus,
+    outlineOffset  : "2px",
   },
   arrow: {
     flexShrink: 0,
-    opacity: "var(--uf-table-arrow-shown, 0)",
-    transform: "rotate(var(--uf-table-arrow-turn, 0deg))",
+    opacity   : "var(--uf-table-arrow-shown, 0)",
+    transform : "rotate(var(--uf-table-arrow-turn, 0deg))",
   },
   cell: {
-    paddingBlock: ufTokens.space2,
+    paddingBlock : ufTokens.space2,
     paddingInline: ufTokens.space3,
-    textAlign: "start",
+    textAlign    : "start",
     verticalAlign: "middle",
   },
   rowHeader: {
-    paddingBlock: ufTokens.space2,
+    paddingBlock : ufTokens.space2,
     paddingInline: ufTokens.space3,
-    textAlign: "start",
+    textAlign    : "start",
     verticalAlign: "middle",
-    fontWeight: ufTokens.weightMedium,
+    fontWeight   : ufTokens.weightMedium,
   },
 });
 
@@ -138,15 +138,15 @@ const styles = stylex.create({
  * `sort` and `onSortChange` are the page's to act on.
  */
 component TableRoot(
-  children: React.Node,
-  sort?: Sort | null,
-  defaultSort?: Sort | null = null,
+  children     : React.Node,
+  sort?        : Sort | null,
+  defaultSort? : Sort | null = null,
   onSortChange?: (sort: Sort | null) => void,
-  rowCount?: number | null = null,
-  rowOffset?: number = 0,
+  rowCount?    : number | null = null,
+  rowOffset?   : number = 0,
   announceSort?: (column: string, direction: "ascending" | "descending") => string,
-  xstyle?: StyleArgument,
-  className?: string,
+  xstyle?      : StyleArgument,
+  className?   : string,
   ...rest: Rest
 ) {
   return (
@@ -169,8 +169,8 @@ component TableRoot(
 
 /** The table's name, over it. */
 component TableCaption(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -186,8 +186,8 @@ component TableCaption(
 
 /** The rows of headings. */
 component TableHeader(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -200,8 +200,8 @@ component TableHeader(
 
 /** The rows of data. */
 component TableBody(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -214,9 +214,9 @@ component TableBody(
 
 /** One row. `index` is its place in the whole data when the table shows part of it. */
 component TableRow(
-  children: React.Node,
-  index?: number | null = null,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  index?    : number | null = null,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -236,9 +236,9 @@ component TableRow(
  * be sorted by it, with an arrow while they are.
  */
 component TableHead(
-  children: React.Node,
-  column?: string | null = null,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  column?   : string | null = null,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -279,8 +279,8 @@ component TableHead(
 
 /** A data cell. */
 component TableCell(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -296,8 +296,8 @@ component TableCell(
 
 /** The cell that names its row, such as a person's name. */
 component TableRowHeader(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -313,12 +313,12 @@ component TableRowHeader(
 
 /** The checkbox that chooses every row, mixed while only some are chosen. */
 component TableSelectAll(
-  checked: boolean | "mixed",
+  checked        : boolean | "mixed",
   onCheckedChange: (checked: boolean) => void,
-  label?: string = "Select all rows",
-  disabled?: boolean = false,
-  xstyle?: StyleArgument,
-  className?: string,
+  label?         : string = "Select all rows",
+  disabled?      : boolean = false,
+  xstyle?        : StyleArgument,
+  className?     : string,
 ) {
   return (
     <Checkbox
@@ -335,12 +335,12 @@ component TableSelectAll(
 
 /** The checkbox that chooses one row. `label` says which. */
 component TableRowSelect(
-  label: string,
-  checked: boolean,
+  label          : string,
+  checked        : boolean,
   onCheckedChange: (checked: boolean) => void,
-  disabled?: boolean = false,
-  xstyle?: StyleArgument,
-  className?: string,
+  disabled?      : boolean = false,
+  xstyle?        : StyleArgument,
+  className?     : string,
 ) {
   return (
     <Checkbox

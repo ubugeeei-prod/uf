@@ -18,8 +18,8 @@ export function classify(report) {
     if (test.status !== "failed") continue;
     const message = test.failures.map((f) => f.message).join("\n");
     failures.push({
-      file: test.file,
-      name: test.name,
+      file  : test.file,
+      name  : test.name,
       reason: message,
     });
   }
@@ -61,7 +61,7 @@ exec ${quote(realDeno)} run --allow-read --allow-write --allow-env --allow-run -
   const discovery = spawnSync(uf, ["test", "--list", "--json", ...paths], {
     cwd: root,
     env,
-    encoding: "utf8",
+    encoding : "utf8",
     maxBuffer: 8 * 1024 * 1024,
   });
   if (discovery.status !== 0) throw new Error("Could not discover library tests");
@@ -89,7 +89,7 @@ exec ${quote(realDeno)} run --allow-read --allow-write --allow-env --allow-run -
           {
             cwd: root,
             env,
-            stdio: ["ignore", stdout, stderr],
+            stdio   : ["ignore", stdout, stderr],
             detached: true,
           },
         );
@@ -144,13 +144,13 @@ exec ${quote(realDeno)} run --allow-read --allow-write --allow-env --allow-run -
   }
   if (errors.length) throw new Error(errors.join("\n"));
   const raw = {
-    command: "uf test --host deno",
-    host: results[0].host,
-    files: files.length,
-    passed: results.reduce((sum, result) => sum + result.passed, 0),
-    skipped: results.reduce((sum, result) => sum + result.skipped, 0),
+    command    : "uf test --host deno",
+    host       : results[0].host,
+    files      : files.length,
+    passed     : results.reduce((sum, result) => sum + result.passed, 0),
+    skipped    : results.reduce((sum, result) => sum + result.skipped, 0),
     fileReports: results.flatMap((result) => result.fileReports),
-    tests: results.flatMap((result) => result.tests),
+    tests      : results.flatMap((result) => result.tests),
   };
   fs.writeFileSync(path.join(out, "raw.json"), JSON.stringify(raw, null, 2) + "\n");
   const summary = { runtime: version.stdout.trim(), ...classify(raw) };

@@ -21,7 +21,7 @@ type HydrationOptions = {| onRecoverableError?: Recovery, formState?: FormState 
  * hook starts from the action's result instead of its initial state.
  */
 export function hydrationOptions(
-  recovery: ?Recovery,
+  recovery : ?Recovery,
   formState: FormState | void,
 ): HydrationOptions | void {
   // React's default reporter dispatches a global error for a boundary it

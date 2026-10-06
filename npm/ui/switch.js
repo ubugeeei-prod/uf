@@ -42,12 +42,12 @@ import { useControlled } from "./internal/controlled-state.js";
  * of the element rather than of the switch.
  */
 export component Switch(
-  checked?: boolean,
-  defaultChecked?: boolean = false,
+  checked?        : boolean,
+  defaultChecked? : boolean = false,
   onCheckedChange?: (checked: boolean) => void,
-  disabled?: boolean = false,
-  children?: React.Node,
-  render?: RenderProp,
+  disabled?       : boolean = false,
+  children?       : React.Node,
+  render?         : RenderProp,
   ...rest: Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
@@ -75,7 +75,7 @@ export component Switch(
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }

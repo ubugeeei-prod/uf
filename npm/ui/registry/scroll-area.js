@@ -38,59 +38,59 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    position: "relative",
-    display: "flex",
+    position     : "relative",
+    display      : "flex",
     flexDirection: "column",
-    boxSizing: "border-box",
-    overflow: "hidden",
+    boxSizing    : "border-box",
+    overflow     : "hidden",
   },
   viewport: {
-    flexGrow: 1,
-    minHeight: 0,
-    overflow: "auto",
+    flexGrow      : 1,
+    minHeight     : 0,
+    overflow      : "auto",
     scrollbarWidth: "none",
-    borderRadius: "inherit",
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "-2px",
+    borderRadius  : "inherit",
+    outlineWidth  : { default: "0", ":focus-visible": "2px" },
+    outlineStyle  : "solid",
+    outlineColor  : ufTokens.focus,
+    outlineOffset : "-2px",
   },
   scrollbar: {
-    position: "absolute",
-    borderRadius: ufTokens.radiusPill,
+    position     : "absolute",
+    borderRadius : ufTokens.radiusPill,
     pointerEvents: "none",
   },
   scrollbarVertical: {
     insetBlockStart: "2px",
-    insetBlockEnd: "2px",
-    insetInlineEnd: "2px",
-    width: "6px",
+    insetBlockEnd  : "2px",
+    insetInlineEnd : "2px",
+    width          : "6px",
   },
   scrollbarHorizontal: {
     insetInlineStart: "2px",
-    insetInlineEnd: "2px",
-    insetBlockEnd: "2px",
-    height: "6px",
+    insetInlineEnd  : "2px",
+    insetBlockEnd   : "2px",
+    height          : "6px",
   },
   thumb: {
-    position: "absolute",
-    borderRadius: "inherit",
+    position       : "absolute",
+    borderRadius   : "inherit",
     backgroundColor: ufTokens.muted,
   },
   // Gone while the thumb is the whole track, which is when nothing overflows.
   thumbVertical: {
     insetInlineStart: 0,
-    insetInlineEnd: 0,
-    insetBlockStart: "calc(var(--uf-scroll-thumb-offset, 0) * 100%)",
-    height: "calc(var(--uf-scroll-thumb-size, 1) * 100%)",
-    opacity: "calc((1 - var(--uf-scroll-thumb-size, 1)) * 1000)",
+    insetInlineEnd  : 0,
+    insetBlockStart : "calc(var(--uf-scroll-thumb-offset, 0) * 100%)",
+    height          : "calc(var(--uf-scroll-thumb-size, 1) * 100%)",
+    opacity         : "calc((1 - var(--uf-scroll-thumb-size, 1)) * 1000)",
   },
   thumbHorizontal: {
-    insetBlockStart: 0,
-    insetBlockEnd: 0,
+    insetBlockStart : 0,
+    insetBlockEnd   : 0,
     insetInlineStart: "calc(var(--uf-scroll-thumb-offset-x, 0) * 100%)",
-    width: "calc(var(--uf-scroll-thumb-size-x, 1) * 100%)",
-    opacity: "calc((1 - var(--uf-scroll-thumb-size-x, 1)) * 1000)",
+    width           : "calc(var(--uf-scroll-thumb-size-x, 1) * 100%)",
+    opacity         : "calc((1 - var(--uf-scroll-thumb-size-x, 1)) * 1000)",
   },
 });
 
@@ -99,11 +99,11 @@ const styles = stylex.create({
  * its content overflows, and so which scrollbars it draws.
  */
 export component ScrollArea(
-  children: React.Node,
-  label: string,
+  children    : React.Node,
+  label       : string,
   orientation?: "vertical" | "horizontal" | "both" = "vertical",
-  xstyle?: StyleArgument,
-  className?: string,
+  xstyle?     : StyleArgument,
+  className?  : string,
   ...rest: Rest
 ) {
   const down = orientation !== "horizontal";

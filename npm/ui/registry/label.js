@@ -41,15 +41,15 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   label: {
-    display: "inline-flex",
+    display   : "inline-flex",
     alignItems: "center",
-    gap: ufTokens.space2,
+    gap       : ufTokens.space2,
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
+    fontSize  : ufTokens.textSm,
     fontWeight: ufTokens.weightMedium,
     lineHeight: ufTokens.leadingTight,
-    color: ufTokens.ink,
-    cursor: "default",
+    color     : ufTokens.ink,
+    cursor    : "default",
   },
 });
 
@@ -60,9 +60,9 @@ const styles = stylex.create({
  *     <Input id="email" type="email" />
  */
 export component Label(
-  children: React.Node,
-  htmlFor?: string,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  htmlFor?  : string,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

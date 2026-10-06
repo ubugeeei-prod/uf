@@ -53,11 +53,11 @@ export type AxeOptions = {
 
 /** One thing axe found, reduced to what a failure message needs. */
 export type AxeViolation = {
-  readonly id: string,
-  readonly impact: AxeImpact | null,
-  readonly help: string,
+  readonly id     : string,
+  readonly impact : AxeImpact | null,
+  readonly help   : string,
   readonly helpUrl: string,
-  readonly nodes: $ReadOnlyArray<string>,
+  readonly nodes  : $ReadOnlyArray<string>,
 };
 
 /** Impacts in order, so a floor can be compared rather than matched. */
@@ -159,9 +159,9 @@ function projectOptions(): AxeOptions {
   const disabled = arrayAt(parsed, "disabledRules").filter((rule) => typeof rule === "string");
   const impact = impactAt(parsed, "minImpact") ?? undefined;
   return {
-    tags: tags as $FlowFixMe,
+    tags         : tags as $FlowFixMe,
     disabledRules: disabled as $FlowFixMe,
-    minImpact: impact,
+    minImpact    : impact,
   };
 }
 
@@ -169,9 +169,9 @@ function projectOptions(): AxeOptions {
 function resolveOptions(overrides: AxeOptions | void): AxeOptions {
   const project = projectOptions();
   return {
-    tags: overrides?.tags ?? project.tags,
+    tags         : overrides?.tags ?? project.tags,
     disabledRules: overrides?.disabledRules ?? project.disabledRules,
-    minImpact: overrides?.minImpact ?? project.minImpact,
+    minImpact    : overrides?.minImpact ?? project.minImpact,
   };
 }
 
@@ -265,10 +265,10 @@ function isAlreadyRunning(error: mixed): boolean {
  * audit that is not going to end.
  */
 function runOnceAxeIsFree(
-  axe: $FlowFixMe,
-  node: mixed,
+  axe    : $FlowFixMe,
+  node   : mixed,
   options: mixed,
-  since: number = now(),
+  since  : number = now(),
 ): Promise<mixed> {
   return Promise.resolve()
     .then(() => axe.run(node, options))
@@ -299,7 +299,7 @@ function runOnceAxeIsFree(
  * install.
  */
 export async function auditElement(
-  node: mixed,
+  node      : mixed,
   overrides?: AxeOptions,
 ): Promise<$ReadOnlyArray<AxeViolation>> {
   if (typeof globalThis.document === "undefined") {
@@ -316,11 +316,11 @@ export async function auditElement(
   const found: Array<AxeViolation> = [];
   for (const raw of arrayAt(results, "violations")) {
     const violation: AxeViolation = {
-      id: stringAt(raw, "id"),
-      impact: impactOf(raw),
-      help: stringAt(raw, "help"),
+      id     : stringAt(raw, "id"),
+      impact : impactOf(raw),
+      help   : stringAt(raw, "help"),
       helpUrl: stringAt(raw, "helpUrl"),
-      nodes: arrayAt(raw, "nodes").map((one) => excerpt(stringAt(one, "html"))),
+      nodes  : arrayAt(raw, "nodes").map((one) => excerpt(stringAt(one, "html"))),
     };
     if (meetsFloor(violation, options.minImpact)) found.push(violation);
   }

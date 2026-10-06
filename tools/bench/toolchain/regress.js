@@ -76,9 +76,9 @@ export const FLOOR_MS = 25;
 
 /** The part of a result row this reads. */
 export type Measured = {
-  readonly id: string,
-  readonly tool: string,
-  readonly stage: string,
+  readonly id    : string,
+  readonly tool  : string,
+  readonly stage : string,
   readonly median: number,
   ...
 };
@@ -86,19 +86,19 @@ export type Measured = {
 /** The part of a result file this reads. */
 export type Results = {
   readonly machine?: { readonly cpu?: string, readonly cores?: number, ... },
-  readonly results: $ReadOnlyArray<Measured>,
+  readonly results : $ReadOnlyArray<Measured>,
   ...
 };
 
 export type Outcome = "ok" | "slower" | "faster" | "missing" | "new";
 
 export type Verdict = {
-  readonly id: string,
-  readonly stage: string,
+  readonly id      : string,
+  readonly stage   : string,
   readonly baseline: number,
   /** The best median among the runs given, or null if none of them had the row. */
   readonly current: number | null,
-  readonly gated: boolean,
+  readonly gated  : boolean,
   readonly outcome: Outcome,
 };
 
@@ -112,10 +112,10 @@ export function gated(row: Measured): boolean {
  * with what happened to it. Pure.
  */
 export function compare(
-  baseline: Results,
-  runs: $ReadOnlyArray<Results>,
+  baseline : Results,
+  runs     : $ReadOnlyArray<Results>,
   threshold: number = THRESHOLD,
-  floorMs: number = FLOOR_MS,
+  floorMs  : number = FLOOR_MS,
 ): Array<Verdict> {
   const best: Map<string, number> = new Map();
   const stages: Map<string, string> = new Map();
@@ -144,8 +144,8 @@ export function compare(
       continue;
     }
     verdicts.push({
-      id: row.id,
-      stage: row.stage,
+      id      : row.id,
+      stage   : row.stage,
       baseline: row.median,
       current,
       gated: isGated,
@@ -156,10 +156,10 @@ export function compare(
     if (!known.has(id) && id.startsWith("uf/")) {
       verdicts.push({
         id,
-        stage: stages.get(id) ?? "",
+        stage   : stages.get(id) ?? "",
         baseline: Number.NaN,
         current,
-        gated: false,
+        gated  : false,
         outcome: "new",
       });
     }

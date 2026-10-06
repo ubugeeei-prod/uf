@@ -48,7 +48,7 @@ class FakeAnimation {
 
 /** A part that shows while `open`, the way an overlay part would use the hook. */
 component Part(open: boolean) {
-  const ref = useRef<HTMLElement | null>(null);
+  const ref                = useRef<HTMLElement | null>(null);
   const { present, state } = usePresence(open, ref);
   if (!present) {
     return null;

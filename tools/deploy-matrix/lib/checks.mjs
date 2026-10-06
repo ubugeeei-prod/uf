@@ -186,10 +186,10 @@ async function arrival(base, path, first, second, headers = {}) {
       `GET ${asked}: body lacks ${JSON.stringify(second())}\n  ${describe(answer)}`,
     );
     return {
-      gap: Math.round(at.second - at.first),
-      first: Math.round(at.first),
-      second: Math.round(at.second),
-      reads: answer.chunks.length,
+      gap     : Math.round(at.second - at.first),
+      first   : Math.round(at.first),
+      second  : Math.round(at.second),
+      reads   : answer.chunks.length,
       encoding: answer.headers.get("content-encoding") ?? "none",
     };
   };
@@ -429,8 +429,8 @@ async function actionJson({ base, buildDir }) {
       headers: {
         origin,
         "content-type": "application/json",
-        "uf-action": id,
-        cookie: "visitor=ada",
+        "uf-action"   : id,
+        cookie        : "visitor=ada",
       },
       body: JSON.stringify({ args: [41] }),
     });
@@ -461,7 +461,7 @@ async function actionForm({ base }) {
   const answer = await request(base, form.action ?? "/actions", {
     method: "POST",
     headers: {
-      origin: new URL(base).origin,
+      origin        : new URL(base).origin,
       "content-type": "application/x-www-form-urlencoded",
     },
     body: form.fields.toString(),
@@ -487,9 +487,9 @@ async function routeHandlers({ base }) {
     "GET /api/echo: the `cache-control` rule was not applied",
   );
   const posted = await request(base, "/api/echo", {
-    method: "POST",
+    method : "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name: "matrix" }),
+    body   : JSON.stringify({ name: "matrix" }),
   });
   expectStatus(posted, 200, "POST /api/echo");
   expectBody(posted, '"echoed":"matrix"', "POST /api/echo");
@@ -600,16 +600,16 @@ export const CHECKS = {
   ssr,
   streaming,
   ppr,
-  "isr-time": isrTime,
-  "isr-on-demand": isrOnDemand,
-  "rsc-payload": rscPayload,
-  "action-json": actionJson,
-  "action-form": actionForm,
+  "isr-time"      : isrTime,
+  "isr-on-demand" : isrOnDemand,
+  "rsc-payload"   : rscPayload,
+  "action-json"   : actionJson,
+  "action-form"   : actionForm,
   "route-handlers": routeHandlers,
   cookies,
   middleware,
-  "router-rules": routerRules,
-  "not-found": notFound,
+  "router-rules"  : routerRules,
+  "not-found"     : notFound,
   "error-boundary": errorBoundary,
-  "static-assets": staticAssets,
+  "static-assets" : staticAssets,
 };

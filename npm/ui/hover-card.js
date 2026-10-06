@@ -69,12 +69,12 @@ import { presenceProps, usePresence } from "./internal/presence.js";
 export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
 type HoverCardState = {|
-  readonly base: string,
-  readonly open: boolean,
-  readonly setOpen: (open: boolean) => void,
+  readonly base      : string,
+  readonly open      : boolean,
+  readonly setOpen   : (open: boolean) => void,
   readonly triggerRef: { current: HTMLElement | null },
-  readonly intent: HoverIntent,
-  readonly openDelay: number,
+  readonly intent    : HoverIntent,
+  readonly openDelay : number,
   readonly closeDelay: number,
   /** Whether `Escape` has dismissed it; see `tooltip.js`, which shares the rule. */
   readonly dismissedRef: { current: boolean },
@@ -98,18 +98,18 @@ hook useHoverCard(part: string): HoverCardState {
  * they are reaching for.
  */
 component HoverCardRoot(
-  children: React.Node,
-  closeDelay?: number = DEFAULT_CLOSE_DELAY,
-  defaultOpen?: boolean = false,
+  children     : React.Node,
+  closeDelay?  : number = DEFAULT_CLOSE_DELAY,
+  defaultOpen? : boolean = false,
   onOpenChange?: (open: boolean) => void,
-  open?: boolean,
-  openDelay?: number = DEFAULT_OPEN_DELAY,
+  open?        : boolean,
+  openDelay?   : number = DEFAULT_OPEN_DELAY,
 ) {
-  const base = useId();
+  const base              = useId();
   const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
-  const triggerRef = useRef<HTMLElement | null>(null);
-  const dismissedRef = useRef(false);
-  const intent = useHoverIntent(setOpen);
+  const triggerRef        = useRef<HTMLElement | null>(null);
+  const dismissedRef      = useRef(false);
+  const intent            = useHoverIntent(setOpen);
 
   const state = useMemo(
     () => ({
@@ -197,7 +197,7 @@ component HoverCardTrigger(children?: React.Node, render?: RenderProp, ...rest: 
   const props = withProps(withoutComposed(rest, ["ref"]), { children, ref: attach });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -212,14 +212,14 @@ component HoverCardTrigger(children?: React.Node, render?: RenderProp, ...rest: 
  * send the reader back to the top of the page.
  */
 component HoverCardBody(
-  children: React.Node,
-  align?: Align = "center",
-  alignOffset?: number = 0,
-  avoidCollisions?: boolean = true,
+  children         : React.Node,
+  align?           : Align = "center",
+  alignOffset?     : number = 0,
+  avoidCollisions? : boolean = true,
   collisionPadding?: number = 0,
-  render?: RenderProp,
-  side?: LogicalSide = "bottom",
-  sideOffset?: number = 0,
+  render?          : RenderProp,
+  side?            : LogicalSide = "bottom",
+  sideOffset?      : number = 0,
   ...rest: Rest
 ) {
   const card = useHoverCard("HoverCard.Body");
@@ -231,7 +231,7 @@ component HoverCardBody(
   // `inert` or gone and `activeElement` may already have fallen to `<body>` —
   // so the answer is kept while it is still true.
   const heldRef = useRef(false);
-  const close = useStableCallback(() => {
+  const close   = useStableCallback(() => {
     dismissedRef.current = true;
     intent.cancel();
     card.setOpen(false);
@@ -245,7 +245,7 @@ component HoverCardBody(
     anchorRef: triggerRef,
     avoidCollisions,
     collisionPadding,
-    open: presence.present,
+    open      : presence.present,
     overlayRef: bodyRef,
     side,
     sideOffset,
@@ -333,7 +333,7 @@ component HoverCardBody(
   const props = withProps(withoutComposed(rest, ["ref"]), {
     children,
     "data-align": anchored.align,
-    "data-side": anchored.side,
+    "data-side" : anchored.side,
     ...presenceProps(presence),
     id: `${card.base}-body`,
     // React calls callback refs during commit; placement effects read it later.
@@ -344,7 +344,7 @@ component HoverCardBody(
   });
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

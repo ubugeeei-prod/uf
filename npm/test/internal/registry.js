@@ -48,37 +48,37 @@ export type Modifier = "none" | "only" | "skip" | "todo";
  * the benchmark as a whole is held to that budget once per call.
  */
 export type BenchOptions = {|
-  readonly warmup?: number,
+  readonly warmup?    : number,
   readonly iterations?: number,
-  readonly timeout?: number,
+  readonly timeout?   : number,
 |};
 
 /** One registered test case, or one benchmark. */
 export type Case = {|
-  readonly kind: "test" | "bench",
-  readonly name: string,
-  readonly body: Body | null,
-  readonly modifier: Modifier,
+  readonly kind      : "test" | "bench",
+  readonly name      : string,
+  readonly body      : Body | null,
+  readonly modifier  : Modifier,
   readonly skipReason: string | null,
-  readonly timeoutMs: number | null,
+  readonly timeoutMs : number | null,
   /** How to run it, for a benchmark; `null` for a test. */
-  readonly bench: BenchOptions | null,
-  readonly line: number,
+  readonly bench : BenchOptions | null,
+  readonly line  : number,
   readonly column: number,
 |};
 
 /** One `describe` and everything inside it. */
 export type Suite = {|
-  readonly kind: "suite",
-  readonly name: string,
-  readonly modifier: Modifier,
-  readonly children: Array<Suite | Case>,
-  readonly beforeAll: Array<Hook>,
-  readonly afterAll: Array<Hook>,
+  readonly kind      : "suite",
+  readonly name      : string,
+  readonly modifier  : Modifier,
+  readonly children  : Array<Suite | Case>,
+  readonly beforeAll : Array<Hook>,
+  readonly afterAll  : Array<Hook>,
   readonly beforeEach: Array<Hook>,
-  readonly afterEach: Array<Hook>,
-  readonly line: number,
-  readonly column: number,
+  readonly afterEach : Array<Hook>,
+  readonly line      : number,
+  readonly column    : number,
 |};
 
 function suite(name: string, modifier: Modifier, line: number, column: number): Suite {
@@ -86,11 +86,11 @@ function suite(name: string, modifier: Modifier, line: number, column: number): 
     kind: "suite",
     name,
     modifier,
-    children: [],
-    beforeAll: [],
-    afterAll: [],
+    children  : [],
+    beforeAll : [],
+    afterAll  : [],
     beforeEach: [],
-    afterEach: [],
+    afterEach : [],
     line,
     column,
   };
@@ -149,12 +149,12 @@ function addSuite(name: string, body: Body, modifier: Modifier): void {
 }
 
 function addCase(
-  name: string,
-  body: Body | null,
-  modifier: Modifier,
-  timeoutMs: number | null,
+  name      : string,
+  body      : Body | null,
+  modifier  : Modifier,
+  timeoutMs : number | null,
   skipReason: string | null = null,
-  bench: BenchOptions | null = null,
+  bench     : BenchOptions | null = null,
 ): void {
   const position = callSite();
   current.children.push({
@@ -165,7 +165,7 @@ function addCase(
     skipReason,
     timeoutMs,
     bench,
-    line: position.line,
+    line  : position.line,
     column: position.column,
   });
 }

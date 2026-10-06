@@ -249,27 +249,27 @@ export class AssetService {
     const reply = await this.#send({
       kind: "image",
       id,
-      outDir: options.outDir,
-      widths: options.widths,
+      outDir : options.outDir,
+      widths : options.widths,
       quality: options.quality,
-      blur: options.blur,
+      blur   : options.blur,
     });
     const image = reply.image;
     if (image == null) throw new AssetError(id, "uf assets returned no image");
     return {
-      width: image.width ?? null,
-      height: image.height ?? null,
-      format: image.format,
+      width   : image.width ?? null,
+      height  : image.height ?? null,
+      format  : image.format,
       variants: image.variants ?? [],
       // Whether `uf assets` answered from its cache rather than doing the
       // work. Named for the same reason every other field is: a caller
       // measuring a warm build has to be able to tell one from a cold one,
       // and a field that is dropped here reads as `undefined` rather than as
       // an error.
-      cached: reply.cached === true,
-      blur: image.blur ?? null,
+      cached  : reply.cached === true,
+      blur    : image.blur ?? null,
       declined: image.declined ?? [],
-      note: image.note ?? null,
+      note    : image.note ?? null,
     };
   }
 
@@ -292,20 +292,20 @@ export class AssetService {
     const reply = await this.#send({
       kind: "variant",
       id,
-      outDir: options.outDir,
-      width: options.width,
+      outDir : options.outDir,
+      width  : options.width,
       quality: options.quality,
-      avif: options.avif,
+      avif   : options.avif,
     });
     const variant = reply.variant;
     if (variant == null) throw new AssetError(id, "uf assets returned no variant");
     return {
-      file: variant.file,
+      file  : variant.file,
       format: variant.format,
-      mime: variant.mime,
-      width: variant.width,
+      mime  : variant.mime,
+      width : variant.width,
       height: variant.height,
-      bytes: variant.bytes,
+      bytes : variant.bytes,
     };
   }
 
@@ -332,14 +332,14 @@ export class AssetService {
     const request = {
       kind: "font",
       id,
-      outDir: options.outDir,
-      family: options.family,
-      weight: options.weight,
-      style: options.style,
+      outDir : options.outDir,
+      family : options.family,
+      weight : options.weight,
+      style  : options.style,
       display: options.display,
       baseUrl: options.baseUrl,
-      subset: options.subset,
-      text: options.text,
+      subset : options.subset,
+      text   : options.text,
       preload: options.preload,
     };
     // Only sent when the caller had an opinion. The service distinguishes "not
@@ -350,21 +350,21 @@ export class AssetService {
     const font = reply.font;
     if (font == null) throw new AssetError(id, "uf assets returned no font");
     return {
-      file: font.file,
-      mime: font.mime,
-      bytes: font.bytes,
-      family: font.family,
-      fallbackFamily: font.fallbackFamily ?? null,
-      container: font.container,
-      metrics: font.metrics,
-      fallback: font.fallback ?? null,
+      file            : font.file,
+      mime            : font.mime,
+      bytes           : font.bytes,
+      family          : font.family,
+      fallbackFamily  : font.fallbackFamily ?? null,
+      container       : font.container,
+      metrics         : font.metrics,
+      fallback        : font.fallback ?? null,
       fallbackDeclined: font.fallbackDeclined ?? null,
-      faces: font.faces ?? [],
-      sourceBytes: font.sourceBytes,
-      subset: font.subset ?? null,
-      subsetDeclined: font.subsetDeclined ?? null,
-      cached: reply.cached === true,
-      css: font.css,
+      faces           : font.faces ?? [],
+      sourceBytes     : font.sourceBytes,
+      subset          : font.subset ?? null,
+      subsetDeclined  : font.subsetDeclined ?? null,
+      cached          : reply.cached === true,
+      css             : font.css,
     };
   }
 
@@ -385,18 +385,18 @@ export class AssetService {
       kind: "icon",
       id,
       outDir: options.outDir,
-      name: options.name,
+      name  : options.name,
     });
     const icon = reply.icon;
     if (icon == null) throw new AssetError(id, "uf assets returned no icon");
     return {
-      name: icon.name,
-      id: icon.id,
+      name   : icon.name,
+      id     : icon.id,
       viewBox: icon.viewBox,
-      width: icon.width,
-      height: icon.height,
-      symbol: icon.symbol,
-      cached: reply.cached === true,
+      width  : icon.width,
+      height : icon.height,
+      symbol : icon.symbol,
+      cached : reply.cached === true,
     };
   }
 
@@ -418,17 +418,17 @@ export class AssetService {
    */
   async sprite(options) {
     const reply = await this.#send({
-      kind: "sprite",
-      id: "uf:icon-sprite",
+      kind  : "sprite",
+      id    : "uf:icon-sprite",
       outDir: options.outDir,
-      icons: options.icons ?? [],
+      icons : options.icons ?? [],
     });
     const sprite = reply.sprite;
     if (sprite == null) throw new AssetError("uf:icon-sprite", "uf assets returned no sprite");
     return {
-      file: sprite.file,
-      markup: sprite.markup,
-      bytes: sprite.bytes,
+      file   : sprite.file,
+      markup : sprite.markup,
+      bytes  : sprite.bytes,
       symbols: sprite.symbols,
     };
   }
@@ -449,12 +449,12 @@ export class AssetService {
     const og = reply.og;
     if (og == null) throw new AssetError(id, "uf assets returned no image");
     return {
-      file: og.file,
-      mime: og.mime,
-      width: og.width,
+      file  : og.file,
+      mime  : og.mime,
+      width : og.width,
       height: og.height,
-      bytes: og.bytes,
-      alt: og.alt,
+      bytes : og.bytes,
+      alt   : og.alt,
       cached: reply.cached === true,
     };
   }

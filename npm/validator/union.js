@@ -48,7 +48,7 @@ import {
 
 function buildUnion<TOutput, TInput>(options: Options): Schema<TOutput, TInput> {
   const description = (): Description => ({
-    kind: "union",
+    kind   : "union",
     options: options.map((option) => describe(option)),
   });
 
@@ -152,7 +152,7 @@ function buildVariant<TOutput, TInput>(key: string, branches: Shape): Schema<TOu
  * the control that chooses it.
  */
 export function variant<TBranches extends Shape>(
-  key: string,
+  key     : string,
   branches: TBranches,
 ): Schema<InferOutput<TBranches[keyof TBranches]>, InferInput<TBranches[keyof TBranches]>> {
   return buildVariant(key, branches);
@@ -176,18 +176,18 @@ export function variant<TBranches extends Shape>(
  * string and pretend the result satisfies both.
  */
 export function intersect<TLeftOut, TLeftIn, TRightOut, TRightIn>(
-  left: Schema<TLeftOut, TLeftIn>,
+  left : Schema<TLeftOut, TLeftIn>,
   right: Schema<TRightOut, TRightIn>,
 ): Schema<TLeftOut & TRightOut, TLeftIn & TRightIn> {
   const description = (): Description => ({
-    kind: "intersect",
+    kind : "intersect",
     parts: [describe(left), describe(right)],
   });
 
   function combine(
-    first: Result<TLeftOut>,
+    first : Result<TLeftOut>,
     second: Result<TRightOut>,
-    path: Array<string>,
+    path  : Array<string>,
   ): Result<TLeftOut & TRightOut> {
     if (!first.ok || !second.ok) {
       const issues: Array<Issue> = [];

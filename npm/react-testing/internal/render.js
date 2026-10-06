@@ -40,7 +40,7 @@ export type RenderResult = {|
 
 type Mounted = {|
   container: Element,
-  root: ReactRoot,
+  root     : ReactRoot,
 |};
 
 const mounted: Array<Mounted> = [];
@@ -249,7 +249,7 @@ function isThenable(value: mixed): boolean {
  * settling, a timer firing — and a mutation observer sees none of those.
  */
 export async function waitFor<T>(
-  body: () => T | Promise<T>,
+  body    : () => T | Promise<T>,
   options?: {| readonly timeout?: number, readonly interval?: number |},
 ): Promise<T> {
   installActEnvironment();

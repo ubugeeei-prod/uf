@@ -39,54 +39,54 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    position: "relative",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    overflow: "hidden",
-    borderRadius: ufTokens.radiusPill,
+    position       : "relative",
+    display        : "inline-flex",
+    alignItems     : "center",
+    justifyContent : "center",
+    flexShrink     : 0,
+    overflow       : "hidden",
+    borderRadius   : ufTokens.radiusPill,
     backgroundColor: ufTokens.sunken,
-    color: ufTokens.ink,
-    fontFamily: ufTokens.fontSans,
-    fontWeight: ufTokens.weightMedium,
-    lineHeight: 1,
-    userSelect: "none",
+    color          : ufTokens.ink,
+    fontFamily     : ufTokens.fontSans,
+    fontWeight     : ufTokens.weightMedium,
+    lineHeight     : 1,
+    userSelect     : "none",
   },
   sm: {
-    width: "32px",
-    height: "32px",
+    width   : "32px",
+    height  : "32px",
     fontSize: ufTokens.textXs,
   },
   md: {
-    width: "40px",
-    height: "40px",
+    width   : "40px",
+    height  : "40px",
     fontSize: ufTokens.textSm,
   },
   lg: {
-    width: "56px",
-    height: "56px",
+    width   : "56px",
+    height  : "56px",
     fontSize: ufTokens.textMd,
   },
   image: {
-    width: "100%",
-    height: "100%",
+    width    : "100%",
+    height   : "100%",
     objectFit: "cover",
   },
   fallback: {
-    display: "inline-flex",
-    alignItems: "center",
+    display       : "inline-flex",
+    alignItems    : "center",
     justifyContent: "center",
-    width: "100%",
-    height: "100%",
+    width         : "100%",
+    height        : "100%",
   },
 });
 
 /** The circle. */
 component AvatarRoot(
-  children: React.Node,
-  size?: AvatarSize = "md",
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  size?     : AvatarSize = "md",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -108,9 +108,9 @@ component AvatarRoot(
 
 /** The picture. `alt` stays empty when the person's name is beside it. */
 component AvatarImage(
-  src?: string | null,
-  alt?: string = "",
-  xstyle?: StyleArgument,
+  src?      : string | null,
+  alt?      : string = "",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -126,9 +126,9 @@ component AvatarImage(
 
 /** What shows while there is no picture: initials, usually. */
 component AvatarFallback(
-  children: React.Node,
-  delay?: number = 300,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  delay?    : number = 300,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

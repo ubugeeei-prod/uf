@@ -18,8 +18,8 @@ afterEach(cleanup);
 
 component Probe() {
   const { locale, direction } = useLocale();
-  const filter = useFilter();
-  const collator = useCollator({ sensitivity: "base" });
+  const filter                = useFilter();
+  const collator              = useCollator({ sensitivity: "base" });
   return (
     <output>{`${locale} ${direction} ${String(filter.startsWith("İzmir", "i"))} ${collator.compare("İ", "i")}`}</output>
   );

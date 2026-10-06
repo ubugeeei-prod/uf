@@ -81,7 +81,7 @@ const assets = { scripts: [], styles: [], preloads: [] };
 function deferred<T>(): {|
   readonly promise: Promise<T>,
   readonly resolve: (value: T) => void,
-  readonly reject: (error: mixed) => void,
+  readonly reject : (error: mixed) => void,
 |} {
   let settle: (value: T) => void = () => {};
   let fail: (error: mixed) => void = () => {};
@@ -172,7 +172,7 @@ describe("the payload format", () => {
     expect(encoded.model).toEqual({ price: "$$100", tag: "$$P1" });
     expect(decodePayload(encoded.model, () => "never", "data")).toEqual({
       price: "$100",
-      tag: "$P1",
+      tag  : "$P1",
     });
   });
 
@@ -281,24 +281,24 @@ describe("the payload format", () => {
 /** A document with a growing list of row scripts, and nothing else in it. */
 function rowDocument(): {|
   readonly document: $FlowFixMe,
-  readonly write: (id: number | string, text: string) => void,
-  readonly observe: (callback: () => void) => () => void,
+  readonly write   : (id: number | string, text: string) => void,
+  readonly observe : (callback: () => void) => () => void,
   readonly watchers: () => number,
 |} {
   const elements: Array<{|
     readonly getAttribute: (name: string) => string | null,
-    readonly textContent: string,
+    readonly textContent : string,
   |}> = [];
   let callbacks: Array<() => void> = [];
   return {
     document: {
       querySelectorAll: () => elements,
-      documentElement: null,
+      documentElement : null,
     },
     write(id: number | string, text: string) {
       elements.push({
         getAttribute: (name) => (name === PAYLOAD_ROW_ATTRIBUTE ? String(id) : null),
-        textContent: text,
+        textContent : text,
       });
       for (const callback of [...callbacks]) {
         callback();
@@ -441,21 +441,21 @@ function deferringTable(slow: Promise<string>, quick: Promise<string>) {
   return {
     routes: [
       {
-        path: "/deferred",
+        path  : "/deferred",
         params: [],
-        mdx: false,
-        file: "app/deferred/$page.js",
+        mdx   : false,
+        file  : "app/deferred/$page.js",
         page: () =>
           Promise.resolve({
             default: DataPage,
-            loader: () => ({ now: "the model is here", slow, quick }),
+            loader : () => ({ now: "the model is here", slow, quick }),
           }),
         layouts: [],
         loading: [],
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   };
 }
 
@@ -577,17 +577,17 @@ describe("streaming a payload", () => {
     const table = {
       routes: [
         {
-          path: "/plain",
-          params: [],
-          mdx: false,
-          file: "app/plain/$page.js",
-          page: () => Promise.resolve({ default: Page, loader: () => "the page is here" }),
+          path   : "/plain",
+          params : [],
+          mdx    : false,
+          file   : "app/plain/$page.js",
+          page   : () => Promise.resolve({ default: Page, loader: () => "the page is here" }),
           layouts: [],
           loading: [],
         },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     };
     const { html } = await createRenderer({ App: routerView("./app"), ...table }).prerender(
       "/plain",
@@ -625,10 +625,10 @@ describe("the browser applying a payload", () => {
     const table = {
       routes: [
         {
-          path: "/deferred",
+          path  : "/deferred",
           params: [],
-          mdx: false,
-          file: "app/deferred/$page.js",
+          mdx   : false,
+          file  : "app/deferred/$page.js",
           page: () =>
             Promise.resolve({
               default: DataPage,
@@ -642,7 +642,7 @@ describe("the browser applying a payload", () => {
         },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     };
 
     const { html } = await createRenderer({ App: routerView("./app"), ...table }).prerender(
@@ -700,10 +700,10 @@ describe("the browser applying a payload", () => {
     const table = {
       routes: [
         {
-          path: "/late",
+          path  : "/late",
           params: [],
-          mdx: false,
-          file: "app/late/$page.js",
+          mdx   : false,
+          file  : "app/late/$page.js",
           page: () =>
             Promise.resolve({
               default: DataPage,
@@ -717,7 +717,7 @@ describe("the browser applying a payload", () => {
         },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     };
 
     // The shell, as the browser would have received it: everything up to the
@@ -797,10 +797,10 @@ describe("the browser applying a payload", () => {
     const table = {
       routes: [
         {
-          path: "/late-error",
+          path  : "/late-error",
           params: [],
-          mdx: false,
-          file: "app/late-error/$page.js",
+          mdx   : false,
+          file  : "app/late-error/$page.js",
           page: () =>
             Promise.resolve({
               default: DataPage,
@@ -816,9 +816,9 @@ describe("the browser applying a payload", () => {
       notFound: [],
       errors: [
         {
-          path: "/",
-          file: "app/$error.js",
-          module: () => Promise.resolve({ default: RowError }),
+          path   : "/",
+          file   : "app/$error.js",
+          module : () => Promise.resolve({ default: RowError }),
           layouts: [],
         },
       ],

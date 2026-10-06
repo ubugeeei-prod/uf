@@ -132,11 +132,11 @@ type CalendarState = {|
    * calendar - React runs a child's effects first, and that ordering is what
    * makes the ref already correct when the overlay reads it.
    */
-  readonly focusedDayRef: { current: HTMLElement | null },
-  readonly isDisabled: (date: PlainDate) => boolean,
+  readonly focusedDayRef : { current: HTMLElement | null },
+  readonly isDisabled    : (date: PlainDate) => boolean,
   readonly isDateSelected: ((date: PlainDate) => boolean) | void,
-  readonly locale: string | void,
-  readonly moveFocus: (date: PlainDate, viaKeyboard: boolean) => void,
+  readonly locale        : string | void,
+  readonly moveFocus     : (date: PlainDate, viaKeyboard: boolean) => void,
   /**
    * The cell the keyboard should be on after the next render, as an ISO date.
    *
@@ -147,10 +147,10 @@ type CalendarState = {|
    * that asked for it, so nothing could have focused it when the key arrived.
    */
   readonly pendingFocusRef: { current: string | null },
-  readonly select: (date: PlainDate) => void,
-  readonly selected: PlainDate | null,
-  readonly today: PlainDate,
-  readonly weekStartsOn: number,
+  readonly select         : (date: PlainDate) => void,
+  readonly selected       : PlainDate | null,
+  readonly today          : PlainDate,
+  readonly weekStartsOn   : number,
 |};
 
 const CalendarContext: React.Context<CalendarState | null> = createContext(null);
@@ -181,26 +181,26 @@ function toDate(value: DateValue): PlainDate {
  * actually changes.
  */
 component CalendarRoot(
-  children: React.Node,
+  children       : React.Node,
   defaultFocused?: DateValue,
-  defaultValue?: DateValue | null = null,
+  defaultValue?  : DateValue | null = null,
   /** Filled with the cell that holds the tab stop; see `CalendarState`. */
   focusedDayRef?: { current: HTMLElement | null },
   /** Whether a date may be chosen. A rejected date stays reachable; see the header. */
   isDateDisabled?: (date: PlainDate) => boolean,
   isDateSelected?: (date: PlainDate) => boolean,
-  locale?: string,
-  onMonthChange?: (firstOfMonth: PlainDate) => mixed,
-  onValueChange?: (value: PlainDate) => mixed,
-  today?: DateValue,
-  value?: DateValue | null,
+  locale?        : string,
+  onMonthChange? : (firstOfMonth: PlainDate) => mixed,
+  onValueChange? : (value: PlainDate) => mixed,
+  today?         : DateValue,
+  value?         : DateValue | null,
   /** ISO day numbers: 1 is Monday, 7 is Sunday. Defaults to the locale's own. */
   weekStartsOn?: number,
   ...rest: Rest
 ) {
   const inherited = useLocale();
   const resolvedLocale = locale ?? inherited.locale;
-  const base = useId();
+  const base            = useId();
   const pendingFocusRef = useRef<string | null>(null);
   // One is always allocated, because a hook may not be called conditionally;
   // the caller's is used when there is one.
@@ -210,12 +210,12 @@ component CalendarRoot(
   // Read once. The header says why this is not the `Now`-in-a-render bug, and
   // why an application that server-renders a calendar wants the clock seam.
   const [clockToday] = useState<PlainDate>(() => Temporal.Now.plainDateISO());
-  const currentDate = useMemo(
+  const currentDate  = useMemo(
     () => (today === undefined ? clockToday : toDate(today)),
     [clockToday, today],
   );
 
-  const controlled = useMemo(
+  const controlled   = useMemo(
     () => (value === undefined ? undefined : value === null ? null : toDate(value)),
     [value],
   );
@@ -226,7 +226,7 @@ component CalendarRoot(
   // Narrowed on the way out rather than in the prop's type: the component never
   // clears a selection, so a caller's handler should not have to accept a `null`
   // it can never be given.
-  const report = useStableCallback((next: PlainDate | null) => {
+  const report                  = useStableCallback((next: PlainDate | null) => {
     if (next != null) {
       onValueChange?.(next);
     }
@@ -284,8 +284,8 @@ component CalendarRoot(
   );
 
   const [announcement, setAnnouncement] = useState("");
-  const shown = useRef(`${focused.year}-${focused.month}`);
-  const monthChanged = useStableCallback((first: PlainDate) => {
+  const shown                           = useRef(`${focused.year}-${focused.month}`);
+  const monthChanged                    = useStableCallback((first: PlainDate) => {
     onMonthChange?.(first);
   });
 
@@ -316,7 +316,7 @@ component CalendarRoot(
       pendingFocusRef,
       select,
       selected,
-      today: currentDate,
+      today       : currentDate,
       weekStartsOn: weekStart,
     }),
     [
@@ -374,17 +374,17 @@ component CalendarRoot(
 component CalendarMonth(
   /** A class for the `<caption>`, which this part renders itself. */
   captionClassName?: string,
-  children?: (date: PlainDate) => renders CalendarDay,
+  children?        : (date: PlainDate) => renders CalendarDay,
   /** A class for each weekday heading, which this part renders itself. */
   columnHeaderClassName?: string,
   ...rest: Rest
 ) {
   const calendar = useCalendar("Calendar.Month");
-  const gridRef = useRef<HTMLElement | null>(null);
+  const gridRef  = useRef<HTMLElement | null>(null);
   const { focused, focusedDate, focusedDayRef, moveFocus, pendingFocusRef, weekStartsOn } =
     calendar;
 
-  const weeks = useMemo(
+  const weeks   = useMemo(
     () => weeksOf(focused.year, focused.month, weekStartsOn),
     [focused.month, focused.year, weekStartsOn],
   );
@@ -474,12 +474,12 @@ component CalendarMonth(
                   // A blank rather than the neighbouring month's day; see
                   // `internal/date-grid.js`. No `gridcell` role, so it is a cell a
                   // reader is told is empty rather than a date they cannot reach.
-                  null => <td key={`blank-${column}`} />,
+                  null       => <td key={`blank-${column}`} />,
                   const date =>
                     <React.Fragment key={date.toString()}>
                       {
                         match (children) {
-                          undefined => <CalendarDay date={date} />,
+                          undefined       => <CalendarDay date={date} />,
                           const renderDay => renderDay(date),
                         }
                       }

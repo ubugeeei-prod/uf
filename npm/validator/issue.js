@@ -51,9 +51,9 @@ export type PathBuffer = Array<string>;
  * with one fewer field is one fewer allocation on the path that matters.
  */
 export type Issue = {|
-  readonly code: string,
+  readonly code   : string,
   readonly message: string,
-  readonly path?: Path,
+  readonly path?  : Path,
 |};
 
 /**
@@ -103,7 +103,7 @@ export class ValidationError extends Error {
  * reaches this function as a path segment.
  */
 export type FlatIssues = {|
-  readonly root: $ReadOnlyArray<string>,
+  readonly root  : $ReadOnlyArray<string>,
   readonly nested: { readonly [string]: $ReadOnlyArray<string>, ... },
 |};
 

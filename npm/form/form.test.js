@@ -339,7 +339,7 @@ describe("watch: one field, not the others", () => {
       const { register, control } = useForm({
         defaultValues: { address: { city: "", street: "" }, other: "" },
       });
-      const address = useWatch({ control, name: "address" });
+      const address               = useWatch({ control, name: "address" });
       return (
         <form>
           <input aria-label="city" {...register("address.city")} />
@@ -408,7 +408,7 @@ describe("a path given as segments is the same field", () => {
     let readDotted: () => mixed = () => null;
     component Probe() {
       const { register, getValues, setValue, control } = useForm<{
-        items: Array<{ price: number }>,
+        items  : Array<{ price: number }>,
         address: { city: string },
       }>({
         defaultValues: { items: [{ price: 1 }, { price: 2 }], address: { city: "" } },
@@ -431,7 +431,7 @@ describe("a path given as segments is the same field", () => {
       control: Control<{ items: Array<{ price: number }>, address: { city: string } }>,
     ) {
       const price = useWatch({ control, path: ["items", 1, "price"] });
-      const city = useWatch({ control, path: ["address", "city"] });
+      const city  = useWatch({ control, path: ["address", "city"] });
       return <output>{`${String(price)}/${String(city)}`}</output>;
     }
 
@@ -643,7 +643,7 @@ describe("built-in rules", () => {
 
 describe("handleSubmit", () => {
   const InvalidForm = (
-    onValid: (values: mixed, event?: mixed) => mixed,
+    onValid   : (values: mixed, event?: mixed) => mixed,
     onInvalid?: (errors: FieldErrors, event?: mixed) => mixed,
   ) => {
     component Probe() {
@@ -1026,7 +1026,7 @@ describe("values that come from outside the form", () => {
     component Probe(record: { email: string, name: string }) {
       const { register, getValues, formState } = useForm({
         defaultValues: { email: "", name: "" },
-        values: record,
+        values       : record,
       });
       read = getValues;
       state = formState;
@@ -1112,8 +1112,8 @@ describe("values that come from outside the form", () => {
     component Probe(record: { email: string, name: string }) {
       const { register, getValues } = useForm({
         defaultValues: { email: "", name: "" },
-        values: record,
-        resetOptions: { keepDirtyValues: true },
+        values       : record,
+        resetOptions : { keepDirtyValues: true },
       });
       read = getValues;
       return (
@@ -1225,7 +1225,7 @@ describe("values that come from outside the form", () => {
     component Probe() {
       const { register, getValues, formState } = useForm<{ email: string }>({
         defaultValues: () => original,
-        values: { email: "draft@example.com" },
+        values       : { email: "draft@example.com" },
       });
       read = getValues;
       state = formState;
@@ -1297,7 +1297,7 @@ describe("values that come from outside the form", () => {
       renders += 1;
       const { register, formState } = useForm({
         defaultValues: { email: "" },
-        errors: { email: { type: "server", message } },
+        errors       : { email: { type: "server", message } },
       });
       return (
         <form>
@@ -1435,7 +1435,7 @@ describe("async validation", () => {
     component Probe() {
       const { register, formState } = useForm({
         defaultValues: { name: "" },
-        mode: "onChange",
+        mode         : "onChange",
       });
       return (
         <form>
@@ -1481,7 +1481,7 @@ describe("async validation", () => {
     component Probe() {
       const { register, reset, formState } = useForm({
         defaultValues: { name: "" },
-        mode: "onChange",
+        mode         : "onChange",
       });
       return (
         <form>
@@ -1574,7 +1574,7 @@ describe("async validation", () => {
 
 describe("useFieldArray", () => {
   component Rows() {
-    const { register, control } = useForm({
+    const { register, control }                                           = useForm({
       defaultValues: { items: [{ name: "a" }, { name: "b" }, { name: "c" }] },
     });
     const { fields, append, prepend, insert, remove, swap, move, update } = useFieldArray({
@@ -1721,7 +1721,7 @@ describe("cross-field rules and re-validation", () => {
   component Passwords() {
     const { register, handleSubmit, formState } = useForm({
       defaultValues: { password: "", confirm: "" },
-      mode: "onChange",
+      mode         : "onChange",
     });
     return (
       <form onSubmit={handleSubmit(() => {})}>
@@ -1758,7 +1758,7 @@ describe("cross-field rules and re-validation", () => {
     component Probe() {
       const { register, handleSubmit, formState } = useForm({
         defaultValues: { email: "" },
-        mode: "onSubmit",
+        mode         : "onSubmit",
       });
       return (
         <form onSubmit={handleSubmit(() => {})}>
@@ -1827,10 +1827,10 @@ describe("unregister, getFieldState and setFocus", () => {
 
     render(<Probe />);
     expect(state("a")).toEqual({
-      invalid: false,
-      isDirty: false,
+      invalid  : false,
+      isDirty  : false,
       isTouched: false,
-      error: undefined,
+      error    : undefined,
     });
 
     await userEvent.type(screen.getByLabelText("a"), "!");
@@ -1861,9 +1861,9 @@ describe("unregister, getFieldState and setFocus", () => {
 
 describe("the validator resolver", () => {
   const account = object({
-    email: pipe(string(), email()),
+    email  : pipe(string(), email()),
     profile: object({ city: pipe(string(), minLength(2)) }),
-    age: pipe(string(), transform(Number)),
+    age    : pipe(string(), transform(Number)),
   });
 
   // Written out because they are the point of these tests: what the form holds
@@ -1877,7 +1877,7 @@ describe("the validator resolver", () => {
   component Probe(onValid: (values: AccountOutput, event?: mixed) => mixed) {
     const { register, handleSubmit, formState } = useForm<AccountValues, AccountOutput>({
       defaultValues: { email: "", profile: { city: "" }, age: "0" },
-      resolver: validatorResolver<AccountValues, AccountOutput>(account),
+      resolver     : validatorResolver<AccountValues, AccountOutput>(account),
     });
     return (
       <form onSubmit={handleSubmit(onValid)}>
@@ -1914,9 +1914,9 @@ describe("the validator resolver", () => {
     });
     // `age` was `"42"` in the form and is `42` here, because the schema said so.
     expect(onValid.mock.calls[0][0]).toEqual({
-      email: "a@b.com",
+      email  : "a@b.com",
       profile: { city: "Kyoto" },
-      age: 42,
+      age    : 42,
     });
   });
 
@@ -1924,8 +1924,8 @@ describe("the validator resolver", () => {
     component Eager() {
       const { register, formState } = useForm<AccountValues, AccountOutput>({
         defaultValues: { email: "", profile: { city: "ok" }, age: "1" },
-        resolver: validatorResolver<AccountValues, AccountOutput>(account),
-        mode: "onChange",
+        resolver     : validatorResolver<AccountValues, AccountOutput>(account),
+        mode         : "onChange",
       });
       return (
         <form>
@@ -1967,8 +1967,8 @@ describe("useController and Controller", () => {
       read = form.getValues;
       const { field, fieldState } = useController({
         control: form.control,
-        name: "amount",
-        rules: { required: "How much?" },
+        name   : "amount",
+        rules  : { required: "How much?" },
       });
       return (
         <form>
@@ -2017,7 +2017,7 @@ describe("disabled", () => {
     // so `register` is handed it directly instead.
     component Probe() {
       const [saving, setSaving] = useState(false);
-      const { register } = useForm({ defaultValues: { email: "" }, disabled: saving });
+      const { register }        = useForm({ defaultValues: { email: "" }, disabled: saving });
       return (
         <form>
           <input aria-label="email" {...register("email")} />
@@ -2210,7 +2210,7 @@ describe("disabled", () => {
     component Probe() {
       const { register, handleSubmit } = useForm<Coded, Coded>({
         defaultValues: { email: "a@b.com", code: "never shown" },
-        resolver: withADefault,
+        resolver     : withADefault,
       });
       return (
         <form onSubmit={handleSubmit(onValid)}>
@@ -2240,8 +2240,8 @@ describe("disabled", () => {
     const commits = [];
     component Probe() {
       const [saving, setSaving] = useState(false);
-      const { control } = useForm({ defaultValues: { colour: "red" }, disabled: saving });
-      const { field } = useController({ control, name: "colour" });
+      const { control }         = useForm({ defaultValues: { colour: "red" }, disabled: saving });
+      const { field }           = useController({ control, name: "colour" });
       const off = field.disabled;
       useEffect(() => {
         commits.push(`saving=${String(saving)} disabled=${String(off)}`);
@@ -2267,8 +2267,8 @@ describe("disabled", () => {
   it("tells a controlled field it is switched off", () => {
     component Probe() {
       const { control } = useForm({ defaultValues: { colour: "red", size: "M" } });
-      const colour = useController({ control, name: "colour", disabled: true });
-      const size = useController({ control, name: "size" });
+      const colour      = useController({ control, name: "colour", disabled: true });
+      const size        = useController({ control, name: "size" });
       return (
         <form>
           <output>{`colour: ${String(colour.field.disabled)}`}</output>
@@ -2369,7 +2369,7 @@ describe("server rendering", () => {
     component Constrained() {
       const { register } = useForm({
         defaultValues: { email: "", age: "", nickname: "" },
-        progressive: true,
+        progressive  : true,
       });
       return (
         <form>
@@ -2524,11 +2524,11 @@ describe("React semantics", () => {
     // surviving rows under the removed row's keys. Rendering for an unrelated
     // reason first is what makes a stale memo visible.
     component Probe() {
-      const [tick, setTick] = useState(0);
+      const [tick, setTick]       = useState(0);
       const { register, control } = useForm({
         defaultValues: { items: [{ name: "a" }, { name: "b" }, { name: "c" }] },
       });
-      const { fields, remove } = useFieldArray({ control, name: "items" });
+      const { fields, remove }    = useFieldArray({ control, name: "items" });
       return (
         <form>
           <output>{String(tick)}</output>
@@ -2569,7 +2569,7 @@ describe("React semantics", () => {
     component Probe() {
       const { register, control } = useForm<{ a: string, b: string }>({
         defaultValues: { a: "", b: "" },
-        mode: "onChange",
+        mode         : "onChange",
       });
       return (
         <form>
@@ -2611,9 +2611,9 @@ describe("React semantics", () => {
 describe("a field path is checked against the shape of the values", () => {
   it("reports every misuse, and only the misuses", () => {
     everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "field-paths.js"),
+      fixture  : path.join("tests", "type-tests", "field-paths.js"),
       alongside: ["npm/form"],
-      atLeast: 10,
+      atLeast  : 10,
     });
   });
 });

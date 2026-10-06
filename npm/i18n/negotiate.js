@@ -136,7 +136,7 @@ function primary(tag: string): string {
 export function negotiate(
   requested: $ReadOnlyArray<string> | string,
   available: $ReadOnlyArray<string>,
-  fallback: string,
+  fallback : string,
 ): string {
   const wanted = typeof requested === "string" ? [requested] : requested;
   const folded = available.map(fold);

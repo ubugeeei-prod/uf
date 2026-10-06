@@ -102,11 +102,11 @@ export class AssertionError extends Error {
  * hidden from the caller.
  */
 type Verdict = {|
-  readonly pass: boolean,
-  readonly failure: () => string,
+  readonly pass          : boolean,
+  readonly failure       : () => string,
   readonly negatedFailure: () => string,
-  readonly expected?: string,
-  readonly received?: string,
+  readonly expected?     : string,
+  readonly received?     : string,
 |};
 
 /** What `typeof` can answer, for the matcher that compares against it. */
@@ -146,47 +146,47 @@ type TypeName =
  * `expect(x).not.resolves` does not.
  */
 export type Matchers<R> = {
-  readonly toBe: (expected: mixed) => R,
-  readonly toEqual: (expected: mixed) => R,
-  readonly toStrictEqual: (expected: mixed) => R,
-  readonly toBeTruthy: () => R,
-  readonly toBeFalsy: () => R,
-  readonly toBeNull: () => R,
-  readonly toBeUndefined: () => R,
-  readonly toBeDefined: () => R,
-  readonly toBeNaN: () => R,
-  readonly toBeGreaterThan: (expected: number) => R,
-  readonly toBeGreaterThanOrEqual: (expected: number) => R,
-  readonly toBeLessThan: (expected: number) => R,
-  readonly toBeLessThanOrEqual: (expected: number) => R,
-  readonly toBeCloseTo: (expected: number, digits?: number) => R,
-  readonly toContain: (expected: mixed) => R,
-  readonly toContainEqual: (expected: mixed) => R,
-  readonly toHaveLength: (expected: number) => R,
-  readonly toHaveProperty: (path: string, ...rest: $ReadOnlyArray<mixed>) => R,
-  readonly toMatch: (expected: string | RegExp) => R,
-  readonly toMatchObject: (expected: mixed) => R,
-  readonly toBeInstanceOf: (expected: mixed) => R,
-  readonly toBeTypeOf: (expected: TypeName) => R,
-  readonly toSatisfy: (predicate: (value: mixed) => boolean) => R,
-  readonly toMatchSnapshot: (hint?: string) => R,
-  readonly toMatchInlineSnapshot: (expected?: string) => R,
-  readonly toThrow: (...rest: $ReadOnlyArray<mixed>) => R,
-  readonly toHaveBeenCalled: () => R,
-  readonly toHaveBeenCalledTimes: (count: number) => R,
-  readonly toHaveBeenCalledWith: (...args: $ReadOnlyArray<mixed>) => R,
+  readonly toBe                    : (expected: mixed) => R,
+  readonly toEqual                 : (expected: mixed) => R,
+  readonly toStrictEqual           : (expected: mixed) => R,
+  readonly toBeTruthy              : () => R,
+  readonly toBeFalsy               : () => R,
+  readonly toBeNull                : () => R,
+  readonly toBeUndefined           : () => R,
+  readonly toBeDefined             : () => R,
+  readonly toBeNaN                 : () => R,
+  readonly toBeGreaterThan         : (expected: number) => R,
+  readonly toBeGreaterThanOrEqual  : (expected: number) => R,
+  readonly toBeLessThan            : (expected: number) => R,
+  readonly toBeLessThanOrEqual     : (expected: number) => R,
+  readonly toBeCloseTo             : (expected: number, digits?: number) => R,
+  readonly toContain               : (expected: mixed) => R,
+  readonly toContainEqual          : (expected: mixed) => R,
+  readonly toHaveLength            : (expected: number) => R,
+  readonly toHaveProperty          : (path: string, ...rest: $ReadOnlyArray<mixed>) => R,
+  readonly toMatch                 : (expected: string | RegExp) => R,
+  readonly toMatchObject           : (expected: mixed) => R,
+  readonly toBeInstanceOf          : (expected: mixed) => R,
+  readonly toBeTypeOf              : (expected: TypeName) => R,
+  readonly toSatisfy               : (predicate: (value: mixed) => boolean) => R,
+  readonly toMatchSnapshot         : (hint?: string) => R,
+  readonly toMatchInlineSnapshot   : (expected?: string) => R,
+  readonly toThrow                 : (...rest: $ReadOnlyArray<mixed>) => R,
+  readonly toHaveBeenCalled        : () => R,
+  readonly toHaveBeenCalledTimes   : (count: number) => R,
+  readonly toHaveBeenCalledWith    : (...args: $ReadOnlyArray<mixed>) => R,
   readonly toHaveBeenLastCalledWith: (...args: $ReadOnlyArray<mixed>) => R,
-  readonly toBeInTheDocument: () => R,
-  readonly toBeVisible: () => R,
-  readonly toBeDisabled: () => R,
-  readonly toBeEnabled: () => R,
-  readonly toBeChecked: () => R,
-  readonly toBeRequired: () => R,
-  readonly toHaveFocus: () => R,
-  readonly toHaveAttribute: (name: string, value?: mixed) => R,
-  readonly toHaveClass: (...names: $ReadOnlyArray<string>) => R,
-  readonly toHaveTextContent: (expected: string | RegExp) => R,
-  readonly toHaveValue: (expected: mixed) => R,
+  readonly toBeInTheDocument       : () => R,
+  readonly toBeVisible             : () => R,
+  readonly toBeDisabled            : () => R,
+  readonly toBeEnabled             : () => R,
+  readonly toBeChecked             : () => R,
+  readonly toBeRequired            : () => R,
+  readonly toHaveFocus             : () => R,
+  readonly toHaveAttribute         : (name: string, value?: mixed) => R,
+  readonly toHaveClass             : (...names: $ReadOnlyArray<string>) => R,
+  readonly toHaveTextContent       : (expected: string | RegExp) => R,
+  readonly toHaveValue             : (expected: mixed) => R,
   /**
    * Run axe-core over this element's subtree and require it to find nothing.
    *
@@ -201,7 +201,7 @@ export type Matchers<R> = {
    * narrows it for one assertion. See `./axe.js`.
    */
   readonly toHaveNoAxeViolations: (options?: AxeOptions) => Promise<void>,
-  readonly not: Matchers<R>,
+  readonly not                  : Matchers<R>,
   ...
 };
 
@@ -227,7 +227,7 @@ export type Matchers<R> = {
  */
 export type Expectation = Matchers<void> & {
   readonly resolves: Matchers<Promise<void>>,
-  readonly rejects: Matchers<Promise<void>>,
+  readonly rejects : Matchers<Promise<void>>,
   ...
 };
 
@@ -243,19 +243,19 @@ export type Expectation = Matchers<void> & {
  */
 export type Expect = {
   (received: mixed): Expectation,
-  readonly any: (constructor: mixed) => AsymmetricMatcher,
-  readonly anything: () => AsymmetricMatcher,
+  readonly any             : (constructor: mixed) => AsymmetricMatcher,
+  readonly anything        : () => AsymmetricMatcher,
   readonly objectContaining: (expected: interface {}) => AsymmetricMatcher,
-  readonly arrayContaining: (expected: $ReadOnlyArray<mixed>) => AsymmetricMatcher,
+  readonly arrayContaining : (expected: $ReadOnlyArray<mixed>) => AsymmetricMatcher,
   readonly stringContaining: (substring: string) => AsymmetricMatcher,
-  readonly stringMatching: (pattern: string | RegExp) => AsymmetricMatcher,
-  readonly closeTo: (value: number, digits?: number) => AsymmetricMatcher,
+  readonly stringMatching  : (pattern: string | RegExp) => AsymmetricMatcher,
+  readonly closeTo         : (value: number, digits?: number) => AsymmetricMatcher,
   readonly not: {
     readonly objectContaining: (expected: interface {}) => AsymmetricMatcher,
-    readonly arrayContaining: (expected: $ReadOnlyArray<mixed>) => AsymmetricMatcher,
+    readonly arrayContaining : (expected: $ReadOnlyArray<mixed>) => AsymmetricMatcher,
     readonly stringContaining: (substring: string) => AsymmetricMatcher,
-    readonly stringMatching: (pattern: string | RegExp) => AsymmetricMatcher,
-    readonly closeTo: (value: number, digits?: number) => AsymmetricMatcher,
+    readonly stringMatching  : (pattern: string | RegExp) => AsymmetricMatcher,
+    readonly closeTo         : (value: number, digits?: number) => AsymmetricMatcher,
     ...
   },
   ...
@@ -263,7 +263,7 @@ export type Expect = {
 
 function propertyAt(
   value: mixed,
-  path: string,
+  path : string,
 ): {| readonly found: boolean, readonly value: mixed |} {
   let current = value;
   for (const key of path.split(".")) {
@@ -339,9 +339,9 @@ function verdicts(received: mixed): {
   const shown = () => render(received);
   const simple = (pass: boolean, what: string, expected?: mixed): Verdict => ({
     pass,
-    expected: expected === undefined ? what : render(expected),
-    received: shown(),
-    failure: () => `expected ${shown()} ${what}`,
+    expected      : expected === undefined ? what : render(expected),
+    received      : shown(),
+    failure       : () => `expected ${shown()} ${what}`,
     negatedFailure: () => `expected ${shown()} not ${what}`,
   });
   const spyCalls = (): Array<SpyCall> =>
@@ -359,24 +359,24 @@ function verdicts(received: mixed): {
 
   return {
     toBe: (expected: mixed) => ({
-      pass: Object.is(received, expected),
-      expected: render(expected),
-      received: shown(),
-      failure: () => `expected ${shown()} to be ${render(expected)}`,
+      pass          : Object.is(received, expected),
+      expected      : render(expected),
+      received      : shown(),
+      failure       : () => `expected ${shown()} to be ${render(expected)}`,
       negatedFailure: () => `expected ${shown()} not to be ${render(expected)}`,
     }),
     toEqual: (expected: mixed) => ({
-      pass: equals(received, expected, [], "loose"),
-      expected: render(expected),
-      received: shown(),
-      failure: () => `expected ${shown()} to equal ${render(expected)}`,
+      pass          : equals(received, expected, [], "loose"),
+      expected      : render(expected),
+      received      : shown(),
+      failure       : () => `expected ${shown()} to equal ${render(expected)}`,
       negatedFailure: () => `expected ${shown()} not to equal ${render(expected)}`,
     }),
     toStrictEqual: (expected: mixed) => ({
-      pass: equals(received, expected, [], "strict"),
-      expected: render(expected),
-      received: shown(),
-      failure: () => `expected ${shown()} to strictly equal ${render(expected)}`,
+      pass          : equals(received, expected, [], "strict"),
+      expected      : render(expected),
+      received      : shown(),
+      failure       : () => `expected ${shown()} to strictly equal ${render(expected)}`,
       negatedFailure: () => `expected ${shown()} not to strictly equal ${render(expected)}`,
     }),
     toBeTruthy: () => simple(Boolean(received), "to be truthy"),
@@ -497,7 +497,7 @@ function verdicts(received: mixed): {
         hint === undefined ? undefined : String(hint),
       );
       return {
-        pass: verdict.pass,
+        pass    : verdict.pass,
         expected: verdict.expected ?? "(no snapshot yet)",
         received: verdict.received,
         // The whole of both sides, because a mismatch that says only "the
@@ -515,7 +515,7 @@ function verdicts(received: mixed): {
         expected === undefined ? undefined : String(expected),
       );
       return {
-        pass: verdict.pass,
+        pass    : verdict.pass,
         expected: verdict.expected ?? "(no inline snapshot yet)",
         received: verdict.received,
         failure: () =>
@@ -545,15 +545,15 @@ function verdicts(received: mixed): {
       }
       if (!threw) {
         return {
-          pass: false,
-          expected: rest.length === 0 ? "a throw" : render(expected),
-          received: "no throw",
-          failure: () => "expected the function to throw, but it returned",
+          pass          : false,
+          expected      : rest.length === 0 ? "a throw" : render(expected),
+          received      : "no throw",
+          failure       : () => "expected the function to throw, but it returned",
           negatedFailure: () => "expected the function not to throw",
         };
       }
       return {
-        pass: rest.length === 0 || matchesThrown(thrown, expected),
+        pass    : rest.length === 0 || matchesThrown(thrown, expected),
         expected: rest.length === 0 ? "a throw" : render(expected),
         received: describeThrown(thrown),
         failure: () =>
@@ -656,10 +656,10 @@ function verdicts(received: mixed): {
       const classes = (node.getAttribute("class") ?? "").split(/\s+/).filter(Boolean);
       const wanted = names.map(String);
       return {
-        pass: wanted.every((name) => classes.includes(name)),
+        pass    : wanted.every((name) => classes.includes(name)),
         expected: render(wanted),
         received: render(classes),
-        failure: () => `expected the class list ${render(classes)} to include ${render(wanted)}`,
+        failure : () => `expected the class list ${render(classes)} to include ${render(wanted)}`,
         negatedFailure: () =>
           `expected the class list ${render(classes)} not to include ${render(wanted)}`,
       };
@@ -673,7 +673,7 @@ function verdicts(received: mixed): {
         pass,
         expected: render(expected),
         received: render(text),
-        failure: () => `expected the text ${render(text)} to contain ${render(expected)}`,
+        failure : () => `expected the text ${render(text)} to contain ${render(expected)}`,
         negatedFailure: () =>
           `expected the text ${render(text)} not to contain ${render(expected)}`,
       };
@@ -682,10 +682,10 @@ function verdicts(received: mixed): {
       const node = element("toHaveValue");
       const actual = (node as $FlowFixMe).value;
       return {
-        pass: equals(actual, expected),
-        expected: render(expected),
-        received: render(actual),
-        failure: () => `expected the value ${render(actual)} to be ${render(expected)}`,
+        pass          : equals(actual, expected),
+        expected      : render(expected),
+        received      : render(actual),
+        failure       : () => `expected the value ${render(actual)} to be ${render(expected)}`,
         negatedFailure: () => `expected the value not to be ${render(expected)}`,
       };
     },
@@ -694,7 +694,7 @@ function verdicts(received: mixed): {
       const found = await auditElement(node, options as $FlowFixMe);
       const named = violationIds(found);
       return {
-        pass: found.length === 0,
+        pass    : found.length === 0,
         expected: "no accessibility violations",
         received: found.length === 0 ? "none" : named,
         failure: () =>

@@ -92,18 +92,18 @@ export type DiagnosticSeverity = "error" | "warn" | "info";
  */
 export type BrowserDiagnostic = {
   readonly severity: DiagnosticSeverity,
-  readonly message: string,
-  readonly detail?: $ReadOnlyArray<string>,
-  readonly url?: string,
-  readonly file?: string,
-  readonly line?: number,
-  readonly column?: number,
+  readonly message : string,
+  readonly detail? : $ReadOnlyArray<string>,
+  readonly url?    : string,
+  readonly file?   : string,
+  readonly line?   : number,
+  readonly column? : number,
 };
 
 /** The part of the browser this module needs. */
 type ReportingWindow = {
   readonly location?: { readonly href?: string, ... },
-  readonly fetch?: (input: string, init: { ... }) => Promise<mixed>,
+  readonly fetch?   : (input: string, init: { ... }) => Promise<mixed>,
   ...
 };
 
@@ -151,7 +151,7 @@ export function reportDiagnostic(diagnostic: BrowserDiagnostic, endpoint?: strin
     method: "POST",
     body,
     keepalive: true,
-    headers: { "content-type": "application/json" },
+    headers  : { "content-type": "application/json" },
   }).then(noop, noop);
 }
 

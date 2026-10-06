@@ -306,29 +306,29 @@ function routes(): RouteTable["routes"] {
 
   const table = [
     {
-      path: "/",
-      params: [],
-      mdx: false,
-      file: "app/$page.js",
-      page: () => Promise.resolve({ default: Home }),
+      path   : "/",
+      params : [],
+      mdx    : false,
+      file   : "app/$page.js",
+      page   : () => Promise.resolve({ default: Home }),
       layouts: [],
       loading: [],
     },
     {
-      path: "/other",
-      params: [],
-      mdx: false,
-      file: "app/other/$page.js",
-      page: () => Promise.resolve({ default: Other }),
+      path   : "/other",
+      params : [],
+      mdx    : false,
+      file   : "app/other/$page.js",
+      page   : () => Promise.resolve({ default: Other }),
       layouts: [],
       loading: [],
     },
     {
-      path: "/moved",
-      params: [],
-      mdx: false,
-      file: "app/moved/$page.js",
-      page: () => Promise.resolve({ default: Moved, loader: () => redirect("/other") }),
+      path   : "/moved",
+      params : [],
+      mdx    : false,
+      file   : "app/moved/$page.js",
+      page   : () => Promise.resolve({ default: Moved, loader: () => redirect("/other") }),
       layouts: [],
       loading: [],
     },
@@ -348,10 +348,10 @@ function routes(): RouteTable["routes"] {
 async function serve(url: string, address: string): Promise<void> {
   const { createRenderer, ROOT_ID } = await serverModule();
   const renderer = createRenderer({
-    App: routerView("./app"),
-    routes: routes(),
+    App     : routerView("./app"),
+    routes  : routes(),
     notFound: [],
-    errors: [],
+    errors  : [],
   });
   const { html } = await renderer.prerender(url, NO_ASSETS);
 
@@ -369,17 +369,17 @@ async function serve(url: string, address: string): Promise<void> {
 
 /** Hydrate the current document the way `virtual:uf/client` would for these settings. */
 async function hydrateWith(settings: {|
-  readonly basePath?: string,
+  readonly basePath?     : string,
   readonly trailingSlash?: TrailingSlash,
-  readonly navigation?: "client" | "document",
+  readonly navigation?   : "client" | "document",
 |}): Promise<void> {
   const { hydrate } = await clientModule();
   await act(async () => {
     hydrated = await hydrate({
-      App: routerView("./app"),
-      routes: routes(),
+      App     : routerView("./app"),
+      routes  : routes(),
       notFound: [],
-      errors: [],
+      errors  : [],
       ...settings,
     });
   });
@@ -417,7 +417,7 @@ async function assignedDuring(run: () => Promise<void>): Promise<Array<string>> 
   const original = location.assign;
   Object.defineProperty(location, "assign", {
     configurable: true,
-    writable: true,
+    writable    : true,
     value: (to: string) => {
       assigned.push(String(to));
     },
@@ -427,8 +427,8 @@ async function assignedDuring(run: () => Promise<void>): Promise<Array<string>> 
   } finally {
     Object.defineProperty(location, "assign", {
       configurable: true,
-      writable: true,
-      value: original,
+      writable    : true,
+      value       : original,
     });
   }
   return assigned;
@@ -519,10 +519,10 @@ describe("a loader's redirect under a base path", () => {
     installRouting({ basePath: "/docs" });
     const { createRenderer } = await serverModule();
     const renderer = createRenderer({
-      App: routerView("./app"),
-      routes: routes(),
+      App     : routerView("./app"),
+      routes  : routes(),
       notFound: [],
-      errors: [],
+      errors  : [],
     });
 
     const answered = await renderer.prerender("/moved", NO_ASSETS);
@@ -557,7 +557,7 @@ describe("an application whose root was unmounted", () => {
     uft.spyOn(globalThis, "fetch").mockImplementation(
       async () =>
         new Response(null, {
-          status: 204,
+          status : 204,
           headers: { [ACTION_OUTCOME_HEADER]: "redirect", location: "/docs/other" },
         }),
     );

@@ -33,11 +33,11 @@ it("accepts the native drag data path and rejects malformed payloads", async () 
   render(<ListBox items={items} aria-label="Order" onReorder={reorder} />);
   const data = new Map<string, string>();
   const transfer = {
-    types: ["application/x-uf-collection"],
-    setData: (key: string, value: string) => data.set(key, value),
-    getData: (key: string) => data.get(key) ?? "",
+    types        : ["application/x-uf-collection"],
+    setData      : (key: string, value: string) => data.set(key, value),
+    getData      : (key: string) => data.get(key) ?? "",
     effectAllowed: "",
-    dropEffect: "",
+    dropEffect   : "",
   };
   const dispatch = async (element: Element, name: string) => {
     const event = new Event(name, { bubbles: true, cancelable: true });

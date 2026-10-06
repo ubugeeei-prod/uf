@@ -8,7 +8,7 @@ import * as Tooltip from "./tooltip.js";
 const styles = stylex.create({
   toolbar: {
     display: "flex",
-    gap: ufTokens.space1,
+    gap    : ufTokens.space1,
   },
 });
 

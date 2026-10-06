@@ -27,12 +27,12 @@ hook useColor(): ColorState {
   return color;
 }
 component ColorPickerRoot(
-  children: React.Node,
-  value?: string,
-  defaultValue?: string = "#000000",
+  children      : React.Node,
+  value?        : string,
+  defaultValue? : string = "#000000",
   onValueChange?: (value: string) => void,
-  disabled?: boolean = false,
-  render?: RenderProp,
+  disabled?     : boolean = false,
+  render?       : RenderProp,
   ...rest: Rest
 ) {
   const [current, setCurrent] = useControlled(value, defaultValue, onValueChange);
@@ -51,7 +51,7 @@ component ColorPickerRoot(
     <ColorContext.Provider value={state}>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -61,20 +61,20 @@ component ColorPickerRoot(
 component ColorPickerInput(render?: RenderProp, ...rest: Rest) {
   const color = useColor();
   const props = withProps(rest, {
-    type: "color",
-    value: color.value.slice(0, 7),
+    type    : "color",
+    value   : color.value.slice(0, 7),
     disabled: color.disabled,
     onChange: composeHandlers(rest.onChange, (event: $FlowFixMe) =>
       color.set(event.currentTarget.value + color.value.slice(7)),
     ),
   });
   return match (render) {
-    undefined => <input {...props} />,
+    undefined    => <input {...props} />,
     const custom => custom(props),
   };
 }
 component ColorPickerField(render?: RenderProp, ...rest: Rest) {
-  const color = useColor();
+  const color             = useColor();
   const [draft, setDraft] = useState<string | null>(null);
   const text = draft ?? color.value;
   const invalid = parseColor(text) == null;
@@ -85,9 +85,9 @@ component ColorPickerField(render?: RenderProp, ...rest: Rest) {
     }
   };
   const props = withProps(rest, {
-    type: "text",
-    value: text,
-    disabled: color.disabled,
+    type          : "text",
+    value         : text,
+    disabled      : color.disabled,
     "aria-invalid": invalid ? "true" : rest["aria-invalid"],
     onChange: composeHandlers(rest.onChange, (event: $FlowFixMe) =>
       setDraft(event.currentTarget.value),
@@ -101,7 +101,7 @@ component ColorPickerField(render?: RenderProp, ...rest: Rest) {
     }),
   });
   return match (render) {
-    undefined => <input {...props} />,
+    undefined    => <input {...props} />,
     const custom => custom(props),
   };
 }
@@ -126,12 +126,12 @@ component ColorPickerChannel(
   };
   const props = withProps(rest, {
     type: "range",
-    min: 0,
-    max: 255,
+    min : 0,
+    max : 255,
     step: 1,
     value,
-    disabled: color.disabled,
-    "aria-label": rest["aria-label"] ?? channel,
+    disabled        : color.disabled,
+    "aria-label"    : rest["aria-label"] ?? channel,
     "aria-valuetext": channel === "alpha" ? `${Math.round((value / 255) * 100)}%` : String(value),
     onChange: composeHandlers(rest.onChange, (event: $FlowFixMe) =>
       change(Number(event.currentTarget.value)),
@@ -171,7 +171,7 @@ component ColorPickerChannel(
     }),
   });
   return match (render) {
-    undefined => <input {...props} />,
+    undefined    => <input {...props} />,
     const custom => custom(props),
   };
 }
@@ -179,11 +179,11 @@ component ColorPickerSwatch(render?: RenderProp, ...rest: Rest) {
   const color = useColor();
   const props = withProps(rest, {
     "aria-hidden": "true",
-    "data-color": color.value,
-    style: { ...(rest.style as $FlowFixMe), backgroundColor: color.value },
+    "data-color" : color.value,
+    style        : { ...(rest.style as $FlowFixMe), backgroundColor: color.value },
   });
   return match (render) {
-    undefined => <span {...props} />,
+    undefined    => <span {...props} />,
     const custom => custom(props),
   };
 }

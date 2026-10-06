@@ -45,16 +45,16 @@ async function components(
   queries: Partial<SocialQueries> = {},
 ) {
   await uft.mock<SocialActions>(ACTIONS, () => ({
-    createPost: async () => unconfigured(),
-    likePost: async () => unconfigured(),
-    sendMessage: async () => unconfigured(),
+    createPost    : async () => unconfigured(),
+    likePost      : async () => unconfigured(),
+    sendMessage   : async () => unconfigured(),
     updateSettings: async () => unconfigured(),
     ...actions,
   }));
   await uft.mock<SocialQueries>(QUERIES, () => ({
-    sessionData: async () => unconfigured(),
+    sessionData : async () => unconfigured(),
     timelineData: async () => unconfigured(),
-    threadsData: async () => unconfigured(),
+    threadsData : async () => unconfigured(),
     messagesData: async () => unconfigured(),
     settingsData: async () => unconfigured(),
     ...queries,
@@ -77,12 +77,12 @@ async function renderAsync(element: React.MixedElement): Promise<void> {
 
 const USER: User = { id: "viewer", name: "Alice", handle: "alice", avatar: "A", bio: "" };
 const POST: Post = {
-  id: "existing",
-  author: USER,
-  body: "An existing note",
-  topic: "design",
-  likes: 0,
-  liked: false,
+  id       : "existing",
+  author   : USER,
+  body     : "An existing note",
+  topic    : "design",
+  likes    : 0,
+  liked    : false,
   createdAt: "2026-09-11T00:00:00Z",
 };
 const FILTER: FeedFilter = { topic: "all", query: "", page: 1 };
@@ -111,13 +111,13 @@ describe("Commonplace React interactions", () => {
   it("shows a ready paused clip without leaving its loading notice and releases inactive media", async () => {
     const { ClipPlayer } = await import("../../examples/simple-sns/app/clips/clips.client.js");
     const clip = {
-      id: "test",
-      title: "Test clip",
+      id         : "test",
+      title      : "Test clip",
       description: "A test scene.",
-      src: "/test.mp4",
-      poster: "/test.jpg",
-      credit: "Test",
-      source: "https://example.test",
+      src        : "/test.mp4",
+      poster     : "/test.jpg",
+      credit     : "Test",
+      source     : "https://example.test",
     };
     const view = render(<ClipPlayer clip={clip} active={false} muted={true} onMute={() => {}} />);
     const video = screen.getByLabelText("Test clip. A test scene. Silent stock footage.");
@@ -217,7 +217,7 @@ describe("Commonplace React interactions", () => {
     expect(screen.getByRole("status", { name: "Loading conversations" })).toBeInTheDocument();
     await act(async () =>
       threads.resolve({
-        kind: "ready",
+        kind : "ready",
         value: [{ id: "thread", name: "Ren", handle: "ren", avatar: "R", lastMessage: "Hello" }],
       }),
     );

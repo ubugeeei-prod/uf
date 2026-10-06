@@ -51,8 +51,8 @@ one {{You have {$count} unread message.}}
 *   {{You have {$count} unread messages.}}`;
 
 const messages = {
-  greeting: message("Hello, {$name}!", { name: string }),
-  unread: message(UNREAD, { count: number }),
+  greeting : message("Hello, {$name}!", { name: string }),
+  unread   : message(UNREAD, { count: number }),
   cartEmpty: message("Your cart is empty.", {}),
 };
 

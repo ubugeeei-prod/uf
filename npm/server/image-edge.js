@@ -69,7 +69,7 @@ export function edgeImageFetch(): ImageFetch {
  */
 export function cloudflareImageTransform(options?: {|
   readonly binding?: string,
-  readonly images?: ImagesBinding,
+  readonly images? : ImagesBinding,
 |}): ImageTransform {
   const name = options?.binding ?? IMAGES_BINDING;
   return async function transform(input: TransformInput): Promise<TransformOutput> {
@@ -97,7 +97,7 @@ export function cloudflareImageTransform(options?: {|
     const response = result.response();
     return {
       bytes: new Uint8Array(await response.arrayBuffer()),
-      type: response.headers.get("content-type") ?? format,
+      type : response.headers.get("content-type") ?? format,
     };
   };
 }

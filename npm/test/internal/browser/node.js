@@ -323,14 +323,14 @@ export class AsyncLocalStorage<T> {
  * a URL, and a URL's separator is `/` on every platform.
  */
 export const path: {
-  readonly join: (...parts: $ReadOnlyArray<string>) => string,
-  readonly dirname: (of: string) => string,
+  readonly join    : (...parts: $ReadOnlyArray<string>) => string,
+  readonly dirname : (of: string) => string,
   readonly basename: (of: string, extension?: string) => string,
-  readonly extname: (of: string) => string,
-  readonly resolve: (...parts: $ReadOnlyArray<string>) => string,
-  readonly sep: string,
+  readonly extname : (of: string) => string,
+  readonly resolve : (...parts: $ReadOnlyArray<string>) => string,
+  readonly sep     : string,
 } = {
-  sep: "/",
+  sep : "/",
   join: (...parts) => normalize(parts.filter((part) => part !== "").join("/")),
   dirname: (of) => {
     const at = of.lastIndexOf("/");

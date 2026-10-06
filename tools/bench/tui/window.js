@@ -78,15 +78,15 @@ const SAMPLES = 20;
 /** What one step came out as, on one of the two clocks. */
 type Row = {
   readonly medianMs: number,
-  readonly minMs: number,
-  readonly maxMs: number,
+  readonly minMs   : number,
+  readonly maxMs   : number,
 };
 
 /** Both clocks for one step, plus the cells the step re-sent. */
 type Step = {
   readonly commit: Row,
-  readonly frame: Row,
-  readonly cells: number,
+  readonly frame : Row,
+  readonly cells : number,
 };
 
 /**
@@ -102,7 +102,7 @@ const line = (index: number): React.Node => (
 );
 
 component Log(rows: number) {
-  const [top, setTop] = useState<number>(0);
+  const [top,  setTop]  = useState<number>(0);
   const [down, setDown] = useState<boolean>(true);
   // Whether the box is following its tail, which is what a log does while it is
   // being appended to and what makes an append move the window. A scroll takes
@@ -162,14 +162,14 @@ function median(values: Array<number>): number {
 
 const summarise = (times: Array<number>): Row => ({
   medianMs: median(times),
-  minMs: Math.min(...times),
-  maxMs: Math.max(...times),
+  minMs   : Math.min(...times),
+  maxMs   : Math.max(...times),
 });
 
 /** Mount `rows` rows, and time the first frame — the pass that is allowed to grow. */
 function mount(rows: number): { handle: TestHandle, first: number } {
   const handle = testRender(<Log rows={rows} />, {
-    width: WIDTH,
+    width : WIDTH,
     height: HEIGHT,
   });
   const started = performance.now();

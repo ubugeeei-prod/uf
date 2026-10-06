@@ -57,10 +57,10 @@ export type SocketEvent = { readonly data?: mixed, ... };
  * Cloudflare's, Deno's, Bun's or `ws`'s, and all four are this much.
  */
 export type WebSocketLike = {
-  readonly send: (data: string) => mixed,
+  readonly send : (data: string) => mixed,
   readonly close: (code?: number, reason?: string) => mixed,
   readonly addEventListener: (
-    type: "message" | "close" | "error",
+    type    : "message" | "close" | "error",
     listener: (event: SocketEvent) => mixed,
   ) => mixed,
   ...
@@ -85,7 +85,7 @@ export type WebSocketUpgrader = (request: Request) => WebSocketUpgrade;
 
 /** Where scheduled work runs from; see `../schedule.js`. */
 export type SchedulerBackend = {|
-  readonly name: string,
+  readonly name     : string,
   readonly triggered: boolean,
 |};
 
@@ -184,7 +184,7 @@ export type ServerCapabilities = {|
 /** What a deployment may hand an adapter; everything else is the target's. */
 export type CapabilityOptions = {|
   readonly websocket?: WebSocketUpgrader | null,
-  readonly queue?: QueueBackend | null,
+  readonly queue?    : QueueBackend | null,
   readonly scheduler?: SchedulerBackend | null,
 |};
 
@@ -233,7 +233,7 @@ export class CapabilityUnavailableError extends Error {
 
 /** How an adapter describes itself before the deployment's half is added. */
 export type CapabilityDefaults = {|
-  readonly stream: boolean,
+  readonly stream    : boolean,
   readonly persistent: boolean,
 |};
 
@@ -245,17 +245,17 @@ export type CapabilityDefaults = {|
  * uf pretending to own an implementation it does not have.
  */
 export function capabilitiesFor(
-  target: string,
+  target  : string,
   defaults: CapabilityDefaults,
   options?: CapabilityOptions,
 ): ServerCapabilities {
   return {
     target,
-    stream: defaults.stream,
+    stream    : defaults.stream,
     persistent: defaults.persistent,
-    websocket: options?.websocket ?? null,
-    queue: options?.queue ?? null,
-    scheduler: options?.scheduler ?? null,
+    websocket : options?.websocket ?? null,
+    queue     : options?.queue ?? null,
+    scheduler : options?.scheduler ?? null,
   };
 }
 

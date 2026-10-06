@@ -97,9 +97,9 @@ type Seen = {| readonly source: string | null, readonly status: AvatarStatus |};
 const START: Seen = Object.freeze({ source: null, status: "loading" });
 
 type AvatarState = {|
-  readonly status: AvatarStatus,
-  readonly hasImage: boolean,
-  readonly report: (source: string | null, status: AvatarStatus) => void,
+  readonly status       : AvatarStatus,
+  readonly hasImage     : boolean,
+  readonly report       : (source: string | null, status: AvatarStatus) => void,
   readonly registerImage: (present: boolean) => void,
 |};
 
@@ -128,7 +128,7 @@ hook useAvatar(part: string): AvatarState {
  * element is invalid in half of those.
  */
 component AvatarRoot(children: React.Node, render?: RenderProp, ...rest: Rest) {
-  const [seen, setSeen] = useState<Seen>(START);
+  const [seen,     setSeen]     = useState<Seen>(START);
   const [hasImage, setHasImage] = useState(false);
 
   const report = useCallback((source: string | null, status: AvatarStatus) => {
@@ -162,7 +162,7 @@ component AvatarRoot(children: React.Node, render?: RenderProp, ...rest: Rest) {
     <AvatarContext.Provider value={state}>
       {
         match (render) {
-          undefined => <span {...props} />,
+          undefined    => <span {...props} />,
           const custom => custom(props),
         }
       }
@@ -187,7 +187,7 @@ component AvatarRoot(children: React.Node, render?: RenderProp, ...rest: Rest) {
  * has not written that rule yet would see both.
  */
 component AvatarImage(alt?: string = "", src?: string | null, render?: RenderProp, ...rest: Rest) {
-  const avatar = useAvatar("Avatar.Image");
+  const avatar  = useAvatar("Avatar.Image");
   const element = useRef<HTMLImageElement | null>(null);
   const report = avatar.report;
   const registerImage = avatar.registerImage;
@@ -222,7 +222,7 @@ component AvatarImage(alt?: string = "", src?: string | null, render?: RenderPro
   const props = withProps(passed, {
     alt,
     onError: composeHandlers(rest.onError, () => report(source, "error")),
-    onLoad: composeHandlers(rest.onLoad, () => report(source, "loaded")),
+    onLoad : composeHandlers(rest.onLoad, () => report(source, "loaded")),
     // React calls callback refs during commit; the load effect reads it later.
     // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (node: HTMLImageElement | null) => {
@@ -231,7 +231,7 @@ component AvatarImage(alt?: string = "", src?: string | null, render?: RenderPro
     src: source ?? undefined,
   });
   return match (render) {
-    undefined => <img {...props} />,
+    undefined    => <img {...props} />,
     const custom => custom(props),
   };
 }
@@ -251,11 +251,11 @@ component AvatarImage(alt?: string = "", src?: string | null, render?: RenderPro
  */
 component AvatarFallback(
   children: React.Node,
-  delay?: number = 300,
-  render?: RenderProp,
+  delay?  : number = 300,
+  render? : RenderProp,
   ...rest: Rest
 ) {
-  const avatar = useAvatar("Avatar.Fallback");
+  const avatar                = useAvatar("Avatar.Fallback");
   const [elapsed, setElapsed] = useState(false);
   const waiting = avatar.hasImage && avatar.status === "loading";
 
@@ -274,7 +274,7 @@ component AvatarFallback(
   }
   const props = withProps(rest, { children });
   return match (render) {
-    undefined => <span {...props} />,
+    undefined    => <span {...props} />,
     const custom => custom(props),
   };
 }

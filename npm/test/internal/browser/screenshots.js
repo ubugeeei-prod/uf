@@ -5,22 +5,22 @@ import { PNG } from "pngjs";
 import pixelmatch from "pixelmatch";
 
 export type ScreenshotOptions = {|
-  readonly root?: string,
+  readonly root?     : string,
   readonly baselines?: string,
   readonly threshold?: number,
 |};
 
 /** A screenshot that matched its baseline, or was recorded as the new one. */
 export type ScreenshotResult = {|
-  readonly baseline: string,
-  readonly updated: boolean,
+  readonly baseline       : string,
+  readonly updated        : boolean,
   readonly differentPixels: number,
 |};
 
 /** Baselines stay under the project's configured directory, including through symlinks. */
 export async function compareScreenshot(
-  data: string,
-  name: string,
+  data   : string,
+  name   : string,
   options: ScreenshotOptions = {},
 ): Promise<ScreenshotResult> {
   if (

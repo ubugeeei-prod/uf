@@ -76,17 +76,17 @@ function documentOf(id: string | null) {
  * `location.assign` records where it was sent.
  */
 function pageAt(
-  href: string,
-  id: string | null,
+  href  : string,
+  id    : string | null,
   answer: (input?: mixed, init?: $FlowFixMe) => Promise<Response>,
 ): Array<string> {
   const loaded: Array<string> = [];
   const url = new URL(href);
   const location = {
-    href: url.href,
-    origin: url.origin,
+    href    : url.href,
+    origin  : url.origin,
     pathname: url.pathname,
-    search: url.search,
+    search  : url.search,
     assign: (target: string) => {
       loaded.push(target);
     },
@@ -117,9 +117,9 @@ async function stillPending(promise: Promise<mixed>): Promise<boolean> {
 describe("the document", () => {
   it("names its build in the head, before every URL that build wrote", () => {
     const shell = shellFor({
-      scripts: ["/assets/client-abc.js"],
-      styles: [],
-      preloads: [],
+      scripts   : ["/assets/client-abc.js"],
+      styles    : [],
+      preloads  : [],
       deployment: "3f9a1c0d2e4b5a67",
     });
 
@@ -152,7 +152,7 @@ describe("a server action called from a tab on the previous build", () => {
   it("loads the page again instead of settling when the server is on another build", async () => {
     const loaded = pageAt("http://uf.test/counter?tab=1", "build-n", async () => {
       return new Response("409 Conflict\n", {
-        status: 409,
+        status : 409,
         headers: { [DEPLOYMENT_HEADER]: "build-n1" },
       });
     });
@@ -254,7 +254,7 @@ describe("what counts as another build", () => {
 
 component Screen() {
   const router = useRouter();
-  const route = useRoute();
+  const route  = useRoute();
   return (
     <main>
       <h1>{`page ${route.pathname}`}</h1>
@@ -268,18 +268,18 @@ component Screen() {
 /** The payload root build `deployment` would have rendered for `url`. */
 function rootFor(url: string, deployment: string | null): FlightRoot {
   const route: $FlowFixMe = {
-    pathname: url,
-    search: "",
-    path: url,
-    params: {},
-    searchParams: {},
-    data: undefined,
-    deferred: null,
-    metadata: {},
+    pathname      : url,
+    search        : "",
+    path          : url,
+    params        : {},
+    searchParams  : {},
+    data          : undefined,
+    deferred      : null,
+    metadata      : {},
     viewTransition: null,
-    status: 200,
-    error: null,
-    interception: null,
+    status        : 200,
+    error         : null,
+    interception  : null,
   };
   return { route, tree: <Screen />, deployment };
 }
@@ -387,19 +387,19 @@ describe("a page rendered from its modules, on the previous build", () => {
     const loaded = onBuild("build-n");
     const routes: $FlowFixMe = [
       {
-        path: "/",
-        params: [],
-        mdx: false,
-        file: "app/$page.js",
-        page: () => Promise.resolve({ default: Home }),
+        path   : "/",
+        params : [],
+        mdx    : false,
+        file   : "app/$page.js",
+        page   : () => Promise.resolve({ default: Home }),
         layouts: [],
         loading: [],
       },
       {
-        path: "/next",
+        path  : "/next",
         params: [],
-        mdx: false,
-        file: "app/next/$page.js",
+        mdx   : false,
+        file  : "app/next/$page.js",
         page,
         layouts: [],
         loading: [],

@@ -84,12 +84,12 @@ export function entriesFromHtml(html: string, href: string, section: string): Ar
 }
 
 function entry(
-  href: string,
-  anchor: string | null,
-  page: string,
+  href   : string,
+  anchor : string | null,
+  page   : string,
   section: string,
   heading: string | null,
-  html: string,
+  html   : string,
 ): SearchEntry {
   return {
     href: anchor == null ? href : `${href}#${anchor}`,
@@ -117,9 +117,9 @@ export function text(html: string): string {
 }
 
 const NAMED: { readonly [string]: string } = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
+  amp : "&",
+  lt  : "<",
+  gt  : ">",
   quot: '"',
   apos: "'",
   nbsp: " ",

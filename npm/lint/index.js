@@ -10,14 +10,14 @@ export type RuleSeverity = "off" | "warn" | "error";
 
 export type RuleContext = {
   readonly filename: string,
-  readonly source: string,
+  readonly source  : string,
 };
 
 export type RuleDiagnostic = {
-  readonly rule: string,
+  readonly rule   : string,
   readonly message: string,
-  readonly line: number,
-  readonly column: number,
+  readonly line   : number,
+  readonly column : number,
 };
 
 export type NativeRule = (context: RuleContext) => $ReadOnlyArray<RuleDiagnostic>;

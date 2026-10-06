@@ -9,19 +9,19 @@ import type { WorkflowRun } from "./policy.cjs";
 // What `uf-release-state.json` holds between runs, so a release that stops
 // part-way resumes where it stopped. The keys are the file's format.
 type State = {
-  repository: string,
-  version: string,
-  branch: string,
-  pr?: ?number,
-  worktree?: string,
-  commit?: string,
+  repository    : string,
+  version       : string,
+  branch        : string,
+  pr?           : ?number,
+  worktree?     : string,
+  commit?       : string,
   validationRun?: number,
-  publishRun?: number,
-  releaseRun?: number,
-  editorsRun?: number,
+  publishRun?   : number,
+  releaseRun?   : number,
+  editorsRun?   : number,
 };
 type Workflow = "publish" | "release" | "editors";
-type Inputs = { readonly [name: string]: string | number };
+type Inputs   = { readonly [name: string]: string | number };
 */
 const sleep = (ms /*: number */) /*: Promise<void> */ =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -42,9 +42,9 @@ function nextVersion(current /*: string */, bump /*: string */) /*: string */ {
   if (VERSION.test(bump)) {
     // `VERSION` admits only these channels; a stable version sorts last.
     const rank /*: { readonly [channel: string]: number } */ = {
-      alpha: 0,
-      beta: 1,
-      rc: 2,
+      alpha : 0,
+      beta  : 1,
+      rc    : 2,
       stable: 3,
     };
     const parts = (version /*: string */) /*: Array<number> */ => {

@@ -5,28 +5,28 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 export type AppTestOptions = {|
-  readonly root: string | URL,
-  readonly binary?: string,
-  readonly env?: { readonly [string]: string },
+  readonly root      : string | URL,
+  readonly binary?   : string,
+  readonly env?      : { readonly [string]: string },
   readonly timeoutMs?: number,
 |};
 
 export type AppRequest = {|
-  readonly method?: string,
+  readonly method? : string,
   readonly headers?: { readonly [string]: string },
-  readonly body?: string,
-  readonly signal?: AbortSignal,
+  readonly body?   : string,
+  readonly signal? : AbortSignal,
 |};
 
 export type TestApp = {|
   /** The live URL, including after an environment-triggered restart. */
   readonly origin: () => string,
-  readonly fetch: (pathname: string, options?: AppRequest) => Promise<Response>,
+  readonly fetch : (pathname: string, options?: AppRequest) => Promise<Response>,
   readonly render: (pathname: string, options?: AppRequest) => Promise<Response>,
   /** The actual React Flight stream, with request headers and Suspense intact. */
   readonly flight: (pathname: string, options?: AppRequest) => Promise<Response>,
   readonly events: () => $ReadOnlyArray<{ readonly [string]: mixed }>,
-  readonly close: () => Promise<void>,
+  readonly close : () => Promise<void>,
 |};
 
 /** Start the application's real web pipeline in an isolated process for `uf test`. */
@@ -152,7 +152,7 @@ export async function createTestApp(options: AppTestOptions): Promise<TestApp> {
   };
   return {
     origin: () => origin,
-    fetch: async (pathname, init) => request(address(pathname), init),
+    fetch : async (pathname, init) => request(address(pathname), init),
     render: async (pathname, init) => {
       const headers = new Headers({ ...init?.headers });
       headers.set("accept", "text/html");

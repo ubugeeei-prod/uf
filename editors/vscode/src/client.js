@@ -18,9 +18,9 @@ import type { Resolution } from "./binary";
 
 export type Executable = {
   readonly command: string,
-  readonly args: Array<string>,
+  readonly args   : Array<string>,
   readonly options: {
-    readonly cwd: string,
+    readonly cwd   : string,
     readonly shell?: boolean,
     ...
   },
@@ -82,7 +82,7 @@ function serverExecutable(resolution /*: Resolution */, folder /*: string */) /*
 function readSettings(get /*: (key: string) => mixed */) /*: Settings */ {
   const configured = get("server.path");
   return {
-    serverPath: typeof configured === "string" ? configured.trim() : "",
+    serverPath  : typeof configured === "string" ? configured.trim() : "",
     formatOnSave: get("formatOnSave") === true,
   };
 }

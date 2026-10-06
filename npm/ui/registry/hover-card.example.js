@@ -8,19 +8,19 @@ import * as HoverCard from "./hover-card.js";
 const styles = stylex.create({
   stack: {
     display: "grid",
-    gap: ufTokens.space2,
+    gap    : ufTokens.space2,
   },
   name: {
-    margin: 0,
+    margin    : 0,
     fontWeight: ufTokens.weightBold,
   },
   note: {
     margin: 0,
-    color: ufTokens.muted,
+    color : ufTokens.muted,
   },
   link: {
-    color: ufTokens.ink,
-    textDecorationLine: "underline",
+    color              : ufTokens.ink,
+    textDecorationLine : "underline",
     textUnderlineOffset: "3px",
   },
 });

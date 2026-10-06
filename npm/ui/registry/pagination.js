@@ -47,46 +47,46 @@ type RenderProp = (props: Rest) => React.Node;
 
 const styles = stylex.create({
   content: {
-    display: "flex",
-    flexWrap: "wrap",
+    display   : "flex",
+    flexWrap  : "wrap",
     alignItems: "center",
-    gap: ufTokens.space1,
-    margin: 0,
-    padding: 0,
-    listStyle: "none",
+    gap       : ufTokens.space1,
+    margin    : 0,
+    padding   : 0,
+    listStyle : "none",
   },
   link: {
-    display: "inline-flex",
-    alignItems: "center",
+    display       : "inline-flex",
+    alignItems    : "center",
     justifyContent: "center",
-    gap: ufTokens.space1,
-    boxSizing: "border-box",
-    minWidth: "36px",
-    minHeight: "36px",
-    paddingInline: ufTokens.space2,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
+    gap           : ufTokens.space1,
+    boxSizing     : "border-box",
+    minWidth      : "36px",
+    minHeight     : "36px",
+    paddingInline : ufTokens.space2,
+    fontFamily    : ufTokens.fontSans,
+    fontSize      : ufTokens.textSm,
     fontWeight: {
-      default: ufTokens.weightRegular,
+      default                   : ufTokens.weightRegular,
       ":is([aria-current=page])": ufTokens.weightBold,
     },
-    lineHeight: ufTokens.leadingTight,
-    color: ufTokens.ink,
+    lineHeight        : ufTokens.leadingTight,
+    color             : ufTokens.ink,
     textDecorationLine: "none",
     backgroundColor: {
-      default: "transparent",
-      ":hover": ufTokens.surfaceHover,
+      default                    : "transparent",
+      ":hover"                   : ufTokens.surfaceHover,
       ":is([aria-disabled=true])": "transparent",
     },
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: { default: "transparent", ":is([aria-current=page])": ufTokens.border },
-    borderRadius: ufTokens.radiusMd,
-    cursor: { default: "pointer", ":is([aria-disabled=true])": "not-allowed" },
-    opacity: { default: 1, ":is([aria-disabled=true])": 0.55 },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    borderWidth  : "1px",
+    borderStyle  : "solid",
+    borderColor  : { default: "transparent", ":is([aria-current=page])": ufTokens.border },
+    borderRadius : ufTokens.radiusMd,
+    cursor       : { default: "pointer", ":is([aria-disabled=true])": "not-allowed" },
+    opacity      : { default: 1, ":is([aria-disabled=true])": 0.55 },
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "2px",
   },
 });
@@ -96,11 +96,11 @@ const styles = stylex.create({
  * announced with.
  */
 component PaginationRoot(
-  children: React.Node,
-  page?: number | null = null,
+  children  : React.Node,
+  page?     : number | null = null,
   pageCount?: number | null = null,
-  label?: string = "Pagination",
-  xstyle?: StyleArgument,
+  label?    : string = "Pagination",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -119,8 +119,8 @@ component PaginationRoot(
 
 /** The row of pages, previous and next. */
 component PaginationContent(
-  children: renders* (PaginationItem | PaginationPrevious | PaginationNext),
-  xstyle?: StyleArgument,
+  children  : renders* (PaginationItem | PaginationPrevious | PaginationNext),
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -136,11 +136,11 @@ component PaginationContent(
 
 /** A link to one page; `current` for the page the reader is on. */
 component PaginationItem(
-  children: React.Node,
-  current?: boolean = false,
-  disabled?: boolean = false,
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  current?  : boolean = false,
+  disabled? : boolean = false,
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Pagination.Item {
@@ -159,10 +159,10 @@ component PaginationItem(
 
 /** The link to the page before, named "Previous page" unless `label` says otherwise. */
 component PaginationPrevious(
-  label?: string = "Previous page",
-  disabled?: boolean = false,
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  label?    : string = "Previous page",
+  disabled? : boolean = false,
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Pagination.Previous {
@@ -194,10 +194,10 @@ component PaginationPrevious(
 
 /** The link to the page after, named "Next page" unless `label` says otherwise. */
 component PaginationNext(
-  label?: string = "Next page",
-  disabled?: boolean = false,
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  label?    : string = "Next page",
+  disabled? : boolean = false,
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Pagination.Next {

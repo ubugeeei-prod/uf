@@ -312,9 +312,9 @@ function startCompiler() {
   const answered = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
   const { port1: here, port2: there } = new MessageChannel();
   const thread = new Worker(new URL("./transform-thread.js", import.meta.url), {
-    workerData: { answered, port: there },
+    workerData  : { answered, port: there },
     transferList: [there],
-    execArgv: [],
+    execArgv    : [],
   });
   thread.unref();
   here.unref();

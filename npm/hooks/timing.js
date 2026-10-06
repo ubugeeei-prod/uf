@@ -109,14 +109,14 @@ export hook useDebouncedValue<T>(value: T, millis: number): T {
  * the trailing-edge version would make the first paint late.
  */
 export hook useThrottledCallback<TArgs extends $ReadOnlyArray<mixed>>(
-  body: (...args: TArgs) => mixed,
+  body  : (...args: TArgs) => mixed,
   millis: number,
 ): (...args: TArgs) => void {
   // Written out rather than inferred: Flow cannot instantiate one function's
   // rest-parameter type variable from another's, so the type arguments are
   // given here and at every other call in this file.
   const stable = useStableCallback<TArgs, mixed>(body);
-  const last = useRef(0);
+  const last   = useRef(0);
 
   return useStableCallback<TArgs, void>((...args: TArgs) => {
     const now = currentClock().now();
@@ -134,11 +134,11 @@ export hook useThrottledCallback<TArgs extends $ReadOnlyArray<mixed>>(
  * calls `setState` on a component that is gone.
  */
 export hook useDebouncedCallback<TArgs extends $ReadOnlyArray<mixed>>(
-  body: (...args: TArgs) => mixed,
+  body  : (...args: TArgs) => mixed,
   millis: number,
 ): (...args: TArgs) => void {
   const stable = useStableCallback<TArgs, mixed>(body);
-  const timer = useRef<TimeoutID | null>(null);
+  const timer  = useRef<TimeoutID | null>(null);
 
   useEffect(
     () => () => {
@@ -173,7 +173,7 @@ export hook useDebouncedCallback<TArgs extends $ReadOnlyArray<mixed>>(
  * and the effect that would ask for one does not run there.
  */
 export hook useAnimationFrame(
-  body: (frame: {| readonly delta: number, readonly time: number |}) => mixed,
+  body  : (frame: {| readonly delta: number, readonly time: number |}) => mixed,
   active: boolean = true,
 ): void {
   const stable = useStableCallback(body);
@@ -227,7 +227,7 @@ const ACTIVITY: $ReadOnlyArray<string> = [
  * this costs nothing on a touch screen and sees activity anywhere on the page.
  */
 export hook useIdle(
-  millis: number = 60_000,
+  millis  : number = 60_000,
   options?: {| readonly events?: $ReadOnlyArray<string> |},
 ): boolean {
   const [idle, setIdle] = useState(false);
@@ -408,7 +408,7 @@ export hook useTimeAgo(
     readonly serverValue?: string,
     /** Override the schedule. `null` works it out once and leaves it. */
     readonly interval?: number | null,
-    readonly locale?: string,
+    readonly locale?  : string,
   |},
 ): string {
   const serverValue = options?.serverValue;

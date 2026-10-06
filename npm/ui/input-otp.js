@@ -75,8 +75,8 @@ import { useControlled } from "./internal/controlled-state.js";
 export type InputOtpKind = "numeric" | "alphanumeric";
 
 type InputOtpState = {|
-  readonly value: string,
-  readonly length: number,
+  readonly value  : string,
+  readonly length : number,
   readonly focused: boolean,
 |};
 
@@ -100,7 +100,7 @@ hook useInputOtp(part: string): InputOtpState {
 /** Everything but the code, removed as it arrives — typed or pasted. */
 function clean(raw: string, kind: InputOtpKind, length: number): string {
   const kept = match (kind) {
-    "numeric" => raw.replace(/[^0-9]/g, ""),
+    "numeric"      => raw.replace(/[^0-9]/g, ""),
     "alphanumeric" => raw.replace(/[^0-9A-Za-z]/g, ""),
   };
   return kept.slice(0, length);
@@ -113,19 +113,19 @@ function clean(raw: string, kind: InputOtpKind, length: number): string {
  * caller's props go on the input, because the input is the field.
  */
 component InputOtpRoot(
-  children: React.Node,
-  defaultValue?: string = "",
-  disabled?: boolean = false,
-  kind?: InputOtpKind = "numeric",
-  label: string,
-  length: number,
-  name?: string,
-  onComplete?: (code: string) => void,
+  children      : React.Node,
+  defaultValue? : string = "",
+  disabled?     : boolean = false,
+  kind?         : InputOtpKind = "numeric",
+  label         : string,
+  length        : number,
+  name?         : string,
+  onComplete?   : (code: string) => void,
   onValueChange?: (value: string) => void,
-  value?: string,
+  value?        : string,
   ...rest: Rest
 ) {
-  const [code, setCode] = useControlled(value, defaultValue, onValueChange);
+  const [code,    setCode]    = useControlled(value, defaultValue, onValueChange);
   const [focused, setFocused] = useState(false);
   const passed = withoutComposed(rest, ["onBlur", "onChange", "onFocus"]);
   // `aria-labelledby` wins over `aria-label`, so a field wired through
@@ -212,7 +212,7 @@ component InputOtpSlot(children?: React.Node, index: number, ...rest: Rest) {
 component InputOtpSeparator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-hidden": "true", children });
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

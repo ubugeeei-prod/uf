@@ -69,12 +69,12 @@ export type { Orientation } from "./internal/roving-focus.js";
 type Offset = {| x: number, y: number |};
 
 type ScrollAreaState = {|
-  readonly base: string,
-  readonly label: string,
-  readonly viewportRef: { current: HTMLElement | null },
+  readonly base         : string,
+  readonly label        : string,
+  readonly viewportRef  : { current: HTMLElement | null },
   readonly rememberedRef: { current: Offset },
   /** Written by the viewport, read by every scrollbar. */
-  readonly report: () => void,
+  readonly report       : () => void,
   readonly scrollbarsRef: { current: Array<HTMLElement> },
 |};
 
@@ -104,8 +104,8 @@ hook useScrollArea(part: string): ScrollAreaState {
  * announced as "region" has told them nothing.
  */
 component ScrollAreaRoot(children: React.Node, label: string, ...rest: Rest) {
-  const base = useId();
-  const viewportRef = useRef<HTMLElement | null>(null);
+  const base          = useId();
+  const viewportRef   = useRef<HTMLElement | null>(null);
   const rememberedRef = useRef<Offset>({ x: 0, y: 0 });
   const scrollbarsRef = useRef<Array<HTMLElement>>([]);
 
@@ -208,7 +208,7 @@ component ScrollAreaViewport(children: React.Node, ...rest: Rest) {
  * the thing a reader operates.
  */
 component ScrollAreaScrollbar(
-  children?: React.Node,
+  children?   : React.Node,
   orientation?: Orientation = "vertical",
   ...rest: Rest
 ) {

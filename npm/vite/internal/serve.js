@@ -495,8 +495,8 @@ export function assetsFromManifest(manifest, base = "") {
   // Under `app.router.basePath` when there is one: a prerendered document is
   // written outside Vite's HTML transform, so nothing else would put it there.
   return {
-    scripts: [`${base}/${entry.file}`],
-    styles: [...styles].map((file) => `${base}/${file}`),
+    scripts : [`${base}/${entry.file}`],
+    styles  : [...styles].map((file) => `${base}/${file}`),
     preloads: [...preloads].map((file) => `${base}/${file}`),
   };
 }
@@ -615,11 +615,11 @@ export function createApplicationHandler({
   const ready = deployment().then(
     async ({ createFetchHandler, createCacheStore, nodeCapabilities }) =>
       createFetchHandler({
-        app: entry,
+        app     : entry,
         document: assets,
         cache: await cacheFor(cache, createCacheStore, {
-          root: root ?? process.cwd(),
-          build: build ?? null,
+          root       : root ?? process.cwd(),
+          build      : build ?? null,
           regenerates: regeneration != null,
         }),
         // `/__uf/image`, for a project that listed remote hosts. See
@@ -630,7 +630,7 @@ export function createApplicationHandler({
                 images,
                 root: root ?? process.cwd(),
                 store: await imageStoreFor(cache, createCacheStore, {
-                  root: root ?? process.cwd(),
+                  root : root ?? process.cwd(),
                   build: build ?? null,
                 }),
               }),
@@ -842,7 +842,7 @@ export function createStaticBuildHandler({ root, routing, notFoundPage = true })
     await write(
       response,
       new Response(method === "HEAD" ? null : page, {
-        status: 404,
+        status : 404,
         headers: { "content-type": "text/html; charset=utf-8" },
       }),
     );

@@ -69,9 +69,9 @@ describe("the router's peer ranges", () => {
     ]);
     expect(router.peerDependenciesMeta).toEqual({
       "@react-navigation/native": { optional: true },
-      "react-native": { optional: true },
-      "react-dom": { optional: true },
-      "react-server-dom-parcel": { optional: true },
+      "react-native"            : { optional: true },
+      "react-dom"               : { optional: true },
+      "react-server-dom-parcel" : { optional: true },
     });
   });
 });

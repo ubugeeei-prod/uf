@@ -19,12 +19,12 @@ import {
 import type { NativeElement } from "@uniflowed/react-native-testing";
 
 const tree: NativeElement = {
-  type: "View",
+  type : "View",
   props: { testID: "root" },
   children: [
     {
-      type: "Text",
-      props: {},
+      type    : "Text",
+      props   : {},
       children: ["Hello ", { type: "Text", props: {}, children: ["native"] }],
     },
     {
@@ -32,7 +32,7 @@ const tree: NativeElement = {
       props: {
         accessibilityLabel: "Save changes",
         accessibilityState: { disabled: true, busy: true },
-        testID: "save",
+        testID            : "save",
       },
       children: [{ type: "Text", props: {}, children: ["Save"] }],
     },
@@ -48,14 +48,14 @@ const tree: NativeElement = {
       type: "View",
       props: {
         accessibilityLabel: "Upload",
-        accessibilityRole: "progressbar",
+        accessibilityRole : "progressbar",
         accessibilityValue: { min: 0, max: 100, now: 75, text: "75 percent" },
       },
       children: [],
     },
     {
-      type: "TextInput",
-      props: { accessibilityLabel: "Search", disabled: false },
+      type    : "TextInput",
+      props   : { accessibilityLabel: "Search", disabled: false },
       children: [],
     },
   ],
@@ -71,7 +71,7 @@ describe("@uniflowed/react-native-testing", () => {
         {
           accessibilityLabel: "Save changes",
           accessibilityState: { disabled: true },
-          testID: "save",
+          testID            : "save",
         },
         hostElement("Text", null, "Save"),
       ),
@@ -87,7 +87,7 @@ describe("@uniflowed/react-native-testing", () => {
       props: {
         accessibilityLabel: "Save changes",
         accessibilityState: { disabled: true },
-        testID: "save",
+        testID            : "save",
       },
       children: [{ type: "Text", props: {}, children: ["Save"] }],
     });
@@ -148,16 +148,16 @@ describe("@uniflowed/react-native-testing", () => {
     expect(screen.queryByRole("progressbar", { value: { now: 25 } })).toBe(null);
     expect(accessibleName(screen.getByTestId("save"))).toBe("Save changes");
     expect(accessibilityStateOf(screen.getByTestId("save"))).toEqual({
-      busy: true,
-      checked: false,
+      busy    : true,
+      checked : false,
       disabled: true,
       expanded: false,
       selected: false,
     });
     expect(accessibilityValueOf(screen.getByRole("progressbar"))).toEqual({
-      min: 0,
-      max: 100,
-      now: 75,
+      min : 0,
+      max : 100,
+      now : 75,
       text: "75 percent",
     });
     expect(roleOf(screen.getByTestId("save"))).toBe("button");
@@ -178,8 +178,8 @@ describe("@uniflowed/react-native-testing", () => {
 
   it("uses accessibilityLabel before descendant text for label queries", () => {
     const screen = createNativeScreen({
-      type: "Pressable",
-      props: { accessibilityLabel: "Save changes", testID: "save" },
+      type    : "Pressable",
+      props   : { accessibilityLabel: "Save changes", testID: "save" },
       children: ["Save"],
     });
 
@@ -189,8 +189,8 @@ describe("@uniflowed/react-native-testing", () => {
 
   it("uses text content as the label fallback for native controls", () => {
     const screen = createNativeScreen({
-      type: "Pressable",
-      props: { testID: "plain-action" },
+      type    : "Pressable",
+      props   : { testID: "plain-action" },
       children: [{ type: "Text", props: {}, children: ["Plain action"] }],
     });
 
@@ -199,8 +199,8 @@ describe("@uniflowed/react-native-testing", () => {
 
   it("does not duplicate a roleless container and its text child for label fallback", () => {
     const screen = createNativeScreen({
-      type: "View",
-      props: {},
+      type    : "View",
+      props   : {},
       children: [{ type: "Text", props: {}, children: ["Plain label"] }],
     });
 
@@ -220,23 +220,23 @@ describe("@uniflowed/react-native-testing", () => {
 
   it("scopes label queries to the subtree passed to within", () => {
     const screen = createNativeScreen({
-      type: "View",
+      type : "View",
       props: {},
       children: [
         {
-          type: "View",
+          type : "View",
           props: { testID: "inside" },
           children: [
             {
-              type: "Pressable",
-              props: { accessibilityLabel: "Inside action" },
+              type    : "Pressable",
+              props   : { accessibilityLabel: "Inside action" },
               children: [],
             },
           ],
         },
         {
-          type: "Pressable",
-          props: { accessibilityLabel: "Outside action" },
+          type    : "Pressable",
+          props   : { accessibilityLabel: "Outside action" },
           children: [],
         },
       ],
@@ -260,13 +260,13 @@ describe("@uniflowed/react-native-testing", () => {
   it("uses the same one, optional and many rules for label queries", () => {
     const screen = createNativeScreen([
       {
-        type: "Pressable",
-        props: { accessibilityLabel: "Repeat" },
+        type    : "Pressable",
+        props   : { accessibilityLabel: "Repeat" },
         children: [],
       },
       {
-        type: "Pressable",
-        props: { accessibilityLabel: "Repeat" },
+        type    : "Pressable",
+        props   : { accessibilityLabel: "Repeat" },
         children: [],
       },
     ]);

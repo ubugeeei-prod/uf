@@ -94,8 +94,8 @@ export const RESET: Reset = Symbol("@uniflowed/state RESET");
  * the key is removed elsewhere.
  */
 export type StorageAdapter<T> = {
-  readonly getItem: (key: string, initial: T) => T,
-  readonly setItem: (key: string, value: T) => void,
+  readonly getItem   : (key: string, initial: T) => T,
+  readonly setItem   : (key: string, value: T) => void,
   readonly removeItem: (key: string) => void,
   readonly subscribe?: (key: string, onChange: (value: T) => void, initial: T) => () => void,
 };
@@ -109,8 +109,8 @@ export type StorageAdapter<T> = {
  * as well — is one of these.
  */
 export type StringStorage = {
-  readonly getItem: (key: string) => null | string,
-  readonly setItem: (key: string, value: string) => void,
+  readonly getItem   : (key: string) => null | string,
+  readonly setItem   : (key: string, value: string) => void,
   readonly removeItem: (key: string) => void,
   ...
 };
@@ -144,7 +144,7 @@ export type JSONStorageOptions<T> = {
 export type AtomFamily<Key, Member> = {
   (key: Key): Member,
   readonly remove: (key: Key) => void,
-  readonly size: () => number,
+  readonly size  : () => number,
   ...
 };
 
@@ -191,8 +191,8 @@ export function atomFamily<Key, Member>(create: (key: Key) => Member): AtomFamil
  * the direct way to say that.
  */
 export function selectAtom<T, Slice>(
-  source: AtomRecord<T, empty>,
-  select: (value: T) => Slice,
+  source : AtomRecord<T, empty>,
+  select : (value: T) => Slice,
   equals?: (previous: Slice, next: Slice) => boolean,
 ): AtomRecord<Slice, empty> {
   return defineSelector(
@@ -216,8 +216,8 @@ export function selectAtom<T, Slice>(
  * rather than against `State`.
  */
 export function atomWithReducer<State, Action>(
-  initial: State,
-  reduce: (state: State, action: Action) => State,
+  initial : State,
+  reduce  : (state: State, action: Action) => State,
   options?: AtomOptions<State>,
 ): AtomRecord<State, Action> {
   const value = definePrimitive<State>(initial, {
@@ -250,7 +250,7 @@ type Slot<T> = { readonly filled: false } | { readonly filled: true, readonly va
  */
 export function atomWithDefault<T>(
   getDefault: (get: AtomGetter) => T,
-  options?: AtomOptions<T>,
+  options?  : AtomOptions<T>,
 ): AtomRecord<T, SetAction<T> | Reset> {
   const empty: Slot<T> = { filled: false };
   const override = definePrimitive<Slot<T>>(empty, {
@@ -293,7 +293,7 @@ export function atomWithDefault<T>(
  * would be a second name for one thing rather than a second signature for it.
  */
 export function atomWithReset<T>(
-  initial: T,
+  initial : T,
   options?: AtomOptions<T>,
 ): AtomRecord<T, SetAction<T> | Reset> {
   return atomWithDefault(() => initial, options);
@@ -305,7 +305,7 @@ type Stored<T> = { readonly known: false } | { readonly known: true, readonly va
 /** What [`atomWithStorage`] accepts on top of what every atom does. */
 export type StorageOptions<T> = {
   readonly debugLabel?: string,
-  readonly equals?: (previous: T, next: T) => boolean,
+  readonly equals?    : (previous: T, next: T) => boolean,
   /**
    * Read the stored value the first time the atom is used in a store, rather
    * than when it is mounted there. `false` by default.
@@ -347,8 +347,8 @@ export type StorageOptions<T> = {
  * way, including `RESET`, which is what a test and a server want.
  */
 export function atomWithStorage<T>(
-  key: string,
-  initial: T,
+  key     : string,
+  initial : T,
   storage?: StorageAdapter<T>,
   options?: StorageOptions<T>,
 ): AtomRecord<T, SetAction<T> | Reset> {
@@ -486,7 +486,7 @@ export function atomWithStorage<T>(
  */
 export function createJSONStorage<T>(
   getStringStorage: () => StringStorage | null | void,
-  options?: JSONStorageOptions<T>,
+  options?        : JSONStorageOptions<T>,
 ): StorageAdapter<T> {
   const revive = options?.revive;
 
@@ -577,7 +577,7 @@ export function createJSONStorage<T>(
 
 /** What a `storage` event is dispatched on, where there is one. */
 type StorageEvents = {
-  readonly addEventListener: (type: "storage", listener: (event: StorageEvent) => mixed) => void,
+  readonly addEventListener   : (type: "storage", listener: (event: StorageEvent) => mixed) => void,
   readonly removeEventListener: (type: "storage", listener: (event: StorageEvent) => mixed) => void,
   ...
 };
@@ -618,8 +618,8 @@ function storageEvents(): null | StorageEvents {
  * [`atomWithAsyncStorage`].
  */
 export type AsyncStorageAdapter<T> = {
-  readonly getItem: (key: string, initial: T, context: LoadContext) => Promise<T>,
-  readonly setItem: (key: string, value: T) => Promise<mixed> | void,
+  readonly getItem   : (key: string, initial: T, context: LoadContext) => Promise<T>,
+  readonly setItem   : (key: string, value: T) => Promise<mixed> | void,
   readonly removeItem: (key: string) => Promise<mixed> | void,
   readonly subscribe?: (key: string, onChange: (value: T) => void, initial: T) => () => void,
 };
@@ -676,7 +676,7 @@ function doNothing(): void {}
  */
 function sameLoadable<T>(equals: void | ((previous: T, next: T) => boolean)): (
   previous: Loadable<T>,
-  next: Loadable<T>,
+  next    : Loadable<T>,
 ) => boolean {
   const sameValue = equals ?? Object.is;
   return (previous, next) => {
@@ -749,9 +749,9 @@ function sameLoadable<T>(equals: void | ((previous: T, next: T) => boolean)): (
  * to disagree with and nothing to wait for.
  */
 export function atomWithAsyncStorage<T>(
-  key: string,
-  initial: T,
-  storage: AsyncStorageAdapter<T>,
+  key     : string,
+  initial : T,
+  storage : AsyncStorageAdapter<T>,
   options?: AsyncStorageOptions<T>,
 ): AtomRecord<Loadable<T>, AsyncSetAction<T> | Reset> {
   const label = options?.debugLabel ?? key;
@@ -818,14 +818,14 @@ export function atomWithAsyncStorage<T>(
  * itself is the version that makes the caller look at it.
  */
 export function unwrap<T>(
-  target: AtomRecord<Loadable<T>, empty>,
+  target  : AtomRecord<Loadable<T>, empty>,
   fallback: T,
 ): AtomRecord<T, empty> {
   return defineSelector((get) => {
     const settled = get(target);
     return match (settled) {
       {state: "hasData", data: const data} => data,
-      _ => fallback,
+      _                                    => fallback,
     };
   }, null);
 }

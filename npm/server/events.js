@@ -274,10 +274,10 @@ export function eventStream(source: EventStreamSource, options?: EventStreamOpti
   };
 
   const sink: EventSink = {
-    send: (event) => write(encodeEvent(typeof event === "string" ? { data: event } : event)),
+    send   : (event) => write(encodeEvent(typeof event === "string" ? { data: event } : event)),
     comment: (text) => write(encodeComment(text)),
-    close: () => finish(null),
-    signal: ended.signal,
+    close  : () => finish(null),
+    signal : ended.signal,
   };
 
   const stream = new ReadableStream(
@@ -321,7 +321,7 @@ export function eventStream(source: EventStreamSource, options?: EventStreamOpti
       // whoever asks next, forever. `no-transform` is the other half: a proxy
       // that gzips this decides on its own when to flush.
       "cache-control": "no-store, no-transform",
-      connection: "keep-alive",
+      connection     : "keep-alive",
       // nginx and several CDNs buffer a proxied response by default, which
       // turns an event stream into one delivery when it ends. This is the
       // header they all agree to read.
@@ -404,9 +404,9 @@ function single(field: string, value: string): string {
  */
 async function beginSource(
   source: EventStreamSource,
-  sink: EventSink,
+  sink  : EventSink,
   finish: (error: Error) => void,
-  keep: (release: () => mixed) => void,
+  keep  : (release: () => mixed) => void,
 ): Promise<void> {
   try {
     const release = await source(sink);

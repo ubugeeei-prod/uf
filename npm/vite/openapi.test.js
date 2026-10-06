@@ -6,7 +6,7 @@ import { number, object, optional, string } from "@uniflowed/validator";
 import { createOpenApiDocument } from "./internal/openapi.js";
 
 function handler(
-  path: string,
+  path  : string,
   params: $ReadOnlyArray<{| name: string, catchAll: boolean |}>,
   module: { readonly [string]: mixed, ... },
 ) {
@@ -26,11 +26,11 @@ describe("route handler OpenAPI", () => {
         POST() {},
         schemas: {
           GET: {
-            query: object({ expand: optional(string()) }),
+            query   : object({ expand: optional(string()) }),
             response: object({ id: string(), age: number() }),
           },
           POST: {
-            body: object({ name: string() }),
+            body    : object({ name: string() }),
             response: object({ id: string() }),
           },
         },
@@ -40,16 +40,16 @@ describe("route handler OpenAPI", () => {
     expect(document.openapi).toBe("3.1.0");
     expect(document.paths["/api/users/{id}"].get.parameters).toEqual([
       {
-        name: "id",
-        in: "path",
+        name    : "id",
+        in      : "path",
         required: true,
-        schema: { type: "string" },
+        schema  : { type: "string" },
       },
       {
-        name: "expand",
-        in: "query",
+        name    : "expand",
+        in      : "query",
         required: false,
-        schema: { type: "string" },
+        schema  : { type: "string" },
       },
     ]);
     expect(document.paths["/api/users/{id}"].get.responses["200"]).toEqual({
@@ -57,9 +57,9 @@ describe("route handler OpenAPI", () => {
       content: {
         "application/json": {
           schema: {
-            type: "object",
+            type      : "object",
             properties: { id: { type: "string" }, age: { type: "number" } },
-            required: ["id", "age"],
+            required  : ["id", "age"],
           },
         },
       },
@@ -69,9 +69,9 @@ describe("route handler OpenAPI", () => {
       content: {
         "application/json": {
           schema: {
-            type: "object",
+            type      : "object",
             properties: { name: { type: "string" } },
-            required: ["name"],
+            required  : ["name"],
           },
         },
       },
@@ -95,9 +95,9 @@ describe("route handler OpenAPI", () => {
   it("keeps a handler whose module cannot be loaded in the route list", async () => {
     const document = await createOpenApiDocument([
       {
-        path: "/api/native",
+        path  : "/api/native",
         params: [],
-        file: "app/api/native/$route.js",
+        file  : "app/api/native/$route.js",
         load: async () => {
           throw new Error('Unknown file extension ".node"');
         },
@@ -105,7 +105,7 @@ describe("route handler OpenAPI", () => {
     ]);
 
     expect(document.paths["/api/native"]).toEqual({
-      "x-uf-source": "app/api/native/$route.js",
+      "x-uf-source"            : "app/api/native/$route.js",
       "x-uf-schema-unavailable": 'Unknown file extension ".node"',
     });
   });
@@ -116,7 +116,7 @@ describe("route handler OpenAPI", () => {
         QUERY() {},
         schemas: {
           QUERY: {
-            body: object({ q: string() }),
+            body    : object({ q: string() }),
             response: object({ total: number() }),
           },
         },
@@ -129,9 +129,9 @@ describe("route handler OpenAPI", () => {
       content: {
         "application/json": {
           schema: {
-            type: "object",
+            type      : "object",
             properties: { total: { type: "number" } },
-            required: ["total"],
+            required  : ["total"],
           },
         },
       },

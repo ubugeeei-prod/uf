@@ -31,10 +31,10 @@ describe("answering a payload request", () => {
     // renders, so nothing else ever tells the host about it.
     const failure = new Error("the loader failed");
     const app = appAnswering({
-      status: 500,
+      status : 500,
       headers: { "content-type": "text/x-component" },
-      stream: null,
-      error: failure,
+      stream : null,
+      error  : failure,
     });
     const reported: Array<mixed> = [];
 

@@ -35,7 +35,7 @@ export type ImageEndpoint = {|
  * `@uniflowed/server/image`'s.
  */
 export const IMAGE_ENDPOINT: ImageEndpoint = {
-  path: null,
-  widths: [640, 750, 828, 1080, 1200, 1440, 1920],
+  path   : null,
+  widths : [640, 750, 828, 1080, 1200, 1440, 1920],
   quality: 75,
 };

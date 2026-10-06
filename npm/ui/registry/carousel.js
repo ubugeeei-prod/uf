@@ -40,60 +40,60 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    display: "grid",
-    gap: ufTokens.space2,
+    display   : "grid",
+    gap       : ufTokens.space2,
     fontFamily: ufTokens.fontSans,
-    color: ufTokens.ink,
+    color     : ufTokens.ink,
   },
   content: {
-    overflow: "hidden",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusMd,
+    overflow       : "hidden",
+    borderWidth    : "1px",
+    borderStyle    : "solid",
+    borderColor    : ufTokens.border,
+    borderRadius   : ufTokens.radiusMd,
     backgroundColor: ufTokens.surface,
   },
   item: {
     display: { default: "block", ":is([data-state=inactive])": "none" },
   },
   controls: {
-    display: "flex",
-    alignItems: "center",
+    display       : "flex",
+    alignItems    : "center",
     justifyContent: "flex-end",
-    gap: ufTokens.space2,
+    gap           : ufTokens.space2,
   },
   button: {
     // Read by the pause button's two icons, which cannot see its state.
     "--uf-carousel-playing": { default: "1", ":is([aria-pressed=true])": "0" },
     "--uf-carousel-stopped": { default: "0", ":is([aria-pressed=true])": "1" },
-    position: "relative",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "36px",
-    height: "36px",
-    margin: 0,
-    padding: 0,
-    color: ufTokens.ink,
-    backgroundColor: ufTokens.surface,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusMd,
-    cursor: { default: "pointer", ":disabled": "not-allowed" },
-    opacity: { default: 1, ":disabled": 0.55 },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    position               : "relative",
+    display                : "inline-flex",
+    alignItems             : "center",
+    justifyContent         : "center",
+    width                  : "36px",
+    height                 : "36px",
+    margin                 : 0,
+    padding                : 0,
+    color                  : ufTokens.ink,
+    backgroundColor        : ufTokens.surface,
+    borderWidth            : "1px",
+    borderStyle            : "solid",
+    borderColor            : ufTokens.border,
+    borderRadius           : ufTokens.radiusMd,
+    cursor                 : { default: "pointer", ":disabled": "not-allowed" },
+    opacity                : { default: 1, ":disabled": 0.55 },
+    outlineWidth           : { default: "0", ":focus-visible": "2px" },
+    outlineStyle           : "solid",
+    outlineColor           : ufTokens.focus,
+    outlineOffset          : "2px",
   },
   whilePlaying: {
     position: "absolute",
-    opacity: "var(--uf-carousel-playing, 1)",
+    opacity : "var(--uf-carousel-playing, 1)",
   },
   whileStopped: {
     position: "absolute",
-    opacity: "var(--uf-carousel-stopped, 0)",
+    opacity : "var(--uf-carousel-stopped, 0)",
   },
 });
 
@@ -102,17 +102,17 @@ const styles = stylex.create({
  * `autoplay` is the milliseconds between turns, or `null` to wait for a reader.
  */
 component CarouselRoot(
-  children: React.Node,
-  count: number,
-  label: string,
-  autoplay?: number | null = null,
-  loop?: boolean = true,
-  index?: number,
-  defaultIndex?: number = 0,
+  children      : React.Node,
+  count         : number,
+  label         : string,
+  autoplay?     : number | null = null,
+  loop?         : boolean = true,
+  index?        : number,
+  defaultIndex? : number = 0,
   onIndexChange?: (index: number) => void,
-  orientation?: "horizontal" | "vertical" = "horizontal",
-  xstyle?: StyleArgument,
-  className?: string,
+  orientation?  : "horizontal" | "vertical" = "horizontal",
+  xstyle?       : StyleArgument,
+  className?    : string,
   ...rest: Rest
 ) {
   return (
@@ -135,8 +135,8 @@ component CarouselRoot(
 
 /** The frame the slides show in. */
 component CarouselContent(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -152,9 +152,9 @@ component CarouselContent(
 
 /** One slide, shown while it is the current one. */
 component CarouselItem(
-  index: number,
-  children: React.Node,
-  xstyle?: StyleArgument,
+  index     : number,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -180,8 +180,8 @@ component CarouselControls(children: React.Node, xstyle?: StyleArgument, classNa
 
 /** The button to the slide before. */
 component CarouselPrevious(
-  label?: string = "Previous slide",
-  xstyle?: StyleArgument,
+  label?    : string = "Previous slide",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -198,8 +198,8 @@ component CarouselPrevious(
 
 /** The button to the slide after. */
 component CarouselNext(
-  label?: string = "Next slide",
-  xstyle?: StyleArgument,
+  label?    : string = "Next slide",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -217,9 +217,9 @@ component CarouselNext(
 /** The button that stops the slides turning on their own, and starts them again. */
 component CarouselPause(
   pauseLabel?: string = "Stop the carousel",
-  playLabel?: string = "Start the carousel",
-  xstyle?: StyleArgument,
-  className?: string,
+  playLabel? : string = "Start the carousel",
+  xstyle?    : StyleArgument,
+  className? : string,
   ...rest: Rest
 ) {
   return (

@@ -82,13 +82,13 @@ const CONDITIONS = ["browser", "import", "module", "development", "default", "re
 
 /** A `package.json`, as this module reads one. */
 type Manifest = {
-  readonly name?: string,
-  readonly type?: string,
-  readonly main?: string,
-  readonly module?: string,
-  readonly exports?: mixed,
-  readonly browser?: mixed,
-  readonly dependencies?: { readonly [string]: string },
+  readonly name?            : string,
+  readonly type?            : string,
+  readonly main?            : string,
+  readonly module?          : string,
+  readonly exports?         : mixed,
+  readonly browser?         : mixed,
+  readonly dependencies?    : { readonly [string]: string },
   readonly peerDependencies?: { readonly [string]: string },
   ...
 };
@@ -97,7 +97,7 @@ type Manifest = {
 type Package = {|
   /** The directory holding its `package.json`, real path. */
   readonly directory: string,
-  readonly manifest: Manifest,
+  readonly manifest : Manifest,
 |};
 
 /** What `create` hands back. */
@@ -110,23 +110,23 @@ export type ModuleServer = {|
   readonly onEvent: (listener: (event: { readonly [string]: mixed }) => void) => void,
   /** Whether the page has asked for work at least once. */
   readonly connected: () => boolean,
-  readonly close: () => Promise<void>,
+  readonly close    : () => Promise<void>,
 |};
 
 /** One file, as the page is told about it. */
 export type PageRequest = {|
-  readonly file: string,
-  readonly filter: string | null,
-  readonly timeoutMs: number,
+  readonly file      : string,
+  readonly filter    : string | null,
+  readonly timeoutMs : number,
   readonly generation: number,
 |};
 
 /** How `create` is configured. */
 export type ServerOptions = {|
   readonly browserCommand?: (
-    id: string | null,
+    id    : string | null,
     method: string,
-    args: $ReadOnlyArray<mixed>,
+    args  : $ReadOnlyArray<mixed>,
   ) => Promise<mixed>,
   /** The project root; every served file must be under this or a package. */
   readonly root: string,
@@ -304,7 +304,7 @@ export async function create(options: ServerOptions): Promise<ModuleServer> {
 /** Everything a request handler needs to say to say one thing. */
 function reply(outgoing: $FlowFixMe, status: number, type: string, body: string): void {
   outgoing.writeHead(status, {
-    "content-type": type,
+    "content-type" : type,
     "cache-control": "no-store",
   });
   outgoing.end(body);
@@ -354,9 +354,9 @@ type Served = {| readonly body: string, readonly type: string |};
  */
 async function serveFile(
   requested: string,
-  roots: $ReadOnlyArray<string>,
-  cache: Map<string, Promise<string>>,
-  options: ServerOptions,
+  roots    : $ReadOnlyArray<string>,
+  cache    : Map<string, Promise<string>>,
+  options  : ServerOptions,
 ): Promise<Served> {
   const absolute = path.resolve("/", requested);
   let real: string;

@@ -303,8 +303,8 @@ export function valueBudget(): ValueBudget {
  * is on the call. Without one, the value has a budget of its own.
  */
 export function checkActionValue(
-  root: mixed,
-  label: string,
+  root   : mixed,
+  label  : string,
   budget?: ValueBudget = valueBudget(),
 ): void {
   const stack: Array<Pending> = [{ value: root, path: label, depth: 0 }];
@@ -545,7 +545,7 @@ export function decodeActionArguments(text: string): Array<ActionArgument> {
  */
 function decodeForm(
   candidate: mixed,
-  args: $ReadOnlyArray<ActionArgument>,
+  args     : $ReadOnlyArray<ActionArgument>,
 ): {| readonly index: number, readonly form: FormData |} {
   if (typeof FormData === "undefined") {
     throw new ActionValueError("the body", "carries a form, and this runtime has no FormData");

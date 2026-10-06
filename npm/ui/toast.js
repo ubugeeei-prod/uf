@@ -168,14 +168,14 @@ export type Notification = {|
 
 /** What `toast` accepts beside the message. */
 export type ToastOptions = {|
-  readonly urgency?: Urgency,
+  readonly urgency? : Urgency,
   readonly duration?: number | null,
 |};
 
 /** What `updateToast` may change about a notification already queued. */
 export type ToastChanges = {|
-  readonly content?: React.Node,
-  readonly urgency?: Urgency,
+  readonly content? : React.Node,
+  readonly urgency? : Urgency,
   readonly duration?: number | null,
 |};
 
@@ -257,7 +257,7 @@ export function toast(content: React.Node, options?: ToastOptions): string {
   const notification: Notification = {
     id: `uf-toast-${String(sequence)}`,
     content,
-    urgency: options?.urgency ?? "polite",
+    urgency : options?.urgency ?? "polite",
     duration: options?.duration === undefined ? DEFAULT_DURATION : options.duration,
   };
   writeQueue((current) => [...current, notification]);
@@ -279,9 +279,9 @@ export function updateToast(id: string, changes: ToastChanges): void {
     current.map((each) =>
       each.id === id
         ? {
-            id: each.id,
-            content: changes.content === undefined ? each.content : changes.content,
-            urgency: changes.urgency ?? each.urgency,
+            id      : each.id,
+            content : changes.content === undefined ? each.content : changes.content,
+            urgency : changes.urgency ?? each.urgency,
             duration: changes.duration === undefined ? each.duration : changes.duration,
           }
         : each,
@@ -357,7 +357,7 @@ const ToastLifeContext: React.Context<ToastLife | null> = createContext(null);
  */
 function nextShown(
   previous: $ReadOnlyArray<Shown>,
-  queued: $ReadOnlyArray<Notification>,
+  queued  : $ReadOnlyArray<Notification>,
 ): $ReadOnlyArray<Shown> {
   const byId = new Map<string, Notification>();
   for (const notification of queued) {
@@ -408,9 +408,9 @@ hook useNotification(part: string): Notification {
 
 /** The ids of a notification's own parts, so it only names ones that exist. */
 type ToastParts = {|
-  readonly titleId: string,
-  readonly descriptionId: string,
-  readonly registerTitle: (present: boolean) => void,
+  readonly titleId            : string,
+  readonly descriptionId      : string,
+  readonly registerTitle      : (present: boolean) => void,
   readonly registerDescription: (present: boolean) => void,
 |};
 
@@ -430,11 +430,11 @@ const ToastPartsContext: React.Context<ToastParts | null> = createContext(null);
  */
 component ToastRegion(
   children: (notification: Notification) => renders ToastRoot,
-  label?: string = "Notifications",
-  limit?: number = 3,
+  label?  : string = "Notifications",
+  limit?  : number = 3,
   ...rest: Rest
 ) {
-  const queued = useSyncExternalStore(subscribeToQueue, readQueue, readQueue);
+  const queued    = useSyncExternalStore(subscribeToQueue, readQueue, readQueue);
   const regionRef = useElementRef<HTMLElement>();
   // Where `F6` came from, so pressing it again gives focus back.
   const cameFromRef = useRef<HTMLElement | null>(null);
@@ -473,7 +473,7 @@ component ToastRegion(
   // Brought up to date during render, the pattern React documents for
   // "storing information from previous renders", so a dismissal never commits
   // a frame without the notification that is leaving.
-  const [seen, setSeen] = useState<$ReadOnlyArray<Notification>>(visible);
+  const [seen,  setSeen]  = useState<$ReadOnlyArray<Notification>>(visible);
   const [shown, setShown] = useState<$ReadOnlyArray<Shown>>(() =>
     visible.map((notification) => ({ notification, open: true })),
   );
@@ -523,7 +523,7 @@ component ToastRegion(
 
 /** Whether two lists hold the same notifications, in the same order. */
 function sameNotifications(
-  left: $ReadOnlyArray<Notification>,
+  left : $ReadOnlyArray<Notification>,
   right: $ReadOnlyArray<Notification>,
 ): boolean {
   return left.length === right.length && left.every((each, index) => each === right[index]);
@@ -540,15 +540,15 @@ function sameNotifications(
  * all.
  */
 component ToastRoot(children: React.Node, ...rest: Rest) {
-  const notification = useNotification("Toast.Root");
-  const base = useId();
-  const elementRef = useElementRef<HTMLElement>();
-  const [titled, setTitled] = useState(false);
+  const notification              = useNotification("Toast.Root");
+  const base                      = useId();
+  const elementRef                = useElementRef<HTMLElement>();
+  const [titled,    setTitled]    = useState(false);
   const [described, setDescribed] = useState(false);
   const passed = withoutComposed(rest, ["ref"]);
   // Outside a `Toast.Region` — a notification rendered on its own, in a story
   // or a test — there is no queue to leave, so it is simply open.
-  const life = useContext(ToastLifeContext);
+  const life     = useContext(ToastLifeContext);
   const presence = usePresence(life?.open ?? true, elementRef);
   const gone = life?.gone;
   const present = presence.present;
@@ -559,8 +559,8 @@ component ToastRoot(children: React.Node, ...rest: Rest) {
     }
   }, [present, gone]);
 
-  const hovered = useHover(elementRef);
-  const focusInside = useFocusWithin(elementRef);
+  const hovered         = useHover(elementRef);
+  const focusInside     = useFocusWithin(elementRef);
   const documentVisible = useDocumentVisible();
   const paused = hovered || focusInside || !documentVisible;
 
@@ -569,7 +569,7 @@ component ToastRoot(children: React.Node, ...rest: Rest) {
   // hands it to `useTimeout`, and reading a ref during a render is a rule this
   // package does not break.
   const [left, setLeft] = useState<number | null>(duration);
-  const startedAt = useRef(0);
+  const startedAt       = useRef(0);
 
   useTimeout(() => dismissToast(id), paused || left == null ? null : left);
 
@@ -597,9 +597,9 @@ component ToastRoot(children: React.Node, ...rest: Rest) {
 
   const parts = useMemo(
     () => ({
-      titleId: `${base}-title`,
-      descriptionId: `${base}-description`,
-      registerTitle: setTitled,
+      titleId            : `${base}-title`,
+      descriptionId      : `${base}-description`,
+      registerTitle      : setTitled,
       registerDescription: setDescribed,
     }),
     [base],

@@ -291,7 +291,7 @@ describe("lazy", () => {
 
   it("points into a reply three levels down", () => {
     const failed = safeParse(comment, {
-      text: "root",
+      text   : "root",
       replies: [{ text: "child", replies: [{ text: 7, replies: [] }] }],
     });
     expect(failed.ok).toBe(false);
@@ -307,7 +307,7 @@ describe("lazy", () => {
       return object({ text: string(), replies: array(node) });
     });
     parse(node, {
-      text: "a",
+      text   : "a",
       replies: [{ text: "b", replies: [{ text: "c", replies: [] }] }],
     });
     expect(built).toBe(1);
@@ -619,7 +619,7 @@ describe("cross-field checks", () => {
   it("reports on the field the user has to change", () => {
     expect(parse(passwords, { password: "a", confirm: "a" })).toEqual({
       password: "a",
-      confirm: "a",
+      confirm : "a",
     });
     const failed = safeParse(passwords, { password: "a", confirm: "b" });
     expect(failed.ok).toBe(false);
@@ -649,7 +649,7 @@ describe("flatten", () => {
     expect(failed.ok).toBe(false);
     if (!failed.ok) {
       expect(flatten(failed.issues)).toEqual({
-        root: [],
+        root  : [],
         nested: { name: ["expected string"], age: ["expected number"] },
       });
     }
@@ -657,7 +657,7 @@ describe("flatten", () => {
     expect(rejected.ok).toBe(false);
     if (!rejected.ok) {
       expect(flatten(rejected.issues)).toEqual({
-        root: ["This account is not allowed"],
+        root  : ["This account is not allowed"],
         nested: {},
       });
     }
@@ -667,15 +667,15 @@ describe("flatten", () => {
 describe("inference", () => {
   const Account = object({
     email: pipe(string(), trim(), email()),
-    age: pipe(string(), transform(Number), integer(), min(18)),
-    tags: array(pipe(string(), nonEmpty())),
+    age  : pipe(string(), transform(Number), integer(), min(18)),
+    tags : array(pipe(string(), nonEmpty())),
   });
 
   it("reads the input and the output type off one schema", () => {
     const raw: InferInput<typeof Account> = {
       email: " ada@example.com ",
-      age: "36",
-      tags: ["admin"],
+      age  : "36",
+      tags : ["admin"],
     };
     const parsed: InferOutput<typeof Account> = parse(Account, raw);
     expect(parsed.email).toBe("ada@example.com");
@@ -826,7 +826,7 @@ describe("asynchronous schemas", () => {
     expect(await parseAsync(node, tree)).toEqual(tree);
 
     const failed = await safeParseAsync(node, {
-      text: "grace",
+      text   : "grace",
       replies: [{ text: "ada", replies: [] }],
     });
     expect(failed.ok).toBe(false);
@@ -917,8 +917,8 @@ describe("describe", () => {
       item: { kind: "number" },
     });
     expect(describeSchema(strictObject({ name: string() }))).toEqual({
-      kind: "object",
-      entries: [["name", { kind: "string" }]],
+      kind       : "object",
+      entries    : [["name", { kind: "string" }]],
       unknownKeys: "reject",
     });
   });
@@ -929,22 +929,22 @@ describe("json schema", () => {
 
   it("exports an object with its properties and its required keys", () => {
     const Account = strictObject({
-      name: pipe(string(), minLength(2), maxLength(40)),
-      age: pipe(number(), integer(), min(18)),
+      name    : pipe(string(), minLength(2), maxLength(40)),
+      age     : pipe(number(), integer(), min(18)),
       nickname: optional(string()),
-      website: nullable(pipe(string(), url())),
+      website : nullable(pipe(string(), url())),
     });
     expect(toJsonSchema(Account)).toEqual({
       schema: {
         $schema: DIALECT,
-        type: "object",
+        type   : "object",
         properties: {
-          name: { type: "string", minLength: 2, maxLength: 40 },
-          age: { type: "integer", minimum: 18 },
+          name    : { type: "string", minLength: 2, maxLength: 40 },
+          age     : { type: "integer", minimum: 18 },
           nickname: { type: "string" },
-          website: { anyOf: [{ type: "string", format: "uri" }, { type: "null" }] },
+          website : { anyOf: [{ type: "string", format: "uri" }, { type: "null" }] },
         },
-        required: ["name", "age", "website"],
+        required            : ["name", "age", "website"],
         additionalProperties: false,
       },
       unrepresentable: [],
@@ -971,8 +971,8 @@ describe("json schema", () => {
       min(18),
     );
     expect(toJsonSchema(age).schema).toEqual({
-      $schema: DIALECT,
-      type: "string",
+      $schema  : DIALECT,
+      type     : "string",
       minLength: 2,
     });
   });
@@ -985,7 +985,7 @@ describe("json schema", () => {
       definition0: {
         type: "object",
         properties: {
-          text: { type: "string" },
+          text   : { type: "string" },
           replies: { type: "array", items: { $ref: "#/$defs/definition0" } },
         },
         required: ["text", "replies"],
@@ -1013,26 +1013,26 @@ describe("json schema", () => {
     expect(exported.schema.properties).toEqual({
       when: {},
       tags: {},
-      id: { type: "string" },
+      id  : { type: "string" },
     });
   });
 
   it("exports the four ways of combining schemas", () => {
     expect(toJsonSchema(union([string(), number()])).schema).toEqual({
       $schema: DIALECT,
-      anyOf: [{ type: "string" }, { type: "number" }],
+      anyOf  : [{ type: "string" }, { type: "number" }],
     });
     expect(toJsonSchema(record(number())).schema).toEqual({
-      $schema: DIALECT,
-      type: "object",
+      $schema             : DIALECT,
+      type                : "object",
       additionalProperties: { type: "number" },
     });
     expect(toJsonSchema(tuple([string(), number()])).schema).toEqual({
-      $schema: DIALECT,
-      type: "array",
+      $schema    : DIALECT,
+      type       : "array",
       prefixItems: [{ type: "string" }, { type: "number" }],
-      minItems: 2,
-      maxItems: 2,
+      minItems   : 2,
+      maxItems   : 2,
     });
     expect(
       toJsonSchema(intersect(object({ a: string() }), object({ b: number() }))).schema,
@@ -1049,7 +1049,7 @@ describe("json schema", () => {
 describe("as a form's resolver", () => {
   const account = object({
     email: pipe(string(), email()),
-    age: pipe(string(), transform(Number), min(18)),
+    age  : pipe(string(), transform(Number), min(18)),
   });
 
   it("answers synchronously for a synchronous schema", () => {
@@ -1063,7 +1063,7 @@ describe("as a form's resolver", () => {
     expect(failed).toEqual({
       errors: {
         email: { type: "email", message: "expected email address" },
-        age: { type: "min", message: "expected at least 18" },
+        age  : { type: "min", message: "expected at least 18" },
       },
     });
   });

@@ -1309,7 +1309,7 @@ describe("io", () => {
       readerFromBytes(b(1, 2, 3), { chunkSize: 2 }),
       (source) =>
         new ReadableStream({
-          pull: (controller) => source.pull(controller),
+          pull  : (controller) => source.pull(controller),
           cancel: (reason) => source.cancel(reason),
         }),
     );
@@ -1418,7 +1418,7 @@ describe("bufio", () => {
 
   it("scans words and bytes with built-in split functions", async () => {
     const words = new Scanner(readerFromBytes(fromUtf8(" alpha\tbeta\n gamma")), {
-      split: scanWords,
+      split     : scanWords,
       bufferSize: 3,
     });
     const found = [];
@@ -1478,7 +1478,7 @@ describe("bufio", () => {
 
     const words = new Scanner(readerFromBytes(fromUtf8("   abc"), { chunkSize: 6 }), {
       maxTokenSize: 3,
-      split: scanWords,
+      split       : scanWords,
     });
     expect(await words.scan()).toBe(true);
     expect(words.text()).toBe("abc");
@@ -1877,9 +1877,9 @@ describe("the types", () => {
     // Running proves what the code does; only the checker can prove what a
     // different program would have been refused. The fixture is that program.
     everyMisuseIsReported({
-      fixture: "tests/type-tests/std-inference.js",
+      fixture  : "tests/type-tests/std-inference.js",
       alongside: ["npm/std"],
-      atLeast: 20,
+      atLeast  : 20,
     });
   });
 });

@@ -22,7 +22,7 @@ import { DEFAULT_STATEMENT_CACHE, count, rowId, statementCache } from "../intern
 export interface NodeSqliteStatement {
   all(...params: $ReadOnlyArray<SqlParam>): $ReadOnlyArray<mixed>;
   run(...params: $ReadOnlyArray<SqlParam>): {
-    readonly changes: number | bigint,
+    readonly changes        : number | bigint,
     readonly lastInsertRowid: number | bigint,
     ...
   };
@@ -51,7 +51,7 @@ function prepared(database: NodeSqliteDatabase, text: string): NodeSqliteStateme
   // failing on the call below.
   if (!("setReturnArrays" in statement)) {
     throw new SqlError({
-      kind: "unsupported",
+      kind   : "unsupported",
       feature: "node:sqlite without StatementSync#setReturnArrays (Node 24.0 or 22.16 and newer)",
     });
   }
@@ -62,7 +62,7 @@ function prepared(database: NodeSqliteDatabase, text: string): NodeSqliteStateme
 /** A [`Queryable`] and a [`SyncQueryable`] over one `DatabaseSync`. */
 export function fromNodeSqlite(
   database: NodeSqliteDatabase,
-  options: NodeSqliteOptions = {},
+  options : NodeSqliteOptions = {},
 ): Queryable & SyncQueryable {
   const statement = statementCache(
     (text) => prepared(database, text),
@@ -83,16 +83,16 @@ export function fromNodeSqlite(
     }
     const result = prepared.run(...params);
     return {
-      rows: [],
+      rows        : [],
       rowsAffected: count(result.changes),
       lastInsertId: rowId(result.lastInsertRowid),
     };
   };
   return singleConnectionSync({
-    engine: "sqlite",
+    engine   : "sqlite",
     maxParams: options.maxParams ?? 32766,
-    begin: options.begin,
-    run: async (text, params, mode) => runSync(text, params, mode),
+    begin    : options.begin,
+    run      : async (text, params, mode) => runSync(text, params, mode),
     runSync,
   });
 }

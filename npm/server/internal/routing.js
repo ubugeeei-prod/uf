@@ -68,20 +68,20 @@ import { flightDocumentPath, flightPath } from "./flight.js";
 
 /** One entry of `app.router.redirects`. */
 export type RedirectRule = {|
-  readonly source: string,
+  readonly source     : string,
   readonly destination: string,
-  readonly permanent: boolean,
+  readonly permanent  : boolean,
 |};
 
 /** One entry of `app.router.rewrites`. */
 export type RewriteRule = {|
-  readonly source: string,
+  readonly source     : string,
   readonly destination: string,
 |};
 
 /** One entry of `app.router.headers`. */
 export type HeaderRule = {|
-  readonly source: string,
+  readonly source : string,
   readonly headers: { readonly [name: string]: string },
 |};
 
@@ -90,10 +90,10 @@ export type TrailingSlash = "never" | "always" | "ignore";
 
 /** What the server bundle exports as `routing`. */
 export type RoutingRules = {|
-  readonly redirects?: $ReadOnlyArray<RedirectRule>,
-  readonly rewrites?: $ReadOnlyArray<RewriteRule>,
-  readonly headers?: $ReadOnlyArray<HeaderRule>,
-  readonly basePath?: string,
+  readonly redirects?    : $ReadOnlyArray<RedirectRule>,
+  readonly rewrites?     : $ReadOnlyArray<RewriteRule>,
+  readonly headers?      : $ReadOnlyArray<HeaderRule>,
+  readonly basePath?     : string,
   readonly trailingSlash?: TrailingSlash,
 |};
 
@@ -110,20 +110,20 @@ type Segment =
 type Params = { [name: string]: string | $ReadOnlyArray<string> };
 
 type Compiled = {|
-  readonly base: string,
+  readonly base : string,
   readonly slash: TrailingSlash,
   readonly redirects: $ReadOnlyArray<{|
-    readonly pattern: $ReadOnlyArray<Segment>,
+    readonly pattern    : $ReadOnlyArray<Segment>,
     readonly destination: string,
-    readonly status: 307 | 308,
+    readonly status     : 307 | 308,
   |}>,
   readonly rewrites: $ReadOnlyArray<{|
-    readonly pattern: $ReadOnlyArray<Segment>,
+    readonly pattern    : $ReadOnlyArray<Segment>,
     readonly destination: string,
   |}>,
   readonly headers: $ReadOnlyArray<{|
     readonly pattern: $ReadOnlyArray<Segment>,
-    readonly pairs: $ReadOnlyArray<[string, string]>,
+    readonly pairs  : $ReadOnlyArray<[string, string]>,
   |}>,
 |};
 
@@ -149,20 +149,20 @@ function compile(rules: ?RoutingRules): Compiled {
     return cached;
   }
   const compiled: Compiled = {
-    base: withoutTrailingSlashes(rules.basePath ?? ""),
+    base : withoutTrailingSlashes(rules.basePath ?? ""),
     slash: rules.trailingSlash ?? "ignore",
     redirects: (rules.redirects ?? []).map((rule, index) => ({
-      pattern: patternOf(rule.source, `app.router.redirects[${index}].source`),
+      pattern    : patternOf(rule.source, `app.router.redirects[${index}].source`),
       destination: rule.destination,
-      status: rule.permanent === true ? 308 : 307,
+      status     : rule.permanent === true ? 308 : 307,
     })),
     rewrites: (rules.rewrites ?? []).map((rule, index) => ({
-      pattern: patternOf(rule.source, `app.router.rewrites[${index}].source`),
+      pattern    : patternOf(rule.source, `app.router.rewrites[${index}].source`),
       destination: rule.destination,
     })),
     headers: (rules.headers ?? []).map((rule, index) => ({
       pattern: patternOf(rule.source, `app.router.headers[${index}].source`),
-      pairs: Object.keys(rule.headers).map((name) => [name.toLowerCase(), rule.headers[name]]),
+      pairs  : Object.keys(rule.headers).map((name) => [name.toLowerCase(), rule.headers[name]]),
     })),
   };
   compiledRules.set(rules, compiled);
@@ -312,10 +312,10 @@ function documentOf(pathname: string): {| readonly pathname: string, readonly pa
 type Destination = {|
   /** Scheme and authority for an absolute destination, and `""` for a path. */
   readonly origin: string,
-  readonly path: string,
+  readonly path  : string,
   /** The query without its `?`, or `null` when the destination has none. */
   readonly query: string | null,
-  readonly hash: string,
+  readonly hash : string,
 |};
 
 /** A destination, taken apart without a URL parser: `:path*` is not a URL yet. */
@@ -341,7 +341,7 @@ function parseDestination(destination: string): Destination {
   const path = queryAt === -1 ? rest : rest.slice(0, queryAt);
   return {
     origin,
-    path: path === "" ? "/" : path,
+    path : path === "" ? "/" : path,
     query: queryAt === -1 ? null : rest.slice(queryAt + 1),
     hash,
   };
@@ -419,7 +419,7 @@ export function admit(rules: ?RoutingRules, request: Request): Admission {
     return {
       kind: "answer",
       response: new Response("404 Not Found\n", {
-        status: 404,
+        status : 404,
         headers: { "content-type": "text/plain; charset=utf-8" },
       }),
     };
@@ -444,7 +444,7 @@ export function admit(rules: ?RoutingRules, request: Request): Admission {
       return {
         kind: "answer",
         response: new Response(null, {
-          status: 308,
+          status : 308,
           headers: { location: `${address}${url.search}` },
         }),
       };
@@ -557,7 +557,7 @@ export function rewriteFor(rules: ?RoutingRules, request: Request): Request | nu
  * after another with `set` does.
  */
 export function headersFor(
-  rules: ?RoutingRules,
+  rules  : ?RoutingRules,
   request: Request,
 ): $ReadOnlyArray<[string, string]> {
   const compiled = compile(rules);
@@ -645,8 +645,8 @@ export function withHeaders(response: Response, pairs: $ReadOnlyArray<[string, s
     return response;
   } catch {
     const copy = new Response(response.body, {
-      headers: response.headers,
-      status: response.status,
+      headers   : response.headers,
+      status    : response.status,
       statusText: response.statusText,
     });
     for (const [name, value] of pairs) {

@@ -22,7 +22,7 @@ import { pages } from "./_design/nav.js";
  * half that covers a crawler which found it another way.
  */
 export const metadata: Metadata = {
-  title: "Not found · uf",
+  title : "Not found · uf",
   robots: { index: false, follow: false },
 };
 

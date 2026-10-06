@@ -112,7 +112,7 @@ export function frameFile(frame: string): string | null {
 /** The run of digits ending at `end`, with where it starts. */
 function digitsBefore(
   text: string,
-  end: number,
+  end : number,
 ): {| readonly value: number, readonly start: number |} | null {
   let start = end;
   while (start > 0 && text[start - 1] >= "0" && text[start - 1] <= "9") {
@@ -131,7 +131,7 @@ function digitsBefore(
  * frames and wants the first frame whatever it is.
  */
 export function firstUserSite(
-  stack: string | null | void,
+  stack       : string | null | void,
   skipInternal: boolean = true,
 ): Site | null {
   if (stack == null) {
@@ -210,7 +210,7 @@ type CallSite = interface {
 
 /** The piece of `node:module`'s source-map API [`callerSite`] needs. */
 type SourceMapEntry = {|
-  readonly originalLine?: number,
+  readonly originalLine?  : number,
   readonly originalColumn?: number,
   readonly originalSource?: string,
 |};
@@ -331,7 +331,7 @@ function unprinted(_error: mixed, sites: $ReadOnlyArray<CallSite>): $ReadOnlyArr
  * hand them over.
  */
 function readCallSites(
-  skip: (...args: $ReadOnlyArray<empty>) => mixed,
+  skip : (...args: $ReadOnlyArray<empty>) => mixed,
   limit: number,
 ): $ReadOnlyArray<CallSite> | void {
   const errors: $FlowFixMe = Error;
@@ -355,7 +355,7 @@ function readCallSites(
 
 /** The first of `sites` outside the runner, mapped as Node maps a printed frame. */
 function firstUserCallSite(
-  sites: $ReadOnlyArray<CallSite>,
+  sites        : $ReadOnlyArray<CallSite>,
   findSourceMap: FindSourceMap,
 ): Site | null {
   for (const site of sites) {

@@ -92,8 +92,8 @@ export function createStaticHandler(options: {| readonly root: string |}): (
  */
 export function createServeHandler(options: {|
   readonly staticDir: string,
-  readonly handle: (request: Request) => Promise<Response>,
-  readonly routing?: RoutingRules,
+  readonly handle   : (request: Request) => Promise<Response>,
+  readonly routing? : RoutingRules,
 |}): (request: Request) => Promise<Response> {
   const serveStatic = createStaticHandler({ root: options.staticDir });
   return async function handle(request: Request): Promise<Response> {
@@ -110,7 +110,7 @@ export function createServeHandler(options: {|
 
 /** The pieces of `Bun.serve`'s return value this module uses. */
 type BunServer = {
-  readonly port: number,
+  readonly port    : number,
   readonly hostname: string,
   stop(closeActiveConnections?: boolean): mixed,
   ...
@@ -132,8 +132,8 @@ declare var Bun: {
   file(path: string): Blob,
   serve(options: {
     hostname: string,
-    port: number,
-    fetch: (request: Request) => Promise<Response>,
+    port    : number,
+    fetch   : (request: Request) => Promise<Response>,
     ...
   }): BunServer,
   ...
@@ -153,7 +153,7 @@ declare var Bun: {
  */
 export async function serve(options: {|
   readonly staticDir: string,
-  readonly handle: (request: Request) => Promise<Response>,
+  readonly handle   : (request: Request) => Promise<Response>,
   /**
    * The application bundle's own `beginRequest`.
    *
@@ -163,8 +163,8 @@ export async function serve(options: {|
    * reads is the one linked into `handler.js`.
    */
   readonly beginRequest: (request: Request) => RequestLifecycle,
-  readonly host?: string,
-  readonly port?: number,
+  readonly host?       : string,
+  readonly port?       : number,
   /** Where this server's lines go. The process logger by default. */
   readonly log?: Logger,
   /**
@@ -179,15 +179,15 @@ export async function serve(options: {|
   /** The bundle's `routing`, which the generated `handler.js` re-exports. */
   readonly routing?: RoutingRules,
 |}): Promise<{|
-  readonly host: string,
-  readonly port: number,
+  readonly host : string,
+  readonly port : number,
   readonly close: () => Promise<void>,
 |}> {
   const log = options.log ?? processLogger();
   const handle = createServeHandler({
     staticDir: options.staticDir,
-    handle: options.handle,
-    routing: options.routing,
+    handle   : options.handle,
+    routing  : options.routing,
   });
 
   const host = options.host ?? argument("--host") ?? process.env.HOST ?? "0.0.0.0";

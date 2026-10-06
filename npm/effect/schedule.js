@@ -221,30 +221,30 @@ export type Schedule<in In> =
   | { readonly kind: "union", readonly left: Schedule<In>, readonly right: Schedule<In> }
   | { readonly kind: "maxDelay", readonly schedule: Schedule<In>, readonly millis: number }
   | {
-      readonly kind: "jittered",
-      readonly schedule: Schedule<In>,
+      readonly kind       : "jittered",
+      readonly schedule   : Schedule<In>,
       readonly minPercent?: number,
       readonly maxPercent?: number,
     }
   | { readonly kind: "compose", readonly first: Schedule<In>, readonly second: Schedule<number> }
   | {
-      readonly kind: "whileInput",
-      readonly schedule: Schedule<In>,
+      readonly kind     : "whileInput",
+      readonly schedule : Schedule<In>,
       readonly predicate: (input: In) => boolean,
     }
   | {
-      readonly kind: "untilInput",
-      readonly schedule: Schedule<In>,
+      readonly kind     : "untilInput",
+      readonly schedule : Schedule<In>,
       readonly predicate: (input: In) => boolean,
     }
   | {
-      readonly kind: "whileOutput",
-      readonly schedule: Schedule<In>,
+      readonly kind     : "whileOutput",
+      readonly schedule : Schedule<In>,
       readonly predicate: (output: number) => boolean,
     }
   | {
-      readonly kind: "untilOutput",
-      readonly schedule: Schedule<In>,
+      readonly kind     : "untilOutput",
+      readonly schedule : Schedule<In>,
       readonly predicate: (output: number) => boolean,
     };
 
@@ -259,9 +259,9 @@ export type Schedule<in In> =
  * can report what the schedule had reached rather than nothing.
  */
 export type ScheduleState = {
-  readonly attempt: number,
+  readonly attempt  : number,
   readonly startedAt: number,
-  readonly output: number,
+  readonly output   : number,
 };
 
 /**
@@ -273,10 +273,10 @@ export type ScheduleState = {
  */
 export type ScheduleDecision =
   | {
-      readonly kind: "continue",
-      readonly output: number,
+      readonly kind       : "continue",
+      readonly output     : number,
       readonly delayMillis: number,
-      readonly state: ScheduleState,
+      readonly state      : ScheduleState,
     }
   | { readonly kind: "done", readonly output: number };
 
@@ -316,10 +316,10 @@ export function scheduleStart(now: number): ScheduleState {
  * every other arm.
  */
 export function scheduleStep<In>(
-  schedule: Schedule<In>,
-  state: ScheduleState,
-  input: In,
-  now: number,
+  schedule    : Schedule<In>,
+  state       : ScheduleState,
+  input       : In,
+  now         : number,
   randomFactor: number = UNJITTERED_FACTOR,
 ): ScheduleDecision {
   switch (schedule.kind) {
@@ -412,7 +412,7 @@ function goOn(state: ScheduleState, output: number, delayMillis: number): Schedu
     kind: "continue",
     output,
     delayMillis: waited,
-    state: { attempt: state.attempt + 1, startedAt: state.startedAt, output },
+    state      : { attempt: state.attempt + 1, startedAt: state.startedAt, output },
   };
 }
 
@@ -459,11 +459,11 @@ function exponentialDelay(baseMillis: number, factorPercent: ?number, attempt: n
  * function of this one and `now`.
  */
 function bothOf<In>(
-  left: Schedule<In>,
-  right: Schedule<In>,
-  state: ScheduleState,
-  input: In,
-  now: number,
+  left        : Schedule<In>,
+  right       : Schedule<In>,
+  state       : ScheduleState,
+  input       : In,
+  now         : number,
   randomFactor: number,
 ): ScheduleDecision {
   const leftSide = scheduleStep(left, state, input, now, randomFactor);
@@ -478,11 +478,11 @@ function bothOf<In>(
 
 /** Either side is enough, and the shorter wait wins. */
 function eitherOf<In>(
-  left: Schedule<In>,
-  right: Schedule<In>,
-  state: ScheduleState,
-  input: In,
-  now: number,
+  left        : Schedule<In>,
+  right       : Schedule<In>,
+  state       : ScheduleState,
+  input       : In,
+  now         : number,
   randomFactor: number,
 ): ScheduleDecision {
   const leftSide = scheduleStep(left, state, input, now, randomFactor);
@@ -505,11 +505,11 @@ function eitherOf<In>(
  * stop would turn "give up" into "wait and try for ever".
  */
 function cappedBy<In>(
-  schedule: Schedule<In>,
-  millis: number,
-  state: ScheduleState,
-  input: In,
-  now: number,
+  schedule    : Schedule<In>,
+  millis      : number,
+  state       : ScheduleState,
+  input       : In,
+  now         : number,
   randomFactor: number,
 ): ScheduleDecision {
   const inner = scheduleStep(schedule, state, input, now, randomFactor);
@@ -532,14 +532,14 @@ function cappedBy<In>(
  */
 function spreadBy<In>(
   schedule: {
-    readonly kind: "jittered",
-    readonly schedule: Schedule<In>,
+    readonly kind       : "jittered",
+    readonly schedule   : Schedule<In>,
     readonly minPercent?: number,
     readonly maxPercent?: number,
   },
-  state: ScheduleState,
-  input: In,
-  now: number,
+  state       : ScheduleState,
+  input       : In,
+  now         : number,
   randomFactor: number,
 ): ScheduleDecision {
   const inner = scheduleStep(schedule.schedule, state, input, now, randomFactor);
@@ -561,11 +561,11 @@ function spreadBy<In>(
  * wait would be that side not being in the composition.
  */
 function pipedInto<In>(
-  first: Schedule<In>,
-  second: Schedule<number>,
-  state: ScheduleState,
-  input: In,
-  now: number,
+  first       : Schedule<In>,
+  second      : Schedule<number>,
+  state       : ScheduleState,
+  input       : In,
+  now         : number,
   randomFactor: number,
 ): ScheduleDecision {
   const firstSide = scheduleStep(first, state, input, now, randomFactor);
@@ -587,11 +587,11 @@ function pipedInto<In>(
  * it stopped and the one a caller is asking about.
  */
 function decidedOnOutput<In>(
-  schedule: Schedule<In>,
-  keepGoing: (output: number) => boolean,
-  state: ScheduleState,
-  input: In,
-  now: number,
+  schedule    : Schedule<In>,
+  keepGoing   : (output: number) => boolean,
+  state       : ScheduleState,
+  input       : In,
+  now         : number,
   randomFactor: number,
 ): ScheduleDecision {
   const inner = scheduleStep(schedule, state, input, now, randomFactor);

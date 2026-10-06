@@ -105,10 +105,10 @@ export type WatchListener<TValues> = (values: TValues, info: WatchInfo) => void;
 
 /** What `getFieldState` answers about one field. */
 export type FieldState = {|
-  readonly invalid: boolean,
-  readonly isDirty: boolean,
+  readonly invalid  : boolean,
+  readonly isDirty  : boolean,
   readonly isTouched: boolean,
-  readonly error: mixed,
+  readonly error    : mixed,
 |};
 
 export type UseFormOptions<TValues extends FieldValues, TOutput = TValues> = {|
@@ -160,8 +160,8 @@ export type UseFormOptions<TValues extends FieldValues, TOutput = TValues> = {|
    */
   readonly errors?: FieldErrors,
   /** What a `values` or `errors` re-seed keeps. Defaults to a plain reset. */
-  readonly resetOptions?: ResetOptions,
-  readonly mode?: Mode,
+  readonly resetOptions?  : ResetOptions,
+  readonly mode?          : Mode,
   readonly reValidateMode?: ReValidateMode,
   /** A schema, in place of the rules on each `register`. See `resolver.js`. */
   readonly resolver?: Resolver<TValues, TOutput>,
@@ -270,13 +270,13 @@ export type GetValues<TValues> = (<K1 extends FieldSegment<TValues>>(k1: K1) => 
  * half of this that a wrong read cannot tell you about.
  */
 export type SetValue<TValues> = (<K1 extends FieldSegment<TValues>>(
-  path: [K1],
-  value: TValues[K1],
+  path    : [K1],
+  value   : TValues[K1],
   options?: SetValueOptions,
 ) => void) &
   (<K1 extends FieldSegment<TValues>, K2 extends FieldSegment<TValues[K1]>>(
-    path: [K1, K2],
-    value: TValues[K1][K2],
+    path    : [K1, K2],
+    value   : TValues[K1][K2],
     options?: SetValueOptions,
   ) => void) &
   (<
@@ -284,8 +284,8 @@ export type SetValue<TValues> = (<K1 extends FieldSegment<TValues>>(
     K2 extends FieldSegment<TValues[K1]>,
     K3 extends FieldSegment<TValues[K1][K2]>,
   >(
-    path: [K1, K2, K3],
-    value: TValues[K1][K2][K3],
+    path    : [K1, K2, K3],
+    value   : TValues[K1][K2][K3],
     options?: SetValueOptions,
   ) => void) &
   (<
@@ -294,8 +294,8 @@ export type SetValue<TValues> = (<K1 extends FieldSegment<TValues>>(
     K3 extends FieldSegment<TValues[K1][K2]>,
     K4 extends FieldSegment<TValues[K1][K2][K3]>,
   >(
-    path: [K1, K2, K3, K4],
-    value: TValues[K1][K2][K3][K4],
+    path    : [K1, K2, K3, K4],
+    value   : TValues[K1][K2][K3][K4],
     options?: SetValueOptions,
   ) => void) &
   ((name: FieldPath, value: mixed, options?: SetValueOptions) => void);
@@ -394,24 +394,24 @@ export type UseFormReturn<TValues extends FieldValues, TOutput = TValues> = {|
   readonly errorProps: (name: FieldPath) => ErrorProps,
   readonly unregister: (names?: FieldPath | $ReadOnlyArray<FieldPath>) => void,
   readonly handleSubmit: (
-    onValid: (values: TOutput, event?: mixed) => mixed,
+    onValid   : (values: TOutput, event?: mixed) => mixed,
     onInvalid?: (errors: FieldErrors, event?: mixed) => mixed,
   ) => (event?: mixed) => Promise<void>,
-  readonly watch: Watch<TValues>,
-  readonly getValues: GetValues<TValues>,
-  readonly setValue: SetValue<TValues>,
+  readonly watch        : Watch<TValues>,
+  readonly getValues    : GetValues<TValues>,
+  readonly setValue     : SetValue<TValues>,
   readonly getFieldState: GetFieldState<TValues>,
-  readonly reset: (values?: TValues, options?: ResetOptions) => void,
+  readonly reset        : (values?: TValues, options?: ResetOptions) => void,
   readonly setError: (
-    name: FieldPath,
-    error: {| readonly type?: string, readonly message: string |},
+    name    : FieldPath,
+    error   : {| readonly type?: string, readonly message: string |},
     options?: {| readonly shouldFocus?: boolean |},
   ) => void,
   readonly clearErrors: (names?: FieldPath | $ReadOnlyArray<FieldPath>) => void,
-  readonly trigger: (names?: FieldPath | $ReadOnlyArray<FieldPath>) => Promise<boolean>,
-  readonly setFocus: (name: FieldPath, options?: {| readonly shouldSelect?: boolean |}) => void,
-  readonly formState: FormState<TValues>,
-  readonly control: Control<TValues, TOutput>,
+  readonly trigger    : (names?: FieldPath | $ReadOnlyArray<FieldPath>) => Promise<boolean>,
+  readonly setFocus   : (name: FieldPath, options?: {| readonly shouldSelect?: boolean |}) => void,
+  readonly formState  : FormState<TValues>,
+  readonly control    : Control<TValues, TOutput>,
 |};
 
 const EMPTY_DEFAULTS: FieldValues = Object.freeze({});
@@ -577,10 +577,10 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
     (first: mixed, ...rest: $ReadOnlyArray<mixed>): FieldState => {
       const name = pathOf([String(first), ...rest.map((segment) => String(segment))]);
       return {
-        invalid: formState.errors[name] != null,
-        isDirty: formState.dirtyFields[name] === true,
+        invalid  : formState.errors[name] != null,
+        isDirty  : formState.dirtyFields[name] === true,
         isTouched: formState.touchedFields[name] === true,
-        error: formState.errors[name],
+        error    : formState.errors[name],
       };
     },
     [formState],
@@ -588,8 +588,8 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
 
   const setError = useCallback(
     (
-      name: FieldPath,
-      error: {| readonly type?: string, readonly message: string |},
+      name            : FieldPath,
+      error           : {| readonly type?: string, readonly message: string |},
       setErrorOptions?: {| readonly shouldFocus?: boolean |},
     ) => {
       control.setError(
@@ -635,8 +635,8 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
   return useMemo(
     () => ({
       register,
-      errorProps: registrar.errorProps,
-      unregister: control.unregister,
+      errorProps  : registrar.errorProps,
+      unregister  : control.unregister,
       handleSubmit: control.submitWith,
       watch,
       getValues,
@@ -645,7 +645,7 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
       reset: control.reset,
       setError,
       clearErrors: control.clearErrors,
-      trigger: control.trigger,
+      trigger    : control.trigger,
       setFocus,
       formState,
       control,
@@ -676,7 +676,7 @@ const FormContext: React.Context<mixed> = createContext(null);
  * otherwise have called `useForm()`.
  */
 export component FormProvider<TValues extends FieldValues, TOutput = TValues>(
-  form: UseFormReturn<TValues, TOutput>,
+  form    : UseFormReturn<TValues, TOutput>,
   children: React.Node,
 ) {
   return <FormContext.Provider value={form}>{children}</FormContext.Provider>;

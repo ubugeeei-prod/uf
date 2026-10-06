@@ -64,55 +64,55 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    display: "grid",
-    gap: ufTokens.space2,
+    display     : "grid",
+    gap         : ufTokens.space2,
     justifyItems: "start",
-    fontFamily: ufTokens.fontSans,
-    color: ufTokens.ink,
+    fontFamily  : ufTokens.fontSans,
+    color       : ufTokens.ink,
   },
   label: {
-    fontSize: ufTokens.textSm,
+    fontSize  : ufTokens.textSm,
     fontWeight: ufTokens.weightMedium,
     lineHeight: ufTokens.leadingTight,
   },
   trigger: {
     // Read by the chevron inside, which cannot see this element's state.
     "--uf-select-chevron-turn": { default: "0deg", ":is([aria-expanded=true])": "180deg" },
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: ufTokens.space2,
-    boxSizing: "border-box",
-    minWidth: "12rem",
-    minHeight: "36px",
-    margin: 0,
-    paddingBlock: ufTokens.space2,
-    paddingInline: ufTokens.space3,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingTight,
-    textAlign: "start",
-    color: ufTokens.ink,
+    display                   : "inline-flex",
+    alignItems                : "center",
+    justifyContent            : "space-between",
+    gap                       : ufTokens.space2,
+    boxSizing                 : "border-box",
+    minWidth                  : "12rem",
+    minHeight                 : "36px",
+    margin                    : 0,
+    paddingBlock              : ufTokens.space2,
+    paddingInline             : ufTokens.space3,
+    fontFamily                : ufTokens.fontSans,
+    fontSize                  : ufTokens.textSm,
+    lineHeight                : ufTokens.leadingTight,
+    textAlign                 : "start",
+    color                     : ufTokens.ink,
     backgroundColor: {
-      default: ufTokens.surface,
-      ":hover": ufTokens.surfaceHover,
+      default    : ufTokens.surface,
+      ":hover"   : ufTokens.surfaceHover,
       ":disabled": ufTokens.surface,
     },
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: { default: ufTokens.border, ":is([aria-expanded=true])": ufTokens.accent },
-    borderRadius: ufTokens.radiusMd,
-    cursor: { default: "pointer", ":disabled": "not-allowed" },
-    opacity: { default: 1, ":disabled": 0.55 },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    borderWidth  : "1px",
+    borderStyle  : "solid",
+    borderColor  : { default: ufTokens.border, ":is([aria-expanded=true])": ufTokens.accent },
+    borderRadius : ufTokens.radiusMd,
+    cursor       : { default: "pointer", ":disabled": "not-allowed" },
+    opacity      : { default: 1, ":disabled": 0.55 },
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "1px",
   },
   chevron: {
     flexShrink: 0,
-    color: ufTokens.muted,
-    transform: "rotate(var(--uf-select-chevron-turn))",
+    color     : ufTokens.muted,
+    transform : "rotate(var(--uf-select-chevron-turn))",
     // A half turn is travel, so it takes `durationBase`; under reduced
     // motion the chevron is simply the other way up.
     transitionProperty: { default: "transform", "@media (prefers-reduced-motion: reduce)": "none" },
@@ -120,34 +120,34 @@ const styles = stylex.create({
     transitionTimingFunction: ufTokens.easing,
   },
   list: {
-    zIndex: 50,
-    boxSizing: "border-box",
-    minWidth: "var(--uf-anchor-trigger-width)",
-    maxHeight: "min(20rem, var(--uf-anchor-available-height, 20rem))",
-    overflowY: "auto",
-    margin: 0,
-    padding: ufTokens.space1,
+    zIndex         : 50,
+    boxSizing      : "border-box",
+    minWidth       : "var(--uf-anchor-trigger-width)",
+    maxHeight      : "min(20rem, var(--uf-anchor-available-height, 20rem))",
+    overflowY      : "auto",
+    margin         : 0,
+    padding        : ufTokens.space1,
     backgroundColor: ufTokens.surface,
-    color: ufTokens.ink,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusMd,
+    color          : ufTokens.ink,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    borderWidth    : "1px",
+    borderStyle    : "solid",
+    borderColor    : ufTokens.border,
+    borderRadius   : ufTokens.radiusMd,
     // Enter: it fades in while travelling 4px out of its trigger, from the
     // side `data-side` says it opened on, so the eye is led from the button
     // to what it opened. `durationBase` on the decelerating curve: most of
     // the distance is covered at once, so it is legible before it has
     // settled. Under reduced motion it only fades.
     "--uf-enter-x": {
-      default: "0px",
-      ":is([data-side=left])": "4px",
+      default                 : "0px",
+      ":is([data-side=left])" : "4px",
       ":is([data-side=right])": "-4px",
     },
     "--uf-enter-y": {
-      default: "0px",
-      ":is([data-side=top])": "4px",
+      default                  : "0px",
+      ":is([data-side=top])"   : "4px",
       ":is([data-side=bottom])": "-4px",
     },
     // Exit: back towards the trigger it came from, on the accelerating curve
@@ -156,76 +156,76 @@ const styles = stylex.create({
     // page, closed and `inert`, until this has finished. Under reduced motion
     // it only fades: `--uf-exit-travel` is 0 there, so nothing jumps either.
     "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
-    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    opacity           : { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transform: {
-      default: "none",
+      default          : "none",
       "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
       ":is([data-state=closed])":
         "translate(calc(var(--uf-enter-x) * var(--uf-exit-travel)), calc(var(--uf-enter-y) * var(--uf-exit-travel)))",
     },
     transitionProperty: {
-      default: "opacity, transform",
+      default                                  : "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
     transitionDuration: {
-      default: ufTokens.durationBase,
+      default                   : ufTokens.durationBase,
       ":is([data-state=closed])": ufTokens.durationFast,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
   option: {
     // Read by the check inside, which cannot see this element's state.
     "--uf-select-check": { default: "0", ":is([aria-selected=true])": "1" },
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: ufTokens.space3,
-    minHeight: "32px",
-    paddingBlock: ufTokens.space1,
-    paddingInline: ufTokens.space2,
-    borderRadius: ufTokens.radiusSm,
-    lineHeight: ufTokens.leadingTight,
-    cursor: "pointer",
-    userSelect: "none",
-    color: { default: ufTokens.ink, ":is([data-active=true])": ufTokens.accent },
-    backgroundColor: { default: "transparent", ":is([data-active=true])": ufTokens.accentSoft },
+    display            : "flex",
+    alignItems         : "center",
+    justifyContent     : "space-between",
+    gap                : ufTokens.space3,
+    minHeight          : "32px",
+    paddingBlock       : ufTokens.space1,
+    paddingInline      : ufTokens.space2,
+    borderRadius       : ufTokens.radiusSm,
+    lineHeight         : ufTokens.leadingTight,
+    cursor             : "pointer",
+    userSelect         : "none",
+    color              : { default: ufTokens.ink, ":is([data-active=true])": ufTokens.accent },
+    backgroundColor    : { default: "transparent", ":is([data-active=true])": ufTokens.accentSoft },
     fontWeight: {
-      default: ufTokens.weightRegular,
+      default                    : ufTokens.weightRegular,
       ":is([aria-selected=true])": ufTokens.weightMedium,
     },
   },
   // Merged after `option`, so it replaces the highlight a disabled option
   // would otherwise still be drawn with.
   optionDisabled: {
-    color: ufTokens.muted,
+    color          : ufTokens.muted,
     backgroundColor: "transparent",
-    cursor: "not-allowed",
+    cursor         : "not-allowed",
   },
   optionText: {
     minWidth: 0,
   },
   check: {
     flexShrink: 0,
-    color: ufTokens.accent,
-    opacity: "var(--uf-select-check)",
+    color     : ufTokens.accent,
+    opacity   : "var(--uf-select-check)",
   },
   group: {
-    display: "grid",
+    display     : "grid",
     paddingBlock: ufTokens.space1,
   },
   groupLabel: {
-    paddingBlock: ufTokens.space1,
+    paddingBlock : ufTokens.space1,
     paddingInline: ufTokens.space2,
-    fontSize: ufTokens.textXs,
-    fontWeight: ufTokens.weightMedium,
-    color: ufTokens.muted,
+    fontSize     : ufTokens.textXs,
+    fontWeight   : ufTokens.weightMedium,
+    color        : ufTokens.muted,
   },
   separator: {
-    height: "1px",
-    marginBlock: ufTokens.space1,
+    height         : "1px",
+    marginBlock    : ufTokens.space1,
     backgroundColor: ufTokens.border,
   },
 });
@@ -246,17 +246,17 @@ const styles = stylex.create({
  *     </Select>
  */
 component SelectRoot(
-  children: React.Node,
-  value?: string | null,
-  defaultValue?: string | null = null,
+  children      : React.Node,
+  value?        : string | null,
+  defaultValue? : string | null = null,
   onValueChange?: (value: string | null) => void,
-  open?: boolean,
-  defaultOpen?: boolean = false,
-  onOpenChange?: (open: boolean) => void,
-  name?: string,
-  disabled?: boolean = false,
-  xstyle?: StyleArgument,
-  className?: string,
+  open?         : boolean,
+  defaultOpen?  : boolean = false,
+  onOpenChange? : (open: boolean) => void,
+  name?         : string,
+  disabled?     : boolean = false,
+  xstyle?       : StyleArgument,
+  className?    : string,
   ...rest: Rest
 ) {
   return (
@@ -279,8 +279,8 @@ component SelectRoot(
 
 /** The field's name, which is also the trigger's accessible name. */
 component SelectLabel(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -296,8 +296,8 @@ component SelectLabel(
 
 /** The button that opens the list, drawn as a field with a chevron. */
 component SelectTrigger(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -315,9 +315,9 @@ component SelectTrigger(
 /** What the trigger says: the chosen option, or the placeholder. */
 component SelectValue(
   placeholder?: React.Node,
-  children?: React.Node,
-  xstyle?: StyleArgument,
-  className?: string,
+  children?   : React.Node,
+  xstyle?     : StyleArgument,
+  className?  : string,
   ...rest: Rest
 ) {
   return (
@@ -333,15 +333,15 @@ component SelectValue(
 
 /** The list of options, under the trigger and as wide as it. */
 component SelectList(
-  children: renders* (SelectOption | SelectGroup | SelectSeparator),
-  align?: Align = "start",
-  alignOffset?: number = 0,
-  avoidCollisions?: boolean = true,
+  children         : renders* (SelectOption | SelectGroup | SelectSeparator),
+  align?           : Align = "start",
+  alignOffset?     : number = 0,
+  avoidCollisions? : boolean = true,
   collisionPadding?: number = 8,
-  side?: LogicalSide = "bottom",
-  sideOffset?: number = 4,
-  xstyle?: StyleArgument,
-  className?: string,
+  side?            : LogicalSide = "bottom",
+  sideOffset?      : number = 4,
+  xstyle?          : StyleArgument,
+  className?       : string,
   ...rest: Rest
 ) {
   return (
@@ -362,11 +362,11 @@ component SelectList(
 
 /** One option, with the check that shows when it is the chosen one. */
 component SelectOption(
-  value: string,
-  children: React.Node,
-  label?: string,
-  disabled?: boolean = false,
-  xstyle?: StyleArgument,
+  value     : string,
+  children  : React.Node,
+  label?    : string,
+  disabled? : boolean = false,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Select.Option {
@@ -387,8 +387,8 @@ component SelectOption(
 
 /** A named group of options. */
 component SelectGroup(
-  children: renders* (SelectOption | SelectGroupLabel),
-  xstyle?: StyleArgument,
+  children  : renders* (SelectOption | SelectGroupLabel),
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Select.Group {
@@ -404,8 +404,8 @@ component SelectGroup(
 
 /** The heading that names a group, which the arrow keys pass over. */
 component SelectGroupLabel(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Select.GroupLabel {
@@ -421,7 +421,7 @@ component SelectGroupLabel(
 
 /** A rule between groups: decoration, and out of the accessibility tree. */
 component SelectSeparator(
-  xstyle?: StyleArgument,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Select.Separator {

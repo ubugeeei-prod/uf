@@ -51,63 +51,63 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    display: "inline-flex",
+    display   : "inline-flex",
     alignItems: "stretch",
-    isolation: "isolate",
+    isolation : "isolate",
   },
   item: {
-    position: "relative",
-    zIndex: { default: 0, ":hover": 1, ":focus-visible": 2 },
-    display: "inline-flex",
-    alignItems: "center",
+    position      : "relative",
+    zIndex        : { default: 0, ":hover": 1, ":focus-visible": 2 },
+    display       : "inline-flex",
+    alignItems    : "center",
     justifyContent: "center",
-    gap: ufTokens.space2,
-    boxSizing: "border-box",
-    minHeight: "36px",
-    margin: 0,
+    gap           : ufTokens.space2,
+    boxSizing     : "border-box",
+    minHeight     : "36px",
+    margin        : 0,
     // Each item after the first overlaps the one before by its border, so
     // two neighbours draw one line between them rather than two.
     marginInlineStart: { default: "-1px", ":first-child": 0 },
-    paddingBlock: ufTokens.space2,
-    paddingInline: ufTokens.space4,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    fontWeight: ufTokens.weightMedium,
-    lineHeight: ufTokens.leadingTight,
-    whiteSpace: "nowrap",
-    color: ufTokens.ink,
+    paddingBlock     : ufTokens.space2,
+    paddingInline    : ufTokens.space4,
+    fontFamily       : ufTokens.fontSans,
+    fontSize         : ufTokens.textSm,
+    fontWeight       : ufTokens.weightMedium,
+    lineHeight       : ufTokens.leadingTight,
+    whiteSpace       : "nowrap",
+    color            : ufTokens.ink,
     backgroundColor: {
-      default: ufTokens.surface,
-      ":hover": ufTokens.surfaceHover,
+      default    : ufTokens.surface,
+      ":hover"   : ufTokens.surfaceHover,
       ":disabled": ufTokens.surface,
     },
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: ufTokens.border,
     // Square inside, rounded at the two ends of the bar.
-    borderRadius: 0,
+    borderRadius          : 0,
     borderStartStartRadius: { default: 0, ":first-child": ufTokens.radiusMd },
-    borderEndStartRadius: { default: 0, ":first-child": ufTokens.radiusMd },
-    borderStartEndRadius: { default: 0, ":last-child": ufTokens.radiusMd },
-    borderEndEndRadius: { default: 0, ":last-child": ufTokens.radiusMd },
-    cursor: { default: "pointer", ":disabled": "not-allowed" },
-    opacity: { default: 1, ":disabled": 0.55 },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    borderEndStartRadius  : { default: 0, ":first-child": ufTokens.radiusMd },
+    borderStartEndRadius  : { default: 0, ":last-child": ufTokens.radiusMd },
+    borderEndEndRadius    : { default: 0, ":last-child": ufTokens.radiusMd },
+    cursor                : { default: "pointer", ":disabled": "not-allowed" },
+    opacity               : { default: 1, ":disabled": 0.55 },
+    outlineWidth          : { default: "0", ":focus-visible": "2px" },
+    outlineStyle          : "solid",
+    outlineColor          : ufTokens.focus,
+    outlineOffset         : "2px",
     // Only colour changes, so it is the same under reduced motion.
-    transitionProperty: "background-color",
-    transitionDuration: ufTokens.durationFast,
+    transitionProperty      : "background-color",
+    transitionDuration      : ufTokens.durationFast,
     transitionTimingFunction: ufTokens.easing,
   },
 });
 
 /** The bar, named as a group by `label`. */
 component ButtonGroupRoot(
-  children: React.Node,
-  label: string,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  label     : string,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -125,9 +125,9 @@ component ButtonGroupRoot(
 
 /** One button in the bar. */
 component ButtonGroupItem(
-  children: React.Node,
-  type?: "button" | "submit" | "reset" = "button",
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  type?     : "button" | "submit" | "reset" = "button",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

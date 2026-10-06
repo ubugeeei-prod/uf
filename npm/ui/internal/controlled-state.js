@@ -39,8 +39,8 @@ import { useCallback, useState } from "@uniflowed/react";
  */
 export hook useControlled<T>(
   controlled: T | void,
-  fallback: T,
-  onChange: ((next: T) => mixed) | void,
+  fallback  : T,
+  onChange  : ((next: T) => mixed) | void,
 ): [T, (next: T) => void] {
   const [internal, setInternal] = useState<T>(fallback);
   // `=== undefined` rather than `== null`: `null` is a legitimate controlled

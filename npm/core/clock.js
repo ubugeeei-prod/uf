@@ -89,7 +89,7 @@ export const UTC: string = "UTC";
 /** Whatever the host says, which is what an application gets by default. */
 export function systemClock(): Clock {
   return {
-    now: () => Date.now(),
+    now     : () => Date.now(),
     timeZone: () => hostTimeZone(),
   };
 }
@@ -125,7 +125,7 @@ export function hostTimeZone(): string {
  */
 export function fixedClock(epochMilliseconds: number, timeZone: string = UTC): Clock {
   return {
-    now: () => epochMilliseconds,
+    now     : () => epochMilliseconds,
     timeZone: () => timeZone,
   };
 }

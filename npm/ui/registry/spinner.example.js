@@ -8,13 +8,13 @@ import { Spinner } from "./spinner.js";
 
 const styles = stylex.create({
   row: {
-    display: "flex",
-    flexWrap: "wrap",
+    display   : "flex",
+    flexWrap  : "wrap",
     alignItems: "center",
-    gap: ufTokens.space4,
+    gap       : ufTokens.space4,
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
+    fontSize  : ufTokens.textSm,
+    color     : ufTokens.ink,
   },
 });
 

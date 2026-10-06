@@ -92,7 +92,7 @@ function withDocsHeaders(response /*: Response */) /*: Response */ {
   headers.set("referrer-policy", "strict-origin-when-cross-origin");
   headers.set("permissions-policy", "interest-cohort=()");
   return new Response(response.body, {
-    status: response.status,
+    status    : response.status,
     statusText: response.statusText,
     headers,
   });
@@ -114,7 +114,7 @@ export default {
     if (url.pathname === "/api/health") {
       return withDocsHeaders(
         Response.json({
-          ok: true,
+          ok     : true,
           service: "uf-docs",
         }),
       );

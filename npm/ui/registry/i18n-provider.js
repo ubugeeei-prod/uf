@@ -16,8 +16,8 @@ const styles = stylex.create({
   root: { fontFamily: ufTokens.fontSans, color: ufTokens.ink, textAlign: "start" },
 });
 export component I18nProvider(
-  children?: React.Node,
-  xstyle?: StyleArgument,
+  children? : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

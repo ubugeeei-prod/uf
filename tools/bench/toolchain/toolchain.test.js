@@ -244,7 +244,7 @@ describe("where a comparison tool is found", () => {
 });
 
 function row(
-  id: string,
+  id    : string,
   median: number,
 ): { id: string, tool: string, stage: string, median: number } {
   const [tool, stage] = id.split("/");

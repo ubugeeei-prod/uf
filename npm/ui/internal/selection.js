@@ -31,13 +31,13 @@
 // the point of this package is that there is one. The collections are the
 // public surface; `npm/ui/index.js` says why the internals stay internal.
 
-export type SelectionMode = "none" | "single" | "multiple";
+export type SelectionMode     = "none" | "single" | "multiple";
 export type SelectionBehavior = "toggle" | "replace";
 
 /** The three settings every answer below depends on. */
 export type SelectionPolicy = {|
-  readonly mode: SelectionMode,
-  readonly behavior: SelectionBehavior,
+  readonly mode         : SelectionMode,
+  readonly behavior     : SelectionBehavior,
   readonly disallowEmpty: boolean,
 |};
 
@@ -52,8 +52,8 @@ export type SelectionPolicy = {|
  */
 export function keyRange(
   order: $ReadOnlyArray<string>,
-  from: string,
-  to: string,
+  from : string,
+  to   : string,
 ): $ReadOnlyArray<string> {
   const start = order.indexOf(from);
   const end = order.indexOf(to);
@@ -63,9 +63,9 @@ export function keyRange(
 
 /** Flip one key, unless that would empty a selection that must not be empty. */
 export function toggleKey(
-  policy: SelectionPolicy,
+  policy  : SelectionPolicy,
   selected: $ReadOnlySet<string>,
-  key: string,
+  key     : string,
 ): $ReadOnlySet<string> {
   if (policy.mode === "none") return selected;
   if (selected.has(key)) {
@@ -83,9 +83,9 @@ export function toggleKey(
 
 /** Make one key the whole selection. */
 export function replaceWith(
-  policy: SelectionPolicy,
+  policy  : SelectionPolicy,
   selected: $ReadOnlySet<string>,
-  key: string,
+  key     : string,
 ): $ReadOnlySet<string> {
   if (policy.mode === "none") return selected;
   if (selected.size === 1 && selected.has(key)) return selected;
@@ -102,12 +102,12 @@ export function replaceWith(
  * stays. With no anchor the extension starts at `key`.
  */
 export function extendTo(
-  policy: SelectionPolicy,
+  policy  : SelectionPolicy,
   selected: $ReadOnlySet<string>,
-  order: $ReadOnlyArray<string>,
-  anchor: string | null,
-  lead: string | null,
-  key: string,
+  order   : $ReadOnlyArray<string>,
+  anchor  : string | null,
+  lead    : string | null,
+  key     : string,
 ): $ReadOnlySet<string> {
   if (policy.mode === "none") return selected;
   if (policy.mode === "single") return replaceWith(policy, selected, key);
@@ -121,9 +121,9 @@ export function extendTo(
 
 /** Every selectable key, when more than one may be chosen. */
 export function selectAll(
-  policy: SelectionPolicy,
+  policy  : SelectionPolicy,
   selected: $ReadOnlySet<string>,
-  order: $ReadOnlyArray<string>,
+  order   : $ReadOnlyArray<string>,
 ): $ReadOnlySet<string> {
   if (policy.mode !== "multiple" || order.length === 0) return selected;
   const next = new Set(selected);
@@ -133,7 +133,7 @@ export function selectAll(
 
 /** Nothing, unless nothing is not allowed. */
 export function clearAll(
-  policy: SelectionPolicy,
+  policy  : SelectionPolicy,
   selected: $ReadOnlySet<string>,
 ): $ReadOnlySet<string> {
   if (policy.mode === "none" || policy.disallowEmpty || selected.size === 0) return selected;
@@ -150,7 +150,7 @@ export function clearAll(
  */
 export function orderedKeys(
   selected: $ReadOnlySet<string>,
-  order: $ReadOnlyArray<string>,
+  order   : $ReadOnlyArray<string>,
 ): $ReadOnlyArray<string> {
   const result = [];
   const placed = new Set<string>();

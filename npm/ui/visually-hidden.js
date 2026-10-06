@@ -50,8 +50,8 @@ import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { visuallyHiddenStyle } from "./internal/visually-hidden-style.js";
 
 type FocusEvent = {
-  readonly currentTarget: mixed,
-  readonly relatedTarget: mixed,
+  readonly currentTarget   : mixed,
+  readonly relatedTarget   : mixed,
   readonly defaultPrevented: boolean,
   ...
 };
@@ -71,7 +71,7 @@ export component VisuallyHidden(
   children?: React.Node,
   /** Show the content while focus is inside it: the skip-link pattern. */
   focusable: boolean = false,
-  render?: RenderProp,
+  render?  : RenderProp,
   ...rest: Rest
 ) {
   const [focused, setFocused] = useState(false);
@@ -97,7 +97,7 @@ export component VisuallyHidden(
     }),
   });
   return match (render) {
-    undefined => <span {...props} />,
+    undefined    => <span {...props} />,
     const custom => custom(props),
   };
 }
@@ -115,8 +115,8 @@ export type AnnounceOptions = {|
 |};
 
 type Announcer = {|
-  readonly root: HTMLElement,
-  readonly polite: HTMLElement,
+  readonly root     : HTMLElement,
+  readonly polite   : HTMLElement,
   readonly assertive: HTMLElement,
   /** When the regions went into the document; the first message waits for them. */
   readonly created: number,
@@ -163,7 +163,7 @@ function announcerIn(document: Document): Announcer | null {
  * well as one that has.
  */
 const pending: {| readonly polite: Set<TimeoutID>, readonly assertive: Set<TimeoutID> |} = {
-  polite: new Set(),
+  polite   : new Set(),
   assertive: new Set(),
 };
 

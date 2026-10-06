@@ -132,9 +132,9 @@ export type Align = "start" | "center" | "end";
 
 /** A box, in viewport coordinates: what `getBoundingClientRect` reports. */
 export type Rect = {|
-  readonly x: number,
-  readonly y: number,
-  readonly width: number,
+  readonly x     : number,
+  readonly y     : number,
+  readonly width : number,
   readonly height: number,
 |};
 
@@ -146,8 +146,8 @@ export type Anchoring = {|
   readonly overlay: Rect,
   /** What it has to stay inside, which is the viewport for a fixed element. */
   readonly viewport: Rect,
-  readonly side: Side,
-  readonly align: Align,
+  readonly side    : Side,
+  readonly align   : Align,
   /** The gap between the trigger and the overlay, in pixels. */
   readonly sideOffset: number,
   /** A nudge along the cross axis, in the direction the page reads. */
@@ -156,7 +156,7 @@ export type Anchoring = {|
   readonly avoidCollisions: boolean,
   /** How close to the viewport edge the overlay may come. */
   readonly collisionPadding: number,
-  readonly direction: Direction,
+  readonly direction       : Direction,
 |};
 
 /** Where the overlay goes, and what the placement had to do to get there. */
@@ -170,13 +170,13 @@ export type Placement = {|
   /** How far it slid along the cross axis, so an arrow can be moved back. */
   readonly shift: number,
   /** The room between the trigger and the viewport edge, and across it. */
-  readonly availableWidth: number,
+  readonly availableWidth : number,
   readonly availableHeight: number,
 |};
 
 /** What `useAnchor` reports back for `data-side` and `data-align`. */
 export type Anchored = {|
-  readonly side: Side,
+  readonly side : Side,
   readonly align: Align,
 |};
 
@@ -201,7 +201,7 @@ export type AnchorRequest = {|
    * render would re-measure on every render of the page around it.
    */
   readonly anchorRect?: Rect | null,
-  readonly overlayRef: { current: HTMLElement | null },
+  readonly overlayRef : { current: HTMLElement | null },
   /**
    * Whether the overlay is on the page. Nothing is measured while it is not:
    * there is nothing to measure.
@@ -214,20 +214,20 @@ export type AnchorRequest = {|
    */
   readonly open: boolean,
   /** Resolved against the trigger's writing direction; see `LogicalSide`. */
-  readonly side: LogicalSide,
-  readonly align: Align,
-  readonly sideOffset: number,
-  readonly alignOffset: number,
-  readonly avoidCollisions: boolean,
+  readonly side            : LogicalSide,
+  readonly align           : Align,
+  readonly sideOffset      : number,
+  readonly alignOffset     : number,
+  readonly avoidCollisions : boolean,
   readonly collisionPadding: number,
 |};
 
 /** The side a flip goes to. */
 const OPPOSITE: { readonly [Side]: Side } = {
-  top: "bottom",
+  top   : "bottom",
   bottom: "top",
-  left: "right",
-  right: "left",
+  left  : "right",
+  right : "left",
 };
 
 /**
@@ -244,11 +244,11 @@ export function physicalSide(side: LogicalSide, direction: Direction): Side {
   // through unresolved.
   return match (side) {
     "inline-start" => direction === "rtl" ? "right" : "left",
-    "inline-end" => direction === "rtl" ? "left" : "right",
-    "top" => "top",
-    "right" => "right",
-    "bottom" => "bottom",
-    "left" => "left",
+    "inline-end"   => direction === "rtl" ? "left" : "right",
+    "top"          => "top",
+    "right"        => "right",
+    "bottom"       => "bottom",
+    "left"         => "left",
   };
 }
 
@@ -266,15 +266,15 @@ function isVertical(side: Side): boolean {
  * assumes these are positive.
  */
 function roomAround(
-  anchor: Rect,
-  viewport: Rect,
+  anchor          : Rect,
+  viewport        : Rect,
   collisionPadding: number,
 ): { readonly [Side]: number } {
   return {
-    top: anchor.y - (viewport.y + collisionPadding),
+    top   : anchor.y - (viewport.y + collisionPadding),
     bottom: viewport.y + viewport.height - collisionPadding - (anchor.y + anchor.height),
-    left: anchor.x - (viewport.x + collisionPadding),
-    right: viewport.x + viewport.width - collisionPadding - (anchor.x + anchor.width),
+    left  : anchor.x - (viewport.x + collisionPadding),
+    right : viewport.x + viewport.width - collisionPadding - (anchor.x + anchor.width),
   };
 }
 
@@ -311,26 +311,26 @@ function sideThatFits(anchoring: Anchoring, room: { readonly [Side]: number }): 
  * its trigger aligns to the top for `start` either way.
  */
 function alignedAt(
-  align: Align,
-  mirrored: boolean,
+  align      : Align,
+  mirrored   : boolean,
   anchorStart: number,
-  anchorSize: number,
+  anchorSize : number,
   overlaySize: number,
 ): number {
   const resolved = mirrored ? mirror(align) : align;
   return match (resolved) {
-    "start" => anchorStart,
+    "start"  => anchorStart,
     "center" => anchorStart + anchorSize / 2 - overlaySize / 2,
-    "end" => anchorStart + anchorSize - overlaySize,
+    "end"    => anchorStart + anchorSize - overlaySize,
   };
 }
 
 /** `start` and `end` swapped, for a right-to-left page. */
 function mirror(align: Align): Align {
   return match (align) {
-    "start" => "end",
+    "start"  => "end",
     "center" => "center",
-    "end" => "start",
+    "end"    => "start",
   };
 }
 
@@ -361,10 +361,10 @@ export function placeOverlay(anchoring: Anchoring): Placement {
   // is never pushed along this axis, because pushing it would slide it over
   // the trigger it is meant to be pointing at.
   const main = match (side) {
-    "top" => anchor.y - overlay.height - sideOffset,
+    "top"    => anchor.y - overlay.height - sideOffset,
     "bottom" => anchor.y + anchor.height + sideOffset,
-    "left" => anchor.x - overlay.width - sideOffset,
-    "right" => anchor.x + anchor.width + sideOffset,
+    "left"   => anchor.x - overlay.width - sideOffset,
+    "right"  => anchor.x + anchor.width + sideOffset,
   };
 
   // The cross axis: aligned, nudged, then slid back inside if it has to be.
@@ -394,8 +394,8 @@ export function placeOverlay(anchoring: Anchoring): Placement {
   return {
     align,
     availableHeight: vertical ? alongSide : acrossSide,
-    availableWidth: vertical ? acrossSide : alongSide,
-    shift: cross - wanted,
+    availableWidth : vertical ? acrossSide : alongSide,
+    shift          : cross - wanted,
     side,
     x: vertical ? cross : main,
     y: vertical ? main : cross,
@@ -485,8 +485,8 @@ export hook useAnchor(request: AnchorRequest): Anchored {
       avoidCollisions,
       collisionPadding,
       direction: directionOf(anchor),
-      overlay: rectOf(overlay),
-      side: physicalSide(side, directionOf(anchor)),
+      overlay  : rectOf(overlay),
+      side     : physicalSide(side, directionOf(anchor)),
       sideOffset,
       // The viewport of a fixed element, which is the whole of it: a fixed box
       // is positioned against the viewport rather than against whatever is

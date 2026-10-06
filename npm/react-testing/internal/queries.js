@@ -103,9 +103,9 @@ export const ROLE_OPTION_KEYS: $ReadOnlyArray<string> = [
  * build has no checker in the loop at all.
  */
 export function rejectUnknownOptions(
-  query: string,
+  query  : string,
   options: mixed,
-  known: $ReadOnlyArray<string>,
+  known  : $ReadOnlyArray<string>,
 ): void {
   if (options == null) {
     return;
@@ -134,9 +134,9 @@ export function normalize(text: string): string {
 }
 
 function matches(
-  content: string,
-  element: Element,
-  matcher: Matcher,
+  content : string,
+  element : Element,
+  matcher : Matcher,
   options?: MatcherOptions,
 ): boolean {
   if (typeof matcher === "function") {
@@ -186,8 +186,8 @@ function candidates(root: Element, selector: string): Array<Element> {
 
 /** Elements whose own visible text matches. */
 export function allByText(
-  root: Element,
-  matcher: Matcher,
+  root    : Element,
+  matcher : Matcher,
   options?: MatcherOptions,
 ): Array<Element> {
   // Only the element closest to the text, not every ancestor that contains it:
@@ -346,8 +346,8 @@ function currentOf(element: Element): boolean | string {
 
 /** Form controls labelled by this text. */
 export function allByLabelText(
-  root: Element,
-  matcher: Matcher,
+  root    : Element,
+  matcher : Matcher,
   options?: MatcherOptions,
 ): Array<Element> {
   const found = [];
@@ -372,8 +372,8 @@ export function allByLabelText(
 
 /** Elements with this placeholder. */
 export function allByPlaceholderText(
-  root: Element,
-  matcher: Matcher,
+  root    : Element,
+  matcher : Matcher,
   options?: MatcherOptions,
 ): Array<Element> {
   return candidates(root, "[placeholder]").filter((element) =>
@@ -383,8 +383,8 @@ export function allByPlaceholderText(
 
 /** Elements marked for tests, which is the query of last resort. */
 export function allByTestId(
-  root: Element,
-  matcher: Matcher,
+  root    : Element,
+  matcher : Matcher,
   options?: MatcherOptions,
 ): Array<Element> {
   return candidates(root, "[data-testid]").filter((element) =>
@@ -394,8 +394,8 @@ export function allByTestId(
 
 /** Elements whose value matches, for inputs and selects. */
 export function allByDisplayValue(
-  root: Element,
-  matcher: Matcher,
+  root    : Element,
+  matcher : Matcher,
   options?: MatcherOptions,
 ): Array<Element> {
   return candidates(root, "input, textarea, select").filter((element) =>
@@ -469,89 +469,89 @@ function cssEscape(value: string): string {
  * against every generated entry that is not position-dependent.
  */
 const STATIC_IMPLICIT_ROLES: { readonly [string]: string } = {
-  a: "generic",
-  address: "group",
-  area: "generic",
-  article: "article",
-  aside: "generic",
-  b: "generic",
-  bdo: "generic",
+  a         : "generic",
+  address   : "group",
+  area      : "generic",
+  article   : "article",
+  aside     : "generic",
+  b         : "generic",
+  bdo       : "generic",
   blockquote: "blockquote",
-  body: "generic",
-  button: "button",
-  caption: "caption",
-  code: "code",
-  data: "generic",
-  datalist: "listbox",
-  dd: "definition",
-  del: "deletion",
-  details: "group",
-  dfn: "term",
-  dialog: "dialog",
-  div: "generic",
-  dt: "term",
-  em: "emphasis",
-  fieldset: "group",
-  figure: "figure",
-  h1: "heading",
-  h2: "heading",
-  h3: "heading",
-  h4: "heading",
-  h5: "heading",
-  h6: "heading",
-  hgroup: "generic",
-  hr: "separator",
-  html: "document",
-  i: "generic",
-  img: "img",
-  ins: "insertion",
-  main: "main",
-  mark: "mark",
-  math: "math",
-  menu: "list",
-  meter: "meter",
-  nav: "navigation",
-  ol: "list",
-  optgroup: "group",
-  option: "option",
-  output: "status",
-  p: "paragraph",
-  pre: "generic",
-  progress: "progressbar",
-  q: "generic",
-  samp: "generic",
-  section: "generic",
-  small: "generic",
-  span: "generic",
-  strong: "strong",
-  sub: "subscript",
-  sup: "superscript",
-  table: "table",
-  tbody: "rowgroup",
-  textarea: "textbox",
-  tfoot: "rowgroup",
-  thead: "rowgroup",
-  time: "time",
-  tr: "row",
-  u: "generic",
-  ul: "list",
+  body      : "generic",
+  button    : "button",
+  caption   : "caption",
+  code      : "code",
+  data      : "generic",
+  datalist  : "listbox",
+  dd        : "definition",
+  del       : "deletion",
+  details   : "group",
+  dfn       : "term",
+  dialog    : "dialog",
+  div       : "generic",
+  dt        : "term",
+  em        : "emphasis",
+  fieldset  : "group",
+  figure    : "figure",
+  h1        : "heading",
+  h2        : "heading",
+  h3        : "heading",
+  h4        : "heading",
+  h5        : "heading",
+  h6        : "heading",
+  hgroup    : "generic",
+  hr        : "separator",
+  html      : "document",
+  i         : "generic",
+  img       : "img",
+  ins       : "insertion",
+  main      : "main",
+  mark      : "mark",
+  math      : "math",
+  menu      : "list",
+  meter     : "meter",
+  nav       : "navigation",
+  ol        : "list",
+  optgroup  : "group",
+  option    : "option",
+  output    : "status",
+  p         : "paragraph",
+  pre       : "generic",
+  progress  : "progressbar",
+  q         : "generic",
+  samp      : "generic",
+  section   : "generic",
+  small     : "generic",
+  span      : "generic",
+  strong    : "strong",
+  sub       : "subscript",
+  sup       : "superscript",
+  table     : "table",
+  tbody     : "rowgroup",
+  textarea  : "textbox",
+  tfoot     : "rowgroup",
+  thead     : "rowgroup",
+  time      : "time",
+  tr        : "row",
+  u         : "generic",
+  ul        : "list",
 };
 
 /** The input types that are not a textbox. */
 const INPUT_ROLES: { readonly [string]: string } = {
-  button: "button",
+  button  : "button",
   checkbox: "checkbox",
-  email: "textbox",
-  image: "button",
-  number: "spinbutton",
-  radio: "radio",
-  range: "slider",
-  reset: "button",
-  search: "searchbox",
-  submit: "button",
-  tel: "textbox",
-  text: "textbox",
-  url: "textbox",
+  email   : "textbox",
+  image   : "button",
+  number  : "spinbutton",
+  radio   : "radio",
+  range   : "slider",
+  reset   : "button",
+  search  : "searchbox",
+  submit  : "button",
+  tel     : "textbox",
+  text    : "textbox",
+  url     : "textbox",
 };
 
 /** This element's role: what it says, or what its tag implies. */
@@ -782,8 +782,8 @@ const NAME_FROM_CONTENT: Set<string> = new Set([
 /** The child that names its parent, for the three elements HTML-AAM gives one. */
 const NAMING_CHILDREN: { readonly [string]: string } = {
   fieldset: "legend",
-  figure: "figcaption",
-  table: "caption",
+  figure  : "figcaption",
+  table   : "caption",
 };
 
 /**

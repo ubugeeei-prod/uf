@@ -29,19 +29,19 @@ export type Goal = {|
   readonly title: string,
   /** One line: what the reader has at the end of the path. */
   readonly outcome: string,
-  readonly status: GoalStatus,
+  readonly status : GoalStatus,
   /** Why the status is not `Implemented`, in one line. Absent when it is. */
   readonly caveat?: string,
-  readonly steps: $ReadOnlyArray<Step>,
+  readonly steps  : $ReadOnlyArray<Step>,
   /** Shown in the short version on the home page. */
   readonly onHome: boolean,
 |};
 
 export const goals: $ReadOnlyArray<Goal> = [
   {
-    title: "Start a new app",
+    title  : "Start a new app",
     outcome: "A React application in Flow with routes, server code and a build you can deploy.",
-    status: "Implemented",
+    status : "Implemented",
     steps: [
       { label: "Install uf", href: "/guide/install" },
       { label: "uf new", href: "/guide/project" },
@@ -52,9 +52,9 @@ export const goals: $ReadOnlyArray<Goal> = [
     onHome: true,
   },
   {
-    title: "Run it every day",
+    title  : "Run it every day",
     outcome: "uf dev and uf build, on a pinned runtime, with your scripts as named tasks.",
-    status: "Implemented",
+    status : "Implemented",
     steps: [
       { label: "uf dev, uf build", href: "/guide/dev" },
       { label: "Pin the runtime", href: "/guide/env" },
@@ -63,9 +63,9 @@ export const goals: $ReadOnlyArray<Goal> = [
     onHome: true,
   },
   {
-    title: "Add tests",
+    title  : "Add tests",
     outcome: "uf test over components and server code, with requests answered by mocks, in CI.",
-    status: "Implemented",
+    status : "Implemented",
     steps: [
       { label: "uf test", href: "/guide/testing" },
       { label: "Mocks and stories", href: "/guide/mocks" },
@@ -74,9 +74,9 @@ export const goals: $ReadOnlyArray<Goal> = [
     onHome: true,
   },
   {
-    title: "Type-check, format and lint",
+    title  : "Type-check, format and lint",
     outcome: "One formatter, one linter and Flow's checker, the same in the editor and in CI.",
-    status: "Implemented",
+    status : "Implemented",
     steps: [
       { label: "uf fmt, uf lint", href: "/guide/format" },
       { label: "uf check", href: "/guide/check" },
@@ -86,9 +86,9 @@ export const goals: $ReadOnlyArray<Goal> = [
     onHome: true,
   },
   {
-    title: "Load and change data",
+    title  : "Load and change data",
     outcome: "Server Components that fetch, actions that write, and input checked where it enters.",
-    status: "Implemented",
+    status : "Implemented",
     steps: [
       { label: "Server Components", href: "/guide/server-components" },
       { label: "Server actions", href: "/guide/server-actions" },
@@ -125,9 +125,9 @@ export const goals: $ReadOnlyArray<Goal> = [
     onHome: true,
   },
   {
-    title: "Ship to Node.js, Bun, Deno, a container, the edge or serverless",
+    title  : "Ship to Node.js, Bun, Deno, a container, the edge or serverless",
     outcome: "A directory per platform from uf build --adapter.",
-    status: "Experimental",
+    status : "Experimental",
     caveat:
       "Tests drive each adapter's output in process; no server adapter has been deployed to a real platform yet (#956).",
     steps: [
@@ -150,17 +150,17 @@ export const goals: $ReadOnlyArray<Goal> = [
     onHome: false,
   },
   {
-    title: "Build a terminal app",
+    title  : "Build a terminal app",
     outcome: "React with a terminal for a host: flexbox, keyboard, focus and a cell diff.",
-    status: "Implemented",
-    steps: [{ label: "Terminal UI", href: "/guide/tui" }],
-    onHome: false,
+    status : "Implemented",
+    steps  : [{ label: "Terminal UI", href: "/guide/tui" }],
+    onHome : false,
   },
   {
-    title: "Use GraphQL and Relay",
+    title  : "Use GraphQL and Relay",
     outcome: "Relay artifacts, typed components and request-scoped preloads.",
-    status: "Experimental",
-    caveat: "The RSC protocol is experimental and does not support @defer.",
+    status : "Experimental",
+    caveat : "The RSC protocol is experimental and does not support @defer.",
     steps: [
       { label: "GraphQL and Relay", href: "/guide/graphql-relay" },
       { label: "Server Components", href: "/guide/server-components" },
@@ -168,24 +168,24 @@ export const goals: $ReadOnlyArray<Goal> = [
     onHome: false,
   },
   {
-    title: "Talk to a database with sqlc",
+    title  : "Talk to a database with sqlc",
     outcome: "SQL you write, with Flow types generated from it.",
-    status: "Experimental",
+    status : "Experimental",
     caveat:
       "The generator and SQLite, PostgreSQL, MySQL, better-sqlite3 and D1 adapters are tested; PostgreSQL COPY and managed sqlc installation remain planned.",
     steps: [
       {
         label: "SQL with sqlc",
-        href: "/guide/sqlc",
+        href : "/guide/sqlc",
       },
       { label: "Packages", href: "/reference/packages" },
     ],
     onHome: true,
   },
   {
-    title: "Move an existing app",
+    title  : "Move an existing app",
     outcome: "A CRA, Vite or Next.js application on uf, with what differs listed up front.",
-    status: "Implemented",
+    status : "Implemented",
     steps: [
       { label: "Migrating to uf", href: "/guide/migrate" },
       { label: "What uf does not do", href: "/guide/scope" },
@@ -194,9 +194,9 @@ export const goals: $ReadOnlyArray<Goal> = [
     onHome: false,
   },
   {
-    title: "Hand it to a coding agent",
+    title  : "Hand it to a coding agent",
     outcome: "uf mcp: the same checks, run by an agent over stdio.",
-    status: "Implemented",
+    status : "Implemented",
     steps: [
       { label: "uf mcp", href: "/guide/agents" },
       { label: "Run in CI", href: "/guide/ci" },

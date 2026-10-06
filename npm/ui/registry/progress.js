@@ -37,24 +37,24 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   track: {
-    position: "relative",
-    display: "block",
-    width: "100%",
-    height: "8px",
-    overflow: "hidden",
-    borderRadius: ufTokens.radiusSm,
+    position       : "relative",
+    display        : "block",
+    width          : "100%",
+    height         : "8px",
+    overflow       : "hidden",
+    borderRadius   : ufTokens.radiusSm,
     backgroundColor: { default: ufTokens.sunken, ":not([aria-valuenow])": ufTokens.accentSoft },
   },
   // Full width, scaled along the inline axis to the fraction done: moving a
   // transform repaints the bar, where moving `width` laid it out again on
   // every frame.
   fill: {
-    display: "block",
-    width: "100%",
-    height: "100%",
-    borderRadius: ufTokens.radiusSm,
+    display        : "block",
+    width          : "100%",
+    height         : "100%",
+    borderRadius   : ufTokens.radiusSm,
     backgroundColor: ufTokens.accent,
-    transform: "scaleX(var(--uf-progress, 0))",
+    transform      : "scaleX(var(--uf-progress, 0))",
     transformOrigin: { default: "left", ":dir(rtl)": "right" },
     // `durationSlow` on the standard curve: a step of progress is seen to
     // fill in rather than jump, and a run of quick updates still reads as one
@@ -67,12 +67,12 @@ const styles = stylex.create({
 
 /** A progress bar. Leave `value` off while the amount is unknown. */
 export component Progress(
-  value?: number | null = null,
-  min?: number = 0,
-  max?: number = 100,
+  value?    : number | null = null,
+  min?      : number = 0,
+  max?      : number = 100,
   valueText?: string,
-  style?: { readonly [string]: mixed },
-  xstyle?: StyleArgument,
+  style?    : { readonly [string]: mixed },
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

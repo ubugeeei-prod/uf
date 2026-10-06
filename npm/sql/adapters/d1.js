@@ -47,7 +47,7 @@ function toD1(param: SqlParam): mixed {
 /** A [`Queryable`] over a D1 binding. */
 export function fromD1(database: D1Database): Queryable {
   return {
-    engine: "sqlite",
+    engine   : "sqlite",
     maxParams: 100,
     query: async (text, params, mode) => {
       const statement = database.prepare(text).bind(...params.map(toD1));
@@ -63,7 +63,7 @@ export function fromD1(database: D1Database): Queryable {
       }
       const { meta } = await statement.run();
       return {
-        rows: [],
+        rows        : [],
         rowsAffected: count(meta.changes ?? 0),
         lastInsertId: rowId(meta.last_row_id),
       };

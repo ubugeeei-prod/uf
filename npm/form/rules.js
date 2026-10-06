@@ -47,18 +47,18 @@ export type Rule<TLimit> = TLimit | {| readonly value: TLimit, readonly message:
  * rather than a reason to leave the library.
  */
 export type Validate = (
-  value: mixed,
+  value : mixed,
   values: FieldValues,
 ) => boolean | string | void | Promise<boolean | string | void>;
 
 /** What a field is checked against, and how its raw value is read. */
 export type ValidationRules = {|
-  readonly required?: boolean | string | {| readonly value: boolean, readonly message: string |},
-  readonly min?: Rule<number | string>,
-  readonly max?: Rule<number | string>,
+  readonly required? : boolean | string | {| readonly value: boolean, readonly message: string |},
+  readonly min?      : Rule<number | string>,
+  readonly max?      : Rule<number | string>,
   readonly minLength?: Rule<number>,
   readonly maxLength?: Rule<number>,
-  readonly pattern?: Rule<RegExp>,
+  readonly pattern?  : Rule<RegExp>,
   /** One check, or several keyed by name so the error says which one failed. */
   readonly validate?: Validate | { readonly [string]: Validate, ... },
   /** Read the control's text as a number. */
@@ -95,12 +95,12 @@ export type ValidationRules = {|
  * element and React drops an attribute whose value is `undefined`.
  */
 export type FieldConstraints = {|
-  readonly required: boolean | void,
-  readonly min: number | string | void,
-  readonly max: number | string | void,
+  readonly required : boolean | void,
+  readonly min      : number | string | void,
+  readonly max      : number | string | void,
   readonly minLength: number | void,
   readonly maxLength: number | void,
-  readonly pattern: string | void,
+  readonly pattern  : string | void,
 |};
 
 /** Whether `required` was asked for, in any of the three shapes it takes. */
@@ -142,11 +142,11 @@ export function constraintsOf(rules: ValidationRules): FieldConstraints {
     // below: `Rule<T>` is `T | { value: T, message: string }`, so inference
     // handed a union takes the whole union for `T` and the limit comes back as
     // the rule it was read out of.
-    min: rules.min == null ? undefined : limitOf<number | string>(rules.min),
-    max: rules.max == null ? undefined : limitOf<number | string>(rules.max),
+    min      : rules.min == null ? undefined : limitOf<number | string>(rules.min),
+    max      : rules.max == null ? undefined : limitOf<number | string>(rules.max),
     minLength: rules.minLength == null ? undefined : limitOf<number>(rules.minLength),
     maxLength: rules.maxLength == null ? undefined : limitOf<number>(rules.maxLength),
-    pattern: rules.pattern == null ? undefined : limitOf<RegExp>(rules.pattern).source,
+    pattern  : rules.pattern == null ? undefined : limitOf<RegExp>(rules.pattern).source,
   };
 }
 
@@ -154,7 +154,7 @@ export function constraintsOf(rules: ValidationRules): FieldConstraints {
 export type FieldError = {|
   /** The rule that rejected the value: `"required"`, `"pattern"`, a
    * `validate` key, or whatever a resolver reported. */
-  readonly type: string,
+  readonly type   : string,
   readonly message: string,
 |};
 
@@ -244,7 +244,7 @@ function lengthOf(value: mixed): number {
  */
 export function whenSettled<TValue, TNext>(
   value: TValue | Promise<TValue>,
-  next: (value: TValue) => TNext | Promise<TNext>,
+  next : (value: TValue) => TNext | Promise<TNext>,
 ): TNext | Promise<TNext> {
   if (value != null && typeof (value as $FlowFixMe).then === "function") {
     return (value as $FlowFixMe).then(next);
@@ -267,8 +267,8 @@ export function whenSettled<TValue, TNext>(
  * Synchronous unless the caller's own `validate` is not — see [`whenSettled`].
  */
 export function runRules(
-  rules: ValidationRules,
-  value: mixed,
+  rules : ValidationRules,
+  value : mixed,
   values: FieldValues,
 ): FieldError | null | Promise<FieldError | null> {
   const blank = isBlank(value);
@@ -309,7 +309,7 @@ export function runRules(
       const limit = limitOf<number>(minLength);
       if (lengthOf(value) < limit) {
         return {
-          type: "minLength",
+          type   : "minLength",
           message: messageOf(minLength, `Must be at least ${String(limit)} characters`),
         };
       }
@@ -319,7 +319,7 @@ export function runRules(
       const limit = limitOf<number>(maxLength);
       if (lengthOf(value) > limit) {
         return {
-          type: "maxLength",
+          type   : "maxLength",
           message: messageOf(maxLength, `Must be at most ${String(limit)} characters`),
         };
       }
@@ -337,7 +337,7 @@ export function runRules(
         : pattern;
       if (!stateless.test(String(value ?? ""))) {
         return {
-          type: "pattern",
+          type   : "pattern",
           message: messageOf(rulePattern, "This is not in the right format"),
         };
       }
@@ -353,8 +353,8 @@ export function runRules(
 
 function runValidate(
   validate: Validate | { readonly [string]: Validate, ... },
-  value: mixed,
-  values: FieldValues,
+  value   : mixed,
+  values  : FieldValues,
 ): FieldError | null | Promise<FieldError | null> {
   if (typeof validate === "function") {
     return whenSettled<boolean | string | void, FieldError | null>(
@@ -373,11 +373,11 @@ function runValidate(
  * bounded by the number of checks on one field.
  */
 function runValidateEntries(
-  keys: $ReadOnlyArray<string>,
+  keys    : $ReadOnlyArray<string>,
   validate: { readonly [string]: Validate, ... },
-  value: mixed,
-  values: FieldValues,
-  at: number,
+  value   : mixed,
+  values  : FieldValues,
+  at      : number,
 ): FieldError | null | Promise<FieldError | null> {
   if (at >= keys.length) {
     return null;
@@ -422,12 +422,12 @@ export function dependenciesOf(rules: ValidationRules): $ReadOnlyArray<string> {
 /** The subset of a rule set that says how to read the control's raw value. */
 export function transformOf(rules: ValidationRules): {|
   readonly valueAsNumber?: boolean,
-  readonly valueAsDate?: boolean,
-  readonly setValueAs?: (value: mixed) => mixed,
+  readonly valueAsDate?  : boolean,
+  readonly setValueAs?   : (value: mixed) => mixed,
 |} {
   return {
     valueAsNumber: rules.valueAsNumber,
-    valueAsDate: rules.valueAsDate,
-    setValueAs: rules.setValueAs,
+    valueAsDate  : rules.valueAsDate,
+    setValueAs   : rules.setValueAs,
   };
 }

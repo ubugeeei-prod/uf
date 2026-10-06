@@ -33,28 +33,28 @@ export type Outcome =
       readonly samples?: $ReadOnlyArray<number>,
     |}
   | {|
-      readonly status: "failed",
-      readonly message: string,
-      readonly stack: string | null,
+      readonly status  : "failed",
+      readonly message : string,
+      readonly stack   : string | null,
       readonly expected: string | null,
       readonly received: string | null,
       /** Where the failing assertion was written, when the stack says. */
       readonly site: {| readonly line: number, readonly column: number |} | null,
     |}
   | {|
-      readonly status: "skipped",
-      readonly reason: "explicit" | "not-only" | "filtered" | "bench" | "not-bench",
+      readonly status  : "skipped",
+      readonly reason  : "explicit" | "not-only" | "filtered" | "bench" | "not-bench",
       readonly message?: string | null,
     |}
   | {| readonly status: "todo" |};
 
 /** One finished case, as the runner reports it. */
 export type Result = {|
-  readonly name: string,
-  readonly line: number,
-  readonly column: number,
+  readonly name          : string,
+  readonly line          : number,
+  readonly column        : number,
   readonly durationMicros: number,
-  readonly outcome: Outcome,
+  readonly outcome       : Outcome,
 |};
 
 /** How a run is configured. */
@@ -174,42 +174,42 @@ function failure(thrown: mixed, file: string | null): Outcome {
   if (thrown instanceof AssertionError) {
     const stack = userFrames(thrown.stack);
     return {
-      status: "failed",
+      status : "failed",
       message: thrown.message,
       stack,
       expected: thrown.expected,
       received: thrown.received,
-      site: siteOf(stack, file),
+      site    : siteOf(stack, file),
     };
   }
   if (thrown instanceof Error) {
     const stack = userFrames(thrown.stack);
     return {
-      status: "failed",
+      status : "failed",
       message: `${thrown.name}: ${thrown.message}`,
       stack,
       expected: null,
       received: null,
-      site: siteOf(stack, file),
+      site    : siteOf(stack, file),
     };
   }
   return {
-    status: "failed",
-    message: `the test threw ${String(thrown)}`,
-    stack: null,
+    status  : "failed",
+    message : `the test threw ${String(thrown)}`,
+    stack   : null,
     expected: null,
     received: null,
-    site: null,
+    site    : null,
   };
 }
 
 /** Everything one case needs from the suites above it. */
 type Context = {|
-  readonly path: $ReadOnlyArray<string>,
+  readonly path      : $ReadOnlyArray<string>,
   readonly beforeEach: $ReadOnlyArray<Hook>,
-  readonly afterEach: $ReadOnlyArray<Hook>,
-  readonly skipped: boolean,
-  readonly onlyPath: boolean,
+  readonly afterEach : $ReadOnlyArray<Hook>,
+  readonly skipped   : boolean,
+  readonly onlyPath  : boolean,
 |};
 
 /**
@@ -220,10 +220,10 @@ type Context = {|
  * it is the one that explains the rest.
  */
 async function runCase(
-  test: Case,
+  test   : Case,
   context: Context,
   options: RunOptions,
-  emit: (result: Result) => void,
+  emit   : (result: Result) => void,
 ): Promise<boolean> {
   const name = fullName([...context.path, test.name]);
   // Snapshots are keyed by the running test, so the module has to be told which
@@ -234,8 +234,8 @@ async function runCase(
   const report = (outcome: Outcome) => {
     emit({
       name,
-      line: test.line,
-      column: test.column,
+      line          : test.line,
+      column        : test.column,
       durationMicros: Math.round((performance.now() - started) * 1000),
       outcome,
     });
@@ -329,8 +329,8 @@ async function runCase(
  * call, so a benchmark that hangs still fails rather than holding the worker.
  */
 async function measure(
-  body: Body,
-  options: BenchOptions | null,
+  body     : Body,
+  options  : BenchOptions | null,
   timeoutMs: number,
 ): Promise<$ReadOnlyArray<number>> {
   const warmup = count("warmup", options?.warmup, DEFAULT_BENCH_WARMUP, 0, MAX_BENCH_WARMUP);
@@ -366,11 +366,11 @@ async function measure(
  * about a run nobody asked for.
  */
 function count(
-  option: string,
-  value: ?number,
+  option  : string,
+  value   : ?number,
   fallback: number,
-  least: number,
-  most: number,
+  least   : number,
+  most    : number,
 ): number {
   if (value == null) {
     return fallback;
@@ -389,12 +389,12 @@ function count(
  * Returns whether everything under it passed, which is what `bail` reads.
  */
 async function runSuite(
-  node: Suite,
-  context: Context,
-  options: RunOptions,
-  onlyMode: boolean,
-  emit: (result: Result) => void,
-  state: {| bail: boolean, readonly owned: Set<Case> | null |},
+  node          : Suite,
+  context       : Context,
+  options       : RunOptions,
+  onlyMode      : boolean,
+  emit          : (result: Result) => void,
+  state         : {| bail: boolean, readonly owned: Set<Case> | null |},
   setUpAncestors: () => Promise<void>,
 ): Promise<boolean> {
   const skipped = context.skipped || node.modifier === "skip" || node.modifier === "todo";
@@ -403,7 +403,7 @@ async function runSuite(
   const inner: Context = {
     path,
     beforeEach: [...context.beforeEach, ...node.beforeEach],
-    afterEach: [...node.afterEach, ...context.afterEach],
+    afterEach : [...node.afterEach, ...context.afterEach],
     skipped,
     onlyPath,
   };
@@ -463,11 +463,11 @@ async function runSuite(
           // A failed `beforeAll` fails the cases it was setting up for, named
           // as such: reporting the hook alone would leave the tests silent.
           emit({
-            name: fullName([...inner.path, child.name]),
-            line: child.line,
-            column: child.column,
+            name          : fullName([...inner.path, child.name]),
+            line          : child.line,
+            column        : child.column,
             durationMicros: 0,
-            outcome: failure(thrown, options.file ?? null),
+            outcome       : failure(thrown, options.file ?? null),
           });
           passed = false;
           continue;
@@ -509,11 +509,11 @@ export async function run(options: RunOptions, emit: (result: Result) => void): 
   const onlyMode = hasOnly(root, false);
   const owned = share(root, options.part);
   const context: Context = {
-    path: [],
+    path      : [],
     beforeEach: [],
-    afterEach: [],
-    skipped: false,
-    onlyPath: !onlyMode,
+    afterEach : [],
+    skipped   : false,
+    onlyPath  : !onlyMode,
   };
   await runSuite(root, context, options, onlyMode, emit, { bail: false, owned }, async () => {});
 }

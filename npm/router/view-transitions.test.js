@@ -68,30 +68,30 @@ function site(options?: {| readonly on?: "page" | "layout" |}): RouteTable {
   const where = options?.on ?? "page";
   const guide = { default: Guide, viewTransition: where === "page" ? "manual" : undefined };
   const layout = {
-    default: GuideLayout,
+    default       : GuideLayout,
     viewTransition: where === "layout" ? "manual" : undefined,
   };
   return {
     routes: [
       {
-        path: "/",
-        params: [],
-        mdx: false,
-        file: "app/$page.js",
-        page: () => Promise.resolve({ default: Home }),
+        path   : "/",
+        params : [],
+        mdx    : false,
+        file   : "app/$page.js",
+        page   : () => Promise.resolve({ default: Home }),
         layouts: [],
       },
       {
-        path: "/guide",
-        params: [],
-        mdx: false,
-        file: "app/guide/$page.js",
-        page: () => Promise.resolve(guide),
+        path   : "/guide",
+        params : [],
+        mdx    : false,
+        file   : "app/guide/$page.js",
+        page   : () => Promise.resolve(guide),
         layouts: [() => Promise.resolve(layout)],
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   };
 }
 
@@ -143,7 +143,7 @@ function stubDocument(): StubDocument {
  */
 function installViewTransitions(): {|
   readonly started: $ReadOnlyArray<Started>,
-  readonly finish: () => Promise<void>,
+  readonly finish : () => Promise<void>,
 |} {
   const started: Array<Started> = [];
   let settle: () => void = () => {};
@@ -176,11 +176,11 @@ function installReducedMotion(matches: boolean): void {
   installDom();
   Object.defineProperty(globalThis.window, "matchMedia", {
     configurable: true,
-    writable: true,
+    writable    : true,
     value: (query: string) => ({
-      matches: matches && query.includes("prefers-reduced-motion"),
-      media: query,
-      addEventListener: () => {},
+      matches            : matches && query.includes("prefers-reduced-motion"),
+      media              : query,
+      addEventListener   : () => {},
       removeEventListener: () => {},
     }),
   });
@@ -208,10 +208,10 @@ function root(): Element {
 async function atHome(table: RouteTable): Promise<void> {
   installDom();
   createRenderer({
-    App: routerView("./app"),
-    routes: table.routes,
+    App     : routerView("./app"),
+    routes  : table.routes,
     notFound: table.notFound,
-    errors: table.errors,
+    errors  : table.errors,
   });
   globalThis.window.history.pushState(null, "", "/");
   const resolved = await resolveMatch(table, "/");
@@ -370,10 +370,10 @@ describe("the server", () => {
     // attribute the first client render does not, on the one element React
     // cannot re-render its way out of.
     const { prerender } = createRenderer({
-      App: routerView("./app"),
-      routes: site().routes,
+      App     : routerView("./app"),
+      routes  : site().routes,
       notFound: [],
-      errors: [],
+      errors  : [],
     });
 
     const result = await prerender("/guide", { scripts: [], styles: [], preloads: [] });

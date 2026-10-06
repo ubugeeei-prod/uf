@@ -21,8 +21,8 @@ export const themeBootstrap: string =
 export function nextTheme(theme: Theme): Theme {
   return match (theme) {
     "system" => "light",
-    "light" => "dark",
-    "dark" => "system",
+    "light"  => "dark",
+    "dark"   => "system",
   };
 }
 
@@ -30,7 +30,7 @@ export function nextTheme(theme: Theme): Theme {
 export function themeLabel(theme: Theme): string {
   return match (theme) {
     "system" => "Theme: system",
-    "light" => "Theme: light",
-    "dark" => "Theme: dark",
+    "light"  => "Theme: light",
+    "dark"   => "Theme: dark",
   };
 }

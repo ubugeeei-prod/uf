@@ -79,54 +79,54 @@ export type Pipe = {
   <A, AIn, B, C>(schema: Schema<A, AIn>, a: Step<A, B>, b: Step<B, C>): Schema<C, AIn>,
   <A, AIn, B, C, D>(
     schema: Schema<A, AIn>,
-    a: Step<A, B>,
-    b: Step<B, C>,
-    c: Step<C, D>,
+    a     : Step<A, B>,
+    b     : Step<B, C>,
+    c     : Step<C, D>,
   ): Schema<D, AIn>,
   <A, AIn, B, C, D, E>(
     schema: Schema<A, AIn>,
-    a: Step<A, B>,
-    b: Step<B, C>,
-    c: Step<C, D>,
-    d: Step<D, E>,
+    a     : Step<A, B>,
+    b     : Step<B, C>,
+    c     : Step<C, D>,
+    d     : Step<D, E>,
   ): Schema<E, AIn>,
   <A, AIn, B, C, D, E, F>(
     schema: Schema<A, AIn>,
-    a: Step<A, B>,
-    b: Step<B, C>,
-    c: Step<C, D>,
-    d: Step<D, E>,
-    e: Step<E, F>,
+    a     : Step<A, B>,
+    b     : Step<B, C>,
+    c     : Step<C, D>,
+    d     : Step<D, E>,
+    e     : Step<E, F>,
   ): Schema<F, AIn>,
   <A, AIn, B, C, D, E, F, G>(
     schema: Schema<A, AIn>,
-    a: Step<A, B>,
-    b: Step<B, C>,
-    c: Step<C, D>,
-    d: Step<D, E>,
-    e: Step<E, F>,
-    f: Step<F, G>,
+    a     : Step<A, B>,
+    b     : Step<B, C>,
+    c     : Step<C, D>,
+    d     : Step<D, E>,
+    e     : Step<E, F>,
+    f     : Step<F, G>,
   ): Schema<G, AIn>,
   <A, AIn, B, C, D, E, F, G, H>(
     schema: Schema<A, AIn>,
-    a: Step<A, B>,
-    b: Step<B, C>,
-    c: Step<C, D>,
-    d: Step<D, E>,
-    e: Step<E, F>,
-    f: Step<F, G>,
-    g: Step<G, H>,
+    a     : Step<A, B>,
+    b     : Step<B, C>,
+    c     : Step<C, D>,
+    d     : Step<D, E>,
+    e     : Step<E, F>,
+    f     : Step<F, G>,
+    g     : Step<G, H>,
   ): Schema<H, AIn>,
   <A, AIn, B, C, D, E, F, G, H, I>(
     schema: Schema<A, AIn>,
-    a: Step<A, B>,
-    b: Step<B, C>,
-    c: Step<C, D>,
-    d: Step<D, E>,
-    e: Step<E, F>,
-    f: Step<F, G>,
-    g: Step<G, H>,
-    h: Step<H, I>,
+    a     : Step<A, B>,
+    b     : Step<B, C>,
+    c     : Step<C, D>,
+    d     : Step<D, E>,
+    e     : Step<E, F>,
+    f     : Step<F, G>,
+    g     : Step<G, H>,
+    h     : Step<H, I>,
   ): Schema<I, AIn>,
   ...
 };
@@ -154,15 +154,15 @@ export const pipe: Pipe = applySteps as Pipe;
  * what it refined is invisible to every exporter.
  */
 export function refine<TOutput, TInput>(
-  schema: Schema<TOutput, TInput>,
-  accepts: (value: TOutput) => boolean,
-  code: string,
-  message: string,
+  schema    : Schema<TOutput, TInput>,
+  accepts   : (value: TOutput) => boolean,
+  code      : string,
+  message   : string,
   constraint: Constraint,
-  at: Path = [],
+  at        : Path = [],
 ): Schema<TOutput, TInput> {
   const description = (): Description => ({
-    kind: "constrained",
+    kind : "constrained",
     inner: describe(schema),
     constraint,
   });
@@ -200,7 +200,7 @@ export function refine<TOutput, TInput>(
 export function check<TValue>(
   accepts: (value: TValue) => boolean,
   message: string,
-  at: Path = [],
+  at     : Path = [],
 ): Step<TValue, TValue> {
   return <TInput>(schema: Schema<TValue, TInput>): Schema<TValue, TInput> =>
     refine(schema, accepts, "check", message, { kind: "opaque", label: message }, at);
@@ -217,7 +217,7 @@ export function check<TValue>(
 export function checkAsync<TValue>(
   accepts: (value: TValue) => Promise<boolean>,
   message: string,
-  at: Path = [],
+  at     : Path = [],
 ): Step<TValue, TValue> {
   return <TInput>(schema: Schema<TValue, TInput>): Schema<TValue, TInput> =>
     makeAsyncSchema(
@@ -231,8 +231,8 @@ export function checkAsync<TValue>(
           : { ok: false, issues: [issueUnder("check", message, path, at)] };
       },
       () => ({
-        kind: "constrained",
-        inner: describe(schema),
+        kind      : "constrained",
+        inner     : describe(schema),
         constraint: { kind: "opaque", label: message },
       }),
     );
@@ -288,8 +288,8 @@ export function transformAsync<TFrom, TTo>(
 export function brand<TValue>(name: string): Step<TValue, TValue> {
   return <TInput>(schema: Schema<TValue, TInput>): Schema<TValue, TInput> => {
     const description = (): Description => ({
-      kind: "constrained",
-      inner: describe(schema),
+      kind      : "constrained",
+      inner     : describe(schema),
       constraint: { kind: "brand", name },
     });
     if (isAsync(schema)) {

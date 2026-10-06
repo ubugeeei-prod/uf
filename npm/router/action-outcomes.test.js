@@ -50,10 +50,10 @@ async function dispatched(action: () => Promise<mixed>, request: Request): Promi
   const callAction = createActionDispatcher({
     actions: [
       {
-        id: ID,
+        id    : ID,
         module: "app/notes/_actions.js",
         export: "save",
-        load: async () => ({ save: action }),
+        load  : async () => ({ save: action }),
       },
     ],
   });
@@ -74,9 +74,9 @@ const SAME_ORIGIN = { origin: "https://app.example", host: "app.example" };
 /** A hydrated page's call: JSON, with the id in the header. */
 const jsonCall = () =>
   new Request("https://app.example/notes", {
-    method: "POST",
+    method : "POST",
     headers: { ...SAME_ORIGIN, "content-type": "application/json", "uf-action": ID },
-    body: '{"args":[]}',
+    body   : '{"args":[]}',
   });
 
 /** A form posted before its page hydrated. */
@@ -85,7 +85,7 @@ const formPost = () =>
     method: "POST",
     headers: {
       ...SAME_ORIGIN,
-      "content-type": FORM_ACTION_CONTENT_TYPE,
+      "content-type"  : FORM_ACTION_CONTENT_TYPE,
       "sec-fetch-site": "same-origin",
     },
     body: new URLSearchParams([
@@ -280,9 +280,9 @@ describe("a server action reference, when its action made a routing call", () =>
     const page = (path: string, file: string, module: mixed) => ({
       path,
       params: [],
-      mdx: false,
+      mdx   : false,
       file,
-      page: () => Promise.resolve({ default: module }),
+      page   : () => Promise.resolve({ default: module }),
       layouts: [],
       loading: [],
     });
@@ -292,7 +292,7 @@ describe("a server action reference, when its action made a routing call", () =>
         page("/notes/7", "app/notes/7/$page.js", Note),
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     };
     installRoutes(table);
     const initial = await resolveMatch(table, "/notes");

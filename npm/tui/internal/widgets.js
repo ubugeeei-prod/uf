@@ -48,9 +48,9 @@ import { graphemeWidth } from "../widths.js";
 
 /** One entry in a `Select` or a `TabSelect`: OpenTUI's `SelectOption`. */
 export type SelectOption = {
-  readonly name: string,
+  readonly name       : string,
   readonly description: string,
-  readonly value?: mixed,
+  readonly value?     : mixed,
 };
 
 /** A `Textarea`'s wrap modes, which are OpenTUI's. */
@@ -76,7 +76,7 @@ const SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 /** One grapheme of a `Textarea`'s text, and where it is in the string. */
 export type EditCell = {
-  readonly text: string,
+  readonly text : string,
   readonly width: number,
   /** The string offset it starts at. */
   readonly at: number,
@@ -92,10 +92,10 @@ export type EditCell = {
  * one, so "the end of this line" has to mean the last cell instead.
  */
 export type EditLine = {
-  readonly start: number,
-  readonly end: number,
-  readonly cells: $ReadOnlyArray<EditCell>,
-  readonly width: number,
+  readonly start  : number,
+  readonly end    : number,
+  readonly cells  : $ReadOnlyArray<EditCell>,
+  readonly width  : number,
   readonly wrapped: boolean,
 };
 
@@ -112,9 +112,9 @@ export type EditLine = {
  * A width of zero or less means "not laid out yet", and does not wrap.
  */
 export function editLines(
-  text: string,
+  text : string,
   width: number,
-  mode: EditWrapMode,
+  mode : EditWrapMode,
 ): $ReadOnlyArray<EditLine> {
   const lines: Array<EditLine> = [];
   const wraps = mode !== "none" && width > 0;
@@ -139,9 +139,9 @@ export function editLines(
     };
     for (const segment of SEGMENTER.segment(logical)) {
       const cell = {
-        text: segment.segment,
+        text : segment.segment,
         width: graphemeWidth(segment.segment),
-        at: offset + segment.index,
+        at   : offset + segment.index,
       };
       if (wraps && used + cell.width > width && current.length > 0) {
         if (mode === "word" && lastSpace >= 0 && cell.text !== " ") {
@@ -173,7 +173,7 @@ export function editLines(
 
 /** Which visual line a string offset is drawn on, and in which column. */
 export function locate(
-  lines: $ReadOnlyArray<EditLine>,
+  lines : $ReadOnlyArray<EditLine>,
   offset: number,
 ): { readonly row: number, readonly column: number } {
   // The last line that starts at or before the offset. Two lines of one
@@ -240,9 +240,9 @@ export function contentBox(node: TuiNode): Rect {
   const bottom = (style.paddingBottom ?? all) + node.borderWidth;
   const left = (style.paddingLeft ?? all) + node.borderWidth;
   return {
-    x: node.x + left,
-    y: node.y + top,
-    width: Math.max(0, node.width - left - right),
+    x     : node.x + left,
+    y     : node.y + top,
+    width : Math.max(0, node.width - left - right),
     height: Math.max(0, node.height - top - bottom),
   };
 }
@@ -295,12 +295,12 @@ function widthOf(text: string): number {
  */
 function drawText(
   frame: Frame,
-  x: number,
-  y: number,
-  text: string,
-  fg: Color,
-  bg: Color | void,
-  clip: Rect,
+  x    : number,
+  y    : number,
+  text : string,
+  fg   : Color,
+  bg   : Color | void,
+  clip : Rect,
 ): void {
   let column = x;
   for (const segment of SEGMENTER.segment(text)) {
@@ -378,8 +378,8 @@ function windowStart(selected: number, visible: number, length: number): number 
  * as OpenTUI's is. A `Textarea` is as tall as its text, and at least one line.
  */
 export function measureWidget(
-  node: TuiNode,
-  widget: Widget,
+  node          : TuiNode,
+  widget        : Widget,
   availableWidth: number,
 ): { readonly width: number, readonly height: number } {
   if (widget === "select") {
@@ -434,13 +434,13 @@ function wrapOf(node: TuiNode): EditWrapMode {
  * its children — a widget has none.
  */
 export function paintWidget(
-  node: TuiNode,
-  widget: Widget,
-  frame: Frame,
+  node        : TuiNode,
+  widget      : Widget,
+  frame       : Frame,
   capabilities: Capabilities,
-  clip: Rect,
-  hits: HitGrid | null,
-  selectable: boolean,
+  clip        : Rect,
+  hits        : HitGrid | null,
+  selectable  : boolean,
 ): void {
   const area = contentBox(node);
   const inside = intersect(clip, area);
@@ -636,11 +636,11 @@ function paintTabSelect(node: TuiNode, frame: Frame, area: Rect, clip: Rect, asc
  * module's.
  */
 function paintTextarea(
-  node: TuiNode,
-  frame: Frame,
-  area: Rect,
-  clip: Rect,
-  hits: HitGrid | null,
+  node      : TuiNode,
+  frame     : Frame,
+  area      : Rect,
+  clip      : Rect,
+  hits      : HitGrid | null,
   selectable: boolean,
 ): void {
   const { bg, fg } = baseColors(node);
@@ -734,11 +734,11 @@ function paintTextarea(
 function drawCells(
   frame: Frame,
   cells: $ReadOnlyArray<EditCell>,
-  x: number,
-  y: number,
-  left: number,
+  x    : number,
+  y    : number,
+  left : number,
   style: Style,
-  clip: Rect,
+  clip : Rect,
 ): void {
   let column = x - left;
   for (const cell of cells) {
@@ -758,12 +758,12 @@ function drawCells(
  */
 function cursorCell(
   frame: Frame,
-  cell: EditCell | void | null,
-  x: number,
-  y: number,
-  fg: Color,
-  bg: Color,
-  clip: Rect,
+  cell : EditCell | void | null,
+  x    : number,
+  y    : number,
+  fg   : Color,
+  bg   : Color,
+  clip : Rect,
 ): void {
   const text = cell != null && cell.width > 0 ? cell.text : " ";
   const width = cell != null && cell.width > 0 ? cell.width : 1;

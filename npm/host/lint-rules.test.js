@@ -19,10 +19,10 @@ function program() {
   // keys in whatever order the map kept, not in source order.
   const declarator = { type: "VariableDeclarator", init, id, range: [6, 13] };
   const declaration = {
-    type: "VariableDeclaration",
-    kind: "const",
+    type        : "VariableDeclaration",
+    kind        : "const",
     declarations: [declarator],
-    range: [0, 14],
+    range       : [0, 14],
   };
   return { type: "Program", body: [declaration], comments: [], range: [0, 14] };
 }
@@ -79,11 +79,11 @@ describe("lintFile", () => {
 
     expect(result.diagnostics).toEqual([
       {
-        rule: "acme/no-foo",
+        rule   : "acme/no-foo",
         message: "`foo` is reserved",
-        start: 6,
-        end: 9,
-        fix: { start: 6, end: 9, text: "bazBar", kind: "code" },
+        start  : 6,
+        end    : 9,
+        fix    : { start: 6, end: 9, text: "bazBar", kind: "code" },
       },
     ]);
     expect(result.problems).toEqual([]);
@@ -149,8 +149,8 @@ describe("lintFile", () => {
     };
 
     const result = run([{ id: "acme/at", rule: at }], source, {
-      type: "Program",
-      body: [],
+      type : "Program",
+      body : [],
       range: [0, source.length],
     });
 

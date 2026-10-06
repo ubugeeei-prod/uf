@@ -46,21 +46,21 @@ import { everyMisuseIsReported } from "../../tests/library/type-tests.js";
 /** A one-route table whose page exports `module`, under a root `$error.js`. */
 function tableFor(module: PageModule): RouteTable {
   const route: RouteRecord = {
-    path: "/search",
-    params: [],
-    mdx: false,
-    file: "app/search/$page.js",
-    page: () => Promise.resolve(module),
+    path   : "/search",
+    params : [],
+    mdx    : false,
+    file   : "app/search/$page.js",
+    page   : () => Promise.resolve(module),
     layouts: [],
   };
   return {
-    routes: [route],
+    routes  : [route],
     notFound: [],
     errors: [
       {
-        path: "/",
-        file: "app/$error.js",
-        module: () => Promise.resolve({ default: SearchError }),
+        path   : "/",
+        file   : "app/$error.js",
+        module : () => Promise.resolve({ default: SearchError }),
         layouts: [],
       },
     ],
@@ -74,7 +74,7 @@ component SearchError(error: RouteError, reset: () => void) {
         bad query:{" "}
         {issues.map((issue) => `${(issue.path ?? []).join(".")} ${issue.code}`).join(", ")}
       </p>,
-    _ => <p>something else</p>,
+    _                                          => <p>something else</p>,
   };
 }
 
@@ -108,7 +108,7 @@ describe("parsing the query against the page's schema", () => {
   it("keeps a key the schema does not name only when the schema keeps it", async () => {
     expect(await given(object({ q: string() }), "q=a&utm=x")).toEqual({ q: "a" });
     expect(await given(looseObject({ q: string() }), "q=a&utm=x&utm=y")).toEqual({
-      q: "a",
+      q  : "a",
       utm: ["x", "y"],
     });
   });
@@ -125,7 +125,7 @@ describe("parsing the query against the page's schema", () => {
 describe("coercing the strings a query is made of", () => {
   it("reads a number, a boolean and a date where the schema wants one", async () => {
     const schema = object({
-      page: pipe(number(), integer(), min(1)),
+      page : pipe(number(), integer(), min(1)),
       draft: boolean(),
       since: date(),
     });
@@ -137,7 +137,7 @@ describe("coercing the strings a query is made of", () => {
 
   it("reads a literal and a union of literals as the value they spell", async () => {
     const schema = object({
-      per: union([literal(10), literal(50)]),
+      per : union([literal(10), literal(50)]),
       view: union([literal("all"), number()]),
     });
 
@@ -219,15 +219,15 @@ describe("a query the schema refuses", () => {
   it("renders the page's $error.js, which can match on it", async () => {
     const table = tableFor({ searchParams: schema, default: () => <p>results</p> });
     const { prerender } = createRenderer({
-      App: routerView("./app"),
-      routes: table.routes,
+      App     : routerView("./app"),
+      routes  : table.routes,
       notFound: table.notFound,
-      errors: table.errors,
+      errors  : table.errors,
     });
 
     const result = await prerender("/search?page=0&tag=a", {
-      scripts: [],
-      styles: [],
+      scripts : [],
+      styles  : [],
       preloads: [],
     });
 
@@ -251,15 +251,15 @@ describe("a query the schema refuses", () => {
     }
     const table = tableFor({ searchParams: schema, default: Results });
     const { prerender } = createRenderer({
-      App: routerView("./app"),
-      routes: table.routes,
+      App     : routerView("./app"),
+      routes  : table.routes,
       notFound: table.notFound,
-      errors: table.errors,
+      errors  : table.errors,
     });
 
     const result = await prerender("/search?page=1&tag=a&tag=b", {
-      scripts: [],
-      styles: [],
+      scripts : [],
+      styles  : [],
       preloads: [],
     });
 
@@ -271,9 +271,9 @@ describe("a query the schema refuses", () => {
 describe("the type a page is given", () => {
   it("is the schema's output, and a misuse of it is reported", () => {
     everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "search-params.js"),
+      fixture  : path.join("tests", "type-tests", "search-params.js"),
       alongside: ["npm/router", "npm/validator"],
-      atLeast: 2,
+      atLeast  : 2,
     });
   });
 });

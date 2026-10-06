@@ -82,16 +82,16 @@ export type { Orientation } from "./internal/roving-focus.js";
  * role and orientation.
  */
 export component Separator(
-  decorative?: boolean = false,
+  decorative? : boolean = false,
   orientation?: Orientation = "horizontal",
-  render?: RenderProp,
+  render?     : RenderProp,
   ...rest: Rest
 ) {
   const props = decorative
     ? withProps(rest, { "aria-hidden": "true" })
     : withProps(rest, { "aria-orientation": orientation, role: "separator" });
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

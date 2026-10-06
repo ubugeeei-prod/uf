@@ -35,10 +35,10 @@ const {
 } = load("@uniflowed/react-native/metro");
 
 type MetroTransformInput = {
-  src: string,
+  src     : string,
   filename: string,
   options: {
-    dev?: boolean,
+    dev?        : boolean,
     projectRoot?: string,
     readonly [key: string]: mixed,
   },
@@ -47,21 +47,21 @@ type MetroTransformInput = {
 
 type MetroTransformResult = {
   metadata: {
-    upstream: string,
+    upstream       : string,
     uniflowedSource: string,
-    plugins: $ReadOnlyArray<string>,
+    plugins        : $ReadOnlyArray<string>,
     readonly [key: string]: mixed,
   },
   readonly [key: string]: mixed,
 };
 
 type MetroTransformerModule = {
-  transform: (input: MetroTransformInput) => Promise<MetroTransformResult>,
+  transform  : (input: MetroTransformInput) => Promise<MetroTransformResult>,
   getCacheKey: (options: { readonly [key: string]: mixed }) => string,
 };
 
 type MetroProject = {
-  root: string,
+  root    : string,
   upstream: string,
 };
 
@@ -90,8 +90,8 @@ describe("@uniflowed/react-native/metro", () => {
     const config = withUniflowedMetro({
       cacheVersion: "app",
       resolver: {
-        sourceExts: ["tsx", "js"],
-        resolverMainFields: ["expo", "react-native"],
+        sourceExts             : ["tsx", "js"],
+        resolverMainFields     : ["expo", "react-native"],
         unstable_conditionNames: ["react-native"],
       },
       transformer: {
@@ -101,14 +101,14 @@ describe("@uniflowed/react-native/metro", () => {
 
     expect(config.cacheVersion).toBe("app");
     expect(config.transformer).toEqual({
-      minifierPath: "metro-minify-terser",
+      minifierPath        : "metro-minify-terser",
       babelTransformerPath: metroTransformerPath,
     });
     const { resolveRequest, ...resolverFields } = config.resolver;
     expect(typeof resolveRequest).toBe("function");
     expect(resolverFields).toEqual({
-      sourceExts: ["tsx", "js", "jsx", "mjs", "cjs"],
-      resolverMainFields: ["expo", "react-native", "browser", "main"],
+      sourceExts             : ["tsx", "js", "jsx", "mjs", "cjs"],
+      resolverMainFields     : ["expo", "react-native", "browser", "main"],
       unstable_conditionNames: ["react-native"],
     });
   });
@@ -178,9 +178,9 @@ describe("@uniflowed/react-native/metro", () => {
     await withMetroProject({ overrideUpstream: true }, async ({ root }) => {
       for (const hot of [undefined, false]) {
         const result = await loadMetroTransformer().transform({
-          src: FLOW_COMPONENT,
+          src     : FLOW_COMPONENT,
           filename: "app/NativeCounter.js",
-          options: { dev: true, hot, projectRoot: root },
+          options : { dev: true, hot, projectRoot: root },
         });
         expect(result.metadata.hot).toBe(hot !== false);
       }
@@ -190,9 +190,9 @@ describe("@uniflowed/react-native/metro", () => {
   it("records the uncomposed source-map gap: upstream locations refer to lowered Flow output", async () => {
     await withMetroProject({ overrideUpstream: true }, async ({ root }) => {
       const result = await loadMetroTransformer().transform({
-        src: FLOW_COMPONENT,
+        src     : FLOW_COMPONENT,
         filename: "app/NativeCounter.js",
-        options: { dev: true, projectRoot: root },
+        options : { dev: true, projectRoot: root },
       });
       expect(result.metadata.uniflowedSource).toContain("function NativeCounter(");
       expect(result.metadata.uniflowedSource).not.toContain("component NativeCounter(");
@@ -208,15 +208,15 @@ describe("@uniflowed/react-native/metro", () => {
       });
 
       expect(config.transformer).toEqual({
-        babelTransformerPath: metroTransformerPath,
+        babelTransformerPath  : metroTransformerPath,
         unstable_workerThreads: true,
       });
       expect(process.env.UF_METRO_CONFIGURED_UPSTREAM).toBe(upstream);
 
       const result = await loadMetroTransformer().transform({
-        src: FLOW_COMPONENT,
+        src     : FLOW_COMPONENT,
         filename: "app/NativeCounter.js",
-        options: { dev: true, projectRoot: root },
+        options : { dev: true, projectRoot: root },
       });
       expect(result.metadata.upstream).toBe("upstream-test-transformer");
       expect(result.metadata.uniflowedSource).toContain("function NativeCounter(");
@@ -274,9 +274,9 @@ describe("@uniflowed/react-native/metro", () => {
   it("runs Flow through uf before handing the module to Metro's Babel transformer", async () => {
     await withMetroProject({ overrideUpstream: true }, async ({ root }) => {
       const result = await loadMetroTransformer().transform({
-        src: FLOW_COMPONENT,
+        src     : FLOW_COMPONENT,
         filename: "app/NativeCounter.js",
-        options: { dev: true, projectRoot: root },
+        options : { dev: true, projectRoot: root },
       });
 
       const source = result.metadata.uniflowedSource;
@@ -293,10 +293,10 @@ describe("@uniflowed/react-native/metro", () => {
       function importLocationsPlugin() {}
 
       const result = await loadMetroTransformer().transform({
-        src: FLOW_COMPONENT,
+        src     : FLOW_COMPONENT,
         filename: "app/NativeCounter.js",
-        options: { dev: true, projectRoot: root },
-        plugins: [functionMapBabelPlugin, importLocationsPlugin],
+        options : { dev: true, projectRoot: root },
+        plugins : [functionMapBabelPlugin, importLocationsPlugin],
       });
 
       expect(result.metadata.plugins).toEqual(["functionMapBabelPlugin", "importLocationsPlugin"]);
@@ -330,9 +330,9 @@ describe("@uniflowed/react-native/metro", () => {
       );
 
       const result = await loadMetroTransformer().transform({
-        src: FLOW_COMPONENT,
+        src     : FLOW_COMPONENT,
         filename: "app/NativeCounter.js",
-        options: { dev: true, projectRoot: root },
+        options : { dev: true, projectRoot: root },
       });
 
       expect(result.metadata.upstream).toBe("expo");
@@ -343,9 +343,9 @@ describe("@uniflowed/react-native/metro", () => {
     await withMetroProject({ overrideUpstream: false }, async ({ root }) => {
       await expect(
         loadMetroTransformer().transform({
-          src: FLOW_COMPONENT,
+          src     : FLOW_COMPONENT,
           filename: "app/NativeCounter.js",
-          options: { dev: true, projectRoot: root },
+          options : { dev: true, projectRoot: root },
         }),
       ).rejects.toThrow("there is no React Native Babel transformer to run after uf's");
     });
@@ -356,9 +356,9 @@ describe("@uniflowed/react-native/metro", () => {
       await withEnv({ UF_METRO_UPSTREAM_TRANSFORMER: metroTransformerPath }, async () => {
         await expect(
           loadMetroTransformer().transform({
-            src: FLOW_COMPONENT,
+            src     : FLOW_COMPONENT,
             filename: "app/NativeCounter.js",
-            options: { dev: true, projectRoot: root },
+            options : { dev: true, projectRoot: root },
           }),
         ).rejects.toThrow("is uf's own Metro transformer");
       });
@@ -434,8 +434,8 @@ describe("@uniflowed/react-native/metro", () => {
 
       await withEnv(
         {
-          UF_BINARY: undefined,
-          PATH: path.join(root, "empty-path"),
+          UF_BINARY : undefined,
+          PATH      : path.join(root, "empty-path"),
           UF_BIN_DIR: path.join(root, "empty-bin"),
         },
         () => {
@@ -472,7 +472,7 @@ function runPlainNode(args: $ReadOnlyArray<string>): {
 
 async function withMetroProject(
   options: { overrideUpstream: boolean },
-  body: (project: MetroProject) => Promise<void> | void,
+  body   : (project: MetroProject) => Promise<void> | void,
 ): Promise<void> {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "uf-metro-transform-")));
   const upstream = path.join(root, "upstream-transformer.cjs");
@@ -482,7 +482,7 @@ async function withMetroProject(
     await withEnv(
       {
         UF_METRO_UPSTREAM_TRANSFORMER: options.overrideUpstream ? upstream : undefined,
-        UF_METRO_CONFIGURED_UPSTREAM: undefined,
+        UF_METRO_CONFIGURED_UPSTREAM : undefined,
       },
       () => body({ root, upstream }),
     );
@@ -497,7 +497,7 @@ async function withMetroProject(
  */
 async function withEnv(
   values: { readonly [name: string]: string | void },
-  body: () => Promise<void> | void,
+  body  : () => Promise<void> | void,
 ): Promise<void> {
   const previous: Map<string, string | void> = new Map();
   for (const name of Object.keys(values)) {

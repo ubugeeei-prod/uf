@@ -30,8 +30,8 @@ import { lambdaCapabilities } from "@uniflowed/server/lambda";
 function silent(): Logger {
   const logger: Logger = {
     debug: () => {},
-    info: () => {},
-    warn: () => {},
+    info : () => {},
+    warn : () => {},
     error: () => {},
     child: () => logger,
     level: "debug",
@@ -366,8 +366,8 @@ describe("a host starting schedules", () => {
 describe("a schedule on a worker", () => {
   // What Cloudflare hands `scheduled()`, and what uf hands it back.
   const fired = (
-    routes: { readonly [string]: string },
-    cron?: string,
+    routes : { readonly [string]: string },
+    cron?  : string,
     handle?: (request: Request) => Response | Promise<Response>,
   ) => {
     const seen: Array<Request> = [];

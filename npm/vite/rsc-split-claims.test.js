@@ -52,13 +52,13 @@ function project(extra: $ReadOnlyArray<string>): string {
 /** The manifest's entry for one module; `reaches` is whether a client boundary is below it. */
 function entry(modulePath: string, reaches: boolean) {
   return {
-    path: modulePath,
-    environment: "server",
-    reachability: "server-only",
-    proximity: reaches ? "reaches-boundary" : "isolated",
-    imports: [],
+    path           : modulePath,
+    environment    : "server",
+    reachability   : "server-only",
+    proximity      : reaches ? "reaches-boundary" : "isolated",
+    imports        : [],
     externalImports: [],
-    exports: ["default"],
+    exports        : ["default"],
   };
 }
 
@@ -69,14 +69,14 @@ function manifest(root: string, files: $ReadOnlyArray<string>, reaching: string)
   fs.writeFileSync(
     file,
     JSON.stringify({
-      version: 3,
-      engine: "uf-native",
-      buildFingerprint: "0".repeat(64),
-      modules: files.map((module) => entry(module, module === reaching)),
-      clientBoundaries: [],
+      version          : 3,
+      engine           : "uf-native",
+      buildFingerprint : "0".repeat(64),
+      modules          : files.map((module) => entry(module, module === reaching)),
+      clientBoundaries : [],
       clientBundleRoots: [],
-      serverActions: [],
-      diagnostics: [],
+      serverActions    : [],
+      diagnostics      : [],
     }),
   );
   return readRscManifest(file);

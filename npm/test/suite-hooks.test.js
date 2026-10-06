@@ -85,8 +85,8 @@ describe("a reasoned skip without a body", () => {
     expect(results.length).toBe(1);
     expect(results[0].name).toBe("needs another host");
     expect(results[0].outcome).toEqual({
-      status: "skipped",
-      reason: "explicit",
+      status : "skipped",
+      reason : "explicit",
       message: "Deno cannot exercise Node hooks",
     });
   });

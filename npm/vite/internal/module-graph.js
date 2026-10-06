@@ -70,7 +70,7 @@ function describeBundle(context, root, bundle, isReference) {
     .map((id) => {
       const info = context.getModuleInfo(id);
       return {
-        id: moduleId(root, id),
+        id     : moduleId(root, id),
         imports: (info?.importedIds ?? []).map((imported) => moduleId(root, imported)),
         dynamicImports: (info?.dynamicallyImportedIds ?? []).map((imported) =>
           moduleId(root, imported),
@@ -89,7 +89,7 @@ function describeBundle(context, root, bundle, isReference) {
       entries.add(moduleId(root, facade));
     }
     chunks.push({
-      file: output.fileName,
+      file  : output.fileName,
       facade: facade == null ? null : moduleId(root, facade),
       // A module the bundler left no code for was still walked through to
       // reach what it imports, so it stays in `modules` above; it has nothing
@@ -101,7 +101,7 @@ function describeBundle(context, root, bundle, isReference) {
   }
   return {
     environment: context.environment?.name ?? "client",
-    entries: [...entries].sort(),
+    entries    : [...entries].sort(),
     modules,
     chunks: chunks.sort(byKey("file")),
   };

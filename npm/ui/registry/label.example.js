@@ -8,8 +8,8 @@ import { Label } from "./label.js";
 
 const styles = stylex.create({
   stack: {
-    display: "grid",
-    gap: ufTokens.space2,
+    display : "grid",
+    gap     : ufTokens.space2,
     maxWidth: "20rem",
   },
 });

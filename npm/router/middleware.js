@@ -332,8 +332,8 @@ function interceptionBase(header: string | null, base: URL): URL | null {
  * only learns that the page underneath is not this request's to render.
  */
 async function guardsAdmit(
-  table: $ReadOnlyArray<MiddlewareRecord>,
-  request: Request,
+  table     : $ReadOnlyArray<MiddlewareRecord>,
+  request   : Request,
   underneath: URL,
 ): Promise<boolean> {
   const asked = new Request(underneath.href, { method: "GET", headers: request.headers });
@@ -403,18 +403,18 @@ function withPathname(url: URL, pathname: string): URL {
 function requestAt(request: Request, url: URL): Request {
   const body = request.body;
   return new Request(url.href, {
-    method: request.method,
+    method : request.method,
     headers: request.headers,
     body,
     ...(body == null ? {} : { duplex: "half" }),
-    signal: request.signal,
-    cache: request.cache,
-    credentials: request.credentials,
-    integrity: request.integrity,
-    keepalive: request.keepalive,
-    mode: request.mode,
-    redirect: request.redirect,
-    referrer: request.referrer,
+    signal        : request.signal,
+    cache         : request.cache,
+    credentials   : request.credentials,
+    integrity     : request.integrity,
+    keepalive     : request.keepalive,
+    mode          : request.mode,
+    redirect      : request.redirect,
+    referrer      : request.referrer,
     referrerPolicy: request.referrerPolicy,
   });
 }

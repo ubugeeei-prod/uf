@@ -52,40 +52,40 @@ type RenderProp = (props: Rest) => React.Node;
 
 const styles = stylex.create({
   content: {
-    zIndex: 50,
-    boxSizing: "border-box",
-    minWidth: "12rem",
-    maxWidth: "calc(100vw - 16px)",
-    maxHeight: "var(--uf-anchor-available-height, none)",
-    overflowY: "auto",
-    margin: 0,
-    padding: ufTokens.space1,
+    zIndex         : 50,
+    boxSizing      : "border-box",
+    minWidth       : "12rem",
+    maxWidth       : "calc(100vw - 16px)",
+    maxHeight      : "var(--uf-anchor-available-height, none)",
+    overflowY      : "auto",
+    margin         : 0,
+    padding        : ufTokens.space1,
     backgroundColor: ufTokens.surface,
-    color: ufTokens.ink,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingTight,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusMd,
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    color          : ufTokens.ink,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    lineHeight     : ufTokens.leadingTight,
+    borderWidth    : "1px",
+    borderStyle    : "solid",
+    borderColor    : ufTokens.border,
+    borderRadius   : ufTokens.radiusMd,
+    outlineWidth   : { default: "0", ":focus-visible": "2px" },
+    outlineStyle   : "solid",
+    outlineColor   : ufTokens.focus,
+    outlineOffset  : "2px",
     // Enter: it fades in while travelling 4px out of its trigger, from the
     // side `data-side` says it opened on, so the eye is led from the button
     // to what it opened. `durationBase` on the decelerating curve: most of
     // the distance is covered at once, so it is legible before it has
     // settled. Under reduced motion it only fades.
     "--uf-enter-x": {
-      default: "0px",
-      ":is([data-side=left])": "4px",
+      default                 : "0px",
+      ":is([data-side=left])" : "4px",
       ":is([data-side=right])": "-4px",
     },
     "--uf-enter-y": {
-      default: "0px",
-      ":is([data-side=top])": "4px",
+      default                  : "0px",
+      ":is([data-side=top])"   : "4px",
       ":is([data-side=bottom])": "-4px",
     },
     // Exit: back towards the trigger it came from, on the accelerating curve
@@ -94,106 +94,106 @@ const styles = stylex.create({
     // page, closed and `inert`, until this has finished. Under reduced motion
     // it only fades: `--uf-exit-travel` is 0 there, so nothing jumps either.
     "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
-    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    opacity           : { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transform: {
-      default: "none",
+      default          : "none",
       "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
       ":is([data-state=closed])":
         "translate(calc(var(--uf-enter-x) * var(--uf-exit-travel)), calc(var(--uf-enter-y) * var(--uf-exit-travel)))",
     },
     transitionProperty: {
-      default: "opacity, transform",
+      default                                  : "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
     transitionDuration: {
-      default: ufTokens.durationBase,
+      default                   : ufTokens.durationBase,
       ":is([data-state=closed])": ufTokens.durationFast,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
   item: {
     // Read by the check or the dot inside, which cannot see this row's state.
     "--uf-menu-mark": { default: "0", ":is([aria-checked=true])": "1" },
-    display: "flex",
-    alignItems: "center",
-    gap: ufTokens.space2,
-    boxSizing: "border-box",
-    width: "100%",
-    minHeight: "32px",
-    margin: 0,
-    paddingBlock: ufTokens.space1,
-    paddingInline: ufTokens.space2,
-    borderWidth: 0,
-    borderRadius: ufTokens.radiusSm,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingTight,
-    textAlign: "start",
-    userSelect: "none",
-    cursor: { default: "pointer", ":is([aria-disabled=true])": "not-allowed" },
+    display         : "flex",
+    alignItems      : "center",
+    gap             : ufTokens.space2,
+    boxSizing       : "border-box",
+    width           : "100%",
+    minHeight       : "32px",
+    margin          : 0,
+    paddingBlock    : ufTokens.space1,
+    paddingInline   : ufTokens.space2,
+    borderWidth     : 0,
+    borderRadius    : ufTokens.radiusSm,
+    fontFamily      : ufTokens.fontSans,
+    fontSize        : ufTokens.textSm,
+    lineHeight      : ufTokens.leadingTight,
+    textAlign       : "start",
+    userSelect      : "none",
+    cursor          : { default: "pointer", ":is([aria-disabled=true])": "not-allowed" },
     color: {
-      default: ufTokens.ink,
-      ":hover": ufTokens.accent,
-      ":focus-visible": ufTokens.accent,
+      default                    : ufTokens.ink,
+      ":hover"                   : ufTokens.accent,
+      ":focus-visible"           : ufTokens.accent,
       ":is([aria-expanded=true])": ufTokens.accent,
       ":is([aria-disabled=true])": ufTokens.muted,
     },
     backgroundColor: {
-      default: "transparent",
-      ":hover": ufTokens.accentSoft,
-      ":focus-visible": ufTokens.accentSoft,
+      default                    : "transparent",
+      ":hover"                   : ufTokens.accentSoft,
+      ":focus-visible"           : ufTokens.accentSoft,
       ":is([aria-expanded=true])": ufTokens.accentSoft,
       ":is([aria-disabled=true])": "transparent",
     },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: "transparent",
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : "transparent",
     outlineOffset: "-2px",
   },
   mark: {
-    display: "inline-flex",
-    alignItems: "center",
+    display       : "inline-flex",
+    alignItems    : "center",
     justifyContent: "center",
-    flexShrink: 0,
-    width: "16px",
-    height: "16px",
-    opacity: "var(--uf-menu-mark, 0)",
+    flexShrink    : 0,
+    width         : "16px",
+    height        : "16px",
+    opacity       : "var(--uf-menu-mark, 0)",
   },
   shortcut: {
-    marginInlineStart: "auto",
+    marginInlineStart : "auto",
     paddingInlineStart: ufTokens.space4,
-    fontSize: ufTokens.textXs,
-    letterSpacing: "0.05em",
+    fontSize          : ufTokens.textXs,
+    letterSpacing     : "0.05em",
   },
   chevron: {
-    flexShrink: 0,
+    flexShrink       : 0,
     marginInlineStart: "auto",
   },
   group: {
     display: "grid",
   },
   label: {
-    paddingBlock: ufTokens.space1,
+    paddingBlock : ufTokens.space1,
     paddingInline: ufTokens.space2,
-    fontSize: ufTokens.textXs,
-    fontWeight: ufTokens.weightMedium,
-    color: ufTokens.muted,
+    fontSize     : ufTokens.textXs,
+    fontWeight   : ufTokens.weightMedium,
+    color        : ufTokens.muted,
   },
   separator: {
-    height: "1px",
-    marginBlock: ufTokens.space1,
+    height         : "1px",
+    marginBlock    : ufTokens.space1,
     backgroundColor: ufTokens.border,
   },
 });
 
 /** The menu, open or closed. Uncontrolled unless `open` is given. */
 component MenuRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
@@ -208,11 +208,11 @@ component MenuRoot(
  * `Button` unless `render` says otherwise.
  */
 component MenuTrigger(
-  children: React.Node,
-  tone?: ButtonTone = "neutral",
-  size?: ButtonSize = "md",
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  tone?     : ButtonTone = "neutral",
+  size?     : ButtonSize = "md",
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -250,12 +250,12 @@ component MenuContent(
     | MenuGroup
     | MenuSub
   ),
-  align?: Align = "start",
-  side?: LogicalSide,
-  sideOffset?: number = 4,
+  align?           : Align = "start",
+  side?            : LogicalSide,
+  sideOffset?      : number = 4,
   collisionPadding?: number = 8,
-  xstyle?: StyleArgument,
-  className?: string,
+  xstyle?          : StyleArgument,
+  className?       : string,
   ...rest: Rest
 ) {
   return (
@@ -274,12 +274,12 @@ component MenuContent(
 
 /** A row that does something, and closes the menu unless `closeOnSelect` is false. */
 component MenuItem(
-  children: React.Node,
-  disabled?: boolean = false,
+  children      : React.Node,
+  disabled?     : boolean = false,
   closeOnSelect?: boolean = true,
-  onSelect?: (event: MenuSelect) => mixed,
-  xstyle?: StyleArgument,
-  className?: string,
+  onSelect?     : (event: MenuSelect) => mixed,
+  xstyle?       : StyleArgument,
+  className?    : string,
   ...rest: Rest
 ) renders Menu.Item {
   return (
@@ -297,15 +297,15 @@ component MenuItem(
 
 /** A row that turns something on or off, with a check while it is on. */
 component MenuCheckboxItem(
-  children: React.Node,
-  checked?: boolean,
-  defaultChecked?: boolean = false,
+  children        : React.Node,
+  checked?        : boolean,
+  defaultChecked? : boolean = false,
   onCheckedChange?: (checked: boolean) => void,
-  disabled?: boolean = false,
-  closeOnSelect?: boolean = false,
-  onSelect?: (event: MenuSelect) => mixed,
-  xstyle?: StyleArgument,
-  className?: string,
+  disabled?       : boolean = false,
+  closeOnSelect?  : boolean = false,
+  onSelect?       : (event: MenuSelect) => mixed,
+  xstyle?         : StyleArgument,
+  className?      : string,
   ...rest: Rest
 ) renders Menu.CheckboxItem {
   return (
@@ -342,12 +342,12 @@ component MenuCheckboxItem(
 
 /** Rows of which one is chosen. A `Menu.Label` inside names the group. */
 component MenuRadioGroup(
-  children: renders* (MenuRadioItem | MenuLabel | MenuSeparator),
-  value?: string | null,
-  defaultValue?: string | null = null,
+  children      : renders* (MenuRadioItem | MenuLabel | MenuSeparator),
+  value?        : string | null,
+  defaultValue? : string | null = null,
   onValueChange?: (value: string) => void,
-  xstyle?: StyleArgument,
-  className?: string,
+  xstyle?       : StyleArgument,
+  className?    : string,
   ...rest: Rest
 ) renders Menu.RadioGroup {
   return (
@@ -365,13 +365,13 @@ component MenuRadioGroup(
 
 /** One choice in a `Menu.RadioGroup`, with a dot while it is the chosen one. */
 component MenuRadioItem(
-  children: React.Node,
-  value: string,
-  disabled?: boolean = false,
+  children      : React.Node,
+  value         : string,
+  disabled?     : boolean = false,
   closeOnSelect?: boolean = false,
-  onSelect?: (event: MenuSelect) => mixed,
-  xstyle?: StyleArgument,
-  className?: string,
+  onSelect?     : (event: MenuSelect) => mixed,
+  xstyle?       : StyleArgument,
+  className?    : string,
   ...rest: Rest
 ) renders Menu.RadioItem {
   return (
@@ -395,8 +395,8 @@ component MenuRadioItem(
 
 /** Rows kept together. A `Menu.Label` inside names the group. */
 component MenuGroup(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Menu.Group {
@@ -412,8 +412,8 @@ component MenuGroup(
 
 /** The name of the group it is in, which the keyboard passes over. */
 component MenuLabel(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Menu.Label {
@@ -429,7 +429,7 @@ component MenuLabel(
 
 /** A line between groups of rows. */
 component MenuSeparator(
-  xstyle?: StyleArgument,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Menu.Separator {
@@ -443,8 +443,8 @@ component MenuSeparator(
 
 /** The keys that do the same as a row, at its end and out of its name. */
 component MenuShortcut(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -461,9 +461,9 @@ component MenuShortcut(
 
 /** A submenu: a `Menu.SubTrigger` and the `Menu.Content` it opens. */
 component MenuSub(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) renders Menu.Sub {
   return (
@@ -475,8 +475,8 @@ component MenuSub(
 
 /** The row that opens a submenu, with an arrow toward it. */
 component MenuSubTrigger(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

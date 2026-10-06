@@ -116,18 +116,18 @@ export function nodeCapabilities(options?: CapabilityOptions): ServerCapabilitie
  * this behind Vite's middleware stack, which sets it.
  */
 export type NodeRequest = {
-  readonly method?: string,
-  readonly url?: string,
+  readonly method?     : string,
+  readonly url?        : string,
   readonly originalUrl?: string,
-  readonly headers: { readonly [string]: string | Array<string> | void },
+  readonly headers     : { readonly [string]: string | Array<string> | void },
   ...
 };
 
 /** The pieces of a Node response this module writes. */
 export type NodeResponse = {
-  statusCode: number,
+  statusCode   : number,
   statusMessage: string,
-  headersSent: boolean,
+  headersSent  : boolean,
   setHeader(name: string, value: string | $ReadOnlyArray<string>): mixed,
   write(chunk: Uint8Array | string): boolean,
   end(chunk?: Uint8Array | string): mixed,
@@ -254,7 +254,7 @@ export function toRequest(
  */
 export function copyHeaders(
   outgoing: { setHeader(name: string, value: string | $ReadOnlyArray<string>): mixed, ... },
-  headers: Headers,
+  headers : Headers,
 ): void {
   for (const [name, value] of headers) {
     if (name !== "set-cookie") {
@@ -402,7 +402,7 @@ export function nodeListener(
   handle: (request: Request) => Promise<Response>,
   options: {|
     readonly beginRequest: (request: Request) => RequestLifecycle,
-    readonly secure?: boolean,
+    readonly secure?     : boolean,
     /**
      * Where this listener's lines go. The process logger by default.
      *
@@ -454,11 +454,11 @@ export function nodeListener(
         // empty id rather than a fabricated one, because inventing an id for a
         // request that had none would put a value in the log that nothing else
         // in the system has ever seen.
-        requestId: lifecycle?.context.id ?? "",
-        method: (incoming.method ?? "GET").toUpperCase(),
-        path: pathOf(target),
-        route: lifecycle?.context.route ?? null,
-        status: outgoing.statusCode,
+        requestId : lifecycle?.context.id ?? "",
+        method    : (incoming.method ?? "GET").toUpperCase(),
+        path      : pathOf(target),
+        route     : lifecycle?.context.route ?? null,
+        status    : outgoing.statusCode,
         durationMs: elapsedMs(started),
       });
       if (lifecycle != null) await lifecycle.settle();
@@ -500,8 +500,8 @@ function pathOf(target: string): string {
  */
 export function createServeHandler(options: {|
   readonly staticDir: string,
-  readonly handle: (request: Request) => Promise<Response>,
-  readonly routing?: RoutingRules,
+  readonly handle   : (request: Request) => Promise<Response>,
+  readonly routing? : RoutingRules,
 |}): (request: Request) => Promise<Response> {
   const serveStatic = createStaticHandler({ root: options.staticDir });
   return async function handle(request: Request): Promise<Response> {
@@ -614,7 +614,7 @@ function unpinned(argument: mixed, pinned: Map<string, string>): mixed {
  */
 export async function serve(options: {|
   readonly staticDir: string,
-  readonly handle: (request: Request) => Promise<Response>,
+  readonly handle   : (request: Request) => Promise<Response>,
   /**
    * The application bundle's own `beginRequest`.
    *
@@ -623,8 +623,8 @@ export async function serve(options: {|
    * cannot be imported here instead.
    */
   readonly beginRequest: (request: Request) => RequestLifecycle,
-  readonly host?: string,
-  readonly port?: number,
+  readonly host?       : string,
+  readonly port?       : number,
   /** Where this server's lines go. The process logger by default. */
   readonly log?: Logger,
   /**
@@ -640,16 +640,16 @@ export async function serve(options: {|
   /** The bundle's `routing`, which the generated `handler.js` re-exports. */
   readonly routing?: RoutingRules,
 |}): Promise<{|
-  readonly host: string,
-  readonly port: number,
+  readonly host : string,
+  readonly port : number,
   readonly close: () => Promise<void>,
 |}> {
   const log = options.log ?? processLogger();
   const listener = nodeListener(
     createServeHandler({
       staticDir: options.staticDir,
-      handle: options.handle,
-      routing: options.routing,
+      handle   : options.handle,
+      routing  : options.routing,
     }),
     { beginRequest: options.beginRequest, log },
   );

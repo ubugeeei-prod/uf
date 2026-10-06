@@ -223,9 +223,9 @@ export type Regeneration = {|
 
 /** A whole document, as an entry: what a hit answers with without rendering. */
 type CachedDocument = {|
-  readonly status: number,
+  readonly status : number,
   readonly headers: { readonly [string]: string },
-  readonly body: Uint8Array,
+  readonly body   : Uint8Array,
 |};
 
 /**
@@ -523,13 +523,13 @@ export function createFetchHandler(options: FetchHandlerOptions): (
  * be kept, and for its durable write.
  */
 async function cachedDocument(
-  app: Application,
-  cache: CacheOptions,
-  context: RequestContext | null,
-  url: URL,
-  target: string,
+  app     : Application,
+  cache   : CacheOptions,
+  context : RequestContext | null,
+  url     : URL,
+  target  : string,
   document: DocumentAssets,
-  onError: (error: mixed) => void,
+  onError : (error: mixed) => void,
 ): Promise<Response> {
   let streamFill: (response: Response) => void = () => {};
   const filling: Promise<Response> = new Promise((resolve) => {
@@ -587,21 +587,21 @@ async function cachedDocument(
  *   `/posts?ref=x` apart from `/posts` would render one document twice.
  */
 async function regeneratedDocument(
-  app: Application,
-  cache: CacheOptions,
-  context: RequestContext | null,
+  app        : Application,
+  cache      : CacheOptions,
+  context    : RequestContext | null,
   regenerated: {| readonly pathname: string, readonly page: RegeneratedPage |},
-  document: DocumentAssets,
-  onError: (error: mixed) => void,
+  document   : DocumentAssets,
+  onError    : (error: mixed) => void,
 ): Promise<Response> {
   const { pathname, page } = regenerated;
   const result = await cache.store.resolve(
     {
-      key: ["route", "GET", pathname, ""],
-      path: pathname,
-      tags: page.tags,
+      key               : ["route", "GET", pathname, ""],
+      path              : pathname,
+      tags              : page.tags,
       staleUntilReplaced: true,
-      seed: () => buildCopy(context, pathname, page),
+      seed              : () => buildCopy(context, pathname, page),
     },
     () => renderForCache(app, context, pathname, document, onError),
   );
@@ -657,7 +657,7 @@ function pageName(pathname: string): string | null {
  */
 function regeneratedPage(
   regeneration: Regeneration | void,
-  pathname: string,
+  pathname    : string,
 ): {| readonly pathname: string, readonly page: RegeneratedPage |} | null {
   if (regeneration == null) return null;
   const name = pageName(pathname);
@@ -673,9 +673,9 @@ function regeneratedPage(
  * page instead, which is slower on the first request and right on every one.
  */
 async function buildCopy(
-  context: RequestContext | null,
+  context : RequestContext | null,
   pathname: string,
-  page: RegeneratedPage,
+  page    : RegeneratedPage,
 ): Promise<CacheEntry<mixed> | null> {
   const read = context?.buildFile;
   if (read == null) return null;
@@ -686,9 +686,9 @@ async function buildCopy(
     return null;
   }
   const value: CachedDocument = {
-    status: 200,
+    status : 200,
     headers: {},
-    body: new Uint8Array(await response.arrayBuffer()),
+    body   : new Uint8Array(await response.arrayBuffer()),
   };
   const at = page.renderedAt;
   return {
@@ -697,19 +697,19 @@ async function buildCopy(
     revalidateAt:
       page.revalidate == null ? END_OF_TIME : Math.min(at + page.revalidate * 1000, END_OF_TIME),
     expiresAt: page.expire == null ? END_OF_TIME : Math.min(at + page.expire * 1000, END_OF_TIME),
-    tags: page.tags,
-    path: pathname,
+    tags     : page.tags,
+    path     : pathname,
   };
 }
 
 /** Render `target` whole, refusing to keep it for every reason it can name. */
 async function renderForCache(
-  app: Application,
-  context: RequestContext | null,
-  target: string,
+  app     : Application,
+  context : RequestContext | null,
+  target  : string,
   document: DocumentAssets,
-  onError: (error: mixed) => void,
-  stream?: (response: Response) => void,
+  onError : (error: mixed) => void,
+  stream? : (response: Response) => void,
 ): Promise<CachedDocument> {
   const before = context?.requestStateReads ?? 0;
   const rendered = await app.render(target, document, { onError });
@@ -759,11 +759,11 @@ async function renderForCache(
  * document either way, and the header is what the shell said.
  */
 function streamedFill(
-  body: ReadableStream<Uint8Array>,
-  status: number,
+  body    : ReadableStream<Uint8Array>,
+  status  : number,
   rendered: { readonly [string]: string },
-  context: RequestContext | null,
-  before: number,
+  context : RequestContext | null,
+  before  : number,
 ): Response {
   const scope = currentScope();
   const ruledOut =
@@ -793,10 +793,10 @@ function cachedResponse(result: CacheResult<CachedDocument>): Response {
 /** The header word for an outcome. */
 function label(outcome: CacheOutcome): string {
   return match (outcome) {
-    "hit" => "HIT",
-    "stale" => "STALE",
-    "coalesced" => "COALESCED",
-    "miss" => "MISS",
+    "hit"         => "HIT",
+    "stale"       => "STALE",
+    "coalesced"   => "COALESCED",
+    "miss"        => "MISS",
     "uncacheable" => "BYPASS",
   };
 }

@@ -33,16 +33,16 @@ const COMPONENTS = import.meta.glob<string>(
 
 /** Every example file, as text, by path. */
 const EXAMPLES = import.meta.glob<string>("../../../../npm/ui/registry/*.example.js", {
-  eager: true,
+  eager : true,
   import: "default",
-  query: "?raw",
+  query : "?raw",
 });
 
 type Entry = {|
-  readonly name: string,
+  readonly name       : string,
   readonly description: string,
-  readonly source: string,
-  readonly example: string,
+  readonly source     : string,
+  readonly example    : string,
 |};
 
 /** Every component in the registry, in alphabetical order. */

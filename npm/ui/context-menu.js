@@ -74,7 +74,7 @@ import { MenuAnchorContext, MenuContext, MenuLevel, useMenu } from "./internal/m
  * it, and the body is a sibling of the trigger rather than a child of it.
  */
 type PointState = {|
-  readonly point: Rect | null,
+  readonly point : Rect | null,
   readonly openAt: (point: Rect | null) => void,
 |};
 
@@ -92,9 +92,9 @@ function pointAt(x: number, y: number): Rect {
  * and the body are siblings in whatever layout the caller wrote.
  */
 component ContextMenuRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   // State rather than a ref, and that is load-bearing: the rectangle is one of
@@ -102,8 +102,8 @@ component ContextMenuRoot(
   // somewhere else has to be a new value React has committed rather than a
   // mutation nothing heard about.
   const [point, setPoint] = useState<Rect | null>(null);
-  const openAt = useCallback((next: Rect | null) => setPoint(next), []);
-  const state = useMemo(() => ({ point, openAt }), [point, openAt]);
+  const openAt            = useCallback((next: Rect | null) => setPoint(next), []);
+  const state             = useMemo(() => ({ point, openAt }), [point, openAt]);
 
   return (
     <PointContext.Provider value={state}>
@@ -132,7 +132,7 @@ hook usePoint(part: string): PointState {
  * when a caller should take it out again.
  */
 component ContextMenuTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
-  const menu = useMenu("ContextMenu.Trigger");
+  const menu       = useMenu("ContextMenu.Trigger");
   const { openAt } = usePoint("ContextMenu.Trigger");
   const triggerRef = useRef<HTMLElement | null>(null);
   const passed = withoutComposed(rest, ["onContextMenu", "onKeyDown", "ref"]);
@@ -207,7 +207,7 @@ component ContextMenuTrigger(children: React.Node, render?: RenderProp, ...rest:
   );
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

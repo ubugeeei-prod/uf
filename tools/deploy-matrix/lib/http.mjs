@@ -45,14 +45,14 @@ export async function request(base, path, init = {}) {
   const response = await fetch(new URL(path, base), {
     ...init,
     redirect: "manual",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal  : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const chunks = [];
   const decoder = new TextDecoder();
   if (response.body != null) {
     for await (const bytes of response.body) {
       chunks.push({
-        at: performance.now() - started,
+        at  : performance.now() - started,
         text: decoder.decode(bytes, { stream: true }),
       });
     }
@@ -60,9 +60,9 @@ export async function request(base, path, init = {}) {
   const rest = decoder.decode();
   if (rest !== "") chunks.push({ at: performance.now() - started, text: rest });
   return {
-    status: response.status,
+    status : response.status,
     headers: response.headers,
-    body: chunks.map((chunk) => chunk.text).join(""),
+    body   : chunks.map((chunk) => chunk.text).join(""),
     chunks,
     setCookies: response.headers.getSetCookie(),
   };
@@ -110,9 +110,9 @@ export async function waitUntilAnswering(base, options = {}) {
     }
     try {
       const response = await fetch(new URL(options.path ?? "/", base), {
-        headers: options.headers,
+        headers : options.headers,
         redirect: "manual",
-        signal: AbortSignal.timeout(5_000),
+        signal  : AbortSignal.timeout(5_000),
       });
       await response.arrayBuffer();
       if (options.answered == null || options.answered(response.status)) return;

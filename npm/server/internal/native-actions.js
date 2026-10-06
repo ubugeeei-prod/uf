@@ -2,8 +2,8 @@
 import { currentContext } from "./context.js";
 
 export type NativeActionAuthorization = {|
-  readonly request: Request,
-  readonly id: string,
+  readonly request   : Request,
+  readonly id        : string,
   readonly credential: string,
 |};
 
@@ -20,7 +20,7 @@ function nativeRequest(request: Request): boolean {
 /** Application-owned token verification, bound to exactly one action request. */
 export async function authorizeNativeAction(
   request: Request,
-  verify: (token: string, actionId: string) => Promise<boolean>,
+  verify : (token: string, actionId: string) => Promise<boolean>,
 ): Promise<boolean> {
   const context = currentContext();
   if (context == null) throw new Error("authorizeNativeAction must run inside request middleware");

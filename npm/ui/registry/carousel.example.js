@@ -11,12 +11,12 @@ const styles = stylex.create({
     maxWidth: "24rem",
   },
   slide: {
-    display: "flex",
-    alignItems: "center",
+    display       : "flex",
+    alignItems    : "center",
     justifyContent: "center",
-    height: "10rem",
-    fontSize: ufTokens.textSm,
-    fontWeight: ufTokens.weightMedium,
+    height        : "10rem",
+    fontSize      : ufTokens.textSm,
+    fontWeight    : ufTokens.weightMedium,
   },
 });
 

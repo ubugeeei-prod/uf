@@ -74,7 +74,7 @@ type HookWindow = {
  */
 export function devtoolsProblem(win: HookWindow): {|
   readonly message: string,
-  readonly detail: $ReadOnlyArray<string>,
+  readonly detail : $ReadOnlyArray<string>,
 |} | null {
   const hook = win[DEVTOOLS_HOOK];
   if (hook == null || typeof hook !== "object") {

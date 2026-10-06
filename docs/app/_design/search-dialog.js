@@ -33,21 +33,21 @@ type IndexState = "idle" | "loading" | "ready" | "missing";
 
 /** What is searchable before the index arrives: each page's title and blurb. */
 const TITLES: $ReadOnlyArray<SearchEntry> = pages.map((page) => ({
-  href: page.href,
-  page: page.title,
+  href   : page.href,
+  page   : page.title,
   section: sectionFor(page.href)?.title ?? "",
   heading: null,
-  text: page.blurb,
+  text   : page.blurb,
 }));
 
 export component SearchDialog() {
-  const dialog = useRef<?HTMLDialogElement>(null);
-  const field = useRef<?HTMLInputElement>(null);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-  const [entries, setEntries] = useState<$ReadOnlyArray<SearchEntry>>(TITLES);
+  const dialog                      = useRef<?HTMLDialogElement>(null);
+  const field                       = useRef<?HTMLInputElement>(null);
+  const [query,      setQuery]      = useState("");
+  const [active,     setActive]     = useState(0);
+  const [entries,    setEntries]    = useState<$ReadOnlyArray<SearchEntry>>(TITLES);
   const [indexState, setIndexState] = useState<IndexState>("idle");
-  const id = useId();
+  const id                          = useId();
 
   const results: $ReadOnlyArray<SearchResult> = search(entries, query, 12);
 

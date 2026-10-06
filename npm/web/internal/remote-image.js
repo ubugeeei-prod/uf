@@ -17,10 +17,10 @@ import type { ImageEndpoint } from "./image-endpoint.js";
  * `null` when the project has no endpoint, or the URL is not one it fetches.
  */
 export function remoteSources(
-  endpoint: ImageEndpoint,
-  src: string,
+  endpoint : ImageEndpoint,
+  src      : string,
   intrinsic: number,
-  quality: number,
+  quality  : number,
 ): {| readonly src: string, readonly srcSet: string |} | null {
   const path = endpoint.path;
   if (path == null) return null;
@@ -36,7 +36,7 @@ export function remoteSources(
   const rungs = widths.filter((width) => width < cover).map((width) => [width, width]);
   rungs.push([cover, Math.min(cover, intrinsic)]);
   return {
-    src: at(cover),
+    src   : at(cover),
     srcSet: rungs.map(([asked, described]) => `${at(asked)} ${described}w`).join(", "),
   };
 }

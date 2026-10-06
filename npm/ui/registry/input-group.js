@@ -57,69 +57,69 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    display: "flex",
+    display   : "flex",
     alignItems: "center",
-    boxSizing: "border-box",
-    width: "100%",
-    minHeight: "36px",
+    boxSizing : "border-box",
+    width     : "100%",
+    minHeight : "36px",
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
+    fontSize  : ufTokens.textSm,
     lineHeight: ufTokens.leadingBase,
-    color: ufTokens.ink,
+    color     : ufTokens.ink,
     backgroundColor: {
-      default: ufTokens.surface,
+      default               : ufTokens.surface,
       ":has(input:disabled)": ufTokens.sunken,
     },
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: {
-      default: ufTokens.border,
+      default                    : ufTokens.border,
       ":has([aria-invalid=true])": ufTokens.danger,
     },
-    borderRadius: ufTokens.radiusMd,
-    outlineWidth: { default: "0", ":focus-within": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    borderRadius : ufTokens.radiusMd,
+    outlineWidth : { default: "0", ":focus-within": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "1px",
   },
   input: {
-    flexGrow: 1,
-    flexShrink: 1,
-    minWidth: 0,
-    boxSizing: "border-box",
-    margin: 0,
-    paddingBlock: ufTokens.space2,
-    paddingInline: ufTokens.space3,
-    fontFamily: "inherit",
-    fontSize: "inherit",
-    lineHeight: "inherit",
-    color: { default: ufTokens.ink, ":disabled": ufTokens.muted },
+    flexGrow       : 1,
+    flexShrink     : 1,
+    minWidth       : 0,
+    boxSizing      : "border-box",
+    margin         : 0,
+    paddingBlock   : ufTokens.space2,
+    paddingInline  : ufTokens.space3,
+    fontFamily     : "inherit",
+    fontSize       : "inherit",
+    lineHeight     : "inherit",
+    color          : { default: ufTokens.ink, ":disabled": ufTokens.muted },
     backgroundColor: "transparent",
-    borderWidth: 0,
-    borderRadius: 0,
+    borderWidth    : 0,
+    borderRadius   : 0,
     // The group draws the ring; see the header.
     outlineStyle: "none",
-    cursor: { default: "text", ":disabled": "not-allowed" },
+    cursor      : { default: "text", ":disabled": "not-allowed" },
     "::placeholder": {
-      color: ufTokens.muted,
+      color  : ufTokens.muted,
       opacity: 1,
     },
   },
   addon: {
-    display: "inline-flex",
-    alignItems: "center",
-    flexShrink: 0,
-    gap: ufTokens.space1,
+    display      : "inline-flex",
+    alignItems   : "center",
+    flexShrink   : 0,
+    gap          : ufTokens.space1,
     paddingInline: ufTokens.space3,
-    color: ufTokens.muted,
-    whiteSpace: "nowrap",
+    color        : ufTokens.muted,
+    whiteSpace   : "nowrap",
   },
 });
 
 /** The frame round the input and its addons. */
 component InputGroupRoot(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -132,8 +132,8 @@ component InputGroupRoot(
 
 /** The input itself. Its label is its name; see the header. */
 component InputGroupInput(
-  type?: string = "text",
-  xstyle?: StyleArgument,
+  type?     : string = "text",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -148,8 +148,8 @@ component InputGroupInput(
 
 /** Text, an icon or a button beside the input, before or after it in reading order. */
 component InputGroupAddon(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

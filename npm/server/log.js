@@ -143,7 +143,7 @@ export function installLoggerUnlessChosen(create: () => Logger): void {
  * on.
  */
 export function recordingLogger(options?: {| readonly level?: LogLevel |}): {|
-  readonly logger: Logger,
+  readonly logger : Logger,
   readonly records: Array<LogRecord>,
 |} {
   const records: Array<LogRecord> = [];
@@ -171,12 +171,12 @@ export function silenceLogging(): void {
 /** Everything an access line carries, so the hosts cannot disagree about it. */
 export type RequestLogFields = {|
   readonly requestId: string,
-  readonly method: string,
+  readonly method   : string,
   /** The path, and never the query string; see [`logRequest`]. */
   readonly path: string,
   /** The route pattern that matched, or `null` when nothing did. */
-  readonly route: string | null,
-  readonly status: number,
+  readonly route     : string | null,
+  readonly status    : number,
   readonly durationMs: number,
 |};
 
@@ -225,11 +225,11 @@ export type RequestLogFields = {|
 export function logRequest(logger: Logger, fields: RequestLogFields): void {
   const at = fields.status >= 500 ? "error" : fields.status >= 400 ? "warn" : "info";
   logger[at]("request", {
-    requestId: fields.requestId,
-    method: fields.method,
-    path: fields.path,
-    route: fields.route,
-    status: fields.status,
+    requestId : fields.requestId,
+    method    : fields.method,
+    path      : fields.path,
+    route     : fields.route,
+    status    : fields.status,
     durationMs: fields.durationMs,
   });
 }

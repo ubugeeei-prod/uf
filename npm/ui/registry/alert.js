@@ -42,21 +42,21 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    display: "grid",
-    gap: ufTokens.space1,
-    boxSizing: "border-box",
-    width: "100%",
-    paddingBlock: ufTokens.space3,
-    paddingInline: ufTokens.space4,
+    display        : "grid",
+    gap            : ufTokens.space1,
+    boxSizing      : "border-box",
+    width          : "100%",
+    paddingBlock   : ufTokens.space3,
+    paddingInline  : ufTokens.space4,
     backgroundColor: ufTokens.surface,
-    color: ufTokens.ink,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusMd,
+    color          : ufTokens.ink,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    lineHeight     : ufTokens.leadingBase,
+    borderWidth    : "1px",
+    borderStyle    : "solid",
+    borderColor    : ufTokens.border,
+    borderRadius   : ufTokens.radiusMd,
   },
   info: {
     borderInlineStartWidth: "4px",
@@ -67,23 +67,23 @@ const styles = stylex.create({
     borderInlineStartColor: ufTokens.danger,
   },
   title: {
-    margin: 0,
-    fontSize: ufTokens.textSm,
+    margin    : 0,
+    fontSize  : ufTokens.textSm,
     fontWeight: ufTokens.weightBold,
     lineHeight: ufTokens.leadingTight,
   },
   description: {
     margin: 0,
-    color: ufTokens.muted,
+    color : ufTokens.muted,
   },
 });
 
 /** A callout. `live` only for one that appears after the page has loaded. */
 component AlertRoot(
-  children: React.Node,
-  tone?: AlertTone = "neutral",
-  live?: boolean = false,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  tone?     : AlertTone = "neutral",
+  live?     : boolean = false,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -91,8 +91,8 @@ component AlertRoot(
     styles.root,
     match (tone) {
       "neutral" => null,
-      "info" => styles.info,
-      "danger" => styles.danger,
+      "info"    => styles.info,
+      "danger"  => styles.danger,
     },
     xstyle,
   );
@@ -109,9 +109,9 @@ component AlertRoot(
 
 /** What happened, as a heading at `level`. */
 component AlertTitle(
-  children: React.Node,
-  level?: number = 3,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  level?    : number = 3,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -128,8 +128,8 @@ component AlertTitle(
 
 /** What it means, and what to do about it. */
 component AlertDescription(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

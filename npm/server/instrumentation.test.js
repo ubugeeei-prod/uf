@@ -31,7 +31,7 @@ function replaceProperty(target: interface {}, name: string, value: mixed): void
   const existing = Object.getOwnPropertyDescriptor(target, name);
   Object.defineProperty(target, name, {
     configurable: true,
-    enumerable: existing?.enumerable ?? true,
+    enumerable  : existing?.enumerable ?? true,
     value,
     writable: true,
   });

@@ -5,9 +5,9 @@ import { classify } from "./deno-library.js";
 it("fails native-addon errors in Vite and unrelated files", () => {
   const reason = "failed to load: Error: Cannot find native binding.";
   const report = classify({
-    passed: 1,
+    passed : 1,
     skipped: 0,
-    tests: [],
+    tests  : [],
     fileReports: [
       { file: "npm/vite/flight.test.js", status: "load-failed", reason },
       { file: "npm/ui/ui.test.js", status: "load-failed", reason },
@@ -19,12 +19,12 @@ it("fails native-addon errors in Vite and unrelated files", () => {
 });
 it("fails a different error in an otherwise exempted file", () => {
   const report = classify({
-    passed: 0,
+    passed : 0,
     skipped: 0,
-    tests: [],
+    tests  : [],
     fileReports: [
       {
-        file: "npm/vite/flight.test.js",
+        file  : "npm/vite/flight.test.js",
         status: "load-failed",
         reason: "unexpected syntax error",
       },
@@ -34,12 +34,12 @@ it("fails a different error in an otherwise exempted file", () => {
 });
 it("does not accept an unexplained worker exit", () => {
   const report = classify({
-    passed: 0,
+    passed : 0,
     skipped: 0,
-    tests: [],
+    tests  : [],
     fileReports: [
       {
-        file: "tests/library/payload.test.js",
+        file  : "tests/library/payload.test.js",
         status: "host-failed",
         reason: "the host failed: the worker exited (exit status: 1)",
       },
@@ -49,7 +49,7 @@ it("does not accept an unexplained worker exit", () => {
 });
 it("fails when Deno exits during payload hydration", () => {
   const report = classify({
-    passed: 0,
+    passed : 0,
     skipped: 0,
     tests: [
       {
@@ -61,7 +61,7 @@ it("fails when Deno exits during payload hydration", () => {
     ],
     fileReports: [
       {
-        file: "tests/library/payload.test.js",
+        file  : "tests/library/payload.test.js",
         status: "host-failed",
         reason:
           "the host failed: uncaught exception: The server could not finish this Suspense boundary, likely due to an error during server rendering. Switched to client rendering.",
@@ -72,7 +72,7 @@ it("fails when Deno exits during payload hydration", () => {
 });
 it("does not accept another uncaught exception in the payload tests", () => {
   const report = classify({
-    passed: 0,
+    passed : 0,
     skipped: 0,
     tests: [
       {
@@ -84,7 +84,7 @@ it("does not accept another uncaught exception in the payload tests", () => {
     ],
     fileReports: [
       {
-        file: "tests/library/payload.test.js",
+        file  : "tests/library/payload.test.js",
         status: "host-failed",
         reason: "the host failed: uncaught exception: something else",
       },
@@ -95,20 +95,20 @@ it("does not accept another uncaught exception in the payload tests", () => {
 
 it("fails the former Relay and document storage exceptions", () => {
   const report = classify({
-    passed: 0,
-    skipped: 0,
+    passed     : 0,
+    skipped    : 0,
     fileReports: [],
     tests: [
       {
-        file: "npm/vite/relay.test.js",
-        name: "Relay transform",
-        status: "failed",
+        file    : "npm/vite/relay.test.js",
+        name    : "Relay transform",
+        status  : "failed",
         failures: [{ message: "globalsBuiltinLower is not iterable" }],
       },
       {
-        file: "npm/react-testing/dom-storage.test.js",
-        name: "document storage probe",
-        status: "failed",
+        file    : "npm/react-testing/dom-storage.test.js",
+        name    : "document storage probe",
+        status  : "failed",
         failures: [{ message: "Loading unprepared module: /npm/react/react" }],
       },
     ],

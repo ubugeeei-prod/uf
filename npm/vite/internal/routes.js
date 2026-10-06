@@ -21,15 +21,15 @@ import path from "node:path";
 
 /** The file names the router reserves inside the router root. */
 export const RESERVED = Object.freeze({
-  layout: "$layout",
-  template: "$template",
-  page: "$page",
-  default: "$default",
-  middleware: "$middleware",
-  notFound: "$not-found",
-  error: "$error",
-  loading: "$loading",
-  route: "$route",
+  layout         : "$layout",
+  template       : "$template",
+  page           : "$page",
+  default        : "$default",
+  middleware     : "$middleware",
+  notFound       : "$not-found",
+  error          : "$error",
+  loading        : "$loading",
+  route          : "$route",
   instrumentation: "$instrumentation",
 });
 
@@ -103,11 +103,11 @@ const UNSUPPORTED_TEMPLATE_FILES = Object.freeze(["template.js", "_uf.template.j
 
 /** Boundary spellings a slot might look for, but uf does not open. */
 const UNSUPPORTED_SLOT_BOUNDARY_FILES = Object.freeze({
-  "error.js": "error",
-  "loading.js": "loading",
-  "not-found.js": "not-found",
-  "_uf.error.js": "error",
-  "_uf.loading.js": "loading",
+  "error.js"        : "error",
+  "loading.js"      : "loading",
+  "not-found.js"    : "not-found",
+  "_uf.error.js"    : "error",
+  "_uf.loading.js"  : "loading",
   "_uf.not-found.js": "not-found",
 });
 
@@ -120,9 +120,9 @@ const MODULE_EXTENSIONS = [".js", ".jsx"];
 export const ROUTE_TARGETS = Object.freeze(["web", "native", "ios", "android"]);
 
 const TARGET_VARIANTS = Object.freeze({
-  web: ["web", null],
-  native: ["native", null],
-  ios: ["ios", "native", null],
+  web    : ["web", null],
+  native : ["native", null],
+  ios    : ["ios", "native", null],
   android: ["android", "native", null],
 });
 
@@ -476,11 +476,11 @@ export function scanRoutes(appRoot, options = {}) {
         pattern,
         params,
         page,
-        layouts: nextLayouts,
-        loading: nextLoading,
+        layouts  : nextLayouts,
+        loading  : nextLoading,
         templates: nextTemplates,
-        slots: nextSlots,
-        mdx: isMarkdown(page),
+        slots    : nextSlots,
+        mdx      : isMarkdown(page),
       });
     }
     // A handler answers the request itself, so it takes no layouts and is not
@@ -499,10 +499,10 @@ export function scanRoutes(appRoot, options = {}) {
     const ownNotFound = findModule(directory, RESERVED.notFound, PAGE_EXTENSIONS, target);
     if (ownNotFound) {
       notFound.push({
-        path: routeFromSegments(segments).path,
-        page: ownNotFound,
+        path   : routeFromSegments(segments).path,
+        page   : ownNotFound,
         layouts: nextLayouts,
-        mdx: isMarkdown(ownNotFound),
+        mdx    : isMarkdown(ownNotFound),
       });
     }
 
@@ -511,8 +511,8 @@ export function scanRoutes(appRoot, options = {}) {
     const ownError = findModule(directory, RESERVED.error, MODULE_EXTENSIONS, target);
     if (ownError) {
       errors.push({
-        path: routeFromSegments(segments).path,
-        module: ownError,
+        path   : routeFromSegments(segments).path,
+        module : ownError,
         layouts: nextLayouts,
       });
     }
@@ -886,12 +886,12 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
         path: routePath,
         params,
         page,
-        layouts: nextLayouts,
-        loading: nextLoading,
-        templates: nextTemplates,
+        layouts      : nextLayouts,
+        loading      : nextLoading,
+        templates    : nextTemplates,
         errorBoundary: nextErrorBoundary,
-        slots: nestedSlots,
-        mdx: isMarkdown(page),
+        slots        : nestedSlots,
+        mdx          : isMarkdown(page),
       });
     }
 
@@ -949,7 +949,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
     name,
     above,
     defaultPage,
-    defaultMdx: defaultPage != null && isMarkdown(defaultPage),
+    defaultMdx          : defaultPage != null && isMarkdown(defaultPage),
     defaultErrorBoundary: defaultError == null ? null : { above: 0, module: defaultError },
     routes,
     intercepts,
@@ -1244,9 +1244,9 @@ export function routeFromSegments(segments) {
  * `serverModuleSource` below is the only thing that imports it.
  */
 export const VIRTUAL = Object.freeze({
-  routes: "virtual:uf/routes",
-  client: "virtual:uf/client",
-  server: "virtual:uf/server",
+  routes : "virtual:uf/routes",
+  client : "virtual:uf/client",
+  server : "virtual:uf/server",
   actions: "virtual:uf/actions",
 });
 
@@ -1867,10 +1867,10 @@ export const runMiddleware = (request) => traceRequestPhase("middleware", () => 
 export function routingRulesOf(router) {
   const policy = router?.trailingSlash;
   return {
-    redirects: Array.isArray(router?.redirects) ? router.redirects : [],
-    rewrites: Array.isArray(router?.rewrites) ? router.rewrites : [],
-    headers: Array.isArray(router?.headers) ? router.headers : [],
-    basePath: typeof router?.basePath === "string" ? router.basePath.replace(/\/+$/, "") : "",
+    redirects    : Array.isArray(router?.redirects) ? router.redirects : [],
+    rewrites     : Array.isArray(router?.rewrites) ? router.rewrites : [],
+    headers      : Array.isArray(router?.headers) ? router.headers : [],
+    basePath     : typeof router?.basePath === "string" ? router.basePath.replace(/\/+$/, "") : "",
     trailingSlash: policy === "never" || policy === "always" ? policy : "ignore",
   };
 }

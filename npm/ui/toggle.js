@@ -57,12 +57,12 @@ import { useControlled } from "./internal/controlled-state.js";
  * than of the toggle behaviour.
  */
 export component Toggle(
-  pressed?: boolean,
-  defaultPressed?: boolean = false,
+  pressed?        : boolean,
+  defaultPressed? : boolean = false,
   onPressedChange?: (pressed: boolean) => void,
-  disabled?: boolean = false,
-  children?: React.Node,
-  render?: RenderProp,
+  disabled?       : boolean = false,
+  children?       : React.Node,
+  render?         : RenderProp,
   ...rest: Rest
 ) {
   const [on, setOn] = useControlled(pressed, defaultPressed, onPressedChange);
@@ -90,7 +90,7 @@ export component Toggle(
   };
 
   return match (render) {
-    undefined =>
+    undefined    =>
       <button
         {...withProps(passed, semantics)}
         // No `role`: this *is* a button, and `aria-pressed` is what makes it a

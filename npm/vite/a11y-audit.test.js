@@ -98,9 +98,9 @@ function collect(): Sent {
 describe("the module the dev server generates", () => {
   it("is the runtime with a call to it, carrying the project's rule set", () => {
     const source = auditRuntimeSource({
-      tags: ["wcag2a"],
+      tags         : ["wcag2a"],
       disabledRules: ["color-contrast"],
-      minImpact: "serious",
+      minImpact    : "serious",
     });
 
     expect(source).toContain("export function start(");
@@ -213,7 +213,7 @@ describe("the wiring into a development document", () => {
     expect(config.optimizeDeps.include).toContain("axe-core");
 
     const off = uniflowed({
-      root: process.cwd(),
+      root  : process.cwd(),
       config: { accessibility: { devAudit: false } },
     })[0].config({ root: process.cwd() }, { mode: "development", command: "serve" });
     expect(off.optimizeDeps.include).not.toContain("axe-core");
@@ -349,7 +349,7 @@ describe("the audit itself", () => {
     const stop = start({
       endpoint: ENDPOINT,
       settleMs: 1,
-      axe: { disabledRules: DOCUMENT_RULES },
+      axe     : { disabledRules: DOCUMENT_RULES },
     });
     await uft.waitUntil(() => sent.length > 0, { timeout: 120 }).catch(() => {});
     stop();
@@ -363,7 +363,7 @@ describe("the audit itself", () => {
     const stop = start({
       endpoint: ENDPOINT,
       settleMs: 1,
-      axe: { disabledRules: [...DOCUMENT_RULES, "image-alt"] },
+      axe     : { disabledRules: [...DOCUMENT_RULES, "image-alt"] },
     });
     await uft.waitUntil(() => sent.length > 0, { timeout: 120 }).catch(() => {});
     stop();
@@ -380,7 +380,7 @@ describe("the audit itself", () => {
     const stop = start({
       endpoint: ENDPOINT,
       settleMs: 1,
-      axe: { minImpact: "critical" },
+      axe     : { minImpact: "critical" },
     });
     await uft.waitFor(() => {
       expect(sent.length).toBe(1);

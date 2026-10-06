@@ -53,33 +53,33 @@ type RenderProp = (props: Rest) => React.Node;
 
 const styles = stylex.create({
   content: {
-    zIndex: 60,
-    boxSizing: "border-box",
-    maxWidth: "20rem",
-    margin: 0,
-    paddingBlock: ufTokens.space1,
-    paddingInline: ufTokens.space2,
+    zIndex         : 60,
+    boxSizing      : "border-box",
+    maxWidth       : "20rem",
+    margin         : 0,
+    paddingBlock   : ufTokens.space1,
+    paddingInline  : ufTokens.space2,
     backgroundColor: ufTokens.ink,
-    color: ufTokens.canvas,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textXs,
-    fontWeight: ufTokens.weightMedium,
-    lineHeight: ufTokens.leadingTight,
-    overflowWrap: "break-word",
-    borderRadius: ufTokens.radiusSm,
+    color          : ufTokens.canvas,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textXs,
+    fontWeight     : ufTokens.weightMedium,
+    lineHeight     : ufTokens.leadingTight,
+    overflowWrap   : "break-word",
+    borderRadius   : ufTokens.radiusSm,
     // Enter: it fades in while travelling 4px out of its trigger, from the
     // side `data-side` says it opened on, so the eye is led from the button
     // to what it opened. `durationBase` on the decelerating curve: most of
     // the distance is covered at once, so it is legible before it has
     // settled. Under reduced motion it only fades.
     "--uf-enter-x": {
-      default: "0px",
-      ":is([data-side=left])": "4px",
+      default                 : "0px",
+      ":is([data-side=left])" : "4px",
       ":is([data-side=right])": "-4px",
     },
     "--uf-enter-y": {
-      default: "0px",
-      ":is([data-side=top])": "4px",
+      default                  : "0px",
+      ":is([data-side=top])"   : "4px",
       ":is([data-side=bottom])": "-4px",
     },
     // Exit: back towards the trigger it came from, on the accelerating curve
@@ -88,23 +88,23 @@ const styles = stylex.create({
     // page, closed and `inert`, until this has finished. Under reduced motion
     // it only fades: `--uf-exit-travel` is 0 there, so nothing jumps either.
     "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
-    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    opacity           : { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transform: {
-      default: "none",
+      default          : "none",
       "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
       ":is([data-state=closed])":
         "translate(calc(var(--uf-enter-x) * var(--uf-exit-travel)), calc(var(--uf-enter-y) * var(--uf-exit-travel)))",
     },
     transitionProperty: {
-      default: "opacity, transform",
+      default                                  : "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
     transitionDuration: {
-      default: ufTokens.durationBase,
+      default                   : ufTokens.durationBase,
       ":is([data-state=closed])": ufTokens.durationFast,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
@@ -115,8 +115,8 @@ const styles = stylex.create({
  * reader has waited for the first.
  */
 component TooltipProvider(
-  children: React.Node,
-  delayDuration?: number,
+  children          : React.Node,
+  delayDuration?    : number,
   skipDelayDuration?: number,
 ) {
   return (
@@ -128,11 +128,11 @@ component TooltipProvider(
 
 /** One tooltip and its trigger. */
 component TooltipRoot(
-  children: React.Node,
-  openDelay?: number,
-  closeDelay?: number,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  openDelay?   : number,
+  closeDelay?  : number,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
@@ -153,11 +153,11 @@ component TooltipRoot(
  * otherwise, and whatever it is needs a name of its own.
  */
 component TooltipTrigger(
-  children?: React.Node,
-  tone?: ButtonTone = "neutral",
-  size?: ButtonSize = "md",
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  children? : React.Node,
+  tone?     : ButtonTone = "neutral",
+  size?     : ButtonSize = "md",
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -187,11 +187,11 @@ component TooltipTrigger(
  * reach `Tooltip.Body` untouched; `sideOffset` is the gap.
  */
 component TooltipContent(
-  children: React.Node,
-  sideOffset?: number = 6,
+  children         : React.Node,
+  sideOffset?      : number = 6,
   collisionPadding?: number = 8,
-  xstyle?: StyleArgument,
-  className?: string,
+  xstyle?          : StyleArgument,
+  className?       : string,
   ...rest: Rest
 ) {
   return (

@@ -164,14 +164,14 @@ export function createCacheStore(options?: CacheStoreOptions): CacheStore {
 
 export type CachedFunctionOptions = {|
   readonly lifetime: CacheLifetime,
-  readonly tags?: $ReadOnlyArray<string>,
+  readonly tags?   : $ReadOnlyArray<string>,
   /** Overrides the request's configured store, e.g. in a background worker. */
   readonly store?: CacheStore,
 |};
 
 /** Cache public function results across routes, with an explicit stable identity. */
 export function cacheFunction<Args extends $ReadOnlyArray<mixed>, Result>(
-  name: string,
+  name   : string,
   produce: (...args: Args) => Promise<Result>,
   options: CachedFunctionOptions,
 ): (...args: Args) => Promise<Result> {
@@ -293,8 +293,8 @@ export async function collectCacheDeclarations<T>(
   return {
     value,
     lifetime: scope.lifetime,
-    tags: Array.from(new Set(scope.tags)),
-    denied: scope.denied,
+    tags    : Array.from(new Set(scope.tags)),
+    denied  : scope.denied,
   };
 }
 
@@ -376,7 +376,7 @@ export function requestCache(): CacheOptions | null {
 
 /** A request, plus what it says about caching itself. */
 export type CachedRequestOptions = {
-  readonly method?: string,
+  readonly method?      : string,
   readonly searchParams?: { readonly [string]: string | number | boolean },
   /** Absent means "do not cache this", which is the default and stays it. */
   readonly cache?: FetchCacheOptions,
@@ -404,7 +404,7 @@ export type CacheableClient = {
 /** What one cached request states about its entry. */
 export type FetchCacheOptions = {|
   readonly lifetime: CacheLifetime,
-  readonly tags?: $ReadOnlyArray<string>,
+  readonly tags?   : $ReadOnlyArray<string>,
   /** Overrides the key built from the client's name, the method and the URL. */
   readonly key?: CacheKey,
 |};
@@ -470,7 +470,7 @@ export function createCachedFetch(options: CachedFetchOptions): CachedFetchClien
           searchOf(requestOptions?.searchParams),
         ],
         lifetime: caching.lifetime,
-        tags: caching.tags,
+        tags    : caching.tags,
       };
       return store
         .resolve(request, () => client.request<T>(path, requestOptions))

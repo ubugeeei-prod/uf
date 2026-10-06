@@ -63,12 +63,12 @@ import { clamp } from "./internal/range.js";
  * progressbar role and value attributes are the props handed to the caller.
  */
 export component Progress(
-  value?: number | null = null,
-  min?: number = 0,
-  max?: number = 100,
+  value?    : number | null = null,
+  min?      : number = 0,
+  max?      : number = 100,
   valueText?: string,
-  children?: React.Node,
-  render?: RenderProp,
+  children? : React.Node,
+  render?   : RenderProp,
   ...rest: Rest
 ) {
   const known = value == null ? null : clamp(value, min, max);
@@ -78,14 +78,14 @@ export component Progress(
     // Omitted, not zeroed. `aria-valuenow="0"` tells a reader that nothing
     // has happened; leaving it out tells them the amount is unknown, which
     // is the true one and the one a spinner means.
-    "aria-valuenow": known ?? undefined,
+    "aria-valuenow" : known ?? undefined,
     "aria-valuetext": valueText,
     children,
     role: "progressbar",
   });
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

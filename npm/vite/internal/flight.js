@@ -190,9 +190,9 @@ export function rscEnvironment({ production, exclude, root = process.cwd() }) {
   return {
     consumer: "server",
     resolve: {
-      conditions: ["react-server", ...defaultServerConditions],
+      conditions        : ["react-server", ...defaultServerConditions],
       externalConditions: ["react-server", ...defaultServerConditions],
-      noExternal: true,
+      noExternal        : true,
     },
     optimizeDeps: {
       include: [
@@ -214,7 +214,7 @@ export function rscEnvironment({ production, exclude, root = process.cwd() }) {
       // Its stylesheets and images, which only this graph imports; see the
       // header. The manifest is how the driver finds the stylesheets.
       emitAssets: true,
-      manifest: true,
+      manifest  : true,
     },
   };
 }
@@ -256,11 +256,11 @@ export const FLIGHT_BROWSER_DEPENDENCIES = Object.freeze([
 export function createFlightState({ root }) {
   return {
     root,
-    base: "/",
-    production: false,
+    base         : "/",
+    production   : false,
     clientModules: new Set(),
-    chunkUrls: new Map(),
-    rscOutput: null,
+    chunkUrls    : new Map(),
+    rscOutput    : null,
     // The build's public id, set by the driver before it builds the rsc graph.
     deployment: null,
   };
@@ -354,8 +354,8 @@ export function clientReferencePlugin(state) {
  */
 export function clientModuleUrlPlugin() {
   return {
-    name: "uf:rsc-client-urls",
-    apply: "serve",
+    name   : "uf:rsc-client-urls",
+    apply  : "serve",
     enforce: "pre",
     applyToEnvironment(environment) {
       return environment.name === "client";
@@ -525,7 +525,7 @@ export function fsFileOf(pathname) {
  */
 export function rscEntrySource(routesId, routing = {}, deployment = null, actionsId = null) {
   const settings = {
-    basePath: routing.basePath ?? "",
+    basePath     : routing.basePath ?? "",
     trailingSlash: routing.trailingSlash ?? "ignore",
   };
   // The action table is loaded here, in the graph the pages render in, and

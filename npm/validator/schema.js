@@ -94,14 +94,14 @@ export type Description =
   | {| readonly kind: "map", readonly key: Description, readonly value: Description |}
   | {| readonly kind: "set", readonly item: Description |}
   | {|
-      readonly kind: "object",
-      readonly entries: $ReadOnlyArray<[string, Description]>,
+      readonly kind       : "object",
+      readonly entries    : $ReadOnlyArray<[string, Description]>,
       readonly unknownKeys: "strip" | "reject" | "keep",
     |}
   | {| readonly kind: "union", readonly options: $ReadOnlyArray<Description> |}
   | {|
-      readonly kind: "variant",
-      readonly key: string,
+      readonly kind    : "variant",
+      readonly key     : string,
       readonly branches: $ReadOnlyArray<[string, Description]>,
     |}
   | {| readonly kind: "intersect", readonly parts: $ReadOnlyArray<Description> |}
@@ -113,8 +113,8 @@ export type Description =
   | {| readonly kind: "lazy", readonly id: symbol, readonly inner: () => Description |}
   | {| readonly kind: "transformed", readonly inner: Description |}
   | {|
-      readonly kind: "constrained",
-      readonly inner: Description,
+      readonly kind      : "constrained",
+      readonly inner     : Description,
       readonly constraint: Constraint,
     |};
 
@@ -141,9 +141,9 @@ export type Constraint =
   | {| readonly kind: "opaque", readonly label: string |};
 
 type SchemaKernel<out T> = {|
-  readonly parse: null | ((mixed, PathBuffer) => Result<T>),
+  readonly parse     : null | ((mixed, PathBuffer) => Result<T>),
   readonly parseAsync: null | ((mixed, PathBuffer) => Promise<Result<T>>),
-  readonly describe: () => Description,
+  readonly describe  : () => Description,
 |};
 
 /**
@@ -157,8 +157,8 @@ type SchemaKernel<out T> = {|
  * passed where `Schema<mixed, mixed>` is wanted.
  */
 type SchemaCarrier<out TOutput, out TInput> = {|
-  readonly __kind: "Schema",
-  readonly __input: () => TInput,
+  readonly __kind  : "Schema",
+  readonly __input : () => TInput,
   readonly __kernel: SchemaKernel<TOutput>,
 |};
 
@@ -201,12 +201,12 @@ const phantomInput = (): empty => {
 
 /** Mint a synchronous schema. The only way a `Schema` comes into existence. */
 export function makeSchema<TOutput, TInput>(
-  parse: (mixed, PathBuffer) => Result<TOutput>,
+  parse      : (mixed, PathBuffer) => Result<TOutput>,
   description: () => Description,
 ): Schema<TOutput, TInput> {
   return {
-    __kind: "Schema",
-    __input: phantomInput,
+    __kind  : "Schema",
+    __input : phantomInput,
     __kernel: { parse, parseAsync: null, describe: description },
   };
 }
@@ -218,12 +218,12 @@ export function makeSchema<TOutput, TInput>(
  * reads to decide it is asynchronous too.
  */
 export function makeAsyncSchema<TOutput, TInput>(
-  parseAsync: (mixed, PathBuffer) => Promise<Result<TOutput>>,
+  parseAsync : (mixed, PathBuffer) => Promise<Result<TOutput>>,
   description: () => Description,
 ): Schema<TOutput, TInput> {
   return {
-    __kind: "Schema",
-    __input: phantomInput,
+    __kind  : "Schema",
+    __input : phantomInput,
     __kernel: { parse: null, parseAsync, describe: description },
   };
 }
@@ -257,9 +257,9 @@ export function run<T>(schema: Schema<T, mixed>, value: mixed, path: PathBuffer)
  */
 export function runAt<T>(
   schema: Schema<T, mixed>,
-  value: mixed,
-  path: PathBuffer,
-  key: string,
+  value : mixed,
+  path  : PathBuffer,
+  key   : string,
 ): Result<T> {
   path.push(key);
   const result = run(schema, value, path);
@@ -270,8 +270,8 @@ export function runAt<T>(
 /** Run `schema`, awaiting it if it is asynchronous and calling it if it is not. */
 export function runAsync<T>(
   schema: Schema<T, mixed>,
-  value: mixed,
-  path: PathBuffer,
+  value : mixed,
+  path  : PathBuffer,
 ): Promise<Result<T>> {
   const kernel = schema.__kernel;
   const parseAsync = kernel.parseAsync;
@@ -290,9 +290,9 @@ export function runAsync<T>(
  */
 export function runUnder<T>(
   schema: Schema<T, mixed>,
-  value: mixed,
-  path: PathBuffer,
-  keys: Path,
+  value : mixed,
+  path  : PathBuffer,
+  keys  : Path,
 ): Result<T> {
   for (const key of keys) {
     path.push(key);
@@ -307,18 +307,18 @@ export function runUnder<T>(
 /** Run `schema` deeper, on a path of its own. See the module docs. */
 export function runAtAsync<T>(
   schema: Schema<T, mixed>,
-  value: mixed,
-  path: PathBuffer,
-  keys: Path,
+  value : mixed,
+  path  : PathBuffer,
+  keys  : Path,
 ): Promise<Result<T>> {
   return runAsync(schema, value, path.concat(keys));
 }
 
 /** One child of a composite, for [`collectAsync`]. */
 export type Job = {|
-  readonly keys: Path,
+  readonly keys  : Path,
   readonly schema: Schema<mixed, mixed>,
-  readonly value: mixed,
+  readonly value : mixed,
 |};
 
 /** Every child's outcome, in the order the jobs were given. */
@@ -350,7 +350,7 @@ export async function collectAsync(
   let issues: null | Array<Issue> = null;
   for (const result of results) {
     match (result) {
-      {ok: true, value: const value} => {
+      {ok: true, value: const value}   => {
         values.push(value);
       }
       {ok: false, issues: const found} => {
@@ -383,6 +383,6 @@ export function mergeIssues(issues: Array<Issue>, result: Result<mixed>): void {
         issues.push(entry);
       }
     }
-    _ => {}
+    _                                => {}
   }
 }

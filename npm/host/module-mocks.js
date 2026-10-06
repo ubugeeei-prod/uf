@@ -571,14 +571,14 @@ async function bunGeneratedLoadHook(args) {
 
   const source = fs.readFileSync(epochSource.source, "utf8");
   const out = await transformFlow(source, epochSource.source, {
-    development: true,
-    sourceMap: false,
-    inSourceTests: inSourceTests(),
+    development    : true,
+    sourceMap      : false,
+    inSourceTests  : inSourceTests(),
     configBootstrap: process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG === "1",
   });
   return {
     contents: rewriteBunEpochImports(out?.code ?? source, epochSource.identity, epochSource.source),
-    loader: "js",
+    loader  : "js",
   };
 }
 

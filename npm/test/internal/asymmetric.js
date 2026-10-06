@@ -31,7 +31,7 @@ const ASYMMETRIC = "$$uf.asymmetricMatch";
 export type AsymmetricMatcher = {
   readonly [typeof ASYMMETRIC]: true,
   readonly asymmetricMatch: (received: mixed) => boolean,
-  readonly toString: () => string,
+  readonly toString       : () => string,
 };
 
 /**
@@ -57,9 +57,9 @@ export function matchesAsymmetric(matcher: mixed, received: mixed): boolean {
 /** Build a matcher from a predicate and how it describes itself. */
 function matcher(label: string, predicate: (received: mixed) => boolean): AsymmetricMatcher {
   return {
-    [ASYMMETRIC]: true,
+    [ASYMMETRIC]   : true,
     asymmetricMatch: predicate,
-    toString: () => label,
+    toString       : () => label,
   };
 }
 

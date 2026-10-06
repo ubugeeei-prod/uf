@@ -75,12 +75,12 @@ export { acceptHotRouteModules, refreshForHotUpdate } from "./internal/runtime.j
  * version it found; see `./internal/react-version.js`.
  */
 export async function hydrateFlight(options: {|
-  readonly App: React.ComponentType<AppProps>,
-  readonly strictMode?: boolean,
-  readonly navigation?: Navigation,
-  readonly basePath?: string,
+  readonly App           : React.ComponentType<AppProps>,
+  readonly strictMode?   : boolean,
+  readonly navigation?   : Navigation,
+  readonly basePath?     : string,
   readonly trailingSlash?: TrailingSlash,
-  readonly staleTime?: number,
+  readonly staleTime?    : number,
 |}): Promise<void> {
   requireServerComponentsReact("@uniflowed/router/rsc/client");
   installNavigation(options.navigation ?? "client");

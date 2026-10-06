@@ -50,17 +50,17 @@ const SITE = "https://app.example";
  */
 const provider: OAuthProvider = {
   authorizationEndpoint: "https://provider.example/oauth/authorize",
-  tokenEndpoint: "https://provider.example/oauth/token",
-  clientId: "client-1",
-  clientSecret: "shhh",
-  scope: "openid email",
+  tokenEndpoint        : "https://provider.example/oauth/token",
+  clientId             : "client-1",
+  clientSecret         : "shhh",
+  scope                : "openid email",
   async identify(tokens) {
     // The subject is deliberately not derived from the token: several cases
     // below assert that no token text reaches a body, and a subject containing
     // one would make those assertions pass for the wrong reason.
     return {
       subject: tokens.accessToken === "" ? "anonymous" : "user-1",
-      claims: { email: "a@b.example" },
+      claims : { email: "a@b.example" },
     };
   },
 };
@@ -76,7 +76,7 @@ type Call = {| url: string, form: URLSearchParams, headers: { [string]: string }
  */
 async function withTokenEndpoint<T>(
   payload: mixed,
-  body: (calls: Array<Call>) => Promise<T>,
+  body   : (calls: Array<Call>) => Promise<T>,
   status?: number,
 ): Promise<T> {
   const calls: Array<Call> = [];
@@ -88,7 +88,7 @@ async function withTokenEndpoint<T>(
     }
     calls.push({ url: String(url), form: new URLSearchParams(String(init.body)), headers });
     return new Response(JSON.stringify(payload), {
-      status: status ?? 200,
+      status : status ?? 200,
       headers: { "content-type": "application/json" },
     });
   };
@@ -102,8 +102,8 @@ async function withTokenEndpoint<T>(
 /** The options a test varies; the rest are `signingIn`'s. */
 type AuthTuning = {|
   readonly authorizationSeconds?: number,
-  readonly origin?: string,
-  readonly sessionSeconds?: number,
+  readonly origin?              : string,
+  readonly sessionSeconds?      : number,
 |};
 
 /** A configured `auth` and the store behind it. */
@@ -151,18 +151,18 @@ async function begun(auth: $FlowFixMe, returnTo?: string) {
   const target = new URL(started.headers.get("location") ?? "");
   return {
     started,
-    state: target.searchParams.get("state") ?? "",
+    state    : target.searchParams.get("state") ?? "",
     challenge: target.searchParams.get("code_challenge") ?? "",
-    pending: cookieValue(started, "__Host-uf.session.pending"),
+    pending  : cookieValue(started, "__Host-uf.session.pending"),
   };
 }
 
 /** The tokens a provider would answer an exchange with. */
 const TOKENS = {
-  access_token: "at-1",
+  access_token : "at-1",
   refresh_token: "rt-1",
-  token_type: "Bearer",
-  expires_in: 3600,
+  token_type   : "Bearer",
+  expires_in   : 3600,
 };
 
 describe("beginning a flow", () => {
@@ -392,7 +392,7 @@ describe("the callback", () => {
       auth.callback(
         get(`/auth/callback?code=c&state=${second.state}`, {
           "__Host-uf.session.pending": second.pending,
-          "__Host-uf.session": firstId,
+          "__Host-uf.session"        : firstId,
         }),
       ),
     );
@@ -469,7 +469,7 @@ describe("a cross-site request to something that changes state", () => {
 
     const response = await auth.refresh(
       new Request(`${SITE}/auth/refresh`, {
-        method: "POST",
+        method : "POST",
         headers: { origin: "https://evil.example" },
       }),
     );
@@ -485,7 +485,7 @@ describe("a cross-site request to something that changes state", () => {
 
     const response = await auth.refresh(
       new Request(`${SITE}/auth/refresh`, {
-        method: "POST",
+        method : "POST",
         headers: { origin: "https://evil.example", "x-forwarded-host": "evil.example" },
       }),
     );
@@ -521,7 +521,7 @@ describe("a cross-site request to something that changes state", () => {
 
     const response = await auth.session(
       new Request(`${SITE}/auth/session`, {
-        method: "DELETE",
+        method : "DELETE",
         headers: { origin: "https://evil.example" },
       }),
     );
@@ -571,7 +571,7 @@ describe("the session endpoint", () => {
 
     const response = await auth.session(
       new Request(`${SITE}/auth/session`, {
-        method: "DELETE",
+        method : "DELETE",
         headers: { ...headersFor({ "__Host-uf.session": id }), origin: SITE },
       }),
     );
@@ -812,8 +812,8 @@ describe("configuration uf refuses", () => {
     // allowed and a real host over plain HTTP is not.
     expect(() =>
       createAuth({
-        provider: { ...provider, tokenEndpoint: "http://provider.example/oauth/token" },
-        store: memorySessionStore(),
+        provider    : { ...provider, tokenEndpoint: "http://provider.example/oauth/token" },
+        store       : memorySessionStore(),
         callbackPath: "/auth/callback",
       }),
     ).toThrow();
@@ -825,9 +825,9 @@ describe("configuration uf refuses", () => {
         provider: {
           ...provider,
           authorizationEndpoint: "http://localhost:9000/authorize",
-          tokenEndpoint: "http://localhost:9000/token",
+          tokenEndpoint        : "http://localhost:9000/token",
         },
-        store: memorySessionStore(),
+        store       : memorySessionStore(),
         callbackPath: "/auth/callback",
       }),
     ).not.toThrow();
@@ -851,7 +851,7 @@ describe("sameOrigin", () => {
   it("compares the Origin header against the Host and nothing else", () => {
     const same = new Request(`${SITE}/x`, { method: "POST", headers: { origin: SITE } });
     const other = new Request(`${SITE}/x`, {
-      method: "POST",
+      method : "POST",
       headers: { origin: "https://evil.example", "x-forwarded-host": "app.example" },
     });
 

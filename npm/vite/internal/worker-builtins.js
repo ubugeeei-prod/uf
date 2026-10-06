@@ -51,10 +51,10 @@ export const UNAVAILABLE_ON_WORKERS = Object.freeze([
   Object.freeze({ module: "https", member: "createServer", args: [] }),
   Object.freeze({ module: "repl", member: "start", args: [] }),
   Object.freeze({
-    module: "wasi",
-    member: "WASI",
+    module   : "wasi",
+    member   : "WASI",
     construct: true,
-    args: [{ version: "preview1" }],
+    args     : [{ version: "preview1" }],
   }),
 ]);
 

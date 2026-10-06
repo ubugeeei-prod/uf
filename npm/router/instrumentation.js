@@ -1,16 +1,16 @@
 // @flow
 
 export type NavigationTiming = {|
-  readonly kind: "document" | "router",
+  readonly kind    : "document" | "router",
   readonly pathname: string,
   readonly duration: number,
-  readonly status: "complete" | "error",
+  readonly status  : "complete" | "error",
 |};
 
 export type ClientInstrumentation = {|
   readonly register?: () => void | Promise<void>,
   readonly onError?: (
-    error: mixed,
+    error  : mixed,
     context: {| readonly source: "error" | "unhandledrejection" | "navigation" | "startup" |},
   ) => void | Promise<void>,
   readonly onNavigation?: (timing: NavigationTiming) => void | Promise<void>,
@@ -43,10 +43,10 @@ export async function installClientInstrumentation(hooks: ClientInstrumentation)
     performanceObserver = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
         const timing: NavigationTiming = {
-          kind: "document",
+          kind    : "document",
           pathname: new URL(entry.name).pathname,
           duration: entry.duration,
-          status: "complete",
+          status  : "complete",
         };
         notify(() => hooks.onNavigation?.(timing));
       }

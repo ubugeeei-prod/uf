@@ -220,7 +220,7 @@ export async function copy(writer: Writer, reader: Reader): Promise<number> {
 }
 
 type StreamReadStep = {
-  readonly done?: boolean,
+  readonly done? : boolean,
   readonly value?: mixed,
   ...
 };
@@ -255,7 +255,7 @@ interface ReadableController {
 }
 
 export type ReadableSource = {
-  readonly pull: (controller: ReadableController) => Promise<void>,
+  readonly pull  : (controller: ReadableController) => Promise<void>,
   readonly cancel: (reason?: mixed) => Promise<void>,
 };
 
@@ -328,7 +328,7 @@ export function writerFromWritableStream(stream: WritableStreamLike): Writer {
  */
 export function readableStreamFromReader<Made>(
   reader: Reader,
-  make: (source: ReadableSource) => Made,
+  make  : (source: ReadableSource) => Made,
 ): Made {
   let closed = false;
   return make({
@@ -364,7 +364,7 @@ export function readableStreamFromReader<Made>(
  */
 export function writableStreamFromWriter<Made>(
   writer: Writer,
-  make: (sink: WritableSink) => Made,
+  make  : (sink: WritableSink) => Made,
 ): Made {
   return make({
     async write(chunk: mixed): Promise<void> {

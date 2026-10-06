@@ -38,8 +38,8 @@ export type StdStatus = "ships" | "declared" | "planned" | "declined";
 
 export type StdModule = {
   readonly specifier: string,
-  readonly category: StdCategory,
-  readonly status: StdStatus,
+  readonly category : StdCategory,
+  readonly status   : StdStatus,
   /**
    * Whether the module was *read* and found to use only web primitives.
    *
@@ -59,7 +59,7 @@ export type StdModule = {
    * C++ `Buffer#equals`.
    */
   readonly nativeBinding: boolean,
-  readonly exports: $ReadOnlyArray<string>,
+  readonly exports      : $ReadOnlyArray<string>,
 };
 
 export type Result<Ok, Err> =
@@ -84,25 +84,25 @@ export type JsonValue =
   | { readonly [string]: JsonValue };
 
 export type VirtualPath = { readonly path: string };
-export type QueryPair = { readonly key: string, readonly value: string };
-export type ByteBuffer = { readonly bytes: Uint8Array };
+export type QueryPair   = { readonly key: string, readonly value: string };
+export type ByteBuffer  = { readonly bytes: Uint8Array };
 export type ImportMeta = {
-  readonly url: string,
-  readonly dirname?: string,
+  readonly url      : string,
+  readonly dirname? : string,
   readonly filename?: string,
 };
-export type DeferPhase = "microtask" | "idle" | "post-response";
-export type DeferredTask = { readonly id: string, readonly phase: DeferPhase };
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-export type HttpRoute = { readonly method: HttpMethod, readonly path: string };
-export type WebSocketMode = "web-socket" | "web-socket-stream";
-export type SqlDriverKind = "sqlite" | "postgres" | "mysql";
-export type SqlDriver = { readonly kind: SqlDriverKind, readonly preparedByDefault: true };
+export type DeferPhase      = "microtask" | "idle" | "post-response";
+export type DeferredTask    = { readonly id: string, readonly phase: DeferPhase };
+export type HttpMethod      = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+export type HttpRoute       = { readonly method: HttpMethod, readonly path: string };
+export type WebSocketMode   = "web-socket" | "web-socket-stream";
+export type SqlDriverKind   = "sqlite" | "postgres" | "mysql";
+export type SqlDriver       = { readonly kind: SqlDriverKind, readonly preparedByDefault: true };
 export type DigestAlgorithm = "fast-hash" | "sha256";
-export type OsFamily = "mac-os" | "linux" | "windows" | "unknown";
+export type OsFamily        = "mac-os" | "linux" | "windows" | "unknown";
 export type OsInfo = {
-  readonly family: OsFamily,
-  readonly arch: string,
+  readonly family              : OsFamily,
+  readonly arch                : string,
   readonly availableParallelism: number,
 };
 export type DnsRecordType = "A" | "AAAA" | "CNAME" | "MX" | "TXT";
@@ -114,45 +114,45 @@ export type WasmModulePlan = { readonly name: string, readonly aheadOfTime: true
 export type GlobPattern = { readonly pattern: string, readonly dotfiles: boolean };
 export type MotionEase = "linear" | "out" | "spring";
 export type MotionTransition = {
-  readonly durationMs: number,
-  readonly ease: MotionEase,
+  readonly durationMs           : number,
+  readonly ease                 : MotionEase,
   readonly respectsReducedMotion: true,
 };
 export type TerminalColorDepth = "ansi16" | "ansi256" | "true-color";
 export type TerminalCapabilities = {
-  readonly columns: number,
-  readonly rows: number,
-  readonly colorDepth: TerminalColorDepth,
-  readonly unicode: boolean,
-  readonly mouse: boolean,
+  readonly columns     : number,
+  readonly rows        : number,
+  readonly colorDepth  : TerminalColorDepth,
+  readonly unicode     : boolean,
+  readonly mouse       : boolean,
   readonly inlineImages: boolean,
-  readonly sixel: boolean,
+  readonly sixel       : boolean,
 };
 export type CronSchedule = {
-  readonly minute: string,
-  readonly hour: string,
+  readonly minute    : string,
+  readonly hour      : string,
   readonly dayOfMonth: string,
-  readonly month: string,
-  readonly dayOfWeek: string,
+  readonly month     : string,
+  readonly dayOfWeek : string,
 };
 export type S3ObjectRequest = {
   readonly bucket: string,
-  readonly key: string,
-  readonly sigv4: true,
+  readonly key   : string,
+  readonly sigv4 : true,
 };
-export type SigV4Scope = { readonly region: string, readonly service: string };
+export type SigV4Scope      = { readonly region: string, readonly service: string };
 export type FunctionRuntime = "worker" | "lambda";
 export type FunctionDescriptor = {
-  readonly name: string,
+  readonly name   : string,
   readonly runtime: FunctionRuntime,
-  readonly entry: string,
+  readonly entry  : string,
 };
-export type UuidVersion = "v4" | "v7";
+export type UuidVersion    = "v4" | "v7";
 export type ZipCompression = "store" | "deflate";
 export type ZipEntry = {
-  readonly path: string,
+  readonly path       : string,
   readonly compression: ZipCompression,
-  readonly size: number,
+  readonly size       : number,
 };
 
 export function modules(): $ReadOnlyArray<StdModule> {
@@ -176,15 +176,15 @@ export function defer(id: string, phase?: DeferPhase): DeferredTask {
 }
 
 export function parseDotEnv(source: string): $ReadOnlyArray<{
-  readonly key: string,
+  readonly key  : string,
   readonly value: string,
 }> {
   return nativeRuntimeRequired(MODULE, "parseDotEnv");
 }
 
 export function colorize(
-  value: string,
-  style: "bold" | "dim" | "red" | "green" | "cyan",
+  value   : string,
+  style   : "bold" | "dim" | "red" | "green" | "cyan",
   enabled?: boolean,
 ): string {
   return nativeRuntimeRequired(MODULE, "colorize");
@@ -291,9 +291,9 @@ export function sigv4Scope(region: string, service: string): SigV4Scope {
 }
 
 export function defineFunction(
-  name: string,
+  name   : string,
   runtime: FunctionRuntime,
-  entry: string,
+  entry  : string,
 ): FunctionDescriptor {
   return nativeRuntimeRequired(MODULE, "defineFunction");
 }

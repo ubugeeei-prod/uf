@@ -80,7 +80,7 @@ function marketplaceVersion(uf /*: string */) /*: Published */ {
     );
   }
   return {
-    version: `${major}.${minor}.${patch * PER_PATCH + place * PER_WORD + number}`,
+    version   : `${major}.${minor}.${patch * PER_PATCH + place * PER_WORD + number}`,
     preRelease: true,
   };
 }

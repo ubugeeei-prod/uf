@@ -28,9 +28,9 @@ const OUT = path.join(REPO, "docs/.generated/api");
 
 /** One exported declaration, as `uf doc` reports it. */
 export type ApiEntry = {|
-  readonly name: string,
-  readonly kind: string,
-  readonly signature: string,
+  readonly name       : string,
+  readonly kind       : string,
+  readonly signature  : string,
   readonly description: string,
 |};
 
@@ -48,7 +48,7 @@ export type ApiModule = {|
   /** What a program writes after `from`: `@uniflowed/query/cache`. */
   readonly specifier: string,
   /** The files they are declared in, from the package's root. */
-  readonly files: $ReadOnlyArray<string>,
+  readonly files  : $ReadOnlyArray<string>,
   readonly entries: $ReadOnlyArray<ApiEntry>,
   /** Exports that carry no doc comment, so have no entry above. */
   readonly bare: $ReadOnlyArray<BareExport>,
@@ -61,15 +61,15 @@ export type ApiPackage = {|
   /** The URL segment: the name without its scope. */
   readonly slug: string,
   /** Its directory under `npm/`. */
-  readonly dir: string,
-  readonly version: string,
+  readonly dir        : string,
+  readonly version    : string,
   readonly description: string,
-  readonly modules: $ReadOnlyArray<ApiModule>,
+  readonly modules    : $ReadOnlyArray<ApiModule>,
 |};
 
 /** A module `uf doc` reported: its path from the package root, and its entries. */
 export type DocModule = {|
-  readonly path: string,
+  readonly path   : string,
   readonly entries: $ReadOnlyArray<ApiEntry>,
 |};
 
@@ -106,7 +106,7 @@ export function exportTarget(value: mixed): string | null {
  * wildcard patterns are not modules a reader imports declarations from.
  */
 export function publicModules(
-  name: string,
+  name        : string,
   exportsField: mixed,
 ): Array<{| specifier: string, file: string |}> {
   const out = [];
@@ -117,7 +117,7 @@ export function publicModules(
     }
     out.push({
       specifier: subpath === "." ? name : `${name}/${subpath.replace(/^\.\//, "")}`,
-      file: path.posix.normalize(target.replace(/^\.\//, "")),
+      file     : path.posix.normalize(target.replace(/^\.\//, "")),
     });
   };
   if (typeof exportsField === "string") {
@@ -234,13 +234,13 @@ export function everythingFrom(source: string): Array<string> {
  */
 export function assemble(
   manifest: {|
-    readonly name: string,
-    readonly version: string,
+    readonly name       : string,
+    readonly version    : string,
     readonly description: string,
-    readonly exports: mixed,
-    readonly dir: string,
+    readonly exports    : mixed,
+    readonly dir        : string,
   |},
-  docs: $ReadOnlyArray<DocModule>,
+  docs    : $ReadOnlyArray<DocModule>,
   readFile: (file: string) => string | null,
 ): ApiPackage {
   const byFile = new Map(docs.map((module) => [module.path, module]));
@@ -326,10 +326,10 @@ export function assemble(
     }
   }
   return {
-    name: manifest.name,
-    slug: manifest.name.replace(/^@[^/]+\//, ""),
-    dir: manifest.dir,
-    version: manifest.version,
+    name       : manifest.name,
+    slug       : manifest.name.replace(/^@[^/]+\//, ""),
+    dir        : manifest.dir,
+    version    : manifest.version,
     description: manifest.description,
     modules,
   };
@@ -359,9 +359,9 @@ function asDocs(value: mixed): Array<DocModule> {
           typeof entry.signature === "string"
             ? [
                 {
-                  name: entry.name,
-                  kind: entry.kind,
-                  signature: entry.signature,
+                  name       : entry.name,
+                  kind       : entry.kind,
+                  signature  : entry.signature,
                   description: typeof entry.description === "string" ? entry.description : "",
                 },
               ]
@@ -400,8 +400,8 @@ function main(): void {
     const description = typeof manifest.description === "string" ? manifest.description : "";
     const exportsField = manifest.exports ?? "./index.js";
     const out = execFileSync(uf, ["doc", "--json", "--cwd", root], {
-      encoding: "utf8",
-      env: { ...process.env, NO_COLOR: "1" },
+      encoding : "utf8",
+      env      : { ...process.env, NO_COLOR: "1" },
       maxBuffer: 64 * 1024 * 1024,
     });
     const api = assemble(

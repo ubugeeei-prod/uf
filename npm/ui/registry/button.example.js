@@ -7,10 +7,10 @@ import { Button } from "./button.js";
 
 const styles = stylex.create({
   row: {
-    display: "flex",
-    flexWrap: "wrap",
+    display   : "flex",
+    flexWrap  : "wrap",
     alignItems: "center",
-    gap: ufTokens.space2,
+    gap       : ufTokens.space2,
   },
 });
 

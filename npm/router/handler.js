@@ -91,10 +91,10 @@ export type HandlerModule = { readonly [method: string]: mixed };
 
 /** One entry of the generated handler table. */
 export type HandlerRecord = {|
-  readonly path: string,
+  readonly path  : string,
   readonly params: $ReadOnlyArray<{| readonly name: string, readonly catchAll: boolean |}>,
-  readonly file: string,
-  readonly load: () => Promise<HandlerModule>,
+  readonly file  : string,
+  readonly load  : () => Promise<HandlerModule>,
 |};
 
 /**
@@ -179,9 +179,9 @@ export function createDispatcher(options: {| readonly handlers: $ReadOnlyArray<H
     // body went out anyway.
     if (method === "HEAD" && typeof module.HEAD !== "function") {
       return new Response(null, {
-        status: response.status,
+        status    : response.status,
         statusText: response.statusText,
-        headers: response.headers,
+        headers   : response.headers,
       });
     }
     return response;
@@ -225,7 +225,7 @@ function methodNotAllowed(module: HandlerModule): Response {
   // Filtered through `METHODS` rather than listed in insertion order, so the
   // header reads in the conventional order however the module was written.
   return new Response(null, {
-    status: 405,
+    status : 405,
     headers: { allow: HANDLER_METHODS.filter((method) => own.has(method)).join(", ") },
   });
 }

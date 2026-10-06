@@ -46,9 +46,9 @@ import { DEFAULT_GC_TIME, Query } from "./query.js";
 export type QueryFilters = {|
   /** A key prefix, or an exact key with `exact`. */
   readonly queryKey?: QueryKey,
-  readonly exact?: boolean,
+  readonly exact?   : boolean,
   /** `active` is "somebody is watching"; see the module docs. */
-  readonly type?: "all" | "active" | "inactive",
+  readonly type?     : "all" | "active" | "inactive",
   readonly predicate?: (query: Query<mixed>) => boolean,
 |};
 

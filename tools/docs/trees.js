@@ -127,7 +127,7 @@ export type Entry = {|
   /** The name alone: no branch glyphs, no trailing `/`, no comment. */
   readonly name: string,
   /** 1-based line of the page, so a failure points at the row to move. */
-  readonly line: number,
+  readonly line    : number,
   readonly children: Array<Entry>,
 |};
 
@@ -154,7 +154,7 @@ export type Disorder = {|
   readonly parent: string,
   /** The entry above it that should be below it. */
   readonly previous: string,
-  readonly entry: string,
+  readonly entry   : string,
 |};
 
 /** A listing's name for an entry: the text up to a comment, without a directory's `/`. */
@@ -187,7 +187,7 @@ function nest(root: Entry, rows: $ReadOnlyArray<{| column: number, entry: Entry 
 
 /** Every run of branch rows in a fence, each with the line above it as its root. */
 function branchListings(
-  page: string,
+  page : string,
   first: number,
   lines: $ReadOnlyArray<string>,
 ): Array<Listing> {
@@ -221,7 +221,7 @@ function branchListings(
  * either rule is something else, and is left alone.
  */
 function indentedListing(
-  page: string,
+  page : string,
   first: number,
   lines: $ReadOnlyArray<string>,
 ): Listing | null {
@@ -307,7 +307,7 @@ function optedOut(meta: string): boolean {
  * caller can name the page however it reports it.
  */
 export function listings(
-  page: string,
+  page    : string,
   markdown: string,
 ): {| listings: Array<Listing>, unsorted: number |} {
   const out: Array<Listing> = [];
@@ -348,7 +348,7 @@ export function disorders(listing: Listing): Array<Disorder> {
           line: child.line,
           parent,
           previous: previous.name,
-          entry: child.name,
+          entry   : child.name,
         });
       }
       walk(child, parent === "" ? child.name : `${parent}/${child.name}`);
@@ -438,8 +438,8 @@ function walked(root: string): Array<string> {
 
 /** The whole check over a repository: what it read, and what is out of order. */
 export function check(root: string): {|
-  listings: number,
-  unsorted: number,
+  listings : number,
+  unsorted : number,
   disorders: Array<Disorder>,
 |} {
   let count = 0;

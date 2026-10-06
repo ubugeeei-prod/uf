@@ -109,7 +109,7 @@ export type CellSnapshot<out T> = {
  * interval, a media query — can write to what it mounted.
  */
 export type CellOptions<T> = {
-  readonly equals?: (previous: T, next: T) => boolean,
+  readonly equals? : (previous: T, next: T) => boolean,
   readonly onMount?: (self: Cell<T>) => void | (() => void),
 };
 
@@ -152,11 +152,11 @@ const NOTHING: mixed = Symbol("@uniflowed/cell nothing");
 type AnyNode = Node<any>;
 
 type Node<T> = {
-  readonly kind: "source" | "derived" | "resource",
-  readonly scope: CellScope,
-  readonly equals: (previous: T, next: T) => boolean,
+  readonly kind    : "source" | "derived" | "resource",
+  readonly scope   : CellScope,
+  readonly equals  : (previous: T, next: T) => boolean,
   readonly evaluate: Evaluate<T>,
-  readonly onMount: null | ((self: Cell<T>) => void | (() => void)),
+  readonly onMount : null | ((self: Cell<T>) => void | (() => void)),
   /**
    * How to tell whoever started this node's asynchronous work that it has been
    * superseded. `null` for every node that starts none.
@@ -194,10 +194,10 @@ type Node<T> = {
    * what stops a slow load from overwriting the fast one that replaced it.
    */
   generation: number,
-  state: 0 | 1 | 2,
+  state     : 0 | 1 | 2,
 
   /** What the last evaluation read, and the versions it read them at. */
-  deps: Array<AnyNode>,
+  deps       : Array<AnyNode>,
   depVersions: Array<number>,
   /** The tracking pass that last recorded this node, for de-duplication. */
   epoch: number,
@@ -211,7 +211,7 @@ type Node<T> = {
   notifiedVersion: number,
 
   watching: boolean,
-  running: boolean,
+  running : boolean,
   teardown: null | (() => void),
 };
 
@@ -259,42 +259,42 @@ function defaultEquals<T>(previous: T, next: T): boolean {
  * to do.
  */
 export function createNode<T>(config: {
-  readonly kind: "source" | "derived" | "resource",
-  readonly scope: CellScope,
-  readonly value: T,
-  readonly status?: ResourceStatus,
+  readonly kind     : "source" | "derived" | "resource",
+  readonly scope    : CellScope,
+  readonly value    : T,
+  readonly status?  : ResourceStatus,
   readonly evaluate?: Evaluate<T>,
-  readonly abandon?: () => void,
-  readonly options?: void | CellOptions<T>,
+  readonly abandon? : () => void,
+  readonly options? : void | CellOptions<T>,
 }): Cell<T> {
   const evaluate = config.evaluate ?? null;
   const status = config.status ?? "success";
   const options = config.options;
   return {
-    kind: config.kind,
-    scope: config.scope,
+    kind  : config.kind,
+    scope : config.scope,
     equals: options?.equals ?? defaultEquals,
     evaluate,
-    onMount: options?.onMount ?? null,
-    abandon: config.abandon ?? null,
-    value: config.value,
+    onMount : options?.onMount ?? null,
+    abandon : config.abandon ?? null,
+    value   : config.value,
     hasValue: evaluate === null,
-    thrown: NOTHING,
+    thrown  : NOTHING,
     status,
     committedStatus: status,
-    version: 0,
-    generation: 0,
-    state: evaluate === null ? CLEAN : DIRTY,
-    deps: [],
-    depVersions: [],
-    epoch: -1,
-    observers: new Set(),
-    listeners: new Set(),
-    wake: null,
+    version        : 0,
+    generation     : 0,
+    state          : evaluate === null ? CLEAN : DIRTY,
+    deps           : [],
+    depVersions    : [],
+    epoch          : -1,
+    observers      : new Set(),
+    listeners      : new Set(),
+    wake           : null,
     notifiedVersion: 0,
-    watching: false,
-    running: false,
-    teardown: null,
+    watching       : false,
+    running        : false,
+    teardown       : null,
   };
 }
 

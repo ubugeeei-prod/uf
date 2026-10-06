@@ -97,8 +97,8 @@ export function wordStart(haystack: string, term: string, start: number = 0): nu
  */
 export function search(
   entries: $ReadOnlyArray<SearchEntry>,
-  query: string,
-  limit: number = 12,
+  query  : string,
+  limit  : number = 12,
 ): Array<SearchResult> {
   const words = terms(query);
   if (words.length === 0) {
@@ -217,7 +217,7 @@ export function readIndex(value: mixed): SearchIndex | null {
 
 /** A stretch of text, and whether it is where a term matched. */
 export type Segment = {|
-  readonly text: string,
+  readonly text : string,
   readonly match: boolean,
   /** Where in the value it starts, which is also what tells two apart. */
   readonly start: number,

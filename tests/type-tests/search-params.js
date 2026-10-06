@@ -32,13 +32,13 @@ import {
 
 export const searchParams: Schema<{
   page: number,
-  tag: $ReadOnlyArray<string>,
-  q?: string,
+  tag : $ReadOnlyArray<string>,
+  q?  : string,
   sort: boolean,
 }> = object({
   page: number(),
-  tag: array(string()),
-  q: optional(string()),
+  tag : array(string()),
+  q   : optional(string()),
   sort: pipe(
     string(),
     transform((value: string) => value === "new"),

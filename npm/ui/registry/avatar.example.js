@@ -6,12 +6,12 @@ import * as Avatar from "./avatar.js";
 
 const styles = stylex.create({
   row: {
-    display: "flex",
+    display   : "flex",
     alignItems: "center",
-    gap: ufTokens.space3,
+    gap       : ufTokens.space3,
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
+    fontSize  : ufTokens.textSm,
+    color     : ufTokens.ink,
   },
 });
 

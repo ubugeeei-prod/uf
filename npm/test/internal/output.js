@@ -116,10 +116,10 @@ export const MAX_FILE_LENGTH: number = 128 * 1024;
 
 /** Which stream each replaced `console` method writes to, as Node routes them. */
 const CONSOLE_STREAMS: { readonly [string]: OutputStream } = {
-  log: "stdout",
-  info: "stdout",
+  log  : "stdout",
+  info : "stdout",
   debug: "stdout",
-  warn: "stderr",
+  warn : "stderr",
   error: "stderr",
 };
 
@@ -205,7 +205,7 @@ function capture(stream: OutputStream, text: string): void {
 
 /** A stand-in for `process.stdout.write` / `process.stderr.write`. */
 function writer(stream: OutputStream): (
-  chunk: mixed,
+  chunk    : mixed,
   encoding?: string | WriteCallback,
   callback?: WriteCallback,
 ) => boolean {

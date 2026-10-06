@@ -57,30 +57,30 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    display: "inline-flex",
-    flexShrink: 0,
-    color: ufTokens.accent,
+    display      : "inline-flex",
+    flexShrink   : 0,
+    color        : ufTokens.accent,
     verticalAlign: "middle",
   },
   inherit: {
     color: "inherit",
   },
   sm: {
-    width: "16px",
+    width : "16px",
     height: "16px",
   },
   md: {
-    width: "24px",
+    width : "24px",
     height: "24px",
   },
   lg: {
-    width: "40px",
+    width : "40px",
     height: "40px",
   },
   svg: {
     display: "block",
-    width: "100%",
-    height: "100%",
+    width  : "100%",
+    height : "100%",
   },
   // Shown unless the reader asked for reduced motion.
   turning: {
@@ -103,10 +103,10 @@ const styles = stylex.create({
  * property; `className` adds a class of your own beside these.
  */
 export component Spinner(
-  label?: string | null = "Loading",
-  size?: SpinnerSize = "md",
-  tone?: "accent" | "inherit" = "accent",
-  xstyle?: StyleArgument,
+  label?    : string | null = "Loading",
+  size?     : SpinnerSize = "md",
+  tone?     : "accent" | "inherit" = "accent",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

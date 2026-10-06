@@ -98,9 +98,9 @@ export type RetryPolicy = {|
 /** A named unit of work. */
 export type Job<P> = {|
   /** How a worker in another process finds this function again. */
-  readonly name: string,
+  readonly name : string,
   readonly retry: RetryPolicy,
-  readonly run: (payload: P) => mixed,
+  readonly run  : (payload: P) => mixed,
 |};
 
 /**
@@ -117,15 +117,15 @@ export type AnyJob = Job<any>;
 
 /** A retry policy with the parts a definition did not state left out. */
 export type PartialRetryPolicy = {|
-  readonly attempts?: number,
-  readonly backoff?: number,
+  readonly attempts?  : number,
+  readonly backoff?   : number,
   readonly maxBackoff?: number,
 |};
 
 /** What `defineJob` is given. */
 export type JobDefinition<P> = {|
   readonly name: string,
-  readonly run: (payload: P) => mixed,
+  readonly run : (payload: P) => mixed,
   /** Defaults to three attempts, a second apart, doubling to a minute. */
   readonly retry?: PartialRetryPolicy,
 |};
@@ -135,8 +135,8 @@ const DEFAULT_RETRY: RetryPolicy = Object.freeze({
   // dependency, a rate limit, a lost packet — are almost always over within
   // two intervals, and a job that is still failing on the fourth attempt is
   // failing for a reason that waiting will not change.
-  attempts: 3,
-  backoff: 1_000,
+  attempts  : 3,
+  backoff   : 1_000,
   maxBackoff: 60_000,
 });
 
@@ -187,7 +187,7 @@ export function defineJob<P>(definition: JobDefinition<P>): Job<P> {
   }
   return {
     name,
-    run: definition.run,
+    run  : definition.run,
     retry: { ...DEFAULT_RETRY, ...(definition.retry ?? {}) },
   };
 }
@@ -204,8 +204,8 @@ export function defineJob<P>(definition: JobDefinition<P>): Job<P> {
  * pushes through the backend it is already holding.
  */
 export async function enqueue<P>(
-  job: Job<P>,
-  payload: P,
+  job     : Job<P>,
+  payload : P,
   options?: {| readonly delay?: number |},
 ): Promise<string> {
   const context = currentContext();
@@ -223,10 +223,10 @@ export async function enqueue<P>(
 
   const delay = Math.max(0, options?.delay ?? 0);
   const record: JobRecord = {
-    id: newId(),
-    job: job.name,
-    payload: serialise(job.name, payload),
-    attempt: 1,
+    id       : newId(),
+    job      : job.name,
+    payload  : serialise(job.name, payload),
+    attempt  : 1,
     notBefore: Date.now() + delay,
   };
   await backend.push(record);
@@ -252,7 +252,7 @@ export type JobRunner = (record: JobRecord) => Promise<void>;
  * treated them the same would either retry forever or not at all.
  */
 export function createRunner(options: {|
-  readonly jobs: $ReadOnlyArray<AnyJob>,
+  readonly jobs   : $ReadOnlyArray<AnyJob>,
   readonly backend: QueueBackend,
   /** The clock, so a suite can drive the backoff without waiting for it. */
   readonly now?: () => number,
@@ -274,7 +274,7 @@ export function createRunner(options: {|
       }
       await options.backend.push({
         ...record,
-        attempt: record.attempt + 1,
+        attempt  : record.attempt + 1,
         notBefore: now() + backoffFor(job.retry, record.attempt),
       });
     }
@@ -298,8 +298,8 @@ export function backoffFor(retry: RetryPolicy, attempt: number): number {
 /** [`memoryQueue`]'s backend, plus the two things only an in-process one has. */
 export type MemoryQueue = {|
   readonly durable: boolean,
-  readonly name: string,
-  readonly push: (record: JobRecord) => Promise<void>,
+  readonly name   : string,
+  readonly push   : (record: JobRecord) => Promise<void>,
   /** Records waiting, whether or not they are due yet. */
   readonly size: () => number,
   /**
@@ -355,7 +355,7 @@ export function memoryQueue(options: {|
 
   const backend: QueueBackend = {
     durable: false,
-    name: "memoryQueue",
+    name   : "memoryQueue",
     push: async (record: JobRecord): Promise<void> => {
       pending.push(record);
     },
@@ -401,9 +401,9 @@ export function memoryQueue(options: {|
 
   return {
     durable: backend.durable,
-    name: backend.name,
-    push: backend.push,
-    size: () => pending.length,
+    name   : backend.name,
+    push   : backend.push,
+    size   : () => pending.length,
     drain,
     stop: () => {
       if (timer != null) {

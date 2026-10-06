@@ -75,7 +75,7 @@ component StuckCounter(step: number) {
 }
 
 component Profile(id: string) {
-  const [name, setName] = useState<string | null>(null);
+  const [name,   setName]   = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -110,9 +110,9 @@ component Exploding() {
 // --- Fixtures ----------------------------------------------------------
 
 const badges = defineStories({
-  title: "Badge",
+  title    : "Badge",
   component: Badge,
-  props: { label: "Ready", tone: "neutral" },
+  props    : { label: "Ready", tone: "neutral" },
   stories: {
     Neutral: {},
     Warning: { name: "Needs attention", props: { tone: "warning" } },
@@ -214,9 +214,9 @@ describe("defineStories", () => {
   it("keeps the set's decorators outside the story's", () => {
     const order = [];
     const set = defineStories({
-      title: "Badge",
+      title    : "Badge",
       component: Badge,
-      props: { label: "Ready", tone: "neutral" },
+      props    : { label: "Ready", tone: "neutral" },
       decorators: [
         (children) => {
           order.push("set");
@@ -244,11 +244,11 @@ describe("defineStories", () => {
     const setHandler = http.get("/a", () => HttpResponse.json({}));
     const storyHandler = http.get("/b", () => HttpResponse.json({}));
     const set = defineStories({
-      title: "Badge",
+      title    : "Badge",
       component: Badge,
-      props: { label: "Ready", tone: "neutral" },
-      mocks: [setHandler],
-      stories: { Only: { mocks: [storyHandler] } },
+      props    : { label: "Ready", tone: "neutral" },
+      mocks    : [setHandler],
+      stories  : { Only: { mocks: [storyHandler] } },
     });
 
     expect(set.stories[0].mocks).toEqual([storyHandler, setHandler]);
@@ -256,11 +256,11 @@ describe("defineStories", () => {
 
   it("falls back to the set's play function", () => {
     const set = defineStories({
-      title: "Badge",
+      title    : "Badge",
       component: Badge,
-      props: { label: "Ready", tone: "neutral" },
-      play: () => {},
-      stories: { Inherits: {}, Overrides: { play: () => {} } },
+      props    : { label: "Ready", tone: "neutral" },
+      play     : () => {},
+      stories  : { Inherits: {}, Overrides: { play: () => {} } },
     });
 
     expect(set.stories[0].play).not.toBe(null);
@@ -270,10 +270,10 @@ describe("defineStories", () => {
   it("refuses a set with no stories", () => {
     expect(() =>
       defineStories({
-        title: "Badge",
+        title    : "Badge",
         component: Badge,
-        props: { label: "Ready", tone: "neutral" },
-        stories: {},
+        props    : { label: "Ready", tone: "neutral" },
+        stories  : {},
       }),
     ).toThrow("declares no stories");
   });
@@ -301,12 +301,12 @@ describe("findStory", () => {
     // first in the file mounts the wrong component, and the test that asked
     // for it says nothing about why.
     const ambiguous = defineStories({
-      title: "Alert",
+      title    : "Alert",
       component: Badge,
-      props: { label: "Alert", tone: "neutral" },
+      props    : { label: "Alert", tone: "neutral" },
       stories: {
         Quiet: { name: "Loud" },
-        Loud: {},
+        Loud : {},
       },
     });
 
@@ -520,9 +520,9 @@ describe("mountStory", () => {
 
   it("wraps the story in its decorators, first outermost", async () => {
     const set = defineStories({
-      title: "Badge",
+      title    : "Badge",
       component: Badge,
-      props: { label: "Ready", tone: "neutral" },
+      props    : { label: "Ready", tone: "neutral" },
       decorators: [
         (children) => <section data-frame="outer">{children}</section>,
         (children) => <div data-frame="inner">{children}</div>,
@@ -547,9 +547,9 @@ describe("mountStory", () => {
 
 describe("a story's mocked requests", () => {
   const profiles = defineStories({
-    title: "Profile",
+    title    : "Profile",
     component: Profile,
-    props: { id: "42" },
+    props    : { id: "42" },
     mocks: [
       http.get("/users/:id", ({ params }) => HttpResponse.json({ name: `user ${params.id}` })),
     ],
@@ -595,11 +595,11 @@ describe("a story's mocked requests", () => {
 
   it("refuses a request the story did not declare", async () => {
     const set = defineStories({
-      title: "Profile",
+      title    : "Profile",
       component: Profile,
-      props: { id: "7" },
-      mocks: [http.get("/health", () => HttpResponse.json({ ok: true }))],
-      stories: { Loaded: {} },
+      props    : { id: "7" },
+      mocks    : [http.get("/health", () => HttpResponse.json({ ok: true }))],
+      stories  : { Loaded: {} },
     });
 
     const mounted = mountStory(set.stories[0]);
@@ -664,11 +664,11 @@ describe("a story's mocked requests", () => {
   it("puts fetch back when the story throws while mounting", () => {
     const before = globalThis.fetch;
     const set = defineStories({
-      title: "Exploding",
+      title    : "Exploding",
       component: Exploding,
-      props: {},
-      mocks: [http.get("/anything", () => HttpResponse.json({}))],
-      stories: { Only: {} },
+      props    : {},
+      mocks    : [http.get("/anything", () => HttpResponse.json({}))],
+      stories  : { Only: {} },
     });
 
     expect(() => mountStory(set.stories[0])).toThrow("this component is broken");
@@ -722,9 +722,9 @@ describe("a play function", () => {
 
   it("names the story and the step a failure happened in", async () => {
     const set = defineStories({
-      title: "Counter",
+      title    : "Counter",
       component: Counter,
-      props: { step: 2 },
+      props    : { step: 2 },
       stories: {
         Added: {
           play: async ({ step }) => {
@@ -753,9 +753,9 @@ describe("a play function", () => {
 
   it("reports a failure outside every step with no step name", async () => {
     const set = defineStories({
-      title: "Counter",
+      title    : "Counter",
       component: Counter,
-      props: { step: 2 },
+      props    : { step: 2 },
       stories: {
         Added: {
           play: () => {
@@ -776,9 +776,9 @@ describe("a play function", () => {
   it("hands the play function the props the story was rendered with", async () => {
     let seen = null;
     const set = defineStories({
-      title: "Badge",
+      title    : "Badge",
       component: Badge,
-      props: { label: "Ready", tone: "neutral" },
+      props    : { label: "Ready", tone: "neutral" },
       stories: {
         Warning: {
           props: { tone: "warning" },
@@ -800,9 +800,9 @@ describe("a play function", () => {
 
   it("can be run before the markup is serialised", async () => {
     const set = defineStories({
-      title: "Counter",
+      title    : "Counter",
       component: Counter,
-      props: { step: 3 },
+      props    : { step: 3 },
       stories: {
         Added: {
           play: async ({ canvas, user }) => {
@@ -837,9 +837,9 @@ describe("storyTest", () => {
 
   it("unmounts a story whose play function failed", async () => {
     const set = defineStories({
-      title: "Badge",
+      title    : "Badge",
       component: Badge,
-      props: { label: "Ready", tone: "neutral" },
+      props    : { label: "Ready", tone: "neutral" },
       stories: {
         Only: {
           play: () => {

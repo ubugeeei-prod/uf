@@ -70,65 +70,65 @@ const SideContext: React.Context<Edge> = createContext("bottom");
 
 const styles = stylex.create({
   overlay: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 50,
+    position       : "fixed",
+    inset          : 0,
+    zIndex         : 50,
     backgroundColor: ufTokens.scrim,
     // Enter: the page dims as the panel arrives, over the panel's duration,
     // rather than going dark first and then showing a dialog. Opacity only, so
     // it is the same under reduced motion.
     // Exit: it clears with the panel, in the panel's shorter exit time.
-    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    opacity           : { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transitionProperty: "opacity",
     transitionDuration: {
-      default: ufTokens.durationSlow,
+      default                   : ufTokens.durationSlow,
       ":is([data-state=closed])": ufTokens.durationBase,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
   panel: {
-    position: "fixed",
-    zIndex: 50,
-    boxSizing: "border-box",
-    display: "flex",
-    flexDirection: "column",
-    gap: ufTokens.space4,
-    overflowY: "auto",
-    paddingBlock: ufTokens.space4,
-    paddingInline: ufTokens.space6,
+    position       : "fixed",
+    zIndex         : 50,
+    boxSizing      : "border-box",
+    display        : "flex",
+    flexDirection  : "column",
+    gap            : ufTokens.space4,
+    overflowY      : "auto",
+    paddingBlock   : ufTokens.space4,
+    paddingInline  : ufTokens.space6,
     backgroundColor: ufTokens.surface,
-    color: ufTokens.ink,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
+    color          : ufTokens.ink,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    lineHeight     : ufTokens.leadingBase,
     // Separated from the page by a rule on the edge that faces it, not by a
     // shadow: the scrim already says the page is behind.
-    borderWidth: 0,
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderTopWidth: { default: 0, ":is([data-side=bottom])": "1px" },
+    borderWidth      : 0,
+    borderStyle      : "solid",
+    borderColor      : ufTokens.border,
+    borderTopWidth   : { default: 0, ":is([data-side=bottom])": "1px" },
     borderBottomWidth: { default: 0, ":is([data-side=top])": "1px" },
-    borderLeftWidth: { default: 0, ":is([data-side=right])": "1px" },
-    borderRightWidth: { default: 0, ":is([data-side=left])": "1px" },
-    top: { default: 0, ":is([data-side=bottom])": "auto" },
-    bottom: { default: 0, ":is([data-side=top])": "auto" },
-    left: { default: 0, ":is([data-side=right])": "auto" },
-    right: { default: 0, ":is([data-side=left])": "auto" },
+    borderLeftWidth  : { default: 0, ":is([data-side=right])": "1px" },
+    borderRightWidth : { default: 0, ":is([data-side=left])": "1px" },
+    top              : { default: 0, ":is([data-side=bottom])": "auto" },
+    bottom           : { default: 0, ":is([data-side=top])": "auto" },
+    left             : { default: 0, ":is([data-side=right])": "auto" },
+    right            : { default: 0, ":is([data-side=left])": "auto" },
     // The snap point is a fraction of the full size, written by the part. The
     // full size is at most 85% of the screen's height, or 24rem across less a
     // margin, spelled out in each value because StyleX reads values at compile
     // time and refuses one it would have to resolve.
     height: {
-      default: "auto",
-      ":is([data-side=top])": "calc(min(85vh, 40rem) * var(--uf-drawer-snap, 1))",
+      default                  : "auto",
+      ":is([data-side=top])"   : "calc(min(85vh, 40rem) * var(--uf-drawer-snap, 1))",
       ":is([data-side=bottom])": "calc(min(85vh, 40rem) * var(--uf-drawer-snap, 1))",
     },
     width: {
-      default: "auto",
-      ":is([data-side=left])": "calc(min(24rem, 100vw - 48px) * var(--uf-drawer-snap, 1))",
+      default                 : "auto",
+      ":is([data-side=left])" : "calc(min(24rem, 100vw - 48px) * var(--uf-drawer-snap, 1))",
       ":is([data-side=right])": "calc(min(24rem, 100vw - 48px) * var(--uf-drawer-snap, 1))",
     },
     // Enter: it slides in from the edge it is attached to, the whole of its
@@ -136,13 +136,13 @@ const styles = stylex.create({
     // off the edge and settles against the page. Under reduced motion it does
     // not travel; it fades in instead (`--uf-enter-opacity`).
     "--uf-enter-x": {
-      default: "0px",
-      ":is([data-side=left])": "-100%",
+      default                 : "0px",
+      ":is([data-side=left])" : "-100%",
       ":is([data-side=right])": "100%",
     },
     "--uf-enter-y": {
-      default: "0px",
-      ":is([data-side=top])": "-100%",
+      default                  : "0px",
+      ":is([data-side=top])"   : "-100%",
       ":is([data-side=bottom])": "100%",
     },
     //
@@ -151,102 +151,102 @@ const styles = stylex.create({
     // the closing panel on the page and `inert`. Under reduced motion it fades
     // out instead (`--uf-exit-travel` is 0, so it does not travel).
     "--uf-enter-opacity": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
-    "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
+    "--uf-exit-travel"  : { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
     opacity: {
-      default: 1,
-      "@starting-style": "var(--uf-enter-opacity)",
+      default                   : 1,
+      "@starting-style"         : "var(--uf-enter-opacity)",
       ":is([data-state=closed])": "var(--uf-enter-opacity)",
     },
     // And the drag is how far the finger has pulled it towards its edge.
     transform: {
-      default: "none",
+      default                  : "none",
       ":is([data-side=bottom])": "translateY(var(--uf-drawer-drag, 0px))",
-      ":is([data-side=top])": "translateY(calc(-1 * var(--uf-drawer-drag, 0px)))",
-      ":is([data-side=right])": "translateX(var(--uf-drawer-drag, 0px))",
-      ":is([data-side=left])": "translateX(calc(-1 * var(--uf-drawer-drag, 0px)))",
-      "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
+      ":is([data-side=top])"   : "translateY(calc(-1 * var(--uf-drawer-drag, 0px)))",
+      ":is([data-side=right])" : "translateX(var(--uf-drawer-drag, 0px))",
+      ":is([data-side=left])"  : "translateX(calc(-1 * var(--uf-drawer-drag, 0px)))",
+      "@starting-style"        : "translate(var(--uf-enter-x), var(--uf-enter-y))",
       // Two attributes, so it sorts after the one-attribute `data-side` keys
       // above and wins over them while closing.
       ":is([data-state=closed]):is([data-side])":
         "translate(calc(var(--uf-enter-x) * var(--uf-exit-travel)), calc(var(--uf-enter-y) * var(--uf-exit-travel)))",
     },
-    borderTopLeftRadius: { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
-    borderTopRightRadius: { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
-    borderBottomLeftRadius: { default: 0, ":is([data-side=top])": ufTokens.radiusLg },
+    borderTopLeftRadius    : { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
+    borderTopRightRadius   : { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
+    borderBottomLeftRadius : { default: 0, ":is([data-side=top])": ufTokens.radiusLg },
     borderBottomRightRadius: { default: 0, ":is([data-side=top])": ufTokens.radiusLg },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "-2px",
+    outlineWidth           : { default: "0", ":focus-visible": "2px" },
+    outlineStyle           : "solid",
+    outlineColor           : ufTokens.focus,
+    outlineOffset          : "-2px",
     transitionProperty: {
-      default: "opacity, transform, height, width",
+      default                                  : "opacity, transform, height, width",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
     // Still while a finger holds it, so the panel stays under the finger;
     // released, it settles on the same decelerating curve it entered with.
     transitionDuration: {
-      default: ufTokens.durationSlow,
+      default                     : ufTokens.durationSlow,
       ":has([data-dragging=true])": "0s",
-      ":is([data-state=closed])": ufTokens.durationBase,
+      ":is([data-state=closed])"  : ufTokens.durationBase,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
   handle: {
     // Read by the grip inside, which is drawn along the axis the drag runs on.
-    "--uf-drawer-grip-width": { default: "40px", ":is([aria-orientation=horizontal])": "5px" },
+    "--uf-drawer-grip-width" : { default: "40px", ":is([aria-orientation=horizontal])": "5px" },
     "--uf-drawer-grip-height": { default: "5px", ":is([aria-orientation=horizontal])": "40px" },
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    alignSelf: "center",
-    boxSizing: "border-box",
-    width: { default: "64px", ":is([aria-orientation=horizontal])": "24px" },
-    height: { default: "24px", ":is([aria-orientation=horizontal])": "64px" },
+    display                  : "flex",
+    alignItems               : "center",
+    justifyContent           : "center",
+    flexShrink               : 0,
+    alignSelf                : "center",
+    boxSizing                : "border-box",
+    width                    : { default: "64px", ":is([aria-orientation=horizontal])": "24px" },
+    height                   : { default: "24px", ":is([aria-orientation=horizontal])": "64px" },
     // First on the screen for a bottom drawer and last for a top one: the edge
     // that faces the page. A side drawer's handle is at that edge's middle.
-    order: { default: -1, ":is([data-side=top])": 0 },
-    position: { default: "static", ":is([aria-orientation=horizontal])": "absolute" },
-    top: { default: "auto", ":is([aria-orientation=horizontal])": "calc(50% - 32px)" },
-    left: { default: "auto", ":is([data-side=right])": ufTokens.space1 },
-    right: { default: "auto", ":is([data-side=left])": ufTokens.space1 },
-    borderRadius: ufTokens.radiusSm,
-    cursor: { default: "grab", ":is([data-dragging=true])": "grabbing" },
-    touchAction: "none",
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    order        : { default: -1, ":is([data-side=top])": 0 },
+    position     : { default: "static", ":is([aria-orientation=horizontal])": "absolute" },
+    top          : { default: "auto", ":is([aria-orientation=horizontal])": "calc(50% - 32px)" },
+    left         : { default: "auto", ":is([data-side=right])": ufTokens.space1 },
+    right        : { default: "auto", ":is([data-side=left])": ufTokens.space1 },
+    borderRadius : ufTokens.radiusSm,
+    cursor       : { default: "grab", ":is([data-dragging=true])": "grabbing" },
+    touchAction  : "none",
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "2px",
   },
   grip: {
-    width: "var(--uf-drawer-grip-width)",
-    height: "var(--uf-drawer-grip-height)",
-    borderRadius: ufTokens.radiusPill,
+    width          : "var(--uf-drawer-grip-width)",
+    height         : "var(--uf-drawer-grip-height)",
+    borderRadius   : ufTokens.radiusPill,
     backgroundColor: ufTokens.border,
   },
   header: {
     display: "grid",
-    gap: ufTokens.space2,
+    gap    : ufTokens.space2,
   },
   footer: {
-    display: "flex",
-    flexWrap: "wrap",
+    display       : "flex",
+    flexWrap      : "wrap",
     justifyContent: "flex-end",
-    gap: ufTokens.space2,
-    marginTop: "auto",
+    gap           : ufTokens.space2,
+    marginTop     : "auto",
   },
   title: {
-    margin: 0,
-    fontSize: ufTokens.textLg,
+    margin    : 0,
+    fontSize  : ufTokens.textLg,
     fontWeight: ufTokens.weightBold,
     lineHeight: ufTokens.leadingTight,
   },
   description: {
     margin: 0,
-    color: ufTokens.muted,
+    color : ufTokens.muted,
   },
 });
 
@@ -257,15 +257,15 @@ const styles = stylex.create({
  * "half, then all of it". `snapPoint` is an index into them.
  */
 component DrawerRoot(
-  children: React.Node,
-  side?: Edge = "bottom",
-  snapPoints?: $ReadOnlyArray<number>,
-  defaultSnapPoint?: number = 0,
-  snapPoint?: number,
+  children          : React.Node,
+  side?             : Edge = "bottom",
+  snapPoints?       : $ReadOnlyArray<number>,
+  defaultSnapPoint? : number = 0,
+  snapPoint?        : number,
   onSnapPointChange?: (index: number) => void,
-  defaultOpen?: boolean = false,
-  open?: boolean,
-  onOpenChange?: (open: boolean) => void,
+  defaultOpen?      : boolean = false,
+  open?             : boolean,
+  onOpenChange?     : (open: boolean) => void,
 ) {
   return (
     <SideContext.Provider value={side}>
@@ -287,11 +287,11 @@ component DrawerRoot(
 
 /** The button that opens the drawer. It is a `Button` unless `render` says otherwise. */
 component DrawerTrigger(
-  children: React.Node,
-  tone?: ButtonTone = "neutral",
-  size?: ButtonSize = "md",
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  tone?     : ButtonTone = "neutral",
+  size?     : ButtonSize = "md",
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -322,11 +322,11 @@ component DrawerTrigger(
  * `Drawer.Close` either.
  */
 component DrawerContent(
-  children: React.Node,
+  children    : React.Node,
   handleLabel?: string = "Resize the drawer",
-  hideHandle?: boolean = false,
-  xstyle?: StyleArgument,
-  className?: string,
+  hideHandle? : boolean = false,
+  xstyle?     : StyleArgument,
+  className?  : string,
   ...rest: Rest
 ) {
   const side = useContext(SideContext);
@@ -357,8 +357,8 @@ component DrawerContent(
 
 /** The title and description, stacked. */
 component DrawerHeader(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -374,8 +374,8 @@ component DrawerHeader(
 
 /** The row the actions sit in, pushed to the far end of the panel. */
 component DrawerFooter(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -391,8 +391,8 @@ component DrawerFooter(
 
 /** The drawer's name. */
 component DrawerTitle(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -408,8 +408,8 @@ component DrawerTitle(
 
 /** What the drawer is for, read with its name when focus arrives. */
 component DrawerDescription(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -428,11 +428,11 @@ component DrawerDescription(
  * drag that WCAG 2.5.7 asks for.
  */
 component DrawerClose(
-  children: React.Node,
-  tone?: ButtonTone = "neutral",
-  size?: ButtonSize = "md",
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  tone?     : ButtonTone = "neutral",
+  size?     : ButtonSize = "md",
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

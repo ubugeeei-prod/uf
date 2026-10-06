@@ -6,20 +6,20 @@ import * as ContextMenu from "./context-menu.js";
 
 const styles = stylex.create({
   area: {
-    display: "flex",
-    alignItems: "center",
+    display       : "flex",
+    alignItems    : "center",
     justifyContent: "center",
-    boxSizing: "border-box",
-    width: "100%",
-    maxWidth: "20rem",
-    height: "8rem",
-    color: ufTokens.muted,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    borderWidth: "1px",
-    borderStyle: "dashed",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusMd,
+    boxSizing     : "border-box",
+    width         : "100%",
+    maxWidth      : "20rem",
+    height        : "8rem",
+    color         : ufTokens.muted,
+    fontFamily    : ufTokens.fontSans,
+    fontSize      : ufTokens.textSm,
+    borderWidth   : "1px",
+    borderStyle   : "dashed",
+    borderColor   : ufTokens.border,
+    borderRadius  : ufTokens.radiusMd,
   },
 });
 

@@ -7,15 +7,15 @@ import * as Sheet from "./sheet.js";
 
 const styles = stylex.create({
   option: {
-    display: "flex",
+    display   : "flex",
     alignItems: "center",
-    gap: ufTokens.space2,
-    minHeight: "32px",
+    gap       : ufTokens.space2,
+    minHeight : "32px",
   },
   box: {
-    width: "16px",
-    height: "16px",
-    margin: 0,
+    width      : "16px",
+    height     : "16px",
+    margin     : 0,
     accentColor: ufTokens.accent,
   },
 });

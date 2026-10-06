@@ -23,31 +23,31 @@ function table() {
   return {
     routes: [
       {
-        path: "/",
-        params: [],
-        mdx: false,
-        file: "app/$page.native.js",
-        page: module("home"),
+        path   : "/",
+        params : [],
+        mdx    : false,
+        file   : "app/$page.native.js",
+        page   : module("home"),
         layouts: [],
       },
       {
-        path: "/users/:id",
-        params: [{ name: "id", catchAll: false }],
-        mdx: false,
-        file: "app/users/[id]/$page.native.js",
-        page: module("user"),
+        path   : "/users/:id",
+        params : [{ name: "id", catchAll: false }],
+        mdx    : false,
+        file   : "app/users/[id]/$page.native.js",
+        page   : module("user"),
         layouts: [module("layout")],
       },
       {
-        path: "/server-only",
-        params: [],
-        mdx: false,
-        file: "app/server-only/$page.js",
+        path   : "/server-only",
+        params : [],
+        mdx    : false,
+        file   : "app/server-only/$page.js",
         layouts: [],
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   };
 }
 
@@ -112,12 +112,12 @@ describe("@uniflowed/router/native", () => {
 
   it("resolves a route table entry into a native navigation event", () => {
     expect(resolveNativeNavigation(table(), "/users/42?tab=posts", "replace")).toEqual({
-      kind: "replace",
-      href: "/users/42?tab=posts",
+      kind    : "replace",
+      href    : "/users/42?tab=posts",
       pathname: "/users/42",
-      search: "?tab=posts",
-      route: "/users/:id",
-      params: { id: "42" },
+      search  : "?tab=posts",
+      route   : "/users/:id",
+      params  : { id: "42" },
     });
   });
 
@@ -125,24 +125,24 @@ describe("@uniflowed/router/native", () => {
     const event = resolveNativeNavigation(table(), "/users/42?tab=posts", "replace");
 
     const payload = nativeScreenPayload(event, {
-      "/": "Home",
+      "/"         : "Home",
       "/users/:id": "UserProfile",
     });
 
     expect(payload).toEqual({
-      screen: "UserProfile",
-      href: "/users/42?tab=posts",
+      screen  : "UserProfile",
+      href    : "/users/42?tab=posts",
       pathname: "/users/42",
-      search: "?tab=posts",
-      route: "/users/:id",
-      params: { id: "42" },
+      search  : "?tab=posts",
+      route   : "/users/:id",
+      params  : { id: "42" },
     });
     expect(nativeScreenNavigationState(payload)).toEqual({
-      params: { id: "42" },
-      href: "/users/42?tab=posts",
+      params  : { id: "42" },
+      href    : "/users/42?tab=posts",
       pathname: "/users/42",
-      search: "?tab=posts",
-      route: "/users/:id",
+      search  : "?tab=posts",
+      route   : "/users/:id",
     });
   });
 
@@ -153,15 +153,15 @@ describe("@uniflowed/router/native", () => {
 
     expect(manifest).toEqual({
       screens: {
-        "/": "Home",
+        "/"         : "Home",
         "/users/:id": "UserProfile",
       },
       entries: [
         { screen: "Home", route: "/", file: "app/$page.native.js" },
         {
           screen: "UserProfile",
-          route: "/users/:id",
-          file: "app/users/[id]/$page.native.js",
+          route : "/users/:id",
+          file  : "app/users/[id]/$page.native.js",
         },
       ],
     });

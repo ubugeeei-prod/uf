@@ -50,19 +50,19 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   heading: {
-    margin: 0,
+    margin    : 0,
     fontFamily: ufTokens.fontSans,
     fontWeight: ufTokens.weightBold,
     lineHeight: ufTokens.leadingTight,
-    color: ufTokens.ink,
-    textWrap: "balance",
+    color     : ufTokens.ink,
+    textWrap  : "balance",
   },
   h1: {
     fontSize: ufTokens.text2Xl,
   },
   h2: {
-    paddingBlockEnd: ufTokens.space2,
-    fontSize: ufTokens.textXl,
+    paddingBlockEnd    : ufTokens.space2,
+    fontSize           : ufTokens.textXl,
     borderBlockEndWidth: "1px",
     borderBlockEndStyle: "solid",
     borderBlockEndColor: ufTokens.border,
@@ -74,47 +74,47 @@ const styles = stylex.create({
     fontSize: ufTokens.textMd,
   },
   prose: {
-    margin: 0,
+    margin    : 0,
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textMd,
+    fontSize  : ufTokens.textMd,
     lineHeight: ufTokens.leadingBase,
-    color: ufTokens.ink,
+    color     : ufTokens.ink,
   },
   lead: {
     fontSize: ufTokens.textLg,
-    color: ufTokens.muted,
+    color   : ufTokens.muted,
   },
   muted: {
     fontSize: ufTokens.textSm,
-    color: ufTokens.muted,
+    color   : ufTokens.muted,
   },
   blockquote: {
-    paddingInlineStart: ufTokens.space4,
-    fontStyle: "italic",
+    paddingInlineStart    : ufTokens.space4,
+    fontStyle             : "italic",
     borderInlineStartWidth: "2px",
     borderInlineStartStyle: "solid",
     borderInlineStartColor: ufTokens.border,
   },
   list: {
-    display: "grid",
-    gap: ufTokens.space2,
+    display           : "grid",
+    gap               : ufTokens.space2,
     paddingInlineStart: ufTokens.space6,
   },
   code: {
-    paddingBlock: "1px",
-    paddingInline: ufTokens.space1,
-    fontFamily: ufTokens.fontMono,
-    fontSize: "0.875em",
-    color: ufTokens.ink,
+    paddingBlock   : "1px",
+    paddingInline  : ufTokens.space1,
+    fontFamily     : ufTokens.fontMono,
+    fontSize       : "0.875em",
+    color          : ufTokens.ink,
     backgroundColor: ufTokens.sunken,
-    borderRadius: ufTokens.radiusSm,
+    borderRadius   : ufTokens.radiusSm,
   },
 });
 
 /** A first-level heading: the page's title, once. */
 component TypographyH1(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -130,8 +130,8 @@ component TypographyH1(
 
 /** A second-level heading, ruled underneath: a section of the page. */
 component TypographyH2(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -147,8 +147,8 @@ component TypographyH2(
 
 /** A third-level heading: a part of a section. */
 component TypographyH3(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -164,8 +164,8 @@ component TypographyH3(
 
 /** A fourth-level heading. */
 component TypographyH4(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -181,8 +181,8 @@ component TypographyH4(
 
 /** A paragraph of body text. */
 component TypographyP(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -195,8 +195,8 @@ component TypographyP(
 
 /** The paragraph that opens a page, larger and quieter than the rest. */
 component TypographyLead(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -212,8 +212,8 @@ component TypographyLead(
 
 /** A paragraph of secondary text: a note, a date, a caption. */
 component TypographyMuted(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -229,8 +229,8 @@ component TypographyMuted(
 
 /** A quotation from somewhere else. `cite` takes the URL it came from. */
 component TypographyBlockquote(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -246,9 +246,9 @@ component TypographyBlockquote(
 
 /** A list of `<li>`s: bulleted, or numbered when `ordered`. */
 component TypographyList(
-  children: React.Node,
-  ordered?: boolean = false,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  ordered?  : boolean = false,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -261,8 +261,8 @@ component TypographyList(
 
 /** Code inside a sentence: a name, a command, a value. */
 component TypographyInlineCode(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

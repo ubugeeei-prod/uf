@@ -63,15 +63,15 @@ import type { AtomGetter, AtomRecord, AtomSetter, Loadable } from "./atom.js";
  */
 export type Binding<T, A> = {
   readonly subscribe: (listener: () => void) => Unsubscribe,
-  readonly snapshot: () => T,
-  readonly setter: (arg: A) => void,
+  readonly snapshot : () => T,
+  readonly setter   : (arg: A) => void,
 };
 
 export type StoreInstance = {
-  readonly get: AtomGetter,
-  readonly set: AtomSetter,
-  readonly sub: <V>(target: AtomRecord<V, empty>, listener: () => void) => Unsubscribe,
-  readonly bind: <V, A>(target: AtomRecord<V, A>) => Binding<V, A>,
+  readonly get   : AtomGetter,
+  readonly set   : AtomSetter,
+  readonly sub   : <V>(target: AtomRecord<V, empty>, listener: () => void) => Unsubscribe,
+  readonly bind  : <V, A>(target: AtomRecord<V, A>) => Binding<V, A>,
   readonly reload: <V>(target: AtomRecord<V, empty>) => void,
 };
 
@@ -114,7 +114,7 @@ type AtomIdentity = interface { readonly label: string };
 // Suppressed rather than left to fail `check:lib`: the reason above is the
 // whole argument, and it does not end in a change anyone can make to this file.
 // uf-lint-disable flow/unclear-type
-type AnyCell = Cell<any>;
+type AnyCell    = Cell<any>;
 type AnyBinding = Binding<any, any>;
 // uf-lint-enable flow/unclear-type
 
@@ -146,8 +146,8 @@ export function createStore(): StoreInstance {
     const options = cellOptions<V, A>(target);
     return match (target.kind) {
       "primitive" => state(target.initial, options),
-      "async" => loadable<V, A>(target, options),
-      _ => derivedAtom<V, A>(target, options),
+      "async"     => loadable<V, A>(target, options),
+      _           => derivedAtom<V, A>(target, options),
     };
   }
 
@@ -333,7 +333,7 @@ export function bindCell<T>(source: Cell<T>): Binding<T, T> {
   }
   const created: Binding<T, T> = {
     subscribe: (listener) => subscribe(source, listener),
-    snapshot: () => peek(source),
+    snapshot : () => peek(source),
     setter: (value) => {
       write(source, value);
     },

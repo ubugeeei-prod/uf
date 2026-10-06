@@ -52,10 +52,10 @@ export function moduleEpochs() {
   if (existing != null) return existing;
   const state = createModuleEpochs();
   Object.defineProperty(globalThis, MODULE_EPOCHS, {
-    value: state,
+    value       : state,
     configurable: true,
-    enumerable: false,
-    writable: false,
+    enumerable  : false,
+    writable    : false,
   });
   return state;
 }

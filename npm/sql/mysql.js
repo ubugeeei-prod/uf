@@ -34,8 +34,8 @@ export type MysqlParam = null | string | Uint8Array;
 /** How one MySQL type becomes a Flow value and back. */
 export type Codec<T> = {|
   readonly sqlType: string,
-  readonly decode: (value: mixed) => T,
-  readonly encode: (value: T) => MysqlParam,
+  readonly decode : (value: mixed) => T,
+  readonly encode : (value: T) => MysqlParam,
 |};
 
 /** `TINYINT` through `INT`, signed or unsigned, and `YEAR`: all fit a `number`. */
@@ -55,7 +55,7 @@ export function integer(sqlType: string): Codec<number> {
 /** `BIGINT`, signed or unsigned, exactly. */
 export const bigint: Codec<bigint> = {
   sqlType: "bigint",
-  decode: (value) => bigintFrom("bigint", value),
+  decode : (value) => bigintFrom("bigint", value),
   encode: (value) => {
     if (typeof value !== "bigint") {
       return encodeError("bigint (a bigint)", value);
@@ -169,14 +169,14 @@ export function bytes(sqlType: string): Codec<Uint8Array> {
 /** `JSON`. */
 export const json: Codec<JsonValue> = {
   sqlType: "json",
-  decode: (value) => jsonFromText(value),
-  encode: (value) => jsonParam(value),
+  decode : (value) => jsonFromText(value),
+  encode : (value) => jsonParam(value),
 };
 
 /** A result sqlc could not type. */
 export const unknown: Codec<mixed> = {
   sqlType: "unknown",
-  decode: (value) => value,
+  decode : (value) => value,
   encode: (value) => {
     if (value === null || typeof value === "string" || value instanceof Uint8Array) {
       return value;
@@ -194,7 +194,7 @@ export const unknown: Codec<mixed> = {
 /** An `ENUM(…)` column, from its values in declaration order. */
 export function enumeration<T extends string>(
   sqlType: string,
-  values: $ReadOnlyArray<T>,
+  values : $ReadOnlyArray<T>,
 ): Codec<T> {
   const expected = `${sqlType} (${enumName(values)})`;
   return {
@@ -209,14 +209,14 @@ export function enumeration<T extends string>(
  * value back to what `codec` writes.
  */
 export function map<T, U>(
-  codec: Codec<T>,
+  codec : Codec<T>,
   decode: (value: T) => U,
   encode: (value: U) => T,
 ): Codec<U> {
   return {
     sqlType: codec.sqlType,
-    decode: (value) => decode(codec.decode(value)),
-    encode: (value) => codec.encode(encode(value)),
+    decode : (value) => decode(codec.decode(value)),
+    encode : (value) => codec.encode(encode(value)),
   };
 }
 

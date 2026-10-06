@@ -22,21 +22,21 @@ import { nativeTree, stateForPath, hrefFromState, paramsForPath } from "./intern
 
 export interface NavigatorPair {
   readonly Navigator: React.ComponentType<{ ... }>;
-  readonly Screen: React.ComponentType<{ ... }>;
+  readonly Screen   : React.ComponentType<{ ... }>;
 }
 export type FileRouter = {
-  readonly push: (href: string) => void,
-  readonly replace: (href: string) => void,
-  readonly back: () => void,
+  readonly push    : (href: string) => void,
+  readonly replace : (href: string) => void,
+  readonly back    : () => void,
   readonly prefetch: (href: string) => Promise<void>,
 };
 type Scope = {
-  tree: NativeTree,
-  node: NativeNode,
+  tree   : NativeTree,
+  node   : NativeNode,
   screens: Map<NativeNode, React.ComponentType<{ ... }>>,
-  stack: NavigatorPair,
-  tabs: ?NavigatorPair,
-  router: FileRouter,
+  stack  : NavigatorPair,
+  tabs   : ?NavigatorPair,
+  router : FileRouter,
 };
 const ScopeContext: React.Context<Scope | null> = React.createContext(null);
 
@@ -51,12 +51,12 @@ function useScope(): Scope {
 
 /** The application supplies its own React Navigation navigator factories. */
 export function createNativeNavigation(options: {
-  table: RouteTable<>,
-  layouts: $ReadOnlyArray<NativeLayout>,
-  stack: NavigatorPair,
-  tabs?: NavigatorPair,
+  table       : RouteTable<>,
+  layouts     : $ReadOnlyArray<NativeLayout>,
+  stack       : NavigatorPair,
+  tabs?       : NavigatorPair,
   initialHref?: string,
-  links?: NativeLinkSource,
+  links?      : NativeLinkSource,
 }): { Root: React.ComponentType<{ ... }>, router: FileRouter, linking: { ... } } {
   const { table, layouts, stack, tabs } = options;
   const tree = nativeTree(table, layouts);
@@ -69,9 +69,9 @@ export function createNativeNavigation(options: {
     return { names, payload: { ufHref: event.href, ufParams: event.params } };
   };
   function actionFor(
-    names: $ReadOnlyArray<string>,
+    names  : $ReadOnlyArray<string>,
     payload: NavigationPayload,
-    kind: "push" | "replace",
+    kind   : "push" | "replace",
   ): { readonly [string]: mixed } {
     if (!ref.isReady()) throw new Error("Native navigation: NavigationContainer is not ready");
     let state: NavigationState = ref.getRootState();
@@ -95,7 +95,7 @@ export function createNativeNavigation(options: {
     ref.dispatch(actionFor(names, payload, kind));
   }
   const router: FileRouter = {
-    push: (href) => navigate(href, "push"),
+    push   : (href) => navigate(href, "push"),
     replace: (href) => navigate(href, "replace"),
     back: () => {
       if (ref.canGoBack()) ref.goBack();
@@ -104,9 +104,9 @@ export function createNativeNavigation(options: {
   };
   const source = options.links == null ? null : createNativeLinking(table, options.links);
   const linking = {
-    prefixes: [""],
+    prefixes     : [""],
     getInitialURL: source?.getInitialURL ?? (async () => null),
-    subscribe: source?.subscribe ?? (() => () => {}),
+    subscribe    : source?.subscribe ?? (() => () => {}),
     getStateFromPath: (href: string) => {
       const { names, payload } = resolve(
         href.startsWith("/") || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(href) ? href : `/${href}`,
@@ -199,9 +199,9 @@ export function useParams(): { readonly [string]: string | $ReadOnlyArray<string
 }
 
 export component Link(
-  href: string,
+  href    : string,
   children: React.Node,
-  replace: boolean = false,
+  replace : boolean = false,
   ...props: { ... }
 ) {
   const router = useNativeRouter();

@@ -79,7 +79,7 @@ export function flightPath(documentPath: string): string {
 export async function flightResponse(
   // Only the half that renders a payload: a compiled binary's bundle is not a
   // whole `Application`, and this reads nothing else off it.
-  app: { readonly flight?: Application["flight"], ... },
+  app    : { readonly flight?: Application["flight"], ... },
   request: Request,
   options: {|
     readonly onError: (error: mixed) => void,
@@ -96,9 +96,9 @@ export async function flightResponse(
 
   const body = () =>
     render(document + url.search, {
-      onError: options.onError,
+      onError        : options.onError,
       interceptedFrom: interceptedFrom(request),
-      notFound: request.headers.get(NOT_FOUND_HEADER) === "1",
+      notFound       : request.headers.get(NOT_FOUND_HEADER) === "1",
     });
   const answered = await (options.within == null ? body() : options.within(body));
   // The exception the route resolved to its error boundary for, which never
@@ -130,8 +130,8 @@ function interceptedFrom(request: Request): string | void {
 
 /** What `Application.flight` resolves with. */
 type FlightAnswer = {|
-  readonly status: number,
+  readonly status : number,
   readonly headers: { readonly [string]: string },
-  readonly stream: ReadableStream<Uint8Array> | null,
-  readonly error?: mixed,
+  readonly stream : ReadableStream<Uint8Array> | null,
+  readonly error? : mixed,
 |};

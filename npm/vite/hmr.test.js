@@ -127,14 +127,14 @@ describe("the development route table", () => {
   const table = {
     routes: [
       {
-        path: "/",
-        params: [],
-        mdx: false,
-        page: "/project/app/$page.js",
-        layouts: ["/project/app/$layout.js"],
-        loading: [],
+        path     : "/",
+        params   : [],
+        mdx      : false,
+        page     : "/project/app/$page.js",
+        layouts  : ["/project/app/$layout.js"],
+        loading  : [],
         templates: [],
-        slots: [],
+        slots    : [],
       },
     ],
   };
@@ -219,9 +219,9 @@ describe("a route file added to a running dev server", () => {
         },
         add() {},
       },
-      moduleGraph: graph,
+      moduleGraph : graph,
       environments: { client: { hot: { send: (message) => sent.push(message) } } },
-      ws: { send: (message) => sent.push(message) },
+      ws          : { send: (message) => sent.push(message) },
       reloadModule: async (module) => {
         reloaded.push(module);
       },

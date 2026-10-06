@@ -75,7 +75,7 @@ const DEFAULT_LANGS = [
  * languages or aliases it knows.
  */
 const ALIASES = {
-  flow: "javascript",
+  flow   : "javascript",
   console: "shellscript",
 };
 
@@ -98,7 +98,7 @@ const FLOW_FENCES = new Set(["javascript", "js", "jsx"]);
 /** The class each kind of mark carries, for the stylesheet to colour. */
 const MARK_CLASSES = {
   [KEYWORD]: "uf-flow-keyword",
-  [TYPE]: "uf-flow-type",
+  [TYPE]   : "uf-flow-type",
 };
 
 /**
@@ -166,7 +166,7 @@ export function highlightPlugin(options) {
   // rather than handing Shiki half a pair.
   const themes = {
     light: config.themes?.light ?? "github-light",
-    dark: config.themes?.dark ?? "github-dark-dimmed",
+    dark : config.themes?.dark ?? "github-dark-dimmed",
   };
   const langs = [...new Set([...DEFAULT_LANGS, ...(config.langs ?? [])])];
 
@@ -175,12 +175,12 @@ export function highlightPlugin(options) {
     {
       themes,
       langs,
-      langAlias: ALIASES,
+      langAlias   : ALIASES,
       defaultColor: false,
       // A fence naming a language Shiki does not have should render as plain
       // code, not fail the build.
       fallbackLanguage: "text",
-      transformers: [flowSyntax()],
+      transformers    : [flowSyntax()],
     },
   ];
 }

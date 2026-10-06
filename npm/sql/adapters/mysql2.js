@@ -34,13 +34,13 @@ export type Mysql2Field = {
 };
 
 type Mysql2Options = {|
-  readonly sql: string,
-  readonly values: $ReadOnlyArray<mixed>,
-  readonly rowsAsArray: true,
+  readonly sql              : string,
+  readonly values           : $ReadOnlyArray<mixed>,
+  readonly rowsAsArray      : true,
   readonly supportBigNumbers: true,
-  readonly bigNumberStrings: true,
-  readonly dateStrings: true,
-  readonly typeCast: (field: Mysql2Field, next: () => mixed) => mixed,
+  readonly bigNumberStrings : true,
+  readonly dateStrings      : true,
+  readonly typeCast         : (field: Mysql2Field, next: () => mixed) => mixed,
 |};
 
 type Mysql2Result =
@@ -93,12 +93,12 @@ function lastId(value: number | string): bigint | null {
 function runOn(connection: Mysql2Connection): Run {
   return async (text, params, mode): Promise<QueryResult> => {
     const options: Mysql2Options = {
-      sql: text,
-      values: params,
-      rowsAsArray: true,
+      sql              : text,
+      values           : params,
+      rowsAsArray      : true,
       supportBigNumbers: true,
-      bigNumberStrings: true,
-      dateStrings: true,
+      bigNumberStrings : true,
+      dateStrings      : true,
       typeCast,
     };
     const [result] =
@@ -125,9 +125,9 @@ function connection(client: Mysql2Connection): Connection {
 /** A [`Queryable`] over a `mysql2/promise` pool. */
 export function fromMysql2Pool(pool: Mysql2Pool): Queryable {
   return {
-    engine: "mysql",
+    engine   : "mysql",
     maxParams: 65535,
-    query: runOn(pool),
+    query    : runOn(pool),
     transaction: async <T>(body: (tx: Queryable) => Promise<T>): Promise<T> => {
       const client = await pool.getConnection();
       try {

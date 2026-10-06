@@ -116,19 +116,19 @@ const NOTHING: $ReadOnlyArray<string> = [];
  * one here; the module header says why.
  */
 const HEADERS: RovingSet = {
-  item: "[data-accordion-trigger]",
-  owner: "[data-accordion]",
-  orientation: "vertical",
-  wrap: true,
+  item        : "[data-accordion-trigger]",
+  owner       : "[data-accordion]",
+  orientation : "vertical",
+  wrap        : true,
   skipDisabled: false,
 };
 
 type AccordionState = {|
-  readonly open: $ReadOnlyArray<string>,
+  readonly open  : $ReadOnlyArray<string>,
   readonly toggle: (value: string) => void,
   /** Whether closing the last open section is allowed; only meaningful for `single`. */
   readonly closable: boolean,
-  readonly type: AccordionType,
+  readonly type    : AccordionType,
   /** Whether each panel carries its measured height; see the module header. */
   readonly measure: boolean,
 |};
@@ -138,13 +138,13 @@ const AccordionContext: React.Context<AccordionState | null> = createContext(nul
 type AccordionItemState = {|
   readonly triggerId: string,
   readonly contentId: string,
-  readonly open: boolean,
-  readonly toggle: () => void,
+  readonly open     : boolean,
+  readonly toggle   : () => void,
   /** True when this section is open and the accordion will not let it close. */
-  readonly locked: boolean,
+  readonly locked  : boolean,
   readonly disabled: boolean,
   /** Whether an `Accordion.Content` is rendered, so the trigger names one that exists. */
-  readonly present: boolean,
+  readonly present        : boolean,
   readonly registerContent: (present: boolean) => void,
 |};
 
@@ -175,14 +175,14 @@ hook useAccordionItem(part: string): AccordionItemState {
  * caller's to remember.
  */
 component AccordionRoot(
-  children: renders* AccordionItem,
-  type?: AccordionType = "single",
-  collapsible?: boolean = true,
-  defaultValue?: $ReadOnlyArray<string> = NOTHING,
-  value?: $ReadOnlyArray<string>,
+  children      : renders* AccordionItem,
+  type?         : AccordionType = "single",
+  collapsible?  : boolean = true,
+  defaultValue? : $ReadOnlyArray<string> = NOTHING,
+  value?        : $ReadOnlyArray<string>,
   onValueChange?: (value: $ReadOnlyArray<string>) => void,
-  measure?: boolean = false,
-  render?: RenderProp,
+  measure?      : boolean = false,
+  render?       : RenderProp,
   ...rest: Rest
 ) {
   const [open, setOpen] = useControlled<$ReadOnlyArray<string>>(value, defaultValue, onValueChange);
@@ -225,7 +225,7 @@ component AccordionRoot(
     <AccordionContext.Provider value={state}>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -242,14 +242,14 @@ component AccordionRoot(
  * name.
  */
 component AccordionItem(
-  value: string,
-  children: renders* (AccordionHeader | AccordionContent),
+  value    : string,
+  children : renders* (AccordionHeader | AccordionContent),
   disabled?: boolean = false,
-  render?: RenderProp,
+  render?  : RenderProp,
   ...rest: Rest
 ) {
-  const accordion = useAccordion("Accordion.Item");
-  const base = useId();
+  const accordion             = useAccordion("Accordion.Item");
+  const base                  = useId();
   const [present, setPresent] = useState(false);
   const open = accordion.open.includes(value);
   const toggle = accordion.toggle;
@@ -274,7 +274,7 @@ component AccordionItem(
     <AccordionItemContext.Provider value={state}>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -320,7 +320,7 @@ component AccordionTrigger(children: React.Node, render?: RenderProp, ...rest: R
     // What the arrow keys look for. Not a role, because the accordion pattern
     // has none to look for; see the module header.
     "data-accordion-trigger": "",
-    id: item.triggerId,
+    id                      : item.triggerId,
     onClick: composeHandlers(rest.onClick, () => {
       if (!inert) {
         item.toggle();
@@ -329,7 +329,7 @@ component AccordionTrigger(children: React.Node, render?: RenderProp, ...rest: R
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -341,8 +341,8 @@ component AccordionTrigger(children: React.Node, render?: RenderProp, ...rest: R
  * what `hidden` is upgraded to for it.
  */
 component AccordionContent(children: React.Node, render?: RenderProp, ...rest: Rest) {
-  const accordion = useAccordion("Accordion.Content");
-  const item = useAccordionItem("Accordion.Content");
+  const accordion  = useAccordion("Accordion.Content");
+  const item       = useAccordionItem("Accordion.Content");
   const contentRef = useRef<HTMLElement | null>(null);
   useRegistered(item.registerContent);
   const presence = useDisclosurePanel(contentRef, item.open, accordion.measure);
@@ -355,7 +355,7 @@ component AccordionContent(children: React.Node, render?: RenderProp, ...rest: R
     // After the panel's closing transition, not at the moment it closes; see
     // `collapsible.js`'s header.
     hidden: !presence.present,
-    id: item.contentId,
+    id    : item.contentId,
     // React calls callback refs during commit; this node is only read by effects.
     // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
@@ -365,7 +365,7 @@ component AccordionContent(children: React.Node, render?: RenderProp, ...rest: R
   });
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

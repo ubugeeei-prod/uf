@@ -33,7 +33,7 @@ export type NativeHandle<Name extends string> = { readonly __ufNative: Name };
  */
 export type NativeHandleInvariant<Name extends string, T> = {
   readonly __ufNative: Name,
-  __ufValue: T,
+  __ufValue          : T,
 };
 
 /**
@@ -44,7 +44,7 @@ export type NativeHandleInvariant<Name extends string, T> = {
  */
 export type NativeHandleCovariant<Name extends string, out T> = {
   readonly __ufNative: Name,
-  readonly __ufValue: () => T,
+  readonly __ufValue : () => T,
 };
 
 /**
@@ -55,7 +55,7 @@ export type NativeHandleCovariant<Name extends string, out T> = {
  */
 export type NativeHandleCovariant2<Name extends string, out A, out B> = {
   readonly __ufNative: Name,
-  readonly __ufFirst: () => A,
+  readonly __ufFirst : () => A,
   readonly __ufSecond: () => B,
 };
 
@@ -68,9 +68,9 @@ export type NativeHandleCovariant2<Name extends string, out A, out B> = {
  */
 export type NativeHandleCovariant3<Name extends string, out A, out B, out C> = {
   readonly __ufNative: Name,
-  readonly __ufFirst: () => A,
+  readonly __ufFirst : () => A,
   readonly __ufSecond: () => B,
-  readonly __ufThird: () => C,
+  readonly __ufThird : () => C,
 };
 
 /**

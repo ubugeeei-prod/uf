@@ -121,7 +121,7 @@ export hook useWatch<TValues extends FieldValues, TOutput, TPath extends FieldSe
     (listener: () => void) => control.subscribeWatch(key, paths, listener),
     [control, key, paths],
   );
-  const snapshot = useCallback(() => control.watchSnapshot(key, paths), [control, key, paths]);
+  const snapshot  = useCallback(() => control.watchSnapshot(key, paths), [control, key, paths]);
 
   const value = useSyncExternalStore(subscribe, snapshot, snapshot);
   // The one cast in this file, and it is the seam between a store keyed by
@@ -162,7 +162,7 @@ export hook useFormState<TValues extends FieldValues, TOutput>(
   const key = keyOf(options.name);
   const scoped = options.name != null;
 
-  const names = useMemo(() => (scoped ? key.split(KEY_SEPARATOR) : null), [scoped, key]);
+  const names    = useMemo(() => (scoped ? key.split(KEY_SEPARATOR) : null), [scoped, key]);
   const snapshot = useCallback(() => control.fieldStateSnapshot(key, names), [control, key, names]);
 
   return useSyncExternalStore(control.subscribeFormState, snapshot, snapshot);

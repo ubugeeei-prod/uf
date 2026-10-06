@@ -37,13 +37,13 @@ export function eventLogger(level = "info") {
   };
   return {
     ...base,
-    info: forward("info"),
-    warn: forward("warn"),
+    info    : forward("info"),
+    warn    : forward("warn"),
     warnOnce: forward("warn"),
-    error: forward("error"),
+    error   : forward("error"),
     clearScreen() {},
     hasErrorLogged: base.hasErrorLogged,
-    hasWarned: base.hasWarned,
+    hasWarned     : base.hasWarned,
   };
 }
 

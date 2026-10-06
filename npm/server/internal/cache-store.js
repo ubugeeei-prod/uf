@@ -154,20 +154,20 @@ export type CacheLifetime = {|
 
 /** One stored answer. */
 export type CacheEntry<T> = {|
-  readonly value: T,
-  readonly storedAt: number,
+  readonly value       : T,
+  readonly storedAt    : number,
   readonly revalidateAt: number,
-  readonly expiresAt: number,
-  readonly tags: $ReadOnlyArray<string>,
-  readonly path: string | null,
+  readonly expiresAt   : number,
+  readonly tags        : $ReadOnlyArray<string>,
+  readonly path        : string | null,
 |};
 
 /** What a caller says about the entry before it is filled. */
 export type CacheRequest = {|
-  readonly key: CacheKey,
+  readonly key      : CacheKey,
   readonly lifetime?: CacheLifetime,
-  readonly tags?: $ReadOnlyArray<string>,
-  readonly path?: string,
+  readonly tags?    : $ReadOnlyArray<string>,
+  readonly path?    : string,
   /**
    * An entry to start this key from when neither memory nor the provider holds
    * one.
@@ -197,7 +197,7 @@ export type CacheOutcome = "hit" | "stale" | "miss" | "coalesced" | "uncacheable
 
 /** A value, and how it was arrived at. */
 export type CacheResult<T> = {|
-  readonly value: T,
+  readonly value  : T,
   readonly outcome: CacheOutcome,
   /** Whether this call left an entry behind. */
   readonly stored: boolean,
@@ -205,12 +205,12 @@ export type CacheResult<T> = {|
 
 /** Running totals, for a benchmark or a report. */
 export type CacheStats = {|
-  readonly hits: number,
-  readonly stale: number,
-  readonly misses: number,
-  readonly coalesced: number,
-  readonly fills: number,
-  readonly evictions: number,
+  readonly hits         : number,
+  readonly stale        : number,
+  readonly misses       : number,
+  readonly coalesced    : number,
+  readonly fills        : number,
+  readonly evictions    : number,
   readonly invalidations: number,
   /**
    * Entries this process took out of a durable provider rather than rendering.
@@ -325,7 +325,7 @@ export type CacheStoreOptions = {|
  * `AsyncLocalStorage` rather than an argument.
  */
 export type CacheScope = {|
-  lifetime: CacheLifetime | null,
+  lifetime     : CacheLifetime | null,
   readonly tags: Array<string>,
   /** Set when something decided this answer must not be stored, and why. */
   denied: string | null,
@@ -422,8 +422,8 @@ export function runInScope<T>(scope: CacheScope, body: () => Promise<T>): Promis
 export function newScope(request: CacheRequest): CacheScope {
   return {
     lifetime: request.lifetime ?? null,
-    tags: request.tags == null ? [] : Array.from(request.tags),
-    denied: null,
+    tags    : request.tags == null ? [] : Array.from(request.tags),
+    denied  : null,
   };
 }
 
@@ -550,16 +550,16 @@ export class CacheStore {
   /** The running totals. */
   stats(): CacheStats {
     return {
-      hits: this.hits,
-      stale: this.staleServed,
-      misses: this.misses,
-      coalesced: this.coalesced,
-      fills: this.fills,
-      evictions: this.evictions,
+      hits         : this.hits,
+      stale        : this.staleServed,
+      misses       : this.misses,
+      coalesced    : this.coalesced,
+      fills        : this.fills,
+      evictions    : this.evictions,
       invalidations: this.invalidations,
-      restored: this.restored,
-      persisted: this.persisted,
-      seeded: this.seeds,
+      restored     : this.restored,
+      persisted    : this.persisted,
+      seeded       : this.seeds,
     };
   }
 
@@ -765,7 +765,7 @@ export class CacheStore {
     return {
       value,
       outcome: scope.denied == null && scope.lifetime != null ? "miss" : "uncacheable",
-      stored: this.entries.has(hash),
+      stored : this.entries.has(hash),
     };
   }
 
@@ -785,9 +785,9 @@ export class CacheStore {
    * to make a durable one, or a regenerated page, possible.
    */
   async fillThrough<T>(
-    hash: string,
+    hash   : string,
     request: CacheRequest,
-    scope: CacheScope,
+    scope  : CacheScope,
     attempt: FillAttempt,
     produce: () => Promise<T>,
   ): Promise<T> {
@@ -942,11 +942,11 @@ export class CacheStore {
     }
     const entry: CacheEntry<mixed> = {
       value,
-      storedAt: record.storedAt,
+      storedAt    : record.storedAt,
       revalidateAt: record.revalidateAt,
-      expiresAt: record.expiresAt,
-      tags: record.tags,
-      path: record.path,
+      expiresAt   : record.expiresAt,
+      tags        : record.tags,
+      path        : record.path,
     };
     this.restored += 1;
     this.store(hash, entry);
@@ -963,9 +963,9 @@ export class CacheStore {
    * succeeded.
    */
   async fill<T>(
-    hash: string,
+    hash   : string,
     request: CacheRequest,
-    scope: CacheScope,
+    scope  : CacheScope,
     produce: () => Promise<T>,
   ): Promise<T> {
     const generation = this.generation;
@@ -999,9 +999,9 @@ export class CacheStore {
       // Clamped, so an entry that never ends names an instant a `Date` can hold
       // rather than one past it; see [`END_OF_TIME`].
       revalidateAt: Math.min(storedAt + revalidate, END_OF_TIME),
-      expiresAt: Math.min(storedAt + expire, END_OF_TIME),
-      tags: Array.from(new Set(scope.tags)),
-      path: request.path ?? null,
+      expiresAt   : Math.min(storedAt + expire, END_OF_TIME),
+      tags        : Array.from(new Set(scope.tags)),
+      path        : request.path ?? null,
     };
     this.store(hash, entry);
     this.persist(request, entry);
@@ -1041,11 +1041,11 @@ export class CacheStore {
     this.durably((provider) =>
       provider.write(key, {
         value,
-        storedAt: entry.storedAt,
+        storedAt    : entry.storedAt,
         revalidateAt: entry.revalidateAt,
-        expiresAt: entry.expiresAt,
-        tags: entry.tags,
-        path: entry.path,
+        expiresAt   : entry.expiresAt,
+        tags        : entry.tags,
+        path        : entry.path,
       }),
     );
   }
@@ -1212,12 +1212,12 @@ export class CacheStore {
     this.invalidated.set(key, at);
     this.durably((provider) =>
       provider.write(key, {
-        value: encodeCacheValue(null),
-        storedAt: at,
+        value       : encodeCacheValue(null),
+        storedAt    : at,
         revalidateAt: END_OF_TIME,
-        expiresAt: END_OF_TIME,
-        tags: [],
-        path: null,
+        expiresAt   : END_OF_TIME,
+        tags        : [],
+        path        : null,
       }),
     );
   }

@@ -40,17 +40,17 @@ const assets = { scripts: ["/assets/client.js"], styles: [], preloads: [] };
 
 /** A server bundle, as `loadBuild` would have imported one. */
 function entryWith(options: {
-  guard?: (request: Request) => Promise<Response | null> | Response | null,
+  guard?  : (request: Request) => Promise<Response | null> | Response | null,
   handler?: (request: Request) => Promise<Response | null> | Response | null,
-  render?: (url: string) => { status: number, html: string, headers?: { [string]: string } },
+  render? : (url: string) => { status: number, html: string, headers?: { [string]: string } },
 }) {
   const bodies = [];
   return {
-    routes: [],
-    handlers: [],
+    routes    : [],
+    handlers  : [],
     middleware: [],
-    notFound: [],
-    errors: [],
+    notFound  : [],
+    errors    : [],
     /** Every document this entry was asked for, so a test can ask what became of one. */
     bodies,
     runMiddleware: async (request: Request) => (options.guard ? options.guard(request) : null),
@@ -58,7 +58,7 @@ function entryWith(options: {
     // endpoint declines every request that carries no id, which is what puts
     // it in the order below without changing what anything else answers.
     callAction: async () => null,
-    dispatch: async (request: Request) => (options.handler ? options.handler(request) : null),
+    dispatch  : async (request: Request) => (options.handler ? options.handler(request) : null),
     render: async (url: string) => {
       const answer = options.render
         ? options.render(url)
@@ -84,7 +84,7 @@ function bodyOf(html: string) {
     cancelled: () => cancelled,
     pipe: async (destination: {
       readonly write: (chunk: string) => mixed,
-      readonly end: () => mixed,
+      readonly end  : () => mixed,
       ...
     }) => {
       destination.write(html);
@@ -232,7 +232,7 @@ describe("the static handler", () => {
     const serve = createStaticHandler({
       root: directoryWith({
         ".well-known/apple-app-site-association": '{"applinks":{}}',
-        ".well-known/assetlinks.json": "[]",
+        ".well-known/assetlinks.json"           : "[]",
       }),
     });
     for (const name of ["apple-app-site-association", "assetlinks.json"]) {
@@ -388,22 +388,22 @@ describe("the static handler", () => {
     // case above — and nothing here is guessed from the bytes.
     const serveStatic = createStaticHandler({
       root: directoryWith({
-        "page.htm": "<p>hi</p>",
-        "clip.mp4": "mp4",
-        "clip.webm": "webm",
-        "guide.pdf": "%PDF",
-        "Inter.ttf": "ttf",
-        "Inter.otf": "otf",
+        "page.htm"        : "<p>hi</p>",
+        "clip.mp4"        : "mp4",
+        "clip.webm"       : "webm",
+        "guide.pdf"       : "%PDF",
+        "Inter.ttf"       : "ttf",
+        "Inter.otf"       : "otf",
         "site.webmanifest": "{}",
       }),
     });
     const expected = {
-      "/page.htm": "text/html; charset=utf-8",
-      "/clip.mp4": "video/mp4",
-      "/clip.webm": "video/webm",
-      "/guide.pdf": "application/pdf",
-      "/Inter.ttf": "font/ttf",
-      "/Inter.otf": "font/otf",
+      "/page.htm"        : "text/html; charset=utf-8",
+      "/clip.mp4"        : "video/mp4",
+      "/clip.webm"       : "video/webm",
+      "/guide.pdf"       : "application/pdf",
+      "/Inter.ttf"       : "font/ttf",
+      "/Inter.otf"       : "font/otf",
       "/site.webmanifest": "application/manifest+json; charset=utf-8",
     };
     for (const path of Object.keys(expected)) {
@@ -468,11 +468,11 @@ describe("writing a `Response` to a Node response", () => {
     // Named rather than reached through `this`, which Flow will not type in an
     // object literal's methods: they can be called unbound.
     const response = {
-      statusCode: 0,
+      statusCode   : 0,
       statusMessage: "",
-      headersSent: false,
-      written: [] as Array<string>,
-      ended: false,
+      headersSent  : false,
+      written      : [] as Array<string>,
+      ended        : false,
       setHeader() {},
       write(chunk: Uint8Array | string): boolean {
         response.written.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));

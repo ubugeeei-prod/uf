@@ -147,7 +147,7 @@ export const produce = produceImpl as Produce;
  * for each of them. A `produce` that records nothing keeps neither.
  */
 export function produceWithPatches<T>(
-  base: T,
+  base  : T,
   recipe: Recipe<T>,
 ): [T, $ReadOnlyArray<Patch>, $ReadOnlyArray<Patch>] {
   const patches: Array<Patch> = [];
@@ -173,9 +173,9 @@ function produceImpl(first: mixed, second: mixed): mixed {
 }
 
 function run(
-  base: mixed,
-  recipe: mixed,
-  rest: $ReadOnlyArray<mixed>,
+  base    : mixed,
+  recipe  : mixed,
+  rest    : $ReadOnlyArray<mixed>,
   recorder: null | Recorder,
 ): mixed {
   // `produceImpl` has already checked this is callable.
@@ -211,10 +211,10 @@ function run(
 }
 
 function publish(
-  scope: Scope,
+  scope    : Scope,
   rootState: DraftState,
-  produced: mixed,
-  recorder: null | Recorder,
+  produced : mixed,
+  recorder : null | Recorder,
 ): mixed {
   scope.pending = scope.drafts.length;
   const patches = recorder == null ? null : recorder.patches;
@@ -258,9 +258,9 @@ function publish(
  *   by a patch while it still holds a proxy.
  */
 function finalize(
-  scope: Scope,
-  value: mixed,
-  path: null | $ReadOnlyArray<mixed>,
+  scope  : Scope,
+  value  : mixed,
+  path   : null | $ReadOnlyArray<mixed>,
   patches: null | Array<Patch>,
   inverse: null | Array<Patch>,
 ): mixed {
@@ -310,15 +310,15 @@ function finalize(
 }
 
 function finalizeProperty(
-  scope: Scope,
+  scope      : Scope,
   parentState: null | DraftState,
-  target: mixed,
-  key: mixed,
-  value: mixed,
-  path: null | $ReadOnlyArray<mixed>,
-  intoSet: boolean,
-  patches: null | Array<Patch>,
-  inverse: null | Array<Patch>,
+  target     : mixed,
+  key        : mixed,
+  value      : mixed,
+  path       : null | $ReadOnlyArray<mixed>,
+  intoSet    : boolean,
+  patches    : null | Array<Patch>,
+  inverse    : null | Array<Patch>,
 ): void {
   if (value === target) {
     throw new Error("@uniflowed/immer: a draft may not contain itself");

@@ -44,8 +44,8 @@ export type CookieStore = {
 /** Whether this request is rendering draft content, and how to change that. */
 export type DraftMode = {
   readonly isEnabled: boolean,
-  readonly enable: () => void,
-  readonly disable: () => void,
+  readonly enable   : () => void,
+  readonly disable  : () => void,
 };
 
 /**
@@ -57,7 +57,7 @@ export type DraftMode = {
  */
 export type RequestContext = {
   /** An application verified bearer credential, scoped to the exact Request. */
-  nativeAction: NativeActionAuthorization | null,
+  nativeAction    : NativeActionAuthorization | null,
   readonly headers: HeaderStore,
   readonly cookies: CookieStore,
   /**
@@ -332,7 +332,7 @@ export function contextFor(request: Request): RequestContext {
       get: (name) => (Object.hasOwn(parsed(), name) ? parsed()[name] : null),
       has: (name) => Object.hasOwn(parsed(), name),
     },
-    id: newRequestId(),
+    id   : newRequestId(),
     route: null,
     // `null`, and minted by the first thing that asks; see the field. Unlike
     // `id` above, which everything reads, almost nothing reads this — a
@@ -344,16 +344,16 @@ export function contextFor(request: Request): RequestContext {
     // function is not. A caller that builds a context by hand and never runs it
     // gets a request that is not in draft mode, which is the safe direction of
     // being wrong.
-    draft: false,
-    draftChange: null,
-    responder: null,
-    deferred: [],
+    draft            : false,
+    draftChange      : null,
+    responder        : null,
+    deferred         : [],
     requestStateReads: 0,
-    cache: null,
-    capabilities: null,
-    buildFile: null,
-    bindings: null,
-    nativeAction: null,
+    cache            : null,
+    capabilities     : null,
+    buildFile        : null,
+    bindings         : null,
+    nativeAction     : null,
   };
 }
 
@@ -625,9 +625,9 @@ function withSetCookie(response: Response, cookie: string): Response {
     return response;
   } catch {
     const copy = new Response(response.body, {
-      status: response.status,
+      status    : response.status,
       statusText: response.statusText,
-      headers: response.headers,
+      headers   : response.headers,
     });
     copy.headers.append("set-cookie", cookie);
     return copy;

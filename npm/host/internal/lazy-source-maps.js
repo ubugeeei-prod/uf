@@ -112,10 +112,10 @@ export function installLazySourceMaps() {
   // `@uniflowed/test` maps a registration's call site with it rather than by
   // printing a stack. Frozen, and on a symbol, like the file scope.
   Object.defineProperty(globalThis, Symbol.for("@uniflowed/host/source-maps"), {
-    value: Object.freeze({ findSourceMap: mapFor }),
+    value       : Object.freeze({ findSourceMap: mapFor }),
     configurable: true,
-    enumerable: false,
-    writable: false,
+    enumerable  : false,
+    writable    : false,
   });
 
   Error.prepareStackTrace = (error, trace) => {

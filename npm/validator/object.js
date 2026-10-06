@@ -76,8 +76,8 @@ function shapeEntries(shape: Shape): $ReadOnlyArray<[string, Schema<mixed, mixed
 /** Issues for every own key the shape does not name. Empty unless rejecting. */
 function unknownKeyIssues(
   source: { readonly [string]: mixed, ... },
-  named: Set<string>,
-  path: PathBuffer,
+  named : Set<string>,
+  path  : PathBuffer,
 ): Array<Issue> {
   const issues: Array<Issue> = [];
   for (const key of ownKeys(source)) {
@@ -93,8 +93,8 @@ function unknownKeyIssues(
 /** Copy every own key the shape does not name into the output, unchecked. */
 function keepUnknownKeys(
   source: { readonly [string]: mixed, ... },
-  named: Set<string>,
-  out: { [string]: mixed, ... },
+  named : Set<string>,
+  out   : { [string]: mixed, ... },
 ): void {
   for (const key of ownKeys(source)) {
     if (!named.has(key)) {
@@ -111,22 +111,22 @@ function keepUnknownKeys(
  * exact result, a `Partial` one and an inexact one alike.
  */
 function buildObject<TOutput, TInput>(
-  shape: Shape,
+  shape      : Shape,
   unknownKeys: UnknownKeys,
 ): Schema<TOutput, TInput> {
   const entries = shapeEntries(shape);
   const named = new Set(entries.map(([key]) => key));
   const description = (): Description => ({
-    kind: "object",
+    kind   : "object",
     entries: entries.map(([key, schema]) => [key, describe(schema)]),
     unknownKeys,
   });
 
   function assemble(
     source: { readonly [string]: mixed, ... },
-    out: { [string]: mixed, ... },
-    found: Array<Issue>,
-    path: PathBuffer,
+    out   : { [string]: mixed, ... },
+    found : Array<Issue>,
+    path  : PathBuffer,
   ): Result<TOutput> {
     const issues =
       unknownKeys === "reject" ? found.concat(unknownKeyIssues(source, named, path)) : found;
@@ -153,7 +153,7 @@ function buildObject<TOutput, TInput>(
       const out: { [string]: mixed, ... } = {};
       const found: Array<Issue> = [];
       match (collected) {
-        {ok: true, values: const values} => {
+        {ok: true, values: const values}           => {
           entries.forEach(([key], index) => {
             put(out, key, values[index]);
           });

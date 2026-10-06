@@ -149,9 +149,9 @@ function withUniflowedMetro(config = {}) {
     ...config,
     resolver: {
       ...resolver,
-      sourceExts: mergeUnique(resolver.sourceExts, metroSourceExts),
+      sourceExts        : mergeUnique(resolver.sourceExts, metroSourceExts),
       resolverMainFields: mergeUnique(resolver.resolverMainFields, metroResolverMainFields),
-      resolveRequest: nativeResolution(resolver.resolveRequest),
+      resolveRequest    : nativeResolution(resolver.resolveRequest),
     },
     transformer: {
       ...transformer,

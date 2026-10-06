@@ -51,44 +51,44 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   base: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: ufTokens.space1,
-    boxSizing: "border-box",
-    minHeight: "20px",
-    paddingBlock: 0,
+    display      : "inline-flex",
+    alignItems   : "center",
+    gap          : ufTokens.space1,
+    boxSizing    : "border-box",
+    minHeight    : "20px",
+    paddingBlock : 0,
     paddingInline: ufTokens.space2,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textXs,
-    fontWeight: ufTokens.weightMedium,
-    lineHeight: ufTokens.leadingTight,
-    whiteSpace: "nowrap",
+    fontFamily   : ufTokens.fontSans,
+    fontSize     : ufTokens.textXs,
+    fontWeight   : ufTokens.weightMedium,
+    lineHeight   : ufTokens.leadingTight,
+    whiteSpace   : "nowrap",
     verticalAlign: "middle",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: "transparent",
-    borderRadius: ufTokens.radiusSm,
+    borderWidth  : "1px",
+    borderStyle  : "solid",
+    borderColor  : "transparent",
+    borderRadius : ufTokens.radiusSm,
   },
   neutral: {
     backgroundColor: ufTokens.sunken,
-    color: ufTokens.ink,
+    color          : ufTokens.ink,
   },
   accent: {
     backgroundColor: ufTokens.accentSoft,
-    color: ufTokens.accent,
+    color          : ufTokens.accent,
   },
   solid: {
     backgroundColor: ufTokens.accent,
-    color: ufTokens.accentInk,
+    color          : ufTokens.accentInk,
   },
   danger: {
     backgroundColor: ufTokens.dangerSoft,
-    color: ufTokens.danger,
+    color          : ufTokens.danger,
   },
   outline: {
     backgroundColor: ufTokens.surface,
-    borderColor: ufTokens.border,
-    color: ufTokens.ink,
+    borderColor    : ufTokens.border,
+    color          : ufTokens.ink,
   },
 });
 
@@ -101,9 +101,9 @@ const styles = stylex.create({
  * `className` adds a class of your own beside these.
  */
 export component Badge(
-  children: React.Node,
-  tone?: BadgeTone = "neutral",
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  tone?     : BadgeTone = "neutral",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -111,9 +111,9 @@ export component Badge(
     styles.base,
     match (tone) {
       "neutral" => styles.neutral,
-      "accent" => styles.accent,
-      "solid" => styles.solid,
-      "danger" => styles.danger,
+      "accent"  => styles.accent,
+      "solid"   => styles.solid,
+      "danger"  => styles.danger,
       "outline" => styles.outline,
     },
     xstyle,

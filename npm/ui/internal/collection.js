@@ -44,23 +44,23 @@ import { startsWithLocale, useLocale } from "../i18n-provider.js";
 import { visuallyHiddenStyle } from "./visually-hidden-style.js";
 
 export type CollectionItem = {
-  readonly key: string,
+  readonly key      : string,
   readonly textValue: string,
   readonly disabled?: boolean,
   readonly children?: $ReadOnlyArray<CollectionItem>,
 };
 export type CollectionItemState = {
   readonly selected: boolean,
-  readonly active: boolean,
+  readonly active  : boolean,
   readonly disabled: boolean,
-  readonly level: number,
+  readonly level   : number,
 };
 type Entry = {
-  item: CollectionItem,
-  level: number,
-  parent: string | null,
+  item    : CollectionItem,
+  level   : number,
+  parent  : string | null,
   position: number,
-  count: number,
+  count   : number,
 };
 type Kind = "listbox" | "grid" | "tree" | "tags";
 
@@ -73,11 +73,11 @@ type Kind = "listbox" | "grid" | "tree" | "tags";
  * `PointerEvent` a click is and happy-dom and older engines leave off.
  */
 type RowClick = {
-  readonly detail: number,
-  readonly ctrlKey: boolean,
-  readonly metaKey: boolean,
-  readonly shiftKey: boolean,
-  readonly nativeEvent: mixed,
+  readonly detail         : number,
+  readonly ctrlKey        : boolean,
+  readonly metaKey        : boolean,
+  readonly shiftKey       : boolean,
+  readonly nativeEvent    : mixed,
   readonly stopPropagation: () => mixed,
   ...
 };
@@ -88,16 +88,16 @@ type Scroll = { readonly currentTarget: mixed, readonly defaultPrevented: boolea
 type KeyEvent = { ...PartEvent, readonly target: mixed, ... };
 
 function entries(
-  items: $ReadOnlyArray<CollectionItem>,
+  items   : $ReadOnlyArray<CollectionItem>,
   expanded: $ReadOnlySet<string>,
-  tree: boolean,
+  tree    : boolean,
 ): Array<Entry> {
   const result = [];
   const seen = new Set<string>();
   const visit = (
     siblings: $ReadOnlyArray<CollectionItem>,
-    level: number,
-    parent: string | null,
+    level   : number,
+    parent  : string | null,
   ): void => {
     siblings.forEach((item, index) => {
       if (seen.has(item.key)) throw new Error(`Duplicate collection key: ${item.key}`);
@@ -154,19 +154,19 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
   const mode: SelectionMode = kind === "tags" ? "none" : requestedSelectionMode;
   const policy: SelectionPolicy = {
     mode,
-    behavior: selectionBehavior,
+    behavior     : selectionBehavior,
     disallowEmpty: disallowEmptySelection,
   };
   if (height <= 0 || rowHeight <= 0 || !Number.isFinite(height) || !Number.isFinite(rowHeight))
     throw new RangeError("Collection dimensions must be positive finite numbers");
   const { locale } = useLocale();
-  const id = useId();
-  const root = useRef<HTMLElement | null>(null);
+  const id         = useId();
+  const root       = useRef<HTMLElement | null>(null);
   // Where a Shift range starts (`anchor`) and where the last one ended (`lead`).
   // Written only by event handlers, never read during render.
-  const anchor = useRef<string | null>(null);
-  const lead = useRef<string | null>(null);
-  const buffer = useRef({ text: "", time: 0 });
+  const anchor                  = useRef<string | null>(null);
+  const lead                    = useRef<string | null>(null);
+  const buffer                  = useRef({ text: "", time: 0 });
   const [selected, setSelected] = useControlled(
     selectedKeys,
     defaultSelectedKeys,
@@ -202,14 +202,14 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
   // in `keydown` — which branch to take, where focus lands — keeps reading this
   // render's `expandedSet`, `rows` and `enabled`, because those describe the tree
   // the reader is looking at rather than one that has not been rendered yet.
-  const expand = useStableCallback((next: $ReadOnlyArray<string>) => {
+  const expand                       = useStableCallback((next: $ReadOnlyArray<string>) => {
     const unique = [...new Set(next)];
     proposedExpanded.current = unique;
     setExpanded(unique);
   });
-  const [active, setActive] = useState<string | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [announcement, announce] = useState("");
+  const [active,       setActive]    = useState<string | null>(null);
+  const [scrollTop,    setScrollTop] = useState(0);
+  const [announcement, announce]     = useState("");
   // Sets, because every row asks "am I selected, am I disabled" on every render
   // and a 10,000-row collection with everything selected made that 10⁸
   // comparisons as arrays.
@@ -289,8 +289,8 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
     row: Entry,
     event: {
       readonly shiftKey: boolean,
-      readonly ctrlKey: boolean,
-      readonly metaKey: boolean,
+      readonly ctrlKey : boolean,
+      readonly metaKey : boolean,
       ...
     },
   ) => {
@@ -454,29 +454,29 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
       const content =
         children?.(item, {
           selected: chosen,
-          active: activeKey === item.key,
+          active  : activeKey === item.key,
           disabled: disabled(item),
-          level: row.level,
+          level   : row.level,
         }) ?? item.textValue;
       const props = {
         ...drag.getDragProps(item.key, item.textValue),
         ...drag.getDropProps(item.key, item.textValue),
-        onKeyDown: undefined,
-        draggable: onReorder != null && !disabled(item),
-        id: `${id}-${index}`,
-        role: grid ? "row" : kind === "tree" ? "treeitem" : "option",
+        onKeyDown      : undefined,
+        draggable      : onReorder != null && !disabled(item),
+        id             : `${id}-${index}`,
+        role           : grid ? "row" : kind === "tree" ? "treeitem" : "option",
         "aria-selected": mode === "none" ? undefined : chosen,
         "aria-disabled": disabled(item) || undefined,
         "aria-expanded":
           kind === "tree" && (item.children?.length ?? 0) > 0
             ? expandedSet.has(item.key)
             : undefined,
-        "aria-level": kind === "tree" ? row.level : undefined,
+        "aria-level"   : kind === "tree" ? row.level : undefined,
         "aria-posinset": grid ? undefined : kind === "tree" ? row.position : index + 1,
-        "aria-setsize": grid ? undefined : kind === "tree" ? row.count : rows.length,
+        "aria-setsize" : grid ? undefined : kind === "tree" ? row.count : rows.length,
         "aria-rowindex": grid ? index + 1 : undefined,
-        "data-key": item.key,
-        "data-active": activeKey === item.key || undefined,
+        "data-key"     : item.key,
+        "data-active"  : activeKey === item.key || undefined,
         style: virtualized
           ? { position: "absolute", top: index * rowHeight, height: rowHeight, width: "100%" }
           : undefined,
@@ -521,14 +521,14 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
   });
   const style = rest.style;
   const props = withProps(rest, {
-    ref: composeRefs(rest.ref, setRef),
-    role: kind === "tags" ? "grid" : kind,
-    tabIndex: 0,
+    ref                    : composeRefs(rest.ref, setRef),
+    role                   : kind === "tags" ? "grid" : kind,
+    tabIndex               : 0,
     "aria-activedescendant": activeIndex < 0 ? undefined : `${id}-${activeIndex}`,
-    "aria-multiselectable": mode === "multiple" || undefined,
-    "aria-busy": loading || undefined,
-    "aria-rowcount": kind === "grid" || kind === "tags" ? rows.length : undefined,
-    onKeyDown: composeHandlers(rest.onKeyDown, keydown),
+    "aria-multiselectable" : mode === "multiple" || undefined,
+    "aria-busy"            : loading || undefined,
+    "aria-rowcount"        : kind === "grid" || kind === "tags" ? rows.length : undefined,
+    onKeyDown              : composeHandlers(rest.onKeyDown, keydown),
     onScroll: composeHandlers(rest.onScroll, (event: Scroll) => {
       const element = event.currentTarget;
       if (!(element instanceof HTMLElement)) return;
@@ -556,7 +556,7 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
     <>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -569,8 +569,8 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
 }
 
 export type CollectionProps = {
-  items: $ReadOnlyArray<CollectionItem>,
-  children?: (item: CollectionItem, state: CollectionItemState) => React.Node,
+  items         : $ReadOnlyArray<CollectionItem>,
+  children?     : (item: CollectionItem, state: CollectionItemState) => React.Node,
   selectionMode?: SelectionMode,
   /**
    * What a plain click or Space does: `"toggle"` flips the row (the default),
@@ -581,28 +581,28 @@ export type CollectionProps = {
   /** Refuse the gesture that would leave nothing selected. */
   disallowEmptySelection?: boolean,
   /** Whether Escape clears the selection. */
-  escapeKeyBehavior?: "clearSelection" | "none",
-  selectedKeys?: $ReadOnlyArray<string>,
+  escapeKeyBehavior?  : "clearSelection" | "none",
+  selectedKeys?       : $ReadOnlyArray<string>,
   defaultSelectedKeys?: $ReadOnlyArray<string>,
-  onSelectionChange?: (keys: $ReadOnlyArray<string>) => void,
+  onSelectionChange?  : (keys: $ReadOnlyArray<string>) => void,
   /**
    * Open a row rather than select it. Enter runs it; so does a click when
    * `selectionMode` is `"none"`, and a double click under
    * `selectionBehavior="replace"`.
    */
-  onAction?: (key: string) => void,
-  disabledKeys?: $ReadOnlyArray<string>,
-  expandedKeys?: $ReadOnlyArray<string>,
+  onAction?           : (key: string) => void,
+  disabledKeys?       : $ReadOnlyArray<string>,
+  expandedKeys?       : $ReadOnlyArray<string>,
   defaultExpandedKeys?: $ReadOnlyArray<string>,
-  onExpandedChange?: (keys: $ReadOnlyArray<string>) => void,
-  onRemove?: (key: string) => void,
-  onReorder?: (keys: $ReadOnlyArray<string>) => void,
-  loading?: boolean,
-  onLoadMore?: () => void,
-  virtualized?: boolean,
-  height?: number,
-  rowHeight?: number,
-  render?: RenderProp,
-  readonly key?: empty,
+  onExpandedChange?   : (keys: $ReadOnlyArray<string>) => void,
+  onRemove?           : (key: string) => void,
+  onReorder?          : (keys: $ReadOnlyArray<string>) => void,
+  loading?            : boolean,
+  onLoadMore?         : () => void,
+  virtualized?        : boolean,
+  height?             : number,
+  rowHeight?          : number,
+  render?             : RenderProp,
+  readonly key?       : empty,
   readonly [string]: mixed,
 };

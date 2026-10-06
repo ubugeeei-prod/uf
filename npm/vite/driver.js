@@ -238,7 +238,7 @@ async function viteConfig(config, mode) {
   const generated = {
     root,
     configFile: false,
-    envDir: false,
+    envDir    : false,
     mode,
     // Vite's dependency cache, kept in the project whatever is above it.
     // Vite's own default is the nearest `package.json`'s `node_modules/.vite`,
@@ -260,8 +260,8 @@ async function viteConfig(config, mode) {
     cacheDir: path.join(root, "node_modules", ".vite"),
     // `app.router.basePath`: where Vite serves the modules in development, and
     // what it puts in front of every asset URL a build writes.
-    base: basePathOf(config) === "" ? "/" : `${basePathOf(config)}/`,
-    clearScreen: false,
+    base        : basePathOf(config) === "" ? "/" : `${basePathOf(config)}/`,
+    clearScreen : false,
     customLogger: eventLogger(argument("--log-level") ?? "info"),
     // One `uf transform` for every pass this process runs; see the option.
     plugins: [uniflowed({ root, config, target: routeTarget, shareTransformAcrossBuilds: true })],
@@ -277,7 +277,7 @@ async function viteConfig(config, mode) {
       allowedHosts,
       fs: {
         allow: dev.fs?.allow,
-        deny: dev.fs?.deny,
+        deny : dev.fs?.deny,
       },
     },
     // Not `server`, and not `dev.port` either. Vite's own default for a
@@ -287,14 +287,14 @@ async function viteConfig(config, mode) {
     // and Vite would have moved the preview to the next free port and served
     // it somewhere nobody was looking.
     preview: {
-      host: argument("--host") ?? "127.0.0.1",
-      port: Number(argument("--port") ?? 4173),
+      host      : argument("--host") ?? "127.0.0.1",
+      port      : Number(argument("--port") ?? 4173),
       strictPort: flag("--strict-port"),
     },
     build: {
-      outDir: argument("--out-dir") ?? build.outDir ?? "dist",
-      sourcemap: build.sourcemap ?? true,
-      manifest: true,
+      outDir     : argument("--out-dir") ?? build.outDir ?? "dist",
+      sourcemap  : build.sourcemap ?? true,
+      manifest   : true,
       emptyOutDir: true,
     },
   };
@@ -343,7 +343,7 @@ async function dev() {
   await server.listen();
   const urls = server.resolvedUrls ?? { local: [], network: [] };
   emit("listening", {
-    local: urls.local,
+    local  : urls.local,
     network: urls.network,
     routes: scanRoutes(path.resolve(root, config.app?.router?.root ?? "app"), {
       target: routeTarget,
@@ -482,7 +482,7 @@ async function preview() {
     ? null
     : await loadBuild({
         root,
-        outDir: inline.build.outDir,
+        outDir   : inline.build.outDir,
         serverDir: path.join(".uf", "build", "server"),
       });
 
@@ -495,7 +495,7 @@ async function preview() {
       ? null
       : createServeHandler({
           ...build,
-          cache: config.app?.rendering?.cache,
+          cache : config.app?.rendering?.cache,
           images: config.app?.builtins?.images,
         });
   const answer = (previewServer) => async (request, response, next) => {
@@ -535,7 +535,7 @@ async function preview() {
       // goes on to Vite.
       if (staticBuild) {
         const answerStatic = createStaticBuildHandler({
-          root: path.resolve(root, inline.build.outDir),
+          root   : path.resolve(root, inline.build.outDir),
           routing: routingRulesOf(config.app?.router),
           // A `["csr"]` build's unmatched document is its shell, which the
           // fallback below answers; a static host serving it is told to.
@@ -631,7 +631,7 @@ async function preview() {
 
   const urls = server.resolvedUrls ?? { local: [], network: [] };
   emit("listening", {
-    local: urls.local,
+    local  : urls.local,
     network: urls.network,
     // From the filesystem when there is no bundle to ask, which is the same
     // scan `dev` reports from. The count is what a reader checks the build
@@ -689,7 +689,7 @@ async function start() {
     nodeListener(
       createServeHandler({
         ...build,
-        cache: config.app?.rendering?.cache,
+        cache : config.app?.rendering?.cache,
         images: config.app?.builtins?.images,
       }),
       build.entry,
@@ -709,9 +709,9 @@ async function start() {
   const shown = `${bound.address}:${bound.port}`;
   const wildcard = bound.address === "0.0.0.0" || bound.address === "::";
   emit("listening", {
-    local: [`http://${wildcard ? `localhost:${bound.port}` : shown}/`],
-    network: wildcard ? [`http://${shown}/`] : [],
-    routes: build.entry.routes.map((route) => route.path),
+    local   : [`http://${wildcard ? `localhost:${bound.port}` : shown}/`],
+    network : wildcard ? [`http://${shown}/`] : [],
+    routes  : build.entry.routes.map((route) => route.path),
     handlers: build.entry.handlers.map((handler) => handler.path),
   });
 
@@ -813,10 +813,10 @@ async function build() {
     build: {
       ...inline.build,
       manifest: false,
-      ssr: true,
-      outDir: serverDir,
+      ssr     : true,
+      outDir  : serverDir,
       rollupOptions: {
-        input: { server: VIRTUAL.server },
+        input : { server: VIRTUAL.server },
         output: { entryFileNames: "server.js", format: "es" },
       },
     },
@@ -861,7 +861,7 @@ async function build() {
   emit("rendering", {
     prerender,
     prerendered: plan.urls.length,
-    perRequest: plan.perRequest.map((route) => route.path),
+    perRequest : plan.perRequest.map((route) => route.path),
   });
   // A build that has to prerender everything, and a route it cannot: the
   // refusal ubugeeei-prod/uf#336 and ubugeeei-prod/uf#385 are both about.
@@ -957,11 +957,11 @@ async function build() {
       partial[url] = result.shell;
       emit("page", {
         url,
-        file: path.relative(root, path.join(serverDir, PARTIAL_PRERENDER_FILE)),
-        status: result.status,
-        bytes: Buffer.byteLength(result.shell.html),
+        file       : path.relative(root, path.join(serverDir, PARTIAL_PRERENDER_FILE)),
+        status     : result.status,
+        bytes      : Buffer.byteLength(result.shell.html),
         regenerates: false,
-        partial: true,
+        partial    : true,
       });
       continue;
     }
@@ -993,15 +993,15 @@ async function build() {
         document: regeneratedDocumentUrl(url),
         renderedAt,
         revalidate: lifetime.revalidate,
-        expire: lifetime.expire ?? null,
-        tags: declared.tags,
+        expire    : lifetime.expire ?? null,
+        tags      : declared.tags,
       };
     }
     emit("page", {
       url,
-      file: path.relative(root, file),
+      file  : path.relative(root, file),
       status: result.status,
-      bytes: Buffer.byteLength(result.html),
+      bytes : Buffer.byteLength(result.html),
       regenerates,
     });
   }
@@ -1098,10 +1098,10 @@ async function build() {
       const file = path.join(outDir, "404.html");
       writeFileSync(file, result.html);
       emit("page", {
-        url: "/404",
-        file: path.relative(root, file),
+        url   : "/404",
+        file  : path.relative(root, file),
         status: 404,
-        bytes: Buffer.byteLength(result.html),
+        bytes : Buffer.byteLength(result.html),
       });
     }
   }
@@ -1219,8 +1219,8 @@ async function library() {
         outDir,
         emptyOutDir: first,
         lib: {
-          entry: input,
-          formats: [format],
+          entry   : input,
+          formats : [format],
           fileName: (_format, name) => `${name}.${format === "cjs" ? "cjs" : "js"}`,
         },
         rollupOptions: { external: isExternal },
@@ -1373,20 +1373,20 @@ async function compile() {
   await vite.build({
     ...inline,
     customLogger: eventLogger("warn"),
-    plugins: [...inline.plugins, nativeAddonGuard(), compileAssetsPlugin(assets)],
-    ssr: { ...(inline.ssr ?? {}), noExternal: true },
+    plugins     : [...inline.plugins, nativeAddonGuard(), compileAssetsPlugin(assets)],
+    ssr         : { ...(inline.ssr ?? {}), noExternal: true },
     build: {
       ...inline.build,
       manifest: false,
       // The map would describe this intermediate bundle rather than the
       // binary, and nothing downstream reads it. Turning it off is a smaller
       // `.uf/` and one less file to explain.
-      sourcemap: false,
-      ssr: true,
-      outDir: bundleDir,
+      sourcemap  : false,
+      ssr        : true,
+      outDir     : bundleDir,
       emptyOutDir: false,
       rollupOptions: {
-        input: { server: entry },
+        input : { server: entry },
         output: { entryFileNames: "server.js", format: "es", codeSplitting: false },
       },
     },
@@ -1784,7 +1784,7 @@ async function deploy() {
     flight.deployment = document.deployment ?? null;
     if (shape.conditions != null) {
       await buildRscGraph(vite, inline, flight, {
-        outDir: path.join(work, "rsc"),
+        outDir    : path.join(work, "rsc"),
         conditions: shape.conditions,
       });
     }
@@ -1835,8 +1835,8 @@ async function deploy() {
       // downstream reads it. Off is a smaller directory to copy and one less
       // file to explain.
       sourcemap: false,
-      ssr: true,
-      outDir: output,
+      ssr      : true,
+      outDir   : output,
       // `uf` has already removed the directory, and `static/` is copied in
       // after this returns; letting Vite empty it would be Vite deciding when
       // that happens.
@@ -1856,7 +1856,7 @@ async function deploy() {
           // with one name in a directory whose whole purpose is to be copied
           // and read by a stranger.
           chunkFileNames: "chunks/[name]-[hash].js",
-          format: "es",
+          format        : "es",
         },
       },
     },
@@ -2035,16 +2035,16 @@ function durableStoreSource(root, cache, build, { required = true } = {}) {
   const directory = JSON.stringify(cache?.storeDir ?? path.join(".uf", "cache", "route"));
   if (named === "filesystem") {
     return {
-      import: 'import { createFilesystemCache } from "@uniflowed/server/cache/filesystem";',
+      import  : 'import { createFilesystemCache } from "@uniflowed/server/cache/filesystem";',
       provider: `createFilesystemCache({ directory: ${directory} })`,
-      what: "uf's filesystem provider",
+      what    : "uf's filesystem provider",
     };
   }
   const from = JSON.stringify(providerSpecifier(root, named));
   return {
-    import: `import { createCacheProvider } from ${from};`,
+    import  : `import { createCacheProvider } from ${from};`,
     provider: `createCacheProvider({ build: ${JSON.stringify(build)}, directory: ${directory} })`,
-    what: `${named}'s provider`,
+    what    : `${named}'s provider`,
   };
 }
 
@@ -2076,9 +2076,9 @@ async function imageEndpointFor(adapter, images) {
   const defaults = await import("@uniflowed/server/image");
   const settings = {
     remotePatterns: images.remotePatterns,
-    widths: images.widths ?? defaults.DEFAULT_WIDTHS,
-    quality: images.quality ?? defaults.DEFAULT_QUALITY,
-    qualities: images.qualities ?? [],
+    widths        : images.widths ?? defaults.DEFAULT_WIDTHS,
+    quality       : images.quality ?? defaults.DEFAULT_QUALITY,
+    qualities     : images.qualities ?? [],
   };
   if (adapter === "edge") {
     return { kind: "edge", settings };
@@ -2173,7 +2173,7 @@ function scheduleLines(module, schedules) {
     // scheduled run and a request for the same path are one code path. See
     // ubugeeei-prod/uf#531.
     declarations: `\nconst schedules = [\n${built}\n];\n`,
-    option: ", schedules",
+    option      : ", schedules",
   };
 }
 
@@ -2531,7 +2531,7 @@ serve({ app, assets, document: ${JSON.stringify(document)} }).catch((error) => {
  */
 function nativeAddonGuard() {
   return {
-    name: "uf:no-native-addons",
+    name   : "uf:no-native-addons",
     enforce: "pre",
     resolveId(source, importer) {
       if (!source.endsWith(".node")) return null;
@@ -2565,7 +2565,7 @@ function nativeAddonGuard() {
  */
 function nativeAddonsStayOnDisk() {
   return {
-    name: "uf:native-addons-stay-on-disk",
+    name   : "uf:native-addons-stay-on-disk",
     enforce: "pre",
     async resolveId(source, importer, options) {
       if (!source.endsWith(".node")) return null;
@@ -2595,7 +2595,7 @@ function nativeAddonsStayOnDisk() {
 function workerBuiltinGuard() {
   const reached = [];
   return {
-    name: "uf:worker-builtins",
+    name   : "uf:worker-builtins",
     enforce: "pre",
     resolveId(source, importer) {
       if (importer != null && unavailableOnWorkers(source) != null) {
@@ -2653,21 +2653,21 @@ async function buildRscGraph(vite, inline, state, { outDir, conditions }) {
       outDir,
       emptyOutDir: true,
       rollupOptions: {
-        input: { index: FLIGHT_VIRTUAL.entry },
+        input : { index: FLIGHT_VIRTUAL.entry },
         output: { entryFileNames: "[name].js", format: "es" },
       },
     },
   };
   if (conditions != null) {
     environment.resolve = {
-      conditions: ["react-server", ...conditions],
+      conditions        : ["react-server", ...conditions],
       externalConditions: ["react-server", ...conditions],
     };
   }
   const builder = await vite.createBuilder({
     ...inline,
     customLogger: eventLogger("warn"),
-    plugins: [...(inline.plugins ?? []), nativeAddonsStayOnDisk()],
+    plugins     : [...(inline.plugins ?? []), nativeAddonsStayOnDisk()],
     environments: { [RSC_ENVIRONMENT]: environment },
   });
   await builder.build(builder.environments[RSC_ENVIRONMENT]);
@@ -2739,7 +2739,7 @@ function flightAssets(manifest, references, rscDir, outDir, base = "") {
   if (existsSync(rscAssets)) {
     cpSync(rscAssets, path.join(outDir, "assets"), {
       recursive: true,
-      filter: (from) => !/\.(?:[cm]?js|map)$/.test(from),
+      filter   : (from) => !/\.(?:[cm]?js|map)$/.test(from),
     });
   }
   for (const href of assets.styles) styles.add(href);
@@ -2821,7 +2821,7 @@ async function renderingPlan(server, prerender) {
       urls,
       perRequest: server.routes.map((route) => ({
         path: route.path,
-        why: "this build prerenders nothing",
+        why : "this build prerenders nothing",
       })),
     };
   }
@@ -2854,7 +2854,7 @@ async function renderingPlan(server, prerender) {
     if (declared === "force-dynamic") {
       perRequest.push({
         path: route.path,
-        why: 'its page exports `dynamic = "force-dynamic"`',
+        why : 'its page exports `dynamic = "force-dynamic"`',
       });
       continue;
     }
@@ -2864,7 +2864,7 @@ async function renderingPlan(server, prerender) {
     if (module.searchParams != null) {
       perRequest.push({
         path: route.path,
-        why: "its page exports a `searchParams` schema, so what it renders depends on the query",
+        why : "its page exports a `searchParams` schema, so what it renders depends on the query",
       });
       continue;
     }
@@ -2876,7 +2876,7 @@ async function renderingPlan(server, prerender) {
     if (typeof generate !== "function") {
       perRequest.push({
         path: route.path,
-        why: "it has parameters and its page exports no `generateStaticParams`",
+        why : "it has parameters and its page exports no `generateStaticParams`",
       });
       continue;
     }
@@ -2888,7 +2888,7 @@ async function renderingPlan(server, prerender) {
   for (const handler of server.handlers ?? []) {
     perRequest.push({
       path: handler.path,
-      why: "it is a route handler, and a handler answers a request rather than producing a file",
+      why : "it is a route handler, and a handler answers a request rather than producing a file",
     });
   }
   for (const entry of server.middleware ?? []) {
@@ -2898,7 +2898,7 @@ async function renderingPlan(server, prerender) {
     // "which route is this" has no single answer.
     perRequest.push({
       path: `${entry.path === "/" ? "" : entry.path}/*`,
-      why: "a middleware guards it, and a middleware runs once per request",
+      why : "a middleware guards it, and a middleware runs once per request",
     });
   }
   // And `app.router`'s three lists, by the source each rule matches: a file
@@ -2912,7 +2912,7 @@ async function renderingPlan(server, prerender) {
     for (const rule of server.routing?.[key] ?? []) {
       perRequest.push({
         path: rule.source,
-        why: `\`app.router.${key}\` names it, and ${what} is answered when a request arrives`,
+        why : `\`app.router.${key}\` names it, and ${what} is answered when a request arrives`,
       });
     }
   }

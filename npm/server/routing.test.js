@@ -43,7 +43,7 @@ const rules = {
   headers: [
     { source: "/:path*", headers: { "X-Frame-Options": "DENY", "cache-control": "no-cache" } },
     {
-      source: "/assets/:file*",
+      source : "/assets/:file*",
       headers: { "Cache-Control": "public, max-age=31536000, immutable" },
     },
   ],
@@ -182,7 +182,7 @@ describe("a trailing-slash policy", () => {
   it("spells a redirect's destination so following it is not a second redirect", () => {
     const always: RoutingRules = {
       trailingSlash: "always",
-      redirects: rules.redirects.slice(0, 1),
+      redirects    : rules.redirects.slice(0, 1),
     };
     expect(admitted(always, "/old-blog/hello/")).toBe("308 /blog/hello/");
   });

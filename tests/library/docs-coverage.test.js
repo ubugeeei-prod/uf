@@ -157,8 +157,8 @@ describe("keyPaths", () => {
   it("lists leaves, and stops at a map whose keys are the project's", () => {
     expect(
       keyPaths({
-        app: { router: { entry: "app.js", basePath: null }, targets: [] },
-        lint: { rules: { "a11y/alt-text": "error" }, engine: "rust" },
+        app  : { router: { entry: "app.js", basePath: null }, targets: [] },
+        lint : { rules: { "a11y/alt-text": "error" }, engine: "rust" },
         tasks: {},
       }),
     ).toEqual([
@@ -187,10 +187,10 @@ describe("gaps", () => {
           ["test", ["--shard", "--changed", "--cwd"]],
           ["migrate", ["--dry-run"]],
         ]),
-        keys: ["app.router.entry", "app.rsc"],
+        keys    : ["app.router.entry", "app.rsc"],
         packages: ["@uniflowed/state", "@uniflowed/immer"],
         cliPage,
-        configPage: "## app\n| `router.entry` | x |",
+        configPage  : "## app\n| `router.entry` | x |",
         packagesPage: "`@uniflowed/state` is atoms. `@uniflowed/immer-extra` is not immer.",
       }),
     ).toEqual([
@@ -204,11 +204,11 @@ describe("gaps", () => {
   it("does not count a flag that only appears inside a longer one", () => {
     expect(
       gaps({
-        commands: new Map([["test", ["--shard-count"]]]),
-        keys: [],
-        packages: [],
-        cliPage: cliPage.replace("`--shard-count` is not ", ""),
-        configPage: "",
+        commands    : new Map([["test", ["--shard-count"]]]),
+        keys        : [],
+        packages    : [],
+        cliPage     : cliPage.replace("`--shard-count` is not ", ""),
+        configPage  : "",
         packagesPage: "",
       }),
     ).toEqual(["flag uf test --shard-count"]);
@@ -225,7 +225,7 @@ describe("the known list", () => {
 
   it("reports a new gap and a closed one separately", () => {
     expect(compare(["command uf a", "config b"], ["config b", "config c"])).toEqual({
-      added: ["config c"],
+      added : ["config c"],
       closed: ["command uf a"],
     });
   });

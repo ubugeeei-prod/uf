@@ -41,18 +41,18 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    position: "relative",
+    position  : "relative",
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
+    fontSize  : ufTokens.textSm,
+    color     : ufTokens.ink,
   },
   list: {
-    display: "flex",
+    display   : "flex",
     alignItems: "center",
-    gap: ufTokens.space1,
-    margin: 0,
-    padding: 0,
-    listStyle: "none",
+    gap       : ufTokens.space1,
+    margin    : 0,
+    padding   : 0,
+    listStyle : "none",
   },
   item: {
     position: "relative",
@@ -60,42 +60,42 @@ const styles = stylex.create({
   trigger: {
     // Read by the arrow inside, which cannot see this button's state.
     "--uf-navigation-arrow-turn": { default: "0deg", ":is([aria-expanded=true])": "180deg" },
-    display: "inline-flex",
-    alignItems: "center",
-    gap: ufTokens.space1,
-    boxSizing: "border-box",
-    minHeight: "36px",
-    margin: 0,
-    paddingBlock: ufTokens.space2,
-    paddingInline: ufTokens.space3,
-    borderWidth: 0,
-    borderRadius: ufTokens.radiusSm,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    fontWeight: ufTokens.weightMedium,
-    lineHeight: ufTokens.leadingTight,
-    textDecoration: "none",
-    cursor: "pointer",
+    display                     : "inline-flex",
+    alignItems                  : "center",
+    gap                         : ufTokens.space1,
+    boxSizing                   : "border-box",
+    minHeight                   : "36px",
+    margin                      : 0,
+    paddingBlock                : ufTokens.space2,
+    paddingInline               : ufTokens.space3,
+    borderWidth                 : 0,
+    borderRadius                : ufTokens.radiusSm,
+    fontFamily                  : ufTokens.fontSans,
+    fontSize                    : ufTokens.textSm,
+    fontWeight                  : ufTokens.weightMedium,
+    lineHeight                  : ufTokens.leadingTight,
+    textDecoration              : "none",
+    cursor                      : "pointer",
     color: {
-      default: ufTokens.ink,
-      ":hover": ufTokens.accent,
-      ":focus-visible": ufTokens.accent,
+      default                    : ufTokens.ink,
+      ":hover"                   : ufTokens.accent,
+      ":focus-visible"           : ufTokens.accent,
       ":is([aria-expanded=true])": ufTokens.accent,
     },
     backgroundColor: {
-      default: "transparent",
-      ":hover": ufTokens.accentSoft,
-      ":focus-visible": ufTokens.accentSoft,
+      default                    : "transparent",
+      ":hover"                   : ufTokens.accentSoft,
+      ":focus-visible"           : ufTokens.accentSoft,
       ":is([aria-expanded=true])": ufTokens.accentSoft,
     },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "2px",
   },
   arrow: {
     flexShrink: 0,
-    transform: "rotate(var(--uf-navigation-arrow-turn, 0deg))",
+    transform : "rotate(var(--uf-navigation-arrow-turn, 0deg))",
     // A half turn as its panel opens, like every other chevron. Under reduced
     // motion the arrow is simply the other way up.
     transitionProperty: { default: "transform", "@media (prefers-reduced-motion: reduce)": "none" },
@@ -103,44 +103,44 @@ const styles = stylex.create({
     transitionTimingFunction: ufTokens.easing,
   },
   content: {
-    position: "absolute",
-    zIndex: 50,
-    insetBlockStart: "calc(100% + 4px)",
+    position        : "absolute",
+    zIndex          : 50,
+    insetBlockStart : "calc(100% + 4px)",
     insetInlineStart: 0,
-    display: "grid",
-    gap: "2px",
-    boxSizing: "border-box",
-    minWidth: "14rem",
-    margin: 0,
-    padding: ufTokens.space2,
-    listStyle: "none",
-    backgroundColor: ufTokens.surface,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusMd,
+    display         : "grid",
+    gap             : "2px",
+    boxSizing       : "border-box",
+    minWidth        : "14rem",
+    margin          : 0,
+    padding         : ufTokens.space2,
+    listStyle       : "none",
+    backgroundColor : ufTokens.surface,
+    borderWidth     : "1px",
+    borderStyle     : "solid",
+    borderColor     : ufTokens.border,
+    borderRadius    : ufTokens.radiusMd,
     // Enter: it fades in while dropping 4px out of the bar, the way every
     // other anchored surface leaves its trigger. Exit: back up into the bar,
     // in `durationFast` on the accelerating curve, while `@uniflowed/ui` keeps
     // the closing group on the page and `inert`. Under reduced motion both
     // only fade (`--uf-exit-travel` is 0 there).
     "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
-    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    opacity           : { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transform: {
-      default: "none",
-      "@starting-style": "translateY(-4px)",
+      default                   : "none",
+      "@starting-style"         : "translateY(-4px)",
       ":is([data-state=closed])": "translateY(calc(-4px * var(--uf-exit-travel)))",
     },
     transitionProperty: {
-      default: "opacity, transform",
+      default                                  : "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
     transitionDuration: {
-      default: ufTokens.durationBase,
+      default                   : ufTokens.durationBase,
       ":is([data-state=closed])": ufTokens.durationFast,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
@@ -152,25 +152,25 @@ const styles = stylex.create({
     textDecoration: "none",
     color: { default: ufTokens.ink, ":hover": ufTokens.accent, ":focus-visible": ufTokens.accent },
     backgroundColor: {
-      default: "transparent",
-      ":hover": ufTokens.accentSoft,
+      default         : "transparent",
+      ":hover"        : ufTokens.accentSoft,
       ":focus-visible": ufTokens.accentSoft,
     },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "2px",
   },
 });
 
 /** The navigation. Uncontrolled unless `value`, the open item's, is given. */
 component NavigationMenuRoot(
-  children: renders* NavigationMenuList,
-  defaultValue?: string | null = null,
-  value?: string | null,
+  children      : renders* NavigationMenuList,
+  defaultValue? : string | null = null,
+  value?        : string | null,
   onValueChange?: (value: string | null) => void,
-  xstyle?: StyleArgument,
-  className?: string,
+  xstyle?       : StyleArgument,
+  className?    : string,
   ...rest: Rest
 ) {
   return (
@@ -188,8 +188,8 @@ component NavigationMenuRoot(
 
 /** The row of items. */
 component NavigationMenuList(
-  children: renders* NavigationMenuItem,
-  xstyle?: StyleArgument,
+  children  : renders* NavigationMenuItem,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders NavigationMenu.List {
@@ -208,9 +208,9 @@ component NavigationMenuList(
  * or a `NavigationMenu.TopLink`.
  */
 component NavigationMenuItem(
-  value: string,
-  children: React.Node,
-  xstyle?: StyleArgument,
+  value     : string,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders NavigationMenu.Item {
@@ -227,8 +227,8 @@ component NavigationMenuItem(
 
 /** The button that opens an item's panel, with an arrow that turns while it is open. */
 component NavigationMenuTrigger(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -259,8 +259,8 @@ component NavigationMenuTrigger(
 
 /** The panel of links under an item, named by its trigger. */
 component NavigationMenuContent(
-  children: renders* NavigationMenuLink,
-  xstyle?: StyleArgument,
+  children  : renders* NavigationMenuLink,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -276,8 +276,8 @@ component NavigationMenuContent(
 
 /** A link in a panel, which closes the panel when it is followed. */
 component NavigationMenuLink(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders NavigationMenu.Link {
@@ -293,8 +293,8 @@ component NavigationMenuLink(
 
 /** A link on the bar itself, drawn like a trigger, for an item with no panel. */
 component NavigationMenuTopLink(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

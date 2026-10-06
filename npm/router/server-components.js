@@ -111,12 +111,12 @@ export { resolveFailure, resolveMatch } from "./internal/resolve.js";
 export hook useRoute(): RouteInfo {
   const route = serverRoute("useRoute");
   return {
-    path: route.path,
-    pathname: route.pathname,
-    params: route.params,
+    path        : route.path,
+    pathname    : route.pathname,
+    params      : route.params,
     searchParams: route.searchParams,
-    data: route.deferred == null ? route.data : use(route.deferred),
-    pending: false,
+    data        : route.deferred == null ? route.data : use(route.deferred),
+    pending     : false,
   };
 }
 

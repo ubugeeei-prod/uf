@@ -183,7 +183,7 @@ export function resolveSpecifier(specifier: string, parentURL: string): string {
  */
 export function mock<Module extends ModuleNamespace>(
   specifier: string,
-  factory?: ModuleFactory<Module>,
+  factory? : ModuleFactory<Module>,
 ): Promise<void> {
   requireInterception("mock");
   const url = resolveSpecifier(specifier, callerURL("mock"));
@@ -387,10 +387,10 @@ function automock(value: mixed, depth: number, seen: Map<mixed, mixed>): mixed {
  * set a spread or a module namespace would show.
  */
 function copyProperties(
-  from: mixed,
-  onto: mixed,
-  depth: number,
-  seen: Map<mixed, mixed>,
+  from  : mixed,
+  onto  : mixed,
+  depth : number,
+  seen  : Map<mixed, mixed>,
   hidden: boolean,
 ): void {
   const source = from as $FlowFixMe;

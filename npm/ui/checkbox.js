@@ -212,13 +212,13 @@ function submitImplicitly(control: HTMLElement): void {
  * key walks up to.
  */
 export component Checkbox(
-  checked?: boolean,
-  defaultChecked?: boolean = false,
-  indeterminate?: boolean = false,
+  checked?        : boolean,
+  defaultChecked? : boolean = false,
+  indeterminate?  : boolean = false,
   onCheckedChange?: (checked: boolean) => void,
-  disabled?: boolean = false,
-  children?: React.Node,
-  render?: RenderProp,
+  disabled?       : boolean = false,
+  children?       : React.Node,
+  render?         : RenderProp,
   ...rest: Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
@@ -258,7 +258,7 @@ export component Checkbox(
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }

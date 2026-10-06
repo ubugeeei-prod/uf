@@ -93,20 +93,20 @@ const NOTHING: $ReadOnlyArray<string> = [];
  */
 function toggleSet(orientation: Orientation): RovingSet {
   return {
-    item: "[aria-pressed]",
+    item : "[aria-pressed]",
     owner: '[role="group"]',
     orientation,
-    wrap: true,
+    wrap        : true,
     skipDisabled: true,
   };
 }
 
 type ToggleGroupState = {|
-  readonly type: ToggleGroupType,
+  readonly type   : ToggleGroupType,
   readonly pressed: $ReadOnlyArray<string>,
-  readonly toggle: (value: string) => void,
+  readonly toggle : (value: string) => void,
   /** The item focus last visited, which holds the tab stop for the set. */
-  readonly activeId: string | null,
+  readonly activeId   : string | null,
   readonly setActiveId: (id: string) => void,
   /** The item holding the tab stop before focus has visited any; see `useFirstItem`. */
   readonly firstId: string | null,
@@ -129,21 +129,21 @@ hook useToggleGroup(part: string): ToggleGroupState {
  * everything else here.
  */
 component ToggleGroupRoot(
-  children: renders* ToggleGroupItem,
-  type?: ToggleGroupType = "multiple",
-  defaultValue?: $ReadOnlyArray<string> = NOTHING,
-  value?: $ReadOnlyArray<string>,
+  children      : renders* ToggleGroupItem,
+  type?         : ToggleGroupType = "multiple",
+  defaultValue? : $ReadOnlyArray<string> = NOTHING,
+  value?        : $ReadOnlyArray<string>,
   onValueChange?: (value: $ReadOnlyArray<string>) => void,
-  orientation?: Orientation = "horizontal",
-  render?: RenderProp,
+  orientation?  : Orientation = "horizontal",
+  render?       : RenderProp,
   ...rest: Rest
 ) {
-  const [pressed, setPressed] = useControlled<$ReadOnlyArray<string>>(
+  const [pressed,  setPressed]  = useControlled<$ReadOnlyArray<string>>(
     value,
     defaultValue,
     onValueChange,
   );
-  const rootRef = useRef<HTMLElement | null>(null);
+  const rootRef                 = useRef<HTMLElement | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   // Only for `multiple`, and only until focus has been somewhere: a `single`
   // group's tab stop is `radio-group.js`'s business, and once focus has landed
@@ -213,7 +213,7 @@ component ToggleGroupRoot(
     <ToggleGroupContext.Provider value={state}>
       {
         match (render) {
-          undefined => <div {...rootProps} />,
+          undefined    => <div {...rootProps} />,
           const custom => custom(rootProps),
         }
       }
@@ -230,10 +230,10 @@ component ToggleGroupRoot(
  * where the third went. The arrow keys step over it either way.
  */
 component ToggleGroupItem(
-  value: string,
+  value    : string,
   children?: React.Node,
   disabled?: boolean = false,
-  render?: RenderProp,
+  render?  : RenderProp,
   ...rest: Rest
 ) {
   const group = useToggleGroup("ToggleGroup.Item");
@@ -257,7 +257,7 @@ component ToggleGroupItem(
   const setActiveId = group.setActiveId;
   const itemProps = withProps(passed, {
     "aria-disabled": disabled ? "true" : undefined,
-    "aria-pressed": on ? "true" : "false",
+    "aria-pressed" : on ? "true" : "false",
     children,
     id,
     onClick: composeHandlers(rest.onClick, (_event: PartEvent) => {
@@ -282,7 +282,7 @@ component ToggleGroupItem(
   });
 
   return match (render) {
-    undefined => <button {...itemProps} type="button" />,
+    undefined    => <button {...itemProps} type="button" />,
     const custom => custom(withProps(itemProps, { role: "button" })),
   };
 }

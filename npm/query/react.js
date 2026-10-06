@@ -127,7 +127,7 @@ export const useQuery: {
 function useQueryImpl<TData, TSelected = TData>(
   options: QueryOptions<TData, TSelected>,
 ): QueryResult<TSelected> {
-  const client = useQueryClient();
+  const client     = useQueryClient();
   const getOptions = useStableCallback(() => options);
 
   // Created once and never during a commit: the constructor touches nothing
@@ -173,7 +173,7 @@ export const useInfiniteQuery: {
 function useInfiniteQueryImpl<TPage, TParam, TSelected = InfiniteData<TPage, TParam>>(
   options: InfiniteQueryOptions<TPage, TParam, TSelected>,
 ): InfiniteQueryResult<TSelected> {
-  const client = useQueryClient();
+  const client     = useQueryClient();
   const getOptions = useStableCallback(() => options);
   const [observer] = useState(
     () => new InfiniteQueryObserver<TPage, TParam, TSelected>(client, getOptions),
@@ -202,7 +202,7 @@ function useInfiniteQueryImpl<TPage, TParam, TSelected = InfiniteData<TPage, TPa
 export function useMutation<TVariables, TData, TContext = mixed>(
   options: MutationOptions<TVariables, TData, TContext>,
 ): MutationResult<TVariables, TData, TContext> {
-  const client = useQueryClient();
+  const client     = useQueryClient();
   const getOptions = useStableCallback(() => options);
   const [mutation] = useState(() => new Mutation<TVariables, TData, TContext>());
 
@@ -214,7 +214,7 @@ export function useMutation<TVariables, TData, TContext = mixed>(
     (variables: TVariables, callbacks?: MutationCallbacks<TVariables, TData, TContext>) =>
       mutation.execute(variables, client.resolveMutation(getOptions()), callbacks),
   );
-  const mutate = useStableCallback(
+  const mutate      = useStableCallback(
     (variables: TVariables, callbacks?: MutationCallbacks<TVariables, TData, TContext>) => {
       // Swallowed on purpose: the failure is on the next render as `error`,
       // and an uncaught rejection for a state the UI is already showing is
@@ -222,19 +222,19 @@ export function useMutation<TVariables, TData, TContext = mixed>(
       void mutateAsync(variables, callbacks).catch(ignore);
     },
   );
-  const reset = useStableCallback(() => mutation.reset());
+  const reset       = useStableCallback(() => mutation.reset());
 
   return useMemo(
     () => ({
-      data: state.data,
-      error: state.error,
-      status: state.status,
-      variables: state.variables,
+      data        : state.data,
+      error       : state.error,
+      status      : state.status,
+      variables   : state.variables,
       failureCount: state.failureCount,
-      isIdle: state.status === "idle",
-      isPending: state.status === "pending",
-      isSuccess: state.status === "success",
-      isError: state.status === "error",
+      isIdle      : state.status === "idle",
+      isPending   : state.status === "pending",
+      isSuccess   : state.status === "success",
+      isError     : state.status === "error",
       mutate,
       mutateAsync,
       reset,

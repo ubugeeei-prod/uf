@@ -92,10 +92,151 @@ pub fn merge(base: &str, ours: &str, theirs: &str, from: &str) -> Merge {
         OURS_LABEL,
         uf_infra::cstr!("uf {REGISTRY_VERSION}").as_str(),
     );
-    Merge {
-        text: merged.to_string(),
-        conflicts: merged.conflict_count(),
+    let merged = merged.to_string();
+    let (text, conflicts) = resolve_alignment_conflicts(&merged);
+    Merge { text, conflicts }
+}
+
+/// Drop a conflict whose two sides differ only by column alignment.
+///
+/// The registry aligns `name? : Type` while a codemodded copy still has
+/// `name?: Type`. Those are the same edit, and keeping the registry's side
+/// leaves the aligned spelling. Spaces inside a string still count, and a
+/// conflict that changes a token stays, markers and all.
+fn resolve_alignment_conflicts(merged: &str) -> (String, usize) {
+    let mut out = String::with_capacity(merged.len());
+    let mut conflicts = 0usize;
+    let mut lines = merged.lines();
+    while let Some(line) = lines.next() {
+        if !line.starts_with("<<<<<<< ") {
+            push_line(&mut out, line);
+            continue;
+        }
+        let start = line;
+        let mut ours = Vec::new();
+        let mut base_marker = None;
+        let mut base = Vec::new();
+        let mut divider = false;
+        let mut theirs = Vec::new();
+        let mut end = None;
+        for next in lines.by_ref() {
+            if base_marker.is_none() && next.starts_with("||||||| ") {
+                base_marker = Some(next);
+                continue;
+            }
+            if base_marker.is_some() && !divider && next == "=======" {
+                divider = true;
+                continue;
+            }
+            if divider && next.starts_with(">>>>>>> ") {
+                end = Some(next);
+                break;
+            }
+            if divider {
+                theirs.push(next);
+            } else if base_marker.is_some() {
+                base.push(next);
+            } else {
+                ours.push(next);
+            }
+        }
+        if end.is_some() && same_aside_from_alignment(&ours, &theirs) {
+            for line in &theirs {
+                push_line(&mut out, line);
+            }
+            continue;
+        }
+        conflicts += 1;
+        push_line(&mut out, start);
+        for line in &ours {
+            push_line(&mut out, line);
+        }
+        if let Some(marker) = base_marker {
+            push_line(&mut out, marker);
+            for line in &base {
+                push_line(&mut out, line);
+            }
+        }
+        if divider {
+            push_line(&mut out, "=======");
+            for line in &theirs {
+                push_line(&mut out, line);
+            }
+        }
+        if let Some(marker) = end {
+            push_line(&mut out, marker);
+        }
     }
+    if !merged.ends_with('\n') {
+        out.pop();
+    }
+    (out, conflicts)
+}
+
+fn push_line(out: &mut String, line: &str) {
+    out.push_str(line);
+    out.push('\n');
+}
+
+fn same_aside_from_alignment(ours: &[&str], theirs: &[&str]) -> bool {
+    ours.len() == theirs.len()
+        && ours
+            .iter()
+            .zip(theirs)
+            .all(|(left, right)| tokens(left) == tokens(right))
+}
+
+/// Words, strings, and punctuation. Spaces are not tokens, and `?` is not part
+/// of the word before it, so `name?: Type` and `name? : Type` are the same
+/// line. A string keeps the spaces inside it.
+fn tokens(line: &str) -> Vec<&str> {
+    let bytes = line.as_bytes();
+    let mut out = Vec::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte.is_ascii_whitespace() {
+            index += 1;
+            continue;
+        }
+        if matches!(byte, b'"' | b'\'' | b'`') {
+            let start = index;
+            index += 1;
+            while index < bytes.len() {
+                if bytes[index] == b'\\' {
+                    index += 1;
+                    if index < bytes.len() {
+                        index += 1;
+                    }
+                    continue;
+                }
+                let closed = bytes[index] == byte;
+                index += 1;
+                if closed {
+                    break;
+                }
+            }
+            out.push(&line[start..index]);
+            continue;
+        }
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$') || !byte.is_ascii() {
+            let start = index;
+            index += 1;
+            while index < bytes.len() {
+                let next = bytes[index];
+                if next.is_ascii_alphanumeric() || matches!(next, b'_' | b'$') || !next.is_ascii() {
+                    index += 1;
+                } else {
+                    break;
+                }
+            }
+            out.push(&line[start..index]);
+            continue;
+        }
+        out.push(&line[index..index + 1]);
+        index += 1;
+    }
+    out
 }
 
 /// What `uf ui update` does to one file.
@@ -346,4 +487,63 @@ pub fn apply(plan: &UpdatePlan) -> std::io::Result<()> {
         std::fs::write(&step.path, contents)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge;
+
+    #[test]
+    fn aligned_parameters_are_not_a_conflict() {
+        let base = "export component Calendar(\n  children: React.Node,\n  xstyle?: StyleArgument,\n) {}\n";
+        let ours =
+            "component CalendarRoot(\n  children: React.Node,\n  xstyle?: StyleArgument,\n) {}\n";
+        let theirs = "component CalendarRoot(\n  children  : React.Node,\n  xstyle?   : StyleArgument,\n) {}\n";
+        let merged = merge(base, ours, theirs, "0.2.0");
+        assert_eq!(merged.conflicts, 0, "{}", merged.text);
+        assert_eq!(merged.text, theirs);
+    }
+
+    #[test]
+    fn an_aligned_default_string_is_not_a_conflict() {
+        let base = "export component CalendarPrevious(\n  label?: string = \"Previous month\",\n  xstyle?: StyleArgument,\n) {}\n";
+        let ours = "component CalendarPrevious(\n  label?: string = \"Previous month\",\n  xstyle?: StyleArgument,\n) {}\n";
+        let theirs = "component CalendarPrevious(\n  label?    : string = \"Previous month\",\n  xstyle?   : StyleArgument,\n) {}\n";
+        let merged = merge(base, ours, theirs, "0.2.0");
+        assert_eq!(merged.conflicts, 0, "{}", merged.text);
+        assert_eq!(merged.text, theirs);
+    }
+
+    #[test]
+    fn a_real_parameter_change_stays_a_conflict() {
+        let base = "component C(\n  value: string,\n) {}\n";
+        let ours = "component C(\n  value: string,\n  extra: boolean,\n) {}\n";
+        let theirs = "component C(\n  value  : string,\n) {}\n";
+        let merged = merge(base, ours, theirs, "0.2.0");
+        assert_eq!(merged.conflicts, 1, "{}", merged.text);
+        assert!(merged.text.contains("<<<<<<<"), "{}", merged.text);
+    }
+
+    #[test]
+    fn a_strings_own_spaces_stay_a_conflict() {
+        let base = "component C(\n  label?: string = \"Previous month\",\n) {}\n";
+        let ours = "component C(\n  label?: string = \"Previous  month\",\n) {}\n";
+        let theirs = "component C(\n  label?    : string = \"Previous month\",\n) {}\n";
+        let merged = merge(base, ours, theirs, "0.2.0");
+        assert_eq!(merged.conflicts, 1, "{}", merged.text);
+        assert!(merged.text.contains("<<<<<<<"), "{}", merged.text);
+    }
+
+    #[test]
+    fn alignment_tokens_keep_a_strings_spaces() {
+        let plain = "  label?: string = \"Previous month\",";
+        let aligned = "  label?    : string = \"Previous month\",";
+        let edited = "  label?: string = \"Previous  month\",";
+        assert!(super::same_aside_from_alignment(&[plain], &[aligned]));
+        assert!(!super::same_aside_from_alignment(&[plain], &[edited]));
+        assert!(super::same_aside_from_alignment(
+            &["  children: React.Node,"],
+            &["  children  : React.Node,"],
+        ));
+    }
 }

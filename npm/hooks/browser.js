@@ -104,10 +104,10 @@ import { useIsomorphicLayoutEffect } from "./lifecycle.js";
  * nowhere but Chromium.
  */
 export type BrowserNavigator = {
-  readonly onLine?: boolean,
+  readonly onLine?   : boolean,
   readonly userAgent?: string,
   readonly clipboard?: ?{
-    readonly readText: () => Promise<string>,
+    readonly readText : () => Promise<string>,
     readonly writeText: (text: string) => Promise<void>,
     ...
   },
@@ -143,8 +143,8 @@ export type BrowserLocation = {
  * typed rather than omitted because it is positional.
  */
 export type BrowserHistory = {
-  readonly state: mixed,
-  readonly pushState: (state: mixed, unused: string, url: string) => void,
+  readonly state       : mixed,
+  readonly pushState   : (state: mixed, unused: string, url: string) => void,
   readonly replaceState: (state: mixed, unused: string, url: string) => void,
   ...
 };
@@ -167,17 +167,17 @@ export type BrowserHistory = {
  * base — see `useHash` for which browsers have it and what the others get.
  */
 export type BrowserNavigation = {
-  readonly addEventListener: (type: "currententrychange", listener: () => mixed) => void,
+  readonly addEventListener   : (type: "currententrychange", listener: () => mixed) => void,
   readonly removeEventListener: (type: "currententrychange", listener: () => mixed) => void,
   ...
 };
 
 /** The Network Information object, which only Chromium has. */
 export type NetworkConnection = {
-  readonly downlink?: number,
-  readonly effectiveType?: string,
-  readonly saveData?: boolean,
-  readonly addEventListener?: (type: string, listener: () => mixed) => void,
+  readonly downlink?           : number,
+  readonly effectiveType?      : string,
+  readonly saveData?           : boolean,
+  readonly addEventListener?   : (type: string, listener: () => mixed) => void,
   readonly removeEventListener?: (type: string, listener: () => mixed) => void,
   ...
 };
@@ -192,48 +192,48 @@ export type NetworkConnection = {
  * nothing rather than throwing during a render.
  */
 export type BrowserWindow = {
-  readonly document: Document,
-  readonly navigator: BrowserNavigator,
-  readonly location?: ?BrowserLocation,
-  readonly history?: ?BrowserHistory,
-  readonly navigation?: ?BrowserNavigation,
-  readonly localStorage?: ?Storage,
-  readonly sessionStorage?: ?Storage,
-  readonly innerWidth: number,
-  readonly innerHeight: number,
-  readonly scrollX: number,
-  readonly scrollY: number,
-  readonly matchMedia?: (query: string) => MediaQueryList,
-  readonly getComputedStyle?: (element: Element) => CSSStyleDeclaration,
+  readonly document              : Document,
+  readonly navigator             : BrowserNavigator,
+  readonly location?             : ?BrowserLocation,
+  readonly history?              : ?BrowserHistory,
+  readonly navigation?           : ?BrowserNavigation,
+  readonly localStorage?         : ?Storage,
+  readonly sessionStorage?       : ?Storage,
+  readonly innerWidth            : number,
+  readonly innerHeight           : number,
+  readonly scrollX               : number,
+  readonly scrollY               : number,
+  readonly matchMedia?           : (query: string) => MediaQueryList,
+  readonly getComputedStyle?     : (element: Element) => CSSStyleDeclaration,
   readonly requestAnimationFrame?: (callback: (time: number) => mixed) => AnimationFrameID,
-  readonly cancelAnimationFrame?: (handle: AnimationFrameID) => void,
+  readonly cancelAnimationFrame? : (handle: AnimationFrameID) => void,
   // Two overloads, the way Flow's own `EventTarget` is declared: a `storage`
   // listener is handed a `StorageEvent` and needs its `key`, and narrowing an
   // `Event` down to one at runtime would mean an `instanceof StorageEvent`
   // against a name that is not defined in every host a uf test runs in.
   readonly addEventListener: ((
-    type: "storage",
+    type    : "storage",
     listener: (event: StorageEvent) => mixed,
     options?: EventListenerOptionsOrUseCapture,
   ) => void) &
     ((
-      type: string,
+      type    : string,
       listener: (event: Event) => mixed,
       options?: EventListenerOptionsOrUseCapture,
     ) => void),
   readonly removeEventListener: ((
-    type: "storage",
+    type    : "storage",
     listener: (event: StorageEvent) => mixed,
     options?: EventListenerOptionsOrUseCapture,
   ) => void) &
     ((
-      type: string,
+      type    : string,
       listener: (event: Event) => mixed,
       options?: EventListenerOptionsOrUseCapture,
     ) => void),
-  readonly ResizeObserver?: Class<ResizeObserver>,
+  readonly ResizeObserver?      : Class<ResizeObserver>,
   readonly IntersectionObserver?: Class<IntersectionObserver>,
-  readonly MutationObserver?: Class<MutationObserver>,
+  readonly MutationObserver?    : Class<MutationObserver>,
   ...
 };
 
@@ -708,7 +708,7 @@ export type EffectiveConnectionType = "slow-2g" | "2g" | "3g" | "4g";
  */
 export type NetworkMeasurement = {|
   /** Estimated bandwidth in megabits per second, where the browser reports it. */
-  readonly downlink: number | null,
+  readonly downlink     : number | null,
   readonly effectiveType: EffectiveConnectionType | null,
   /** Whether the reader has asked for less data to be used. */
   readonly saveData: boolean,
@@ -725,7 +725,7 @@ export type NetworkMeasurement = {|
  * and the fields that would have been guesses are not reachable to be read.
  */
 export type Network = {|
-  readonly online: boolean,
+  readonly online  : boolean,
   readonly measured: NetworkMeasurement | null,
 |};
 
@@ -808,9 +808,9 @@ export hook useNetwork(serverValue: boolean = true): Network {
       measured:
         measured === "1"
           ? {
-              downlink: downlink === "" ? null : Number(downlink),
+              downlink     : downlink === "" ? null : Number(downlink),
               effectiveType: asEffectiveType(effectiveType),
-              saveData: saveData === "1",
+              saveData     : saveData === "1",
             }
           : null,
     };
@@ -819,10 +819,10 @@ export hook useNetwork(serverValue: boolean = true): Network {
 
 /** Where the reader is, to the accuracy the browser was willing to give. */
 export type Geoposition = {|
-  readonly latitude: number,
+  readonly latitude : number,
   readonly longitude: number,
   /** Radius of a 95% confidence circle, in metres. */
-  readonly accuracy: number,
+  readonly accuracy : number,
   readonly timestamp: number,
 |};
 
@@ -888,20 +888,20 @@ const PENDING: GeolocationReading = { status: "pending" };
  * needs a position, not at the top of an application.
  */
 export hook useGeolocation(options?: {|
-  readonly enabled?: boolean,
+  readonly enabled?     : boolean,
   readonly highAccuracy?: boolean,
-  readonly maximumAge?: number,
-  readonly timeout?: number,
+  readonly maximumAge?  : number,
+  readonly timeout?     : number,
 |}): GeolocationReading {
   const enabled = options?.enabled ?? true;
   const highAccuracy = options?.highAccuracy ?? false;
   const maximumAge = options?.maximumAge;
   const timeout = options?.timeout;
 
-  const supported = useSupported(() => browserWindow()?.navigator.geolocation != null);
+  const supported             = useSupported(() => browserWindow()?.navigator.geolocation != null);
   const [reading, setReading] = useState<{|
     position: Geoposition | null,
-    error: Error | null,
+    error   : Error | null,
   |}>({ position: null, error: null });
 
   useEffect(() => {
@@ -913,9 +913,9 @@ export hook useGeolocation(options?: {|
       (position: Position) => {
         setReading({
           position: {
-            latitude: position.coords.latitude,
+            latitude : position.coords.latitude,
             longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
+            accuracy : position.coords.accuracy,
             timestamp: position.timestamp,
           },
           error: null,

@@ -23,9 +23,9 @@ it("bounds diagnostics, carries async request ids, and clears current errors aft
           Promise.resolve()
             .then(() => {
               recordDevEvent({
-                event: "diagnostic",
+                event   : "diagnostic",
                 severity: "error",
-                message: "hydration mismatch",
+                message : "hydration mismatch",
               });
               resolve();
             })

@@ -6,9 +6,9 @@ import { Checkbox } from "./checkbox.js";
 
 const styles = stylex.create({
   stack: {
-    display: "grid",
+    display     : "grid",
     justifyItems: "start",
-    gap: ufTokens.space1,
+    gap         : ufTokens.space1,
   },
 });
 

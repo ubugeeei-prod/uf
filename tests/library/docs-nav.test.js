@@ -132,7 +132,7 @@ describe("the manual's navigation", () => {
       });
       expect({ section: section.title, then: at ?? null }).toEqual({
         section: section.title,
-        then: section.then,
+        then   : section.then,
       });
     }
   });
@@ -155,7 +155,7 @@ describe("the manual's navigation", () => {
         at = at.then == null ? null : byLanding.get(at.then);
       }
       expect({ from: section.title, loops: at != null }).toEqual({
-        from: section.title,
+        from : section.title,
         loops: false,
       });
     }
@@ -220,8 +220,8 @@ describe("the manual's navigation", () => {
       const own = new Set(section.pages.map((page) => page.href));
       const featured = section.featured;
       expect({
-        section: section.title,
-        foreign: featured.filter((href) => !own.has(href)),
+        section : section.title,
+        foreign : featured.filter((href) => !own.has(href)),
         repeated: featured.length !== new Set(featured).size,
         count:
           section.pages.length === 0
@@ -263,7 +263,7 @@ describe("the manual's navigation", () => {
       expect({ section: section.title, visited, then: at ?? null }).toEqual({
         section: section.title,
         visited: [...listed].reverse(),
-        then: null,
+        then   : null,
       });
     }
   });

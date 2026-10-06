@@ -65,7 +65,7 @@ import { useControlled } from "./internal/controlled-state.js";
 
 type NavigationMenuState = {|
   /** The entry whose group is open, or null for none. */
-  readonly open: string | null,
+  readonly open   : string | null,
   readonly setOpen: (value: string | null) => void,
 |};
 
@@ -73,12 +73,12 @@ const NavigationMenuContext: React.Context<NavigationMenuState | null> = createC
 
 type NavigationMenuItemState = {|
   readonly triggerId: string,
-  readonly bodyId: string,
-  readonly expanded: boolean,
-  readonly toggle: () => void,
-  readonly close: () => void,
+  readonly bodyId   : string,
+  readonly expanded : boolean,
+  readonly toggle   : () => void,
+  readonly close    : () => void,
   /** Whether a `NavigationMenu.Body` is rendered, so the trigger names one that exists. */
-  readonly present: boolean,
+  readonly present     : boolean,
   readonly registerBody: (present: boolean) => void,
 |};
 
@@ -112,14 +112,14 @@ hook useNavigationMenuItem(part: string): NavigationMenuItemState {
  * with a document that already knows the answer.
  */
 component NavigationMenuRoot(
-  children: renders* NavigationMenuList,
-  defaultValue?: string | null = null,
-  value?: string | null,
+  children      : renders* NavigationMenuList,
+  defaultValue? : string | null = null,
+  value?        : string | null,
   onValueChange?: (value: string | null) => void,
   ...rest: Rest
 ) {
   const [open, setOpen] = useControlled<string | null>(value, defaultValue, onValueChange);
-  const state = useMemo(() => ({ open, setOpen }), [open, setOpen]);
+  const state           = useMemo(() => ({ open, setOpen }), [open, setOpen]);
   const passed = withoutComposed(rest, ["onKeyDown"]);
 
   return (
@@ -157,8 +157,8 @@ component NavigationMenuList(children: renders* NavigationMenuItem, ...rest: Res
 
 /** One entry: a link on its own, or a button and the group it opens. */
 component NavigationMenuItem(value: string, children: React.Node, ...rest: Rest) {
-  const menu = useNavigationMenu("NavigationMenu.Item");
-  const base = useId();
+  const menu                  = useNavigationMenu("NavigationMenu.Item");
+  const base                  = useId();
   const [present, setPresent] = useState(false);
   const setOpen = menu.setOpen;
   const expanded = menu.open === value;
@@ -166,10 +166,10 @@ component NavigationMenuItem(value: string, children: React.Node, ...rest: Rest)
   const state = useMemo(
     () => ({
       triggerId: `${base}-trigger`,
-      bodyId: `${base}-body`,
+      bodyId   : `${base}-body`,
       expanded,
       toggle: () => setOpen(expanded ? null : value),
-      close: () => setOpen(null),
+      close : () => setOpen(null),
       present,
       registerBody: setPresent,
     }),
@@ -216,7 +216,7 @@ component NavigationMenuBody(children: renders* NavigationMenuLink, ...rest: Res
   // over conditionally rather than the hook called conditionally, because a
   // hook that runs on some renders and not others is a different bug.
   useRegistered(item.expanded ? item.registerBody : undefined);
-  const bodyRef = useRef<HTMLElement | null>(null);
+  const bodyRef  = useRef<HTMLElement | null>(null);
   const presence = usePresence(item.expanded, bodyRef);
 
   if (!presence.present) {

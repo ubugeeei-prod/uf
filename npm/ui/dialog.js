@@ -105,15 +105,15 @@ import { presenceProps, usePresence } from "./internal/presence.js";
 export type DialogRole = "dialog" | "alertdialog";
 
 type DialogState = {|
-  readonly base: string,
-  readonly open: boolean,
-  readonly setOpen: (open: boolean) => void,
+  readonly base      : string,
+  readonly open      : boolean,
+  readonly setOpen   : (open: boolean) => void,
   readonly triggerRef: { current: HTMLElement | null },
   /** Whether a `Dialog.Title` is rendered, so `aria-labelledby` names one. */
   readonly titled: boolean,
   /** Whether a `Dialog.Description` is rendered. */
-  readonly described: boolean,
-  readonly registerTitle: (present: boolean) => void,
+  readonly described          : boolean,
+  readonly registerTitle      : (present: boolean) => void,
   readonly registerDescription: (present: boolean) => void,
 |};
 
@@ -135,15 +135,15 @@ hook useDialog(part: string): DialogState {
 
 /** The dialog, open or closed. Uncontrolled unless `open` is given. */
 component DialogRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
-  const base = useId();
-  const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
-  const triggerRef = useRef<HTMLElement | null>(null);
-  const [titled, setTitled] = useState(false);
+  const base                      = useId();
+  const [isOpen,    setOpen]      = useControlled(open, defaultOpen, onOpenChange);
+  const triggerRef                = useRef<HTMLElement | null>(null);
+  const [titled,    setTitled]    = useState(false);
   const [described, setDescribed] = useState(false);
 
   const state = useMemo(
@@ -154,7 +154,7 @@ component DialogRoot(
       triggerRef,
       titled,
       described,
-      registerTitle: setTitled,
+      registerTitle      : setTitled,
       registerDescription: setDescribed,
     }),
     [base, isOpen, setOpen, titled, described],
@@ -190,7 +190,7 @@ component DialogTrigger(children: React.Node, render?: RenderProp, ...rest: Rest
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -205,7 +205,7 @@ component DialogTrigger(children: React.Node, render?: RenderProp, ...rest: Rest
  * `Dialog.Body`, which is the part that knows where "outside" is.
  */
 component DialogOverlay(render?: RenderProp, ...rest: Rest) {
-  const dialog = useDialog("Dialog.Overlay");
+  const dialog     = useDialog("Dialog.Overlay");
   const overlayRef = useRef<HTMLElement | null>(null);
   // It fades out with the panel rather than vanishing under it, and it is
   // `inert` while it does, so a press on the fading scrim reaches the page.
@@ -223,7 +223,7 @@ component DialogOverlay(render?: RenderProp, ...rest: Rest) {
     }),
   });
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }
@@ -236,14 +236,14 @@ component DialogOverlay(render?: RenderProp, ...rest: Rest) {
  * outside is the half the browser enforces.
  */
 component DialogBody(
-  children: React.Node,
+  children              : React.Node,
   dismissOnOutsidePress?: boolean = true,
-  initialFocus?: { current: HTMLElement | null },
-  role?: DialogRole = "dialog",
-  render?: RenderProp,
+  initialFocus?         : { current: HTMLElement | null },
+  role?                 : DialogRole = "dialog",
+  render?               : RenderProp,
   ...rest: Rest
 ) {
-  const dialog = useDialog("Dialog.Body");
+  const dialog  = useDialog("Dialog.Body");
   const bodyRef = useRef<HTMLElement | null>(null);
   // Stable, so the effect below depends on `open` and on nothing else. Keyed on
   // `setOpen` it re-ran whenever the caller passed a fresh `onOpenChange`
@@ -330,7 +330,7 @@ component DialogBody(
     // dialog without a `Dialog.Title` falls through to whatever `aria-label`
     // the caller passed instead.
     "aria-describedby": dialog.described ? `${dialog.base}-description` : undefined,
-    "aria-labelledby": dialog.titled ? `${dialog.base}-title` : undefined,
+    "aria-labelledby" : dialog.titled ? `${dialog.base}-title` : undefined,
     // Only while open: a closing panel is `inert`, and a modal a reader cannot
     // reach must not go on telling them the rest of the page is unavailable.
     "aria-modal": dialog.open ? "true" : undefined,
@@ -389,7 +389,7 @@ component DialogBody(
   });
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }
@@ -415,7 +415,7 @@ component DialogTitle(children: React.Node, render?: RenderProp, ...rest: Rest) 
   // observation about an accordion — and `render` is how a caller says so
   // without losing the id `aria-labelledby` points at.
   return match (render) {
-    undefined => <h2 {...props} />,
+    undefined    => <h2 {...props} />,
     const custom => custom(props),
   };
 }
@@ -437,7 +437,7 @@ component DialogDescription(children: React.Node, render?: RenderProp, ...rest: 
 
   const props = withProps(rest, { children, id: `${dialog.base}-description` });
   return match (render) {
-    undefined => <p {...props} />,
+    undefined    => <p {...props} />,
     const custom => custom(props),
   };
 }
@@ -454,7 +454,7 @@ component DialogDescription(children: React.Node, render?: RenderProp, ...rest: 
 component DialogHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }
@@ -463,7 +463,7 @@ component DialogHeader(children: React.Node, render?: RenderProp, ...rest: Rest)
 component DialogFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }
@@ -477,7 +477,7 @@ component DialogClose(children: React.Node, render?: RenderProp, ...rest: Rest) 
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -520,8 +520,8 @@ function concealOutside(element: HTMLElement): () => void {
       }
       restore.push({
         element: sibling,
-        hidden: sibling.getAttribute("aria-hidden") ?? null,
-        inert: sibling.hasAttribute("inert"),
+        hidden : sibling.getAttribute("aria-hidden") ?? null,
+        inert  : sibling.hasAttribute("inert"),
       });
       sibling.setAttribute("aria-hidden", "true");
       sibling.setAttribute("inert", "");

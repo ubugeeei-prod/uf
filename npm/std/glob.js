@@ -9,32 +9,32 @@
 
 import { isAbsolute, normalize } from "./path.js";
 
-type SegmentToken = { readonly parts: Array<SegmentPart>, readonly type: "segment" };
+type SegmentToken  = { readonly parts: Array<SegmentPart>, readonly type: "segment" };
 type GlobstarToken = { readonly type: "globstar" };
-type Token = SegmentToken | GlobstarToken;
-type CharRange = { readonly end: number, readonly start: number };
+type Token         = SegmentToken | GlobstarToken;
+type CharRange     = { readonly end: number, readonly start: number };
 type SegmentPart =
   | { readonly type: "star" }
   | { readonly type: "question" }
   | { readonly type: "literal", readonly value: string }
   | {
       readonly negated: boolean,
-      readonly ranges: Array<CharRange>,
-      readonly type: "class",
+      readonly ranges : Array<CharRange>,
+      readonly type   : "class",
     };
 
 type CompiledPattern = {
   readonly absolute: boolean,
-  readonly tokens: Array<Token>,
+  readonly tokens  : Array<Token>,
 };
 
 type ClassRead = {
-  readonly end: number,
+  readonly end : number,
   readonly part: SegmentPart,
 };
 
 type ClassCharacter = {
-  readonly end: number,
+  readonly end  : number,
   readonly value: string,
 };
 

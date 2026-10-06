@@ -87,78 +87,78 @@ import type { FixtureSummary } from "./fixture.js";
 import type { Quietness } from "./measure.js";
 
 export type Row = {
-  readonly id: string,
-  readonly tool: string,
-  readonly stage: string,
+  readonly id     : string,
+  readonly tool   : string,
+  readonly stage  : string,
   readonly fixture: string,
-  readonly title: string,
+  readonly title  : string,
   readonly command: string,
-  readonly cache: string,
-  readonly unit: "ms",
-  readonly warmup: number,
-  readonly runs: number,
+  readonly cache  : string,
+  readonly unit   : "ms",
+  readonly warmup : number,
+  readonly runs   : number,
   readonly samples: $ReadOnlyArray<number>,
-  readonly median: number,
-  readonly min: number,
-  readonly max: number,
-  readonly mean: number,
-  readonly stddev: number,
-  readonly cpu: CpuSummary | null,
+  readonly median : number,
+  readonly min    : number,
+  readonly max    : number,
+  readonly mean   : number,
+  readonly stddev : number,
+  readonly cpu    : CpuSummary | null,
 };
 
 export type CpuSummary = {
   readonly samples: $ReadOnlyArray<number>,
-  readonly median: number,
-  readonly min: number,
-  readonly max: number,
+  readonly median : number,
+  readonly min    : number,
+  readonly max    : number,
 };
 
 /** A tool, or one stage of it, that was asked for and not measured, and why. */
 export type Skipped = {
-  readonly tool: string,
-  readonly stage: string | null,
+  readonly tool  : string,
+  readonly stage : string | null,
   readonly reason: string,
 };
 
 export type SuiteSummary = {
-  readonly files: number,
-  readonly cases: number,
-  readonly tests: number,
+  readonly files     : number,
+  readonly cases     : number,
+  readonly tests     : number,
   readonly assertions: number,
 };
 
 export type Machine = {
-  readonly platform: string,
-  readonly arch: string,
-  readonly cpu: string,
-  readonly cores: number,
+  readonly platform   : string,
+  readonly arch       : string,
+  readonly cpu        : string,
+  readonly cores      : number,
   readonly memoryBytes: number,
-  readonly ci: string | null,
-  readonly before: Quietness,
-  readonly after: Quietness,
+  readonly ci         : string | null,
+  readonly before     : Quietness,
+  readonly after      : Quietness,
 };
 
 export type InstallFixture = { readonly dependencies: number, readonly manager: string };
 
 export type Report = {
-  readonly schema: 1,
-  readonly arguments: $ReadOnlyArray<string>,
-  readonly startedAt: string,
-  readonly finishedAt: string,
+  readonly schema     : 1,
+  readonly arguments  : $ReadOnlyArray<string>,
+  readonly startedAt  : string,
+  readonly finishedAt : string,
   readonly provisional: boolean,
-  readonly machine: Machine,
-  readonly versions: { readonly [string]: string },
+  readonly machine    : Machine,
+  readonly versions   : { readonly [string]: string },
   readonly settings: {
-    readonly runs: number,
-    readonly warmup: number,
+    readonly runs    : number,
+    readonly warmup  : number,
     readonly hmrEdits: number,
   },
-  readonly tools: $ReadOnlyArray<string>,
-  readonly skipped: $ReadOnlyArray<Skipped>,
+  readonly tools   : $ReadOnlyArray<string>,
+  readonly skipped : $ReadOnlyArray<Skipped>,
   readonly fixtures: { readonly [string]: FixtureSummary },
-  readonly suite: SuiteSummary | null,
-  readonly install: InstallFixture | null,
-  readonly results: $ReadOnlyArray<Row>,
+  readonly suite   : SuiteSummary | null,
+  readonly install : InstallFixture | null,
+  readonly results : $ReadOnlyArray<Row>,
 };
 
 /** Milliseconds as a person reads them: `8.4 ms`, `412 ms`, `3.01 s`. */

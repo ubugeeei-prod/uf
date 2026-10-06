@@ -81,7 +81,7 @@ export function length(value: number): Step<string, string> {
 export function nonEmpty(): Step<string, string> {
   return <TInput>(schema: Schema<string, TInput>): Schema<string, TInput> =>
     refine(schema, (input: string) => input.length > 0, "non_empty", "expected a value", {
-      kind: "minLength",
+      kind : "minLength",
       value: 1,
     });
 }

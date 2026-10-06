@@ -136,7 +136,7 @@ export type Presence = {
  * and not on this.
  */
 export hook usePresence(open: boolean, ref: { readonly current: HTMLElement | null }): Presence {
-  const [shown, setShown] = useState<boolean>(open);
+  const [shown,   setShown]   = useState<boolean>(open);
   const [exiting, setExiting] = useState<boolean>(false);
 
   // `open` changed since the last render: update the state now. Closing starts
@@ -180,7 +180,7 @@ export hook usePresence(open: boolean, ref: { readonly current: HTMLElement | nu
 
 /** The part of an `Animation` this module reads. */
 type Settling = {
-  readonly finished: Promise<mixed>,
+  readonly finished  : Promise<mixed>,
   readonly playState?: string,
   readonly effect?: ?{
     readonly getComputedTiming?: () => { readonly endTime?: number, ... },
@@ -240,10 +240,10 @@ export function isAnimating(element: HTMLElement | null): boolean {
  */
 export function presenceProps(presence: Presence): {|
   "data-state": PresenceState,
-  inert: true | void,
+  inert       : true | void,
 |} {
   return {
     "data-state": presence.state,
-    inert: presence.present && presence.state === "closed" ? true : undefined,
+    inert       : presence.present && presence.state === "closed" ? true : undefined,
   };
 }

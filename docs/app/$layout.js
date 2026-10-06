@@ -52,7 +52,7 @@ export const metadata: Metadata = {
   // the one a card cannot derive.
   openGraph: {
     siteName: "uf",
-    images: ["/brand/og.png"],
+    images  : ["/brand/og.png"],
     imageAlt: "The uf mark beside the word uf, on a dark ground.",
   },
   // No `title` or `description` here either: they fall back through the card's
@@ -68,10 +68,10 @@ export const metadata: Metadata = {
   // `Article` keeps this rather than deleting it.
   jsonLd: [
     {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      name: "uf",
-      url: "https://docs.uniflowed.dev",
+      "@context" : "https://schema.org",
+      "@type"    : "WebSite",
+      name       : "uf",
+      url        : "https://docs.uniflowed.dev",
       description: "The Unified Toolchain for Flow (React).",
     },
   ],

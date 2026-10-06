@@ -49,10 +49,10 @@ import { useStableCallback } from "./lifecycle.js";
 
 /** A combination, once its spelling has been resolved. */
 type Chord = {|
-  readonly key: string,
-  readonly ctrl: boolean,
-  readonly meta: boolean,
-  readonly alt: boolean,
+  readonly key  : string,
+  readonly ctrl : boolean,
+  readonly meta : boolean,
+  readonly alt  : boolean,
   readonly shift: boolean,
   /** Ctrl, or Command on Apple platforms. */
   readonly mod: boolean,
@@ -67,17 +67,17 @@ type Chord = {|
  * shortcut.
  */
 const KEY_ALIASES: { readonly [string]: string } = {
-  esc: "escape",
-  space: " ",
+  esc     : "escape",
+  space   : " ",
   spacebar: " ",
-  ret: "enter",
-  return: "enter",
-  up: "arrowup",
-  down: "arrowdown",
-  left: "arrowleft",
-  right: "arrowright",
-  del: "delete",
-  plus: "+",
+  ret     : "enter",
+  return  : "enter",
+  up      : "arrowup",
+  down    : "arrowdown",
+  left    : "arrowleft",
+  right   : "arrowright",
+  del     : "delete",
+  plus    : "+",
 };
 
 /**
@@ -220,8 +220,8 @@ export type KeyComboOptions = {|
  * loses nothing by it.
  */
 export hook useKeyCombo(
-  combo: string,
-  handler: (event: KeyboardEvent) => mixed,
+  combo   : string,
+  handler : (event: KeyboardEvent) => mixed,
   options?: KeyComboOptions,
 ): void {
   const stable = useStableCallback(handler);
@@ -283,7 +283,7 @@ export hook useKeyCombo(
  * panning after the reader comes back. Losing focus releases everything.
  */
 export hook useKeyHeld(
-  key: string,
+  key     : string,
   options?: {| readonly target?: Ref<HTMLElement> | null |},
 ): boolean {
   const [held, setHeld] = useState(false);

@@ -247,13 +247,13 @@ export const uft = Object.freeze({
   spyOn,
   mocked,
 
-  clearAllMocks: () => bun.jest.clearAllMocks(),
-  resetAllMocks: () => bun.jest.resetAllMocks(),
+  clearAllMocks  : () => bun.jest.clearAllMocks(),
+  resetAllMocks  : () => bun.jest.resetAllMocks(),
   restoreAllMocks: () => bun.jest.restoreAllMocks(),
 
-  stubEnv: refusingMember("stubEnv", STUBS),
-  unstubAllEnvs: refusingMember("unstubAllEnvs", STUBS),
-  stubGlobal: refusingMember("stubGlobal", STUBS),
+  stubEnv         : refusingMember("stubEnv", STUBS),
+  unstubAllEnvs   : refusingMember("unstubAllEnvs", STUBS),
+  stubGlobal      : refusingMember("stubGlobal", STUBS),
   unstubAllGlobals: refusingMember("unstubAllGlobals", STUBS),
 
   waitFor,
@@ -295,11 +295,11 @@ export const uft = Object.freeze({
   },
   getMockedSystemTime: () => (bun.jest.isFakeTimers() ? new Date() : null),
 
-  mock: refusingMember("mock", MODULE_MOCKING),
-  doMock: refusingMember("doMock", MODULE_MOCKING),
-  unmock: refusingMember("unmock", MODULE_MOCKING),
-  doUnmock: refusingMember("doUnmock", MODULE_MOCKING),
+  mock        : refusingMember("mock", MODULE_MOCKING),
+  doMock      : refusingMember("doMock", MODULE_MOCKING),
+  unmock      : refusingMember("unmock", MODULE_MOCKING),
+  doUnmock    : refusingMember("doUnmock", MODULE_MOCKING),
   importActual: refusingMember("importActual", MODULE_MOCKING),
-  importMock: refusingMember("importMock", MODULE_MOCKING),
+  importMock  : refusingMember("importMock", MODULE_MOCKING),
   resetModules: refusingMember("resetModules", MODULE_MOCKING),
 });

@@ -132,10 +132,10 @@ const COMPLETE_MARKER = '$RC("';
  * never saw — one past [`LABEL_SCAN_BYTES`], or split across two chunks.
  */
 export type StreamedBoundary = {|
-  readonly id: string,
+  readonly id      : string,
   readonly fallback: ?string,
-  readonly built: $ReadOnlyArray<string>,
-  readonly more: number,
+  readonly built   : $ReadOnlyArray<string>,
+  readonly more    : number,
 |};
 
 /** One chunk of one document, as it went out. */
@@ -154,20 +154,20 @@ export type StreamedChunk = {|
 export type StreamRecord = {|
   readonly chunks: $ReadOnlyArray<StreamedChunk>,
   /** Chunks past [`CHUNK_LIMIT`], which are counted and not described. */
-  readonly more: number,
+  readonly more : number,
   readonly bytes: number,
 |};
 
 /** A recorder, over one document. */
 export type StreamRecorder = {|
-  readonly chunk: (text: string) => void,
+  readonly chunk : (text: string) => void,
   readonly finish: () => StreamRecord,
 |};
 
 /** What the reporter hands `uf dev` to print. */
 export type StreamDiagnostic = {|
   readonly message: string,
-  readonly detail: $ReadOnlyArray<string>,
+  readonly detail : $ReadOnlyArray<string>,
 |};
 
 /**
@@ -206,9 +206,9 @@ export function inspectStream(now: () => number): StreamRecorder {
         return;
       }
       chunks.push({
-        index: count,
-        at: first == null ? 0 : Math.max(0, Math.round(at - first)),
-        bytes: size,
+        index     : count,
+        at        : first == null ? 0 : Math.max(0, Math.round(at - first)),
+        bytes     : size,
         boundaries: completedIn(text, labels),
       });
     },
@@ -232,7 +232,7 @@ export function inspectStream(now: () => number): StreamRecorder {
 export async function* inspected(
   chunks: AsyncGenerator<string, void, void>,
   report: (record: StreamRecord) => void,
-  now: () => number,
+  now   : () => number,
 ): AsyncGenerator<string, void, void> {
   const recorder = inspectStream(now);
   try {
@@ -307,10 +307,10 @@ function completedIn(chunk: string, labels: Map<string, string>): $ReadOnlyArray
     }
     const built = builtBy(chunk, ids.content);
     found.push({
-      id: ids.boundary,
+      id      : ids.boundary,
       fallback: labels.get(ids.boundary) ?? null,
-      built: built.slice(0, NAMED_LIMIT),
-      more: Math.max(0, built.length - NAMED_LIMIT),
+      built   : built.slice(0, NAMED_LIMIT),
+      more    : Math.max(0, built.length - NAMED_LIMIT),
     });
   }
   return found;
@@ -319,7 +319,7 @@ function completedIn(chunk: string, labels: Map<string, string>): $ReadOnlyArray
 /** The two quoted ids of a `$RC(…)` call whose first quote has been passed. */
 function argumentPair(
   chunk: string,
-  from: number,
+  from : number,
 ): {| readonly boundary: string, readonly content: string |} | null {
   const boundaryEnd = chunk.indexOf('"', from);
   if (boundaryEnd === -1 || !chunk.startsWith(',"', boundaryEnd + 1)) {
@@ -332,7 +332,7 @@ function argumentPair(
   }
   return {
     boundary: chunk.slice(from, boundaryEnd),
-    content: chunk.slice(contentAt, contentEnd),
+    content : chunk.slice(contentAt, contentEnd),
   };
 }
 

@@ -45,19 +45,19 @@ import {
 /** A diagnostic as the channel carries it, which is what `emit` is handed. */
 type Reported = {
   readonly severity: string,
-  readonly message: string,
-  readonly origin?: string,
-  readonly detail?: $ReadOnlyArray<string>,
-  readonly file?: string,
-  readonly line?: number,
-  readonly column?: number,
+  readonly message : string,
+  readonly origin? : string,
+  readonly detail? : $ReadOnlyArray<string>,
+  readonly file?   : string,
+  readonly line?   : number,
+  readonly column? : number,
 };
 
 /** Node's response, reduced to the three things this middleware writes. */
 type FakeResponse = {
   statusCode: number,
-  headers: { [string]: string },
-  ended: boolean,
+  headers   : { [string]: string },
+  ended     : boolean,
   setHeader(name: string, value: string): void,
   end(): void,
 };
@@ -67,8 +67,8 @@ function outgoing(): FakeResponse {
   // `res.end` off the response and calls it on its own still ends this one.
   const response: FakeResponse = {
     statusCode: 0,
-    headers: {},
-    ended: false,
+    headers   : {},
+    ended     : false,
     setHeader(name: string, value: string) {
       response.headers[name] = value;
     },
@@ -103,8 +103,8 @@ function incoming(method: string, url: string, body?: string) {
 /** Drive the middleware once, and report everything it did. */
 async function ask(
   method: string,
-  url: string,
-  body?: string,
+  url   : string,
+  body? : string,
 ): Promise<{
   readonly response: FakeResponse,
   readonly reported: Array<Reported>,
@@ -156,9 +156,9 @@ describe("a diagnostic the browser produced", () => {
       DIAGNOSTIC_ENDPOINT,
       JSON.stringify({
         severity: "error",
-        message: "Hydration mismatch in <Posted>",
-        detail: ["server   3 minutes ago", "client   5 minutes ago"],
-        url: "http://127.0.0.1:5173/posts/hello",
+        message : "Hydration mismatch in <Posted>",
+        detail  : ["server   3 minutes ago", "client   5 minutes ago"],
+        url     : "http://127.0.0.1:5173/posts/hello",
       }),
     );
 
@@ -167,9 +167,9 @@ describe("a diagnostic the browser produced", () => {
     expect(reported).toEqual([
       {
         severity: "error",
-        message: "Hydration mismatch in <Posted>",
-        origin: "http://127.0.0.1:5173/posts/hello",
-        detail: ["server   3 minutes ago", "client   5 minutes ago"],
+        message : "Hydration mismatch in <Posted>",
+        origin  : "http://127.0.0.1:5173/posts/hello",
+        detail  : ["server   3 minutes ago", "client   5 minutes ago"],
       },
     ]);
   });
@@ -180,22 +180,22 @@ describe("a diagnostic the browser produced", () => {
     // file the report never named would send the reader somewhere else.
     const positioned = browserDiagnostic({
       severity: "warn",
-      message: "a slow effect",
-      file: "/app/posts/page.js",
-      line: 12,
-      column: 4,
+      message : "a slow effect",
+      file    : "/app/posts/page.js",
+      line    : 12,
+      column  : 4,
     });
     expect(positioned).toEqual({
       severity: "warn",
-      message: "a slow effect",
-      file: "/app/posts/page.js",
-      line: 12,
-      column: 4,
+      message : "a slow effect",
+      file    : "/app/posts/page.js",
+      line    : 12,
+      column  : 4,
     });
 
     expect(browserDiagnostic({ message: "no line", file: "/app/x.js" })).toEqual({
       severity: "error",
-      message: "no line",
+      message : "no line",
     });
   });
 
@@ -229,7 +229,7 @@ describe("a diagnostic the browser produced", () => {
     // anywhere near a renderer.
     const diagnostic = browserDiagnostic({
       message: "\u001b[2Ktaken over",
-      detail: ["first\u0007", "second\u001b[31m"],
+      detail : ["first\u0007", "second\u001b[31m"],
     });
     expect(diagnostic?.message).toBe("[2Ktaken over");
     expect(diagnostic?.detail).toEqual(["first ", "second [31m"]);
@@ -262,8 +262,8 @@ describe("a web-vitals report", () => {
     expect(reported).toEqual([
       {
         severity: "error",
-        message: "web vitals: LCP is poor (3200 ms)",
-        origin: "http://127.0.0.1:5173/",
+        message : "web vitals: LCP is poor (3200 ms)",
+        origin  : "http://127.0.0.1:5173/",
         // Worst first, so the line the reader needs is the one under the
         // headline rather than wherever the browser finished measuring.
         detail: ["LCP 3200 ms — poor", "FCP 2000 ms — needs-improvement", "CLS 0.02 — good"],
@@ -418,8 +418,8 @@ describe("reporting from the browser", () => {
     // server by accident, and the page it came from filled in for the caller.
     expect(JSON.parse(String(posted[0].body))).toEqual({
       severity: "error",
-      message: "Hydration mismatch in <Posted>",
-      url: "http://127.0.0.1:5173/posts/hello",
+      message : "Hydration mismatch in <Posted>",
+      url     : "http://127.0.0.1:5173/posts/hello",
     });
   });
 
@@ -441,9 +441,9 @@ describe("reporting from the browser", () => {
 
 /** A browser this test installs, reduced to what the reporter reads. */
 type StubWindow = {
-  readonly document: { ... },
+  readonly document : { ... },
   readonly location?: { readonly href: string },
-  readonly fetch: (target: string, init: { readonly body: mixed, ... }) => Promise<mixed>,
+  readonly fetch    : (target: string, init: { readonly body: mixed, ... }) => Promise<mixed>,
 };
 
 /**
@@ -469,9 +469,9 @@ function withWindow(win: StubWindow, body: () => void): void {
     Object.getOwnPropertyDescriptor(target, name),
   ]);
   Object.defineProperty(target, "document", {
-    value: win.document,
+    value       : win.document,
     configurable: true,
-    writable: true,
+    writable    : true,
   });
   Object.defineProperty(target, "window", { value: win, configurable: true, writable: true });
   try {

@@ -105,7 +105,7 @@ async function compileConfig(source, file, root) {
 
   const out = await transformFlow(source, file, {
     root,
-    sourceMap: false,
+    sourceMap      : false,
     configBootstrap: true,
   });
   const code = rewriteConfigImports(

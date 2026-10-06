@@ -69,14 +69,14 @@ async function serverModule() {
 }
 
 const ASSETS = {
-  scripts: ["/assets/client.js"],
-  styles: ["/assets/app.css"],
+  scripts : ["/assets/client.js"],
+  styles  : ["/assets/app.css"],
   preloads: [],
 };
 
 /** The route table these tests render. */
 type Built = {|
-  readonly routes: $ReadOnlyArray<RouteRecord>,
+  readonly routes  : $ReadOnlyArray<RouteRecord>,
   readonly notFound: $ReadOnlyArray<NotFoundBoundary>,
 |};
 
@@ -105,33 +105,33 @@ function tables(): Built {
   }
 
   const home = {
-    path: "/",
-    params: [],
-    mdx: false,
-    file: "app/$page.js",
-    page: () => Promise.resolve({ default: Home }),
+    path   : "/",
+    params : [],
+    mdx    : false,
+    file   : "app/$page.js",
+    page   : () => Promise.resolve({ default: Home }),
     layouts: [],
     loading: [],
   };
   const away = {
-    path: "/away",
+    path  : "/away",
     params: [],
-    mdx: false,
-    file: "app/away/$page.js",
+    mdx   : false,
+    file  : "app/away/$page.js",
     // A loader that redirects, which on a server is a 307 before a byte is
     // written and here has to become the browser's own navigation. It is an
     // export of the page *module*, the way a project writes one, rather than a
     // field on the route record.
-    page: () => Promise.resolve({ default: Home, loader: () => redirect("/") }),
+    page   : () => Promise.resolve({ default: Home, loader: () => redirect("/") }),
     layouts: [],
     loading: [],
   };
   const notFound = [
     {
-      path: "/",
-      mdx: false,
-      file: "app/$not-found.js",
-      page: () => Promise.resolve({ default: Missing }),
+      path   : "/",
+      mdx    : false,
+      file   : "app/$not-found.js",
+      page   : () => Promise.resolve({ default: Missing }),
       layouts: [],
     },
   ];
@@ -236,7 +236,7 @@ describe("rendering into it", () => {
     const original = location.replace;
     Object.defineProperty(location, "replace", {
       configurable: true,
-      writable: true,
+      writable    : true,
       value: (to: string) => {
         replaced.push(String(to));
       },
@@ -247,8 +247,8 @@ describe("rendering into it", () => {
     } finally {
       Object.defineProperty(location, "replace", {
         configurable: true,
-        writable: true,
-        value: original,
+        writable    : true,
+        value       : original,
       });
     }
 

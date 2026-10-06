@@ -69,8 +69,8 @@ export function installServerModules(load: ClientModuleLoader): void {
   // `parcelRequire` is exactly the global nothing declares. `Object`'s throws
   // where this answers `false`, so the throw is kept.
   const defined = Reflect.defineProperty(globalThis, "parcelRequire", {
-    value: parcelRequire,
-    writable: true,
+    value       : parcelRequire,
+    writable    : true,
     configurable: true,
   });
   if (!defined) {
@@ -88,7 +88,7 @@ export function installServerModules(load: ClientModuleLoader): void {
  * "Connection closed", so the HTML renderer leaves each as a hole.
  */
 export function readPayload(
-  stream: ReadableStream<Uint8Array>,
+  stream  : ReadableStream<Uint8Array>,
   options?: {| readonly partial?: boolean |},
 ): Promise<FlightRoot> {
   requireServerComponentsReact(ENTRY);

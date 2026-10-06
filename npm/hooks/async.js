@@ -45,8 +45,8 @@ import { useStableCallback } from "./lifecycle.js";
 
 /** What an in-flight, settled or failed call looks like. */
 export type Async<T> = {|
-  readonly value: T | null,
-  readonly error: Error | null,
+  readonly value  : T | null,
+  readonly error  : Error | null,
   readonly pending: boolean,
   /** Run it again, keeping whatever is on screen until the new value lands. */
   readonly reload: () => void,
@@ -88,20 +88,20 @@ function backoff(attempt: number): number {
  * belongs in a route loader, not in this hook.
  */
 export hook useAsync<T>(
-  body: (signal: AbortSignal) => Promise<T>,
-  deps: $ReadOnlyArray<mixed>,
+  body    : (signal: AbortSignal) => Promise<T>,
+  deps    : $ReadOnlyArray<mixed>,
   options?: AsyncOptions,
 ): Async<T> {
   const [state, setState] = useState<{|
-    value: T | null,
-    error: Error | null,
+    value  : T | null,
+    error  : Error | null,
     pending: boolean,
   |}>({ value: null, error: null, pending: true });
 
   // Changing this is what re-runs the effect, so `reload` is a state change
   // rather than a function the effect has to be told about.
   const [attempt, setAttempt] = useState(0);
-  const reload = useCallback(() => setAttempt((current) => current + 1), []);
+  const reload                = useCallback(() => setAttempt((current) => current + 1), []);
 
   const retries = options?.retry ?? 0;
   const call = useStableCallback(body);
@@ -149,8 +149,8 @@ export hook useAsync<T>(
             return;
           }
           setState({
-            value: null,
-            error: thrown instanceof Error ? thrown : new Error(String(thrown)),
+            value  : null,
+            error  : thrown instanceof Error ? thrown : new Error(String(thrown)),
             pending: false,
           });
         },

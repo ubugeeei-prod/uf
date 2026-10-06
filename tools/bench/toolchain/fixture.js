@@ -68,9 +68,9 @@ import path from "node:path";
 
 /** How big a fixture is. Every count in `FixtureSummary` follows from these. */
 export type Preset = {
-  readonly name: string,
-  readonly routes: number,
-  readonly modules: number,
+  readonly name          : string,
+  readonly routes        : number,
+  readonly modules       : number,
   readonly testsPerModule: number,
 };
 
@@ -102,16 +102,16 @@ export type FixtureFile = { readonly path: string, readonly contents: string };
 
 /** What a generated fixture has, as generated — before `uf fmt` reprints it. */
 export type FixtureSummary = {
-  readonly preset: string,
-  readonly routes: number,
-  readonly components: number,
+  readonly preset          : string,
+  readonly routes          : number,
+  readonly components      : number,
   readonly clientComponents: number,
-  readonly modules: number,
-  readonly testFiles: number,
-  readonly tests: number,
-  readonly files: number,
-  readonly lines: number,
-  readonly bytes: number,
+  readonly modules         : number,
+  readonly testFiles       : number,
+  readonly tests           : number,
+  readonly files           : number,
+  readonly lines           : number,
+  readonly bytes           : number,
 };
 
 /** The string the HMR stage rewrites, and the file it is in. */
@@ -175,16 +175,16 @@ export component HotCounter(initial: number) {
 
 function manifest(preset: Preset, versions: Versions): string {
   const contents = {
-    name: `uf-bench-${preset.name}`,
+    name   : `uf-bench-${preset.name}`,
     private: true,
-    type: "module",
+    type   : "module",
     dependencies: {
       "@uniflowed/config": versions.uniflowed,
-      "@uniflowed/react": versions.uniflowed,
+      "@uniflowed/react" : versions.uniflowed,
       "@uniflowed/router": versions.uniflowed,
-      "@uniflowed/vite": versions.uniflowed,
-      react: versions.react,
-      "react-dom": versions.react,
+      "@uniflowed/vite"  : versions.uniflowed,
+      react              : versions.react,
+      "react-dom"        : versions.react,
     },
     devDependencies: {
       "@uniflowed/test": versions.uniflowed,
@@ -539,7 +539,7 @@ export function fixtureFiles(preset: Preset, versions: Versions): Array<FixtureF
 /** What `files` amounts to, in the terms a reader of a result needs. */
 export function describeFixture(
   preset: Preset,
-  files: $ReadOnlyArray<FixtureFile>,
+  files : $ReadOnlyArray<FixtureFile>,
 ): FixtureSummary {
   let lines = 0;
   let bytes = 0;
@@ -548,14 +548,14 @@ export function describeFixture(
     bytes += Buffer.byteLength(file.contents, "utf8");
   }
   return {
-    preset: preset.name,
-    routes: preset.routes,
-    components: preset.routes * 3 + 1,
+    preset          : preset.name,
+    routes          : preset.routes,
+    components      : preset.routes * 3 + 1,
     clientComponents: preset.routes + 1,
-    modules: preset.modules,
-    testFiles: preset.modules,
-    tests: preset.modules * preset.testsPerModule,
-    files: files.length,
+    modules         : preset.modules,
+    testFiles       : preset.modules,
+    tests           : preset.modules * preset.testsPerModule,
+    files           : files.length,
     lines,
     bytes,
   };
@@ -678,7 +678,7 @@ const SCAFFOLD_PACKAGES = [
  * them would be timing somebody else's graph.
  */
 export function installManifest(repoRoot: string): {
-  readonly contents: string,
+  readonly contents    : string,
   readonly dependencies: number,
 } {
   const installed = requireInstall(repoRoot);

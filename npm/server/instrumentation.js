@@ -16,23 +16,23 @@ import type { Context, Span } from "@opentelemetry/api";
 export type RequestPhase = "request" | "middleware" | "route" | "loader" | "render" | "action";
 
 export type ErrorContext = {|
-  readonly phase: RequestPhase,
-  readonly method: string,
-  readonly route: string | null,
+  readonly phase    : RequestPhase,
+  readonly method   : string,
+  readonly route    : string | null,
   readonly requestId: string,
 |};
 
 export type Instrumentation = {|
   /** Configure the application's SDK/exporter here. Called once per module instance. */
-  readonly register?: () => void | Promise<void>,
+  readonly register?      : () => void | Promise<void>,
   readonly onRequestError?: (error: mixed, context: ErrorContext) => void | Promise<void>,
 |};
 
 type State = {
-  hooks: Instrumentation,
-  method: string,
-  reported: Set<mixed>,
-  span: Span,
+  hooks       : Instrumentation,
+  method      : string,
+  reported    : Set<mixed>,
+  span        : Span,
   traceContext: Context,
 };
 
@@ -43,7 +43,7 @@ const states: WeakMap<RequestContext, State> = processWide(
 );
 const getter = {
   keys: (headers: Headers) => [...headers.keys()],
-  get: (headers: Headers, key: string) => headers.get(key) ?? undefined,
+  get : (headers: Headers, key: string) => headers.get(key) ?? undefined,
 };
 
 /** Report an exception once, including errors recovered by a framework boundary. */
@@ -69,8 +69,8 @@ export function reportRequestError(error: mixed, phase: RequestPhase): void {
 
 /** Trace one request phase. The API is a no-op until the application installs an SDK. */
 export async function traceRequestPhase<T>(
-  phase: RequestPhase,
-  body: () => Promise<T>,
+  phase    : RequestPhase,
+  body     : () => Promise<T>,
   expected?: (error: mixed) => boolean,
 ): Promise<T> {
   return trace
@@ -171,9 +171,9 @@ export function createInstrumentation(hooks: Instrumentation = {}): {|
         );
         // Hosts return ordinary Responses; preserve the caller's generic type for other values.
         return new Response(body, {
-          status: result.status,
+          status    : result.status,
           statusText: result.statusText,
-          headers: result.headers,
+          headers   : result.headers,
         }) as $FlowFixMe;
       }
 
@@ -189,7 +189,7 @@ export function createInstrumentation(hooks: Instrumentation = {}): {|
               .startSpan(
                 "uf.request",
                 {
-                  kind: SpanKind.SERVER,
+                  kind      : SpanKind.SERVER,
                   attributes: { "http.request.method": request.method },
                 },
                 parent,
@@ -225,7 +225,7 @@ export function createInstrumentation(hooks: Instrumentation = {}): {|
 
 /** Both renderers report exceptions after their shell promise has resolved. */
 export function instrumentRender<Result extends { readonly error?: mixed, ... }>(
-  render: (onError: (error: mixed) => mixed) => Promise<Result>,
+  render : (onError: (error: mixed) => mixed) => Promise<Result>,
   report?: (error: mixed) => mixed,
 ): Promise<Result> {
   return traceRequestPhase<Result>("render", async (): Promise<Result> => {

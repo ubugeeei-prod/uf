@@ -284,8 +284,8 @@ function setSignature(type, key, forceReset, getCustomHooks) {
   if (!allSignaturesByType.has(type)) {
     allSignaturesByType.set(type, {
       forceReset,
-      ownKey: key,
-      fullKey: null,
+      ownKey        : key,
+      fullKey       : null,
       getCustomHooks: getCustomHooks || (() => []),
     });
   }
@@ -324,11 +324,11 @@ export function injectIntoGlobalHook(globalObject) {
     // Otherwise, the renderer will think that there is no global hook, and won't do the injection.
     let nextID = 0;
     globalObject.__REACT_DEVTOOLS_GLOBAL_HOOK__ = hook = {
-      renderers: new Map(),
-      supportsFiber: true,
-      inject: (injected) => nextID++,
+      renderers          : new Map(),
+      supportsFiber      : true,
+      inject             : (injected) => nextID++,
       onScheduleFiberRoot: (id, root, children) => {},
-      onCommitFiberRoot: (id, root, maybePriorityLevel, didError) => {},
+      onCommitFiberRoot  : (id, root, maybePriorityLevel, didError) => {},
       onCommitFiberUnmount() {},
     };
   }

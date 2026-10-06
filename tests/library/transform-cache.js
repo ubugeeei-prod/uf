@@ -82,7 +82,7 @@ const SECOND = Date.UTC(2026, 0, 2);
 
 /** One way a Node host loads Flow, and what `--import` has to name for it. */
 type Loader = {|
-  readonly name: string,
+  readonly name   : string,
   readonly imports: (root: string) => string,
 |};
 
@@ -336,10 +336,10 @@ const buildUf = (root: string, marker: string, when: number): string => {
  * compile, which is exactly what must not keep a finished program running.
  */
 const run = (
-  root: string,
-  env: { readonly [string]: string | void },
+  root  : string,
+  env   : { readonly [string]: string | void },
   loader: Loader,
-  entry: string = "main.js",
+  entry : string = "main.js",
 ): Result => {
   const environment: { [string]: string | void } = { ...process.env };
   environment.UF_PROJECT_ROOT = root;
@@ -361,17 +361,17 @@ const run = (
     NODE,
     ["--import", clear, "--import", loader.imports(root), path.join(root, entry)],
     {
-      cwd: root,
-      env: environment,
+      cwd     : root,
+      env     : environment,
       encoding: "utf8",
-      timeout: 60_000,
+      timeout : 60_000,
     },
   );
   return {
     status: result.status,
     stdout: result.stdout,
     stderr: result.stderr,
-    error: result.error == null ? null : String(result.error.message),
+    error : result.error == null ? null : String(result.error.message),
   };
 };
 
@@ -622,8 +622,8 @@ export function resolvesTheProjectsCompilerRuntime(loader: Loader): void {
     fs.writeFileSync(
       path.join(react, "package.json"),
       JSON.stringify({
-        name: "react",
-        type: "module",
+        name   : "react",
+        type   : "module",
         exports: { "./compiler-runtime": "./runtime.js" },
       }),
     );

@@ -17,8 +17,8 @@ export type NativeText = string | number;
 export type NativeCheckedState = boolean | "mixed";
 
 export type NativeAccessibilityState = {
-  readonly busy?: ?boolean,
-  readonly checked?: ?NativeCheckedState,
+  readonly busy?    : ?boolean,
+  readonly checked? : ?NativeCheckedState,
   readonly disabled?: ?boolean,
   readonly expanded?: ?boolean,
   readonly selected?: ?boolean,
@@ -26,34 +26,34 @@ export type NativeAccessibilityState = {
 };
 
 export type NativeAccessibilityValue = {
-  readonly min?: ?number,
-  readonly max?: ?number,
-  readonly now?: ?number,
+  readonly min? : ?number,
+  readonly max? : ?number,
+  readonly now? : ?number,
   readonly text?: ?string,
   readonly [key: string]: mixed,
 };
 
 export type NativeAccessibilityValueMatcher = {
-  readonly min?: number,
-  readonly max?: number,
-  readonly now?: number,
+  readonly min? : number,
+  readonly max? : number,
+  readonly now? : number,
   readonly text?: NativeMatcher,
 };
 
 export type NativeProps = {
   readonly accessibilityLabel?: ?string,
-  readonly accessibilityRole?: ?string,
+  readonly accessibilityRole? : ?string,
   readonly accessibilityState?: ?NativeAccessibilityState,
   readonly accessibilityValue?: ?NativeAccessibilityValue,
-  readonly disabled?: ?boolean,
-  readonly role?: ?string,
-  readonly testID?: ?string,
+  readonly disabled?          : ?boolean,
+  readonly role?              : ?string,
+  readonly testID?            : ?string,
   readonly [key: string]: mixed,
 };
 
 export type NativeElement = {
-  readonly type: string,
-  readonly props?: ?NativeProps,
+  readonly type     : string,
+  readonly props?   : ?NativeProps,
   readonly children?: ?$ReadOnlyArray<NativeNode>,
 };
 
@@ -68,51 +68,51 @@ export type NativeQueryOptions = {
 };
 
 export type NativeRoleOptions = {
-  readonly name?: NativeMatcher,
-  readonly exact?: boolean,
-  readonly busy?: boolean,
-  readonly checked?: NativeCheckedState,
+  readonly name?    : NativeMatcher,
+  readonly exact?   : boolean,
+  readonly busy?    : boolean,
+  readonly checked? : NativeCheckedState,
   readonly disabled?: boolean,
   readonly expanded?: boolean,
   readonly selected?: boolean,
-  readonly value?: NativeAccessibilityValueMatcher,
+  readonly value?   : NativeAccessibilityValueMatcher,
 };
 
 export type NativeQueries = {
   readonly getByText: (matcher: NativeMatcher, options?: NativeQueryOptions) => NativeElement,
   readonly queryByText: (
-    matcher: NativeMatcher,
+    matcher : NativeMatcher,
     options?: NativeQueryOptions,
   ) => NativeElement | null,
   readonly getAllByText: (
-    matcher: NativeMatcher,
+    matcher : NativeMatcher,
     options?: NativeQueryOptions,
   ) => $ReadOnlyArray<NativeElement>,
   readonly getByLabelText: (matcher: NativeMatcher, options?: NativeQueryOptions) => NativeElement,
   readonly queryByLabelText: (
-    matcher: NativeMatcher,
+    matcher : NativeMatcher,
     options?: NativeQueryOptions,
   ) => NativeElement | null,
   readonly getAllByLabelText: (
-    matcher: NativeMatcher,
+    matcher : NativeMatcher,
     options?: NativeQueryOptions,
   ) => $ReadOnlyArray<NativeElement>,
-  readonly getByRole: (role: string, options?: NativeRoleOptions) => NativeElement,
+  readonly getByRole  : (role: string, options?: NativeRoleOptions) => NativeElement,
   readonly queryByRole: (role: string, options?: NativeRoleOptions) => NativeElement | null,
   readonly getAllByRole: (
-    role: string,
+    role    : string,
     options?: NativeRoleOptions,
   ) => $ReadOnlyArray<NativeElement>,
-  readonly getByTestId: (testID: string) => NativeElement,
-  readonly queryByTestId: (testID: string) => NativeElement | null,
+  readonly getByTestId   : (testID: string) => NativeElement,
+  readonly queryByTestId : (testID: string) => NativeElement | null,
   readonly getAllByTestId: (testID: string) => $ReadOnlyArray<NativeElement>,
 };
 
 export type NativeRenderResult = {
   ...NativeQueries,
   readonly rerender: (ui: React.Node) => void,
-  readonly unmount: () => void,
-  readonly toJSON: () => NativeTree,
+  readonly unmount : () => void,
+  readonly toJSON  : () => NativeTree,
 };
 
 export class NativeTestingUnsupportedError extends Error {
@@ -205,8 +205,8 @@ function liveWithin(root: () => NativeTree): NativeQueries {
       rejectUnknownRoleOptions("getAllByRole", options);
       return many(byRole(root(), role, options), "role", role);
     },
-    getByTestId: (testID) => one(byTestId(root(), testID), "testID", testID),
-    queryByTestId: (testID) => optional(byTestId(root(), testID), "testID", testID),
+    getByTestId   : (testID) => one(byTestId(root(), testID), "testID", testID),
+    queryByTestId : (testID) => optional(byTestId(root(), testID), "testID", testID),
     getAllByTestId: (testID) => many(byTestId(root(), testID), "testID", testID),
   };
 }
@@ -227,8 +227,8 @@ const NATIVE_ROLE_VALUE_OPTION_KEYS: $ReadOnlyArray<string> = ["max", "min", "no
 type ReactTestJSONNode =
   | string
   | {
-      readonly type: string,
-      readonly props: NativeProps,
+      readonly type     : string,
+      readonly props    : NativeProps,
       readonly children?: null | $ReadOnlyArray<ReactTestJSONNode>,
     };
 
@@ -241,7 +241,7 @@ type ReactTestRendererInstance = {|
 |};
 
 type ReactTestRendererModule = {|
-  readonly act: <T>(() => T) => T,
+  readonly act   : <T>(() => T) => T,
   readonly create: (ui: React.Node) => ReactTestRendererInstance,
 |};
 
@@ -308,8 +308,8 @@ function nativeNodeOf(node: null | ReactTestJSONNode): NativeNode {
     return node;
   }
   return {
-    type: node.type,
-    props: node.props,
+    type    : node.type,
+    props   : node.props,
     children: node.children == null ? [] : node.children.map((child) => nativeNodeOf(child)),
   };
 }
@@ -351,8 +351,8 @@ export function accessibilityStateOf(node: NativeElement): NativeAccessibilitySt
   const state = node.props?.accessibilityState ?? {};
   const disabled = state.disabled ?? node.props?.disabled;
   return {
-    busy: state.busy ?? false,
-    checked: state.checked ?? false,
+    busy    : state.busy ?? false,
+    checked : state.checked ?? false,
     disabled: disabled ?? false,
     expanded: state.expanded ?? false,
     selected: state.selected ?? false,
@@ -362,9 +362,9 @@ export function accessibilityStateOf(node: NativeElement): NativeAccessibilitySt
 export function accessibilityValueOf(node: NativeElement): NativeAccessibilityValue {
   const value = node.props?.accessibilityValue ?? {};
   return {
-    min: value.min ?? null,
-    max: value.max ?? null,
-    now: value.now ?? null,
+    min : value.min ?? null,
+    max : value.max ?? null,
+    now : value.now ?? null,
     text: value.text ?? null,
   };
 }
@@ -394,8 +394,8 @@ function rejectUnknownRoleOptions(query: string, options: mixed): void {
 }
 
 function byText(
-  root: NativeTree,
-  matcher: NativeMatcher,
+  root    : NativeTree,
+  matcher : NativeMatcher,
   options?: NativeQueryOptions,
 ): $ReadOnlyArray<NativeElement> {
   return allElements(root).filter((node) => {
@@ -412,8 +412,8 @@ function byText(
 }
 
 function byLabelText(
-  root: NativeTree,
-  matcher: NativeMatcher,
+  root    : NativeTree,
+  matcher : NativeMatcher,
   options?: NativeQueryOptions,
 ): $ReadOnlyArray<NativeElement> {
   const exact = options?.exact ?? true;
@@ -439,8 +439,8 @@ function byLabelText(
 }
 
 function byRole(
-  root: NativeTree,
-  role: string,
+  root    : NativeTree,
+  role    : string,
   options?: NativeRoleOptions,
 ): $ReadOnlyArray<NativeElement> {
   return allElements(root).filter((node) => {
@@ -486,9 +486,9 @@ function elementOf(node: NativeNode): NativeElement | null {
 
 function matches(
   matcher: NativeMatcher,
-  value: string,
-  node: NativeElement,
-  exact: boolean,
+  value  : string,
+  node   : NativeElement,
+  exact  : boolean,
 ): boolean {
   if (typeof matcher === "function") return matcher(value, node);
   if (matcher instanceof RegExp) return matcher.test(value);
@@ -531,8 +531,8 @@ function one(values: $ReadOnlyArray<NativeElement>, kind: string, label: string)
 
 function optional(
   values: $ReadOnlyArray<NativeElement>,
-  kind: string,
-  label: string,
+  kind  : string,
+  label : string,
 ): NativeElement | null {
   if (values.length === 0) return null;
   return one(values, kind, label);
@@ -540,8 +540,8 @@ function optional(
 
 function many(
   values: $ReadOnlyArray<NativeElement>,
-  kind: string,
-  label: string,
+  kind  : string,
+  label : string,
 ): $ReadOnlyArray<NativeElement> {
   if (values.length > 0) return values;
   throw new Error(`@uniflowed/react-native-testing: found nothing for ${kind} ${label}`);

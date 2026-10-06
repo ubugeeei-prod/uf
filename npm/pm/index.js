@@ -7,10 +7,10 @@ import { nativeRuntimeRequired } from "@uniflowed/core/native";
 
 const MODULE = "@uniflowed/core/pm";
 
-export type PackageResolver = "uf-native";
-export type PackageScriptPolicy = "forbid" | "explicit-opt-in";
+export type PackageResolver      = "uf-native";
+export type PackageScriptPolicy  = "forbid" | "explicit-opt-in";
 export type PackageStoreStrategy = "content-addressed";
-export type PackageLinkMode = "hardlink-then-copy";
+export type PackageLinkMode      = "hardlink-then-copy";
 
 export type WorkspacePackage = {
   readonly name: string,
@@ -18,17 +18,17 @@ export type WorkspacePackage = {
 };
 
 export type PackageStore = {
-  readonly strategy: PackageStoreStrategy,
+  readonly strategy : PackageStoreStrategy,
   readonly directory: string,
 };
 
 export type PackageManagerPlan = {
-  readonly resolver: PackageResolver,
-  readonly lockfile: "uf.lock" | string,
-  readonly registry: string,
-  readonly scripts: PackageScriptPolicy,
-  readonly store: PackageStore,
-  readonly linkMode: PackageLinkMode,
+  readonly resolver         : PackageResolver,
+  readonly lockfile         : "uf.lock" | string,
+  readonly registry         : string,
+  readonly scripts          : PackageScriptPolicy,
+  readonly store            : PackageStore,
+  readonly linkMode         : PackageLinkMode,
   readonly workspacePackages: $ReadOnlyArray<WorkspacePackage>,
   readonly steps: $ReadOnlyArray<
     | "read-config"

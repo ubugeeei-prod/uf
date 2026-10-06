@@ -16,8 +16,8 @@ import uniflowed from "./index.js";
 
 /** The module `uf:mdx` compiles `source` to, for a project with `mdx`. */
 async function compiled(
-  mdx: { readonly jsxImportSource?: string },
-  source: string = "# Hello\n",
+  mdx      : { readonly jsxImportSource?: string },
+  source   : string = "# Hello\n",
   extension: string = "mdx",
 ): Promise<string> {
   const config = { app: { builtins: { markdown: { mdx } } } };

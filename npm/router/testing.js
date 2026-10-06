@@ -112,11 +112,11 @@ export const TEST_ACTION_ID: string = "7e57ac7107e57ac7".repeat(4);
  */
 export type TestRequestInit = {|
   /** A path on [`TEST_ORIGIN`], or an absolute URL. Defaults to `/`. */
-  readonly url?: string,
-  readonly method?: string,
+  readonly url?    : string,
+  readonly method? : string,
   readonly headers?: { readonly [string]: string },
   readonly cookies?: { readonly [string]: string },
-  readonly body?: string | URLSearchParams | FormData,
+  readonly body?   : string | URLSearchParams | FormData,
   /**
    * The cache the host would install for this request, which is what
    * `revalidateTag`, `revalidatePath` and `cacheFunction` reach.
@@ -191,7 +191,7 @@ export function testRequest(init?: TestRequestInit): Request {
  */
 export async function withRequest<T>(
   request: Request | TestRequestInit,
-  body: () => T | Promise<T>,
+  body   : () => T | Promise<T>,
 ): Promise<T> {
   const cache = request instanceof Request ? undefined : request.cache;
   const built = request instanceof Request ? request : testRequest(request);
@@ -212,7 +212,7 @@ export type ActionCallInit = {|
   /** Headers beyond the ones the browser's reference sends. Override to test a refusal. */
   readonly headers?: { readonly [string]: string },
   readonly cookies?: { readonly [string]: string },
-  readonly cache?: CacheStore | CacheOptions,
+  readonly cache?  : CacheStore | CacheOptions,
   /**
    * Which door the call comes through.
    *
@@ -249,36 +249,36 @@ export type ActionOutcome<R> =
        * a new one. Through `"form"`, the value the action returned, which a
        * browser never sees.
        */
-      readonly value: R,
-      readonly response: Response,
+      readonly value      : R,
+      readonly response   : Response,
       readonly revalidated: Revalidations,
     |}
   | {|
-      readonly kind: "redirect",
-      readonly to: string,
-      readonly permanent: boolean,
-      readonly response: Response,
+      readonly kind       : "redirect",
+      readonly to         : string,
+      readonly permanent  : boolean,
+      readonly response   : Response,
       readonly revalidated: Revalidations,
     |}
   | {|
-      readonly kind: "not-found",
-      readonly response: Response,
+      readonly kind       : "not-found",
+      readonly response   : Response,
       readonly revalidated: Revalidations,
     |}
   | {|
-      readonly kind: "unauthorized",
-      readonly response: Response,
+      readonly kind       : "unauthorized",
+      readonly response   : Response,
       readonly revalidated: Revalidations,
     |}
   | {|
-      readonly kind: "forbidden",
-      readonly response: Response,
+      readonly kind       : "forbidden",
+      readonly response   : Response,
       readonly revalidated: Revalidations,
     |}
   | {|
-      readonly kind: "threw",
-      readonly error: mixed,
-      readonly response: Response,
+      readonly kind       : "threw",
+      readonly error      : mixed,
+      readonly response   : Response,
       readonly revalidated: Revalidations,
     |}
   | {|
@@ -287,9 +287,9 @@ export type ActionOutcome<R> =
        * `Map`, a class instance. `error` is the `ActionValueError` naming
        * where it was; the browser got a `500`.
        */
-      readonly kind: "unsendable",
-      readonly error: ActionValueError,
-      readonly response: Response,
+      readonly kind       : "unsendable",
+      readonly error      : ActionValueError,
+      readonly response   : Response,
       readonly revalidated: Revalidations,
     |}
   | {|
@@ -298,8 +298,8 @@ export type ActionOutcome<R> =
        * the test's `headers` overrode, or a payload over a limit only the
        * decoder counts. `response.status` says which.
        */
-      readonly kind: "refused",
-      readonly response: Response,
+      readonly kind       : "refused",
+      readonly response   : Response,
       readonly revalidated: Revalidations,
     |};
 
@@ -328,8 +328,8 @@ export type ActionOutcome<R> =
  */
 export async function callAction<Args extends $ReadOnlyArray<ActionArgument>, R>(
   action: (...args: Args) => Promise<R>,
-  args: Args,
-  init?: ActionCallInit,
+  args  : Args,
+  init? : ActionCallInit,
 ): Promise<ActionOutcome<R>> {
   const door = init?.door ?? "fetch";
   const request = door === "form" ? formActionRequest(args, init) : fetchActionRequest(args, init);
@@ -354,10 +354,10 @@ export async function callAction<Args extends $ReadOnlyArray<ActionArgument>, R>
   const dispatch = createActionDispatcher({
     actions: [
       {
-        id: TEST_ACTION_ID,
+        id    : TEST_ACTION_ID,
         module: init?.name ?? "server action under test",
         export: "action",
-        load: async () => ({ action: observed }),
+        load  : async () => ({ action: observed }),
       },
     ],
   });
@@ -423,7 +423,7 @@ export async function callAction<Args extends $ReadOnlyArray<ActionArgument>, R>
  */
 export function serverReferences<M extends { readonly [string]: mixed }>(
   module: M,
-  init?: ActionCallInit | (() => ActionCallInit),
+  init? : ActionCallInit | (() => ActionCallInit),
 ): M {
   const references: { [string]: mixed } = {};
   for (const [name, exported] of Object.entries(module)) {
@@ -440,12 +440,12 @@ export function serverReferences<M extends { readonly [string]: mixed }>(
       const given: ActionCallInit = (typeof init === "function" ? init() : init) ?? {};
       const label = given.name ?? name;
       const outcome = await callAction(action, args, {
-        url: given.url,
+        url    : given.url,
         headers: given.headers,
         cookies: given.cookies,
-        cache: given.cache,
-        name: label,
-        door: "fetch",
+        cache  : given.cache,
+        name   : label,
+        door   : "fetch",
       });
       // What the browser's reference does with each outcome: a redirect
       // resolves with nothing once it has navigated (there is no navigation
@@ -480,7 +480,7 @@ function fetchActionRequest(args: $ReadOnlyArray<ActionArgument>, init?: ActionC
     init?.headers,
   );
   return testRequest({
-    url: url.href,
+    url   : url.href,
     method: "POST",
     headers,
     cookies: init?.cookies,
@@ -516,18 +516,18 @@ function formActionRequest(args: $ReadOnlyArray<ActionArgument>, init?: ActionCa
   }
   const url = new URL(init?.url ?? "/", TEST_ORIGIN);
   return testRequest({
-    url: url.href,
+    url   : url.href,
     method: "POST",
     headers: merged(
       {
-        origin: url.origin,
+        origin          : url.origin,
         "sec-fetch-site": "same-origin",
-        "content-type": FORM_ACTION_CONTENT_TYPE,
+        "content-type"  : FORM_ACTION_CONTENT_TYPE,
       },
       init?.headers,
     ),
     cookies: init?.cookies,
-    body: fields.toString(),
+    body   : fields.toString(),
   });
 }
 
@@ -573,8 +573,8 @@ function unsendable(value: mixed): ActionValueError {
  */
 async function withLifecycle<T>(
   request: Request,
-  cache: CacheStore | CacheOptions | void,
-  body: () => Promise<T>,
+  cache  : CacheStore | CacheOptions | void,
+  body   : () => Promise<T>,
 ): Promise<{| readonly value: T, readonly revalidated: Revalidations |}> {
   const lifecycle = beginRequest(request);
   const tags: Array<string> = [];
@@ -606,7 +606,7 @@ async function withLifecycle<T>(
  */
 function watchInvalidations(
   store: CacheStore,
-  tags: Array<string>,
+  tags : Array<string>,
   paths: Array<string>,
 ): () => void {
   // Taken off the instance and called with it below, which is the binding the
@@ -639,10 +639,10 @@ function watchInvalidations(
 
 /** A request to a built application, described by what a test cares about. */
 export type BuiltRequestInit = {|
-  readonly method?: string,
+  readonly method? : string,
   readonly headers?: { readonly [string]: string },
   readonly cookies?: { readonly [string]: string },
-  readonly body?: string | URLSearchParams | FormData,
+  readonly body?   : string | URLSearchParams | FormData,
 |};
 
 /**
@@ -676,7 +676,7 @@ export type BuiltApp = {|
    */
   readonly submit: (
     pathname: string,
-    fields: { readonly [string]: string },
+    fields  : { readonly [string]: string },
     options?: {| readonly form?: number, readonly cookies?: { readonly [string]: string } |},
   ) => Promise<Response>,
   /** Resolves once every request answered so far has settled (`after()` has run). */
@@ -695,7 +695,7 @@ export type BuiltApp = {|
 type Handler = {|
   readonly fetch: (request: Request) => Promise<Response>,
   readonly beginRequest: (request: Request) => {|
-    readonly run: <T>(body: () => Promise<T>) => Promise<T>,
+    readonly run   : <T>(body: () => Promise<T>) => Promise<T>,
     readonly settle: () => Promise<void>,
   |},
   readonly routing?: mixed,
@@ -726,7 +726,7 @@ export async function openBuild(directory: string | URL): Promise<BuiltApp> {
   const { createServeHandler } = await import("@uniflowed/server/node");
   const serve = createServeHandler({
     staticDir: path.join(root, "static"),
-    handle: handler.fetch,
+    handle   : handler.fetch,
     // The build's own rules, whatever their shape; `createServeHandler` reads them.
     routing: handler.routing as $FlowFixMe,
   });
@@ -743,7 +743,7 @@ export async function openBuild(directory: string | URL): Promise<BuiltApp> {
       // The error goes where a host's error reporting would put it: `errors()`.
       thrown.push(error);
       response = new Response("500 Internal Server Error\n", {
-        status: 500,
+        status : 500,
         headers: { "content-type": "text/plain; charset=utf-8" },
       });
     }
@@ -780,16 +780,16 @@ export async function openBuild(directory: string | URL): Promise<BuiltApp> {
       },
     });
     return new Response(watched, {
-      status: response.status,
+      status    : response.status,
       statusText: response.statusText,
-      headers: response.headers,
+      headers   : response.headers,
     });
   }
 
   function request(
     pathname: string,
-    init?: BuiltRequestInit,
-    extra?: { readonly [string]: string },
+    init?   : BuiltRequestInit,
+    extra?  : { readonly [string]: string },
   ): Request {
     if (!pathname.startsWith("/") || pathname.startsWith("//")) {
       throw new TypeError(
@@ -797,18 +797,18 @@ export async function openBuild(directory: string | URL): Promise<BuiltApp> {
       );
     }
     return testRequest({
-      url: pathname,
-      method: init?.method,
+      url    : pathname,
+      method : init?.method,
       headers: merged(extra, init?.headers),
       cookies: init?.cookies,
-      body: init?.body,
+      body   : init?.body,
     });
   }
 
   return {
     directory: root,
-    fetch: (pathname, init) => answer(request(pathname, init)),
-    render: (pathname, init) => answer(request(pathname, init, { accept: "text/html" })),
+    fetch    : (pathname, init) => answer(request(pathname, init)),
+    render   : (pathname, init) => answer(request(pathname, init, { accept: "text/html" })),
     flight: async (pathname, init) => {
       const url = new URL(pathname, TEST_ORIGIN);
       url.pathname = `${url.pathname.replace(/\/$/, "")}/__uf.flight`;
@@ -839,15 +839,15 @@ export async function openBuild(directory: string | URL): Promise<BuiltApp> {
       const target = new URL(form.action === "" ? pathname : form.action, TEST_ORIGIN);
       return answer(
         testRequest({
-          url: `${target.pathname}${target.search}`,
+          url   : `${target.pathname}${target.search}`,
           method: "POST",
           headers: {
-            origin: TEST_ORIGIN,
+            origin          : TEST_ORIGIN,
             "sec-fetch-site": "same-origin",
-            "content-type": FORM_ACTION_CONTENT_TYPE,
+            "content-type"  : FORM_ACTION_CONTENT_TYPE,
           },
           cookies: options?.cookies,
-          body: body.toString(),
+          body   : body.toString(),
         }),
       );
     },
@@ -891,7 +891,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   );
   const binary = options.binary ?? process.env.UF_BINARY ?? "uf";
   const child = spawn(binary, ["--cwd", root, "build", "--adapter", "node", "--color", "never"], {
-    env: { ...process.env, ...options.env },
+    env  : { ...process.env, ...options.env },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let transcript = "";

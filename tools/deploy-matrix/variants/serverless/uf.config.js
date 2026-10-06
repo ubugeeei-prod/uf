@@ -16,10 +16,10 @@ import { defineConfig } from "@uniflowed/config";
 export default defineConfig({
   app: {
     router: {
-      entry: "app.js",
-      root: "app",
+      entry    : "app.js",
+      root     : "app",
       redirects: [{ source: "/moved/:slug", destination: "/posts/:slug", permanent: true }],
-      rewrites: [{ source: "/articles/:slug", destination: "/posts/:slug" }],
+      rewrites : [{ source: "/articles/:slug", destination: "/posts/:slug" }],
       headers: [
         { source: "/:path*", headers: { "x-matrix": "deploy-matrix" } },
         { source: "/api/:rest*", headers: { "cache-control": "no-store" } },
@@ -31,6 +31,6 @@ export default defineConfig({
   },
   build: {
     entries: ["app.js"],
-    outDir: "dist",
+    outDir : "dist",
   },
 });

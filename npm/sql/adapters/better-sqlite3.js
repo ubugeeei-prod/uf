@@ -22,7 +22,7 @@ export interface BetterSqlite3Statement {
   readonly reader: boolean;
   all(...params: $ReadOnlyArray<SqlParam>): $ReadOnlyArray<mixed>;
   run(...params: $ReadOnlyArray<SqlParam>): {
-    readonly changes: number,
+    readonly changes        : number,
     readonly lastInsertRowid: number | bigint,
     ...
   };
@@ -36,15 +36,15 @@ export interface BetterSqlite3Database {
 }
 
 export type BetterSqlite3Options = {|
-  readonly begin?: string,
+  readonly begin?         : string,
   readonly statementCache?: number,
-  readonly maxParams?: number,
+  readonly maxParams?     : number,
 |};
 
 /** A [`Queryable`] and a [`SyncQueryable`] over one better-sqlite3 `Database`. */
 export function fromBetterSqlite3(
   database: BetterSqlite3Database,
-  options: BetterSqlite3Options = {},
+  options : BetterSqlite3Options = {},
 ): Queryable & SyncQueryable {
   const statement = statementCache((text) => {
     const prepared = database.prepare(text);
@@ -70,16 +70,16 @@ export function fromBetterSqlite3(
     }
     const result = prepared.run(...params);
     return {
-      rows: [],
+      rows        : [],
       rowsAffected: count(result.changes),
       lastInsertId: rowId(result.lastInsertRowid),
     };
   };
   return singleConnectionSync({
-    engine: "sqlite",
+    engine   : "sqlite",
     maxParams: options.maxParams ?? 32766,
-    begin: options.begin,
-    run: async (text, params, mode) => runSync(text, params, mode),
+    begin    : options.begin,
+    run      : async (text, params, mode) => runSync(text, params, mode),
     runSync,
   });
 }

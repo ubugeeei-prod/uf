@@ -18,10 +18,10 @@ import { singleConnection, transactionOn } from "../index.js";
 type PgResult = { readonly rows: $ReadOnlyArray<mixed>, readonly rowCount: number | null, ... };
 
 type PgQuery = {|
-  readonly text: string,
-  readonly values: $ReadOnlyArray<mixed>,
+  readonly text   : string,
+  readonly values : $ReadOnlyArray<mixed>,
   readonly rowMode: "array",
-  readonly types: {| readonly getTypeParser: () => (value: string) => string |},
+  readonly types  : {| readonly getTypeParser: () => (value: string) => string |},
 |};
 
 /** A connected `pg.Client` or a client checked out of a pool. */
@@ -67,9 +67,9 @@ export function fromPgClient(client: PgClient): Queryable {
 /** A [`Queryable`] over a `pg.Pool`. */
 export function fromPgPool(pool: PgPool): Queryable {
   return {
-    engine: "postgresql",
+    engine   : "postgresql",
     maxParams: 65535,
-    query: runOn(pool),
+    query    : runOn(pool),
     transaction: async <T>(body: (tx: Queryable) => Promise<T>): Promise<T> => {
       const client = await pool.connect();
       let broken: mixed = undefined;

@@ -11,19 +11,19 @@ const LocaleContext: React.Context<Locale> = createContext({ locale: "en-US", di
 
 /** An explicit locale keeps server and client output identical. Nested providers form islands. */
 export component I18nProvider(
-  children: React.Node,
-  locale?: string,
+  children  : React.Node,
+  locale?   : string,
   direction?: "ltr" | "rtl",
-  render?: RenderProp,
+  render?   : RenderProp,
   ...rest: Rest
 ) {
   const parent = useLocale();
-  const state = useMemo((): Locale => {
+  const state  = useMemo((): Locale => {
     const resolved = new Intl.Locale(locale ?? parent.locale);
     const script = resolved.maximize().script;
     const rtl = ["Arab", "Hebr", "Thaa", "Nkoo", "Adlm", "Rohg"].includes(script ?? "");
     return {
-      locale: resolved.toString(),
+      locale   : resolved.toString(),
       direction: direction ?? (locale == null ? parent.direction : rtl ? "rtl" : "ltr"),
     };
   }, [locale, direction, parent]);
@@ -32,7 +32,7 @@ export component I18nProvider(
     <LocaleContext.Provider value={state}>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -75,7 +75,7 @@ export function startsWithLocale(text: string, query: string, locale: string): b
 /** Filtering uses the same collation as typeahead; consumers own the result list. */
 export hook useFilter(): {
   startsWith: (text: string, query: string) => boolean,
-  contains: (text: string, query: string) => boolean,
+  contains  : (text: string, query: string) => boolean,
 } {
   const { locale } = useLocale();
   return useMemo(

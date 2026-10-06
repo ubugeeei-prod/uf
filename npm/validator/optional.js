@@ -39,8 +39,8 @@ import { describe, isAsync, makeAsyncSchema, makeSchema, ok, run, runAsync } fro
  * same three lines.
  */
 function wrap<TOutput, TInput>(
-  inner: Schema<TOutput, mixed>,
-  shortcut: (value: mixed) => null | Result<TOutput>,
+  inner      : Schema<TOutput, mixed>,
+  shortcut   : (value: mixed) => null | Result<TOutput>,
   description: () => Description,
 ): Schema<TOutput, TInput> {
   if (isAsync(inner)) {
@@ -97,7 +97,7 @@ export function nullish<TOutput, TInput>(
  */
 export function withDefault<TOutput, TInput>(
   schema: Schema<TOutput, TInput>,
-  value: TOutput,
+  value : TOutput,
 ): Schema<TOutput, void | TInput> {
   return wrap(
     schema,
@@ -116,7 +116,7 @@ export function withDefault<TOutput, TInput>(
  */
 export function fallback<TOutput>(
   schema: Schema<TOutput, mixed>,
-  value: TOutput,
+  value : TOutput,
 ): Schema<TOutput, mixed> {
   const description = (): Description => ({ kind: "fallback", inner: describe(schema) });
   if (isAsync(schema)) {

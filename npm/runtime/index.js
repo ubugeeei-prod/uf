@@ -45,11 +45,11 @@ export type RuntimeCapability =
   | "terminal-ui";
 
 export type RuntimeContract = {
-  readonly standard: "winter-tc",
-  readonly language: "flow",
+  readonly standard        : "winter-tc",
+  readonly language        : "flow",
   readonly javascriptEngine: JavaScriptEngine,
-  readonly hosts: $ReadOnlyArray<RuntimeEngine>,
-  readonly capabilities: $ReadOnlyArray<RuntimeCapability>,
+  readonly hosts           : $ReadOnlyArray<RuntimeEngine>,
+  readonly capabilities    : $ReadOnlyArray<RuntimeCapability>,
 };
 
 export function run(entry: string): Promise<void> {

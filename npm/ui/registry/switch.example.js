@@ -6,9 +6,9 @@ import { Switch } from "./switch.js";
 
 const styles = stylex.create({
   stack: {
-    display: "grid",
+    display     : "grid",
     justifyItems: "start",
-    gap: ufTokens.space2,
+    gap         : ufTokens.space2,
   },
 });
 

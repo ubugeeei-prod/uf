@@ -88,14 +88,14 @@ import { clamp, fraction, isReversed, snap } from "./internal/range.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 type SliderState = {|
-  readonly values: $ReadOnlyArray<number>,
-  readonly min: number,
-  readonly max: number,
-  readonly step: number,
-  readonly largeStep: number,
+  readonly values     : $ReadOnlyArray<number>,
+  readonly min        : number,
+  readonly max        : number,
+  readonly step       : number,
+  readonly largeStep  : number,
   readonly orientation: Orientation,
-  readonly disabled: boolean,
-  readonly valueText: ((value: number, index: number) => string) | void,
+  readonly disabled   : boolean,
+  readonly valueText  : ((value: number, index: number) => string) | void,
   /** The values the last key left, which can be ahead of `values`. */
   readonly valuesNow: () => $ReadOnlyArray<number>,
   /** One thumb's value from [`valuesNow`]. */
@@ -103,7 +103,7 @@ type SliderState = {|
   /** Move one thumb, holding it inside its neighbours. */
   readonly setAt: (index: number, value: number) => void,
   /** The thumb nearest a value, which is the one a press on the track moves. */
-  readonly nearest: (value: number) => number,
+  readonly nearest : (value: number) => number,
   readonly trackRef: { current: HTMLElement | null },
 |};
 
@@ -126,22 +126,22 @@ hook useSlider(part: string): SliderState {
  * caller narrow a union to read their own value back.
  */
 component SliderRoot(
-  children: React.Node,
-  value?: $ReadOnlyArray<number>,
-  defaultValue?: $ReadOnlyArray<number> = [0],
+  children      : React.Node,
+  value?        : $ReadOnlyArray<number>,
+  defaultValue? : $ReadOnlyArray<number> = [0],
   onValueChange?: (value: $ReadOnlyArray<number>) => void,
-  min?: number = 0,
-  max?: number = 100,
-  step?: number = 1,
-  largeStep?: number = 10,
-  orientation?: Orientation = "horizontal",
-  disabled?: boolean = false,
-  valueText?: (value: number, index: number) => string,
-  render?: RenderProp,
+  min?          : number = 0,
+  max?          : number = 100,
+  step?         : number = 1,
+  largeStep?    : number = 10,
+  orientation?  : Orientation = "horizontal",
+  disabled?     : boolean = false,
+  valueText?    : (value: number, index: number) => string,
+  render?       : RenderProp,
   ...rest: Rest
 ) {
   const [values, setValues] = useControlled(value, defaultValue, onValueChange);
-  const trackRef = useRef<HTMLElement | null>(null);
+  const trackRef            = useRef<HTMLElement | null>(null);
   // Ahead of `values` for the length of a batch React has not committed.
   // `useStableCallback` holds the render that installed the handler until its
   // insertion effect, so two arrow keys in one batch both used to read the
@@ -152,7 +152,7 @@ component SliderRoot(
     live.current = values;
   });
   const valuesNow = useStableCallback((): $ReadOnlyArray<number> => live.current);
-  const valueAt = useStableCallback((index: number): number => live.current[index] ?? min);
+  const valueAt   = useStableCallback((index: number): number => live.current[index] ?? min);
 
   const setAt = useStableCallback((index: number, next: number) => {
     if (disabled) {
@@ -231,7 +231,7 @@ component SliderRoot(
     <SliderContext.Provider value={state}>
       {
         match (render) {
-          undefined => <div {...rest}>{children}</div>,
+          undefined    => <div {...rest}>{children}</div>,
           const custom => custom(withProps(rest, { children })),
         }
       }
@@ -316,7 +316,7 @@ component SliderTrack(children: React.Node, render?: RenderProp, ...rest: Rest) 
   });
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }
@@ -343,12 +343,12 @@ component SliderRange(render?: RenderProp, ...rest: Rest) {
     style: {
       ...(rest.style as $FlowFixMe),
       "--uf-slider-start": fraction(start, slider.min, slider.max),
-      "--uf-slider-end": fraction(end, slider.min, slider.max),
+      "--uf-slider-end"  : fraction(end, slider.min, slider.max),
     },
   });
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }
@@ -373,14 +373,14 @@ component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
   const value = slider.values[index] ?? slider.min;
   const [lower, upper] = boundsOf(slider.values, index, slider.min, slider.max);
   const props = withProps(passed, {
-    "aria-disabled": slider.disabled ? "true" : undefined,
+    "aria-disabled"   : slider.disabled ? "true" : undefined,
     "aria-orientation": slider.orientation,
     // The neighbour's value, not the slider's end. A reader told they may
     // set this thumb to 90 while the control refuses at 60 has been told
     // something the control disagrees with.
-    "aria-valuemax": upper,
-    "aria-valuemin": lower,
-    "aria-valuenow": value,
+    "aria-valuemax" : upper,
+    "aria-valuemin" : lower,
+    "aria-valuenow" : value,
     "aria-valuetext": slider.valueText?.(value, index),
     onKeyDown: composeHandlers(rest.onKeyDown, (event: $FlowFixMe) => {
       if (slider.disabled) {
@@ -417,7 +417,7 @@ component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
   });
 
   return match (render) {
-    undefined => <span {...props} />,
+    undefined    => <span {...props} />,
     const custom => custom(props),
   };
 }
@@ -434,12 +434,12 @@ function stepFor(key: string, step: number, largeStep: number, reversed: boolean
   const move = step <= 0 ? 1 : step;
   return match (key) {
     "ArrowRight" => move * forward,
-    "ArrowLeft" => -move * forward,
-    "ArrowUp" => move,
-    "ArrowDown" => -move,
-    "PageUp" => largeStep <= 0 ? move : largeStep,
-    "PageDown" => -(largeStep <= 0 ? move : largeStep),
-    _ => null,
+    "ArrowLeft"  => -move * forward,
+    "ArrowUp"    => move,
+    "ArrowDown"  => -move,
+    "PageUp"     => largeStep <= 0 ? move : largeStep,
+    "PageDown"   => -(largeStep <= 0 ? move : largeStep),
+    _            => null,
   };
 }
 
@@ -451,9 +451,9 @@ function stepFor(key: string, step: number, largeStep: number, reversed: boolean
  */
 function boundsOf(
   values: $ReadOnlyArray<number>,
-  index: number,
-  min: number,
-  max: number,
+  index : number,
+  min   : number,
+  max   : number,
 ): [number, number] {
   const below = index > 0 ? values[index - 1] : undefined;
   const above = index < values.length - 1 ? values[index + 1] : undefined;

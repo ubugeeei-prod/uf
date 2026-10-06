@@ -123,15 +123,15 @@ const POINTER_STEP = 1;
 type ResizableState = {|
   readonly base: string,
   /** The primary pane's share of the group, as a percentage. */
-  readonly value: number,
+  readonly value   : number,
   readonly setValue: (value: number) => void,
-  readonly min: number,
-  readonly max: number,
-  readonly step: number,
+  readonly min     : number,
+  readonly max     : number,
+  readonly step    : number,
   /** How the panes are laid out; the handle's own orientation is the other one. */
-  readonly orientation: Orientation,
-  readonly disabled: boolean,
-  readonly hasPrimary: boolean,
+  readonly orientation    : Orientation,
+  readonly disabled       : boolean,
+  readonly hasPrimary     : boolean,
   readonly registerPrimary: (present: boolean) => void,
   /**
    * The element a drag is measured against.
@@ -166,26 +166,26 @@ hook useResizable(part: string): ResizableState {
  * disappear gives it a floor.
  */
 component ResizablePanelGroup(
-  children: React.Node,
-  value?: number,
-  defaultValue?: number = 50,
+  children      : React.Node,
+  value?        : number,
+  defaultValue? : number = 50,
   onValueChange?: (value: number) => void,
-  min?: number = 0,
-  max?: number = 100,
-  step?: number = 10,
-  orientation?: Orientation = "horizontal",
-  disabled?: boolean = false,
+  min?          : number = 0,
+  max?          : number = 100,
+  step?         : number = 10,
+  orientation?  : Orientation = "horizontal",
+  disabled?     : boolean = false,
   ...rest: Rest
 ) {
-  const base = useId();
-  const [share, setShare] = useControlled(value, defaultValue, onValueChange);
+  const base                        = useId();
+  const [share,      setShare]      = useControlled(value, defaultValue, onValueChange);
   const [hasPrimary, setHasPrimary] = useState(false);
-  const groupRef = useRef<HTMLElement | null>(null);
+  const groupRef                    = useRef<HTMLElement | null>(null);
 
   const state = useMemo(
     () => ({
       base,
-      value: clamp(share, min, max),
+      value   : clamp(share, min, max),
       setValue: setShare,
       min,
       max,
@@ -431,24 +431,24 @@ component ResizableHandle(label?: string = "Resize", ...rest: Rest) {
  * a horizontal axis is on the left, so the arrows mirror.
  */
 function stepFor(
-  key: string,
-  step: number,
+  key        : string,
+  step       : number,
   orientation: Orientation,
-  reversed: boolean,
+  reversed   : boolean,
 ): number | null {
   const move = step <= 0 ? 1 : step;
   if (orientation === "vertical") {
     return match (key) {
       "ArrowDown" => move,
-      "ArrowUp" => -move,
-      _ => null,
+      "ArrowUp"   => -move,
+      _           => null,
     };
   }
   const forward = reversed ? -1 : 1;
   return match (key) {
     "ArrowRight" => move * forward,
-    "ArrowLeft" => -move * forward,
-    _ => null,
+    "ArrowLeft"  => -move * forward,
+    _            => null,
   };
 }
 

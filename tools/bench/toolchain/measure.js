@@ -30,9 +30,9 @@ import process from "node:process";
 
 export type Summary = {
   readonly median: number,
-  readonly min: number,
-  readonly max: number,
-  readonly mean: number,
+  readonly min   : number,
+  readonly max   : number,
+  readonly mean  : number,
   readonly stddev: number,
 };
 
@@ -60,9 +60,9 @@ export function summarise(samples: $ReadOnlyArray<number>): Summary {
   const variance = samples.reduce((sum, value) => sum + (value - mean) ** 2, 0) / samples.length;
   return {
     median: round(median),
-    min: round(sorted[0]),
-    max: round(sorted[sorted.length - 1]),
-    mean: round(mean),
+    min   : round(sorted[0]),
+    max   : round(sorted[sorted.length - 1]),
+    mean  : round(mean),
     stddev: round(Math.sqrt(variance)),
   };
 }
@@ -75,12 +75,12 @@ export type Finished = {
    * User plus system CPU time of the command and every process under it that
    * was waited for, or `null` when it was not asked for or could not be read.
    */
-  readonly cpuMs: number | null,
-  readonly code: number | null,
-  readonly signal: string | null,
+  readonly cpuMs   : number | null,
+  readonly code    : number | null,
+  readonly signal  : string | null,
   readonly timedOut: boolean,
-  readonly stdout: string,
-  readonly stderr: string,
+  readonly stdout  : string,
+  readonly stderr  : string,
 };
 
 /**
@@ -126,10 +126,10 @@ type Stream = {
 };
 
 type Child = {
-  readonly pid: ?number,
+  readonly pid   : ?number,
   readonly stdout: ?Stream,
   readonly stderr: ?Stream,
-  readonly stdio: $ReadOnlyArray<?Stream>,
+  readonly stdio : $ReadOnlyArray<?Stream>,
   on(event: string, listener: (...values: Array<mixed>) => void): mixed,
   ...
 };
@@ -188,12 +188,12 @@ export function stopEverything(): void {
  */
 export function run(
   program: string,
-  args: $ReadOnlyArray<string>,
+  args   : $ReadOnlyArray<string>,
   options: {
-    readonly cwd: string,
-    readonly env: Environment,
+    readonly cwd      : string,
+    readonly env      : Environment,
     readonly timeoutMs: number,
-    readonly cpu?: boolean,
+    readonly cpu?     : boolean,
   },
 ): Promise<Finished> {
   return new Promise<Finished>((resolve, reject) => {
@@ -203,16 +203,16 @@ export function run(
     let timedOut = false;
     const child: Child = cpu
       ? spawn("/bin/sh", ["-c", WITH_TIMES, "sh", program, ...args], {
-          cwd: options.cwd,
-          env: options.env,
+          cwd     : options.cwd,
+          env     : options.env,
           detached: true,
-          stdio: ["ignore", "pipe", "pipe", "pipe"],
+          stdio   : ["ignore", "pipe", "pipe", "pipe"],
         })
       : spawn(program, [...args], {
-          cwd: options.cwd,
-          env: options.env,
+          cwd     : options.cwd,
+          env     : options.env,
           detached: true,
-          stdio: ["ignore", "pipe", "pipe"],
+          stdio   : ["ignore", "pipe", "pipe"],
         });
     live.add(child);
     let stdout = "";
@@ -247,9 +247,9 @@ export function run(
       clearTimeout(timer);
       live.delete(child);
       resolve({
-        ms: exitedAt - startedAt,
-        cpuMs: cpu ? parseTimes(times) : null,
-        code: typeof code === "number" ? code : null,
+        ms    : exitedAt - startedAt,
+        cpuMs : cpu ? parseTimes(times) : null,
+        code  : typeof code === "number" ? code : null,
         signal: typeof signal === "string" ? signal : null,
         timedOut,
         stdout,
@@ -293,9 +293,9 @@ export function freePort(): Promise<number> {
  * yet; this is the four lines it would have saved.
  */
 async function fetchText(
-  url: string,
+  url    : string,
   headers: { [string]: string },
-  ms: number,
+  ms     : number,
 ): Promise<{ readonly status: number, readonly body: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
@@ -311,32 +311,32 @@ async function fetchText(
 
 export type DevServer = {
   /** The command as typed, for messages: `uf dev`, `vp dev`. */
-  readonly label: string,
-  readonly port: number,
-  readonly pid: ?number,
+  readonly label    : string,
+  readonly port     : number,
+  readonly pid      : ?number,
   readonly startedAt: number,
-  readonly exited: () => number | null,
-  readonly log: () => string,
-  readonly stop: () => Promise<void>,
+  readonly exited   : () => number | null,
+  readonly log      : () => string,
+  readonly stop     : () => Promise<void>,
 };
 
 /** Start a long-running server in a process group of its own. */
 export function startDevServer(
   program: string,
-  args: $ReadOnlyArray<string>,
+  args   : $ReadOnlyArray<string>,
   options: {
-    readonly cwd: string,
-    readonly env: Environment,
-    readonly port: number,
+    readonly cwd   : string,
+    readonly env   : Environment,
+    readonly port  : number,
     readonly label?: string,
   },
 ): DevServer {
   const startedAt = performance.now();
   const child: Child = spawn(program, [...args], {
-    cwd: options.cwd,
-    env: options.env,
+    cwd     : options.cwd,
+    env     : options.env,
     detached: true,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio   : ["ignore", "pipe", "pipe"],
   });
   live.add(child);
   let output = "";
@@ -356,11 +356,11 @@ export function startDevServer(
   });
   return {
     label: options.label ?? "uf dev",
-    port: options.port,
-    pid: child.pid,
+    port : options.port,
+    pid  : child.pid,
     startedAt,
     exited: () => exitCode,
-    log: () => output,
+    log   : () => output,
     stop: async () => {
       if (exitCode == null) {
         signalGroup(child, "SIGTERM");
@@ -404,7 +404,7 @@ export function tail(text: string, lines: number = 30): string {
  * answer, because the server answers before its routes are wired.
  */
 export async function waitForDocument(
-  server: DevServer,
+  server   : DevServer,
   timeoutMs: number,
 ): Promise<{ readonly ms: number, readonly body: string }> {
   const deadline = server.startedAt + timeoutMs;
@@ -559,9 +559,9 @@ async function crawl(base: string, document: string): Promise<Set<string>> {
 }
 
 type Update = {
-  readonly at: number,
-  readonly path: string,
-  readonly timestamp: number,
+  readonly at                    : number,
+  readonly path                  : string,
+  readonly timestamp             : number,
   readonly explicitImportRequired: boolean,
 };
 
@@ -605,7 +605,7 @@ export type HmrSample = { readonly messageMs: number, readonly appliedMs: number
 
 type Waiter = {
   readonly resolve: (update: Update) => void,
-  readonly reject: (error: Error) => void,
+  readonly reject : (error: Error) => void,
 };
 
 /**
@@ -622,14 +622,14 @@ type Waiter = {
  * exactly what the page's own client does.
  */
 export async function measureHmr(options: {
-  readonly port: number,
-  readonly document: string,
-  readonly file: string,
-  readonly urlPath: string,
-  readonly marker: string,
-  readonly edits: number,
+  readonly port     : number,
+  readonly document : string,
+  readonly file     : string,
+  readonly urlPath  : string,
+  readonly marker   : string,
+  readonly edits    : number,
   readonly timeoutMs: number,
-  readonly settleMs: number,
+  readonly settleMs : number,
 }): Promise<Array<HmrSample>> {
   const base = `http://127.0.0.1:${String(options.port)}`;
   const client = await fetchText(`${base}/@vite/client`, {}, options.timeoutMs);
@@ -738,7 +738,7 @@ export async function measureHmr(options: {
 }
 
 export type Quietness = {
-  readonly load: $ReadOnlyArray<number>,
+  readonly load : $ReadOnlyArray<number>,
   readonly rustc: number,
   readonly quiet: boolean,
 };

@@ -705,7 +705,7 @@ pub struct FmtConfig {
     /// its own, whose `fmt` settings differ from this one's, is formatted from
     /// its own directory, and a run from the parent would print it in the
     /// parent's style. This repository's `examples/` are exactly that — they
-    /// show uf's defaults, and the root keeps `align: false`.
+    /// show uf's defaults, including alignment, which this root uses too.
     ///
     /// The same grammar as `ignore`: a bare name matches a directory at any
     /// depth, a path names one place. Additive, never a replacement: it cannot

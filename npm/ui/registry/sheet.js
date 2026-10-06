@@ -65,87 +65,87 @@ type RenderProp = (props: Rest) => React.Node;
 
 const styles = stylex.create({
   overlay: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 50,
+    position       : "fixed",
+    inset          : 0,
+    zIndex         : 50,
     backgroundColor: ufTokens.scrim,
     // Enter: the page dims as the panel arrives, over the panel's duration,
     // rather than going dark first and then showing a dialog. Opacity only, so
     // it is the same under reduced motion.
     // Exit: it clears with the panel, in the panel's shorter exit time.
-    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    opacity           : { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transitionProperty: "opacity",
     transitionDuration: {
-      default: ufTokens.durationSlow,
+      default                   : ufTokens.durationSlow,
       ":is([data-state=closed])": ufTokens.durationBase,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
   panel: {
-    position: "fixed",
-    zIndex: 50,
-    boxSizing: "border-box",
-    display: "flex",
-    flexDirection: "column",
-    gap: ufTokens.space4,
-    overflowY: "auto",
-    padding: ufTokens.space6,
+    position       : "fixed",
+    zIndex         : 50,
+    boxSizing      : "border-box",
+    display        : "flex",
+    flexDirection  : "column",
+    gap            : ufTokens.space4,
+    overflowY      : "auto",
+    padding        : ufTokens.space6,
     backgroundColor: ufTokens.surface,
-    color: ufTokens.ink,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
+    color          : ufTokens.ink,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    lineHeight     : ufTokens.leadingBase,
     // Attached to every edge except the one opposite `side`, which is what
     // makes a side sheet as tall as the screen and a top one as wide as it.
-    top: { default: 0, ":is([data-side=bottom])": "auto" },
+    top   : { default: 0, ":is([data-side=bottom])": "auto" },
     bottom: { default: 0, ":is([data-side=top])": "auto" },
-    left: { default: 0, ":is([data-side=right])": "auto" },
-    right: { default: 0, ":is([data-side=left])": "auto" },
+    left  : { default: 0, ":is([data-side=right])": "auto" },
+    right : { default: 0, ":is([data-side=left])": "auto" },
     // Literals rather than shared constants: StyleX reads a value at compile
     // time, and a name it would have to resolve is refused.
     width: {
-      default: "auto",
-      ":is([data-side=left])": "min(24rem, calc(100% - 48px))",
+      default                 : "auto",
+      ":is([data-side=left])" : "min(24rem, calc(100% - 48px))",
       ":is([data-side=right])": "min(24rem, calc(100% - 48px))",
     },
     maxHeight: {
-      default: "none",
-      ":is([data-side=top])": "min(32rem, calc(100% - 48px))",
+      default                  : "none",
+      ":is([data-side=top])"   : "min(32rem, calc(100% - 48px))",
       ":is([data-side=bottom])": "min(32rem, calc(100% - 48px))",
     },
     // A line on the edge that meets the page, which is what sets the panel
     // apart from it: there is no shadow.
-    borderWidth: 0,
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderLeftWidth: { default: 0, ":is([data-side=right])": "1px" },
-    borderRightWidth: { default: 0, ":is([data-side=left])": "1px" },
-    borderTopWidth: { default: 0, ":is([data-side=bottom])": "1px" },
-    borderBottomWidth: { default: 0, ":is([data-side=top])": "1px" },
-    borderTopLeftRadius: { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
-    borderTopRightRadius: { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
-    borderBottomLeftRadius: { default: 0, ":is([data-side=top])": ufTokens.radiusLg },
+    borderWidth            : 0,
+    borderStyle            : "solid",
+    borderColor            : ufTokens.border,
+    borderLeftWidth        : { default: 0, ":is([data-side=right])": "1px" },
+    borderRightWidth       : { default: 0, ":is([data-side=left])": "1px" },
+    borderTopWidth         : { default: 0, ":is([data-side=bottom])": "1px" },
+    borderBottomWidth      : { default: 0, ":is([data-side=top])": "1px" },
+    borderTopLeftRadius    : { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
+    borderTopRightRadius   : { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
+    borderBottomLeftRadius : { default: 0, ":is([data-side=top])": ufTokens.radiusLg },
     borderBottomRightRadius: { default: 0, ":is([data-side=top])": ufTokens.radiusLg },
     // The panel takes focus itself when it holds nothing focusable.
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "-2px",
     // Enter: it slides in from the edge it is attached to, the whole of its
     // own size, on the decelerating curve over `durationSlow`: it is fast
     // off the edge and settles against the page. Under reduced motion it does
     // not travel; it fades in instead (`--uf-enter-opacity`).
     "--uf-enter-x": {
-      default: "0px",
-      ":is([data-side=left])": "-100%",
+      default                 : "0px",
+      ":is([data-side=left])" : "-100%",
       ":is([data-side=right])": "100%",
     },
     "--uf-enter-y": {
-      default: "0px",
-      ":is([data-side=top])": "-100%",
+      default                  : "0px",
+      ":is([data-side=top])"   : "-100%",
       ":is([data-side=bottom])": "100%",
     },
     //
@@ -154,82 +154,82 @@ const styles = stylex.create({
     // `inert`. Under reduced motion it fades out instead: it does not travel
     // (`--uf-exit-travel` is 0) and its opacity goes to `--uf-enter-opacity`.
     "--uf-enter-opacity": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
-    "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
+    "--uf-exit-travel"  : { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
     opacity: {
-      default: 1,
-      "@starting-style": "var(--uf-enter-opacity)",
+      default                   : 1,
+      "@starting-style"         : "var(--uf-enter-opacity)",
       ":is([data-state=closed])": "var(--uf-enter-opacity)",
     },
     transform: {
-      default: "none",
+      default          : "none",
       "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
       ":is([data-state=closed])":
         "translate(calc(var(--uf-enter-x) * var(--uf-exit-travel)), calc(var(--uf-enter-y) * var(--uf-exit-travel)))",
     },
     transitionProperty: {
-      default: "opacity, transform",
+      default                                  : "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
     transitionDuration: {
-      default: ufTokens.durationSlow,
+      default                   : ufTokens.durationSlow,
       ":is([data-state=closed])": ufTokens.durationBase,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
   header: {
     display: "grid",
-    gap: ufTokens.space2,
+    gap    : ufTokens.space2,
     // Room for the close button, which is drawn over this corner.
     paddingInlineEnd: ufTokens.space8,
   },
   footer: {
-    display: "flex",
-    flexWrap: "wrap",
+    display       : "flex",
+    flexWrap      : "wrap",
     justifyContent: "flex-end",
-    gap: ufTokens.space2,
-    marginTop: "auto",
+    gap           : ufTokens.space2,
+    marginTop     : "auto",
   },
   title: {
-    margin: 0,
-    fontSize: ufTokens.textLg,
+    margin    : 0,
+    fontSize  : ufTokens.textLg,
     fontWeight: ufTokens.weightBold,
     lineHeight: ufTokens.leadingTight,
   },
   description: {
     margin: 0,
-    color: ufTokens.muted,
+    color : ufTokens.muted,
   },
   close: {
-    position: "absolute",
-    top: ufTokens.space4,
-    insetInlineEnd: ufTokens.space4,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "32px",
-    height: "32px",
-    padding: 0,
-    borderWidth: 0,
-    borderRadius: ufTokens.radiusSm,
+    position       : "absolute",
+    top            : ufTokens.space4,
+    insetInlineEnd : ufTokens.space4,
+    display        : "inline-flex",
+    alignItems     : "center",
+    justifyContent : "center",
+    width          : "32px",
+    height         : "32px",
+    padding        : 0,
+    borderWidth    : 0,
+    borderRadius   : ufTokens.radiusSm,
     backgroundColor: { default: "transparent", ":hover": ufTokens.surfaceHover },
-    color: { default: ufTokens.muted, ":hover": ufTokens.ink },
-    cursor: "pointer",
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    color          : { default: ufTokens.muted, ":hover": ufTokens.ink },
+    cursor         : "pointer",
+    outlineWidth   : { default: "0", ":focus-visible": "2px" },
+    outlineStyle   : "solid",
+    outlineColor   : ufTokens.focus,
+    outlineOffset  : "2px",
   },
 });
 
 /** The sheet, open or closed, against `side`. Uncontrolled unless `open` is given. */
 component SheetRoot(
-  children: React.Node,
-  side?: Edge = "right",
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  side?        : Edge = "right",
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
@@ -241,11 +241,11 @@ component SheetRoot(
 
 /** The button that opens the sheet. It is a `Button` unless `render` says otherwise. */
 component SheetTrigger(
-  children: React.Node,
-  tone?: ButtonTone = "neutral",
-  size?: ButtonSize = "md",
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  tone?     : ButtonTone = "neutral",
+  size?     : ButtonSize = "md",
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -275,11 +275,11 @@ component SheetTrigger(
  * does not name reaches `Sheet.Body`, `aria-label` included.
  */
 component SheetContent(
-  children: React.Node,
+  children   : React.Node,
   closeLabel?: string = "Close",
-  hideClose?: boolean = false,
-  xstyle?: StyleArgument,
-  className?: string,
+  hideClose? : boolean = false,
+  xstyle?    : StyleArgument,
+  className? : string,
   ...rest: Rest
 ) {
   return (
@@ -302,8 +302,8 @@ component SheetContent(
 
 /** The title and description, stacked. */
 component SheetHeader(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -319,8 +319,8 @@ component SheetHeader(
 
 /** The row the actions sit in, pushed to the far end of the panel. */
 component SheetFooter(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -336,8 +336,8 @@ component SheetFooter(
 
 /** The sheet's name. */
 component SheetTitle(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -353,8 +353,8 @@ component SheetTitle(
 
 /** What the sheet is for, read with its name when focus arrives. */
 component SheetDescription(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -370,11 +370,11 @@ component SheetDescription(
 
 /** A button that closes the sheet: Done, Apply, or Cancel. */
 component SheetClose(
-  children: React.Node,
-  tone?: ButtonTone = "neutral",
-  size?: ButtonSize = "md",
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  tone?     : ButtonTone = "neutral",
+  size?     : ButtonSize = "md",
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

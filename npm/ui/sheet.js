@@ -92,11 +92,11 @@ hook useSheet(part: string): SheetState {
 
 /** The sheet, open or closed. Uncontrolled unless `open` is given. */
 component SheetRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
   onOpenChange?: (open: boolean) => void,
-  open?: boolean,
-  side?: Edge = "right",
+  open?        : boolean,
+  side?        : Edge = "right",
 ) {
   const state = useMemo(() => ({ side }), [side]);
 
@@ -112,7 +112,7 @@ component SheetRoot(
 /** What opens it, and what focus comes back to when it closes. */
 component SheetTrigger(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders DialogTrigger {
   return (
@@ -150,7 +150,7 @@ component SheetBody(children: React.Node, render?: RenderProp, ...rest: Rest) re
 /** The top of the sheet. See `Dialog.Header` for why it is not a `<header>`. */
 component SheetHeader(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders DialogHeader {
   return (
@@ -163,7 +163,7 @@ component SheetHeader(
 /** The bottom of the sheet, where the actions go. */
 component SheetFooter(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders DialogFooter {
   return (
@@ -185,7 +185,7 @@ component SheetTitle(children: React.Node, render?: RenderProp, ...rest: Rest) r
 /** What the sheet is for, announced after its name. */
 component SheetDescription(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders DialogDescription {
   return (

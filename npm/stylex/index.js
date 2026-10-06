@@ -189,9 +189,9 @@ export function createTheme<
  * recognises both.
  */
 export const stylex: {
-  readonly create: typeof create,
-  readonly props: typeof props,
-  readonly defineVars: typeof defineVars,
+  readonly create     : typeof create,
+  readonly props      : typeof props,
+  readonly defineVars : typeof defineVars,
   readonly createTheme: typeof createTheme,
 } = {
   create,

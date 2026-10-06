@@ -110,15 +110,13 @@ import { defineConfig } from "@uniflowed/config";
 // here reaches one package. `uf run bundle` verifies the repository, builds
 // the library, then builds the application that consumes it.
 export default defineConfig({
-  // Keep this starter's existing layout. Remove this to align related columns.
-  fmt: { align: false },
   tasks: {
-    "serve:web": { command: "uf dev#apps/web" },
+    "serve:web"    : { command: "uf dev#apps/web" },
     "verify:format": { command: "uf fmt --check" },
     "verify:source": { command: "uf check" },
-    verify: { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
-    "bundle:ui": { command: "uf build#npm/ui", dependsOn: ["verify"] },
-    bundle: { command: "uf build#apps/web", dependsOn: ["bundle:ui"] },
+    verify         : { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
+    "bundle:ui"    : { command: "uf build#npm/ui", dependsOn: ["verify"] },
+    bundle         : { command: "uf build#apps/web", dependsOn: ["bundle:ui"] },
   },
 });
 "#
@@ -371,13 +369,11 @@ fn app_config() -> String {
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
-  // Keep this starter's existing layout. Remove this to align related columns.
-  fmt: { align: false },
   tasks: {
     "verify:format": { command: "uf fmt --check" },
     "verify:source": { command: "uf check" },
-    verify: { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
-    bundle: { command: "uf build", dependsOn: ["verify"] },
+    verify         : { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
+    bundle         : { command: "uf build", dependsOn: ["verify"] },
   },
 });
 "#
@@ -400,8 +396,6 @@ fn lib_config() -> String {
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
-  // Keep this starter's existing layout. Remove this to align related columns.
-  fmt: { align: false },
   app: {
     // Turning the file-system router off is what makes this a library:
     // `uf build` compiles index.js to dist/ rather than looking for an
@@ -413,8 +407,8 @@ export default defineConfig({
   tasks: {
     "verify:format": { command: "uf fmt --check" },
     "verify:source": { command: "uf check" },
-    verify: { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
-    bundle: { command: "uf build", dependsOn: ["verify"] },
+    verify         : { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
+    bundle         : { command: "uf build", dependsOn: ["verify"] },
   },
 });
 "#
@@ -479,7 +473,7 @@ enum Mood {
 
 component Headline(mood: Mood) {
   const tone = match (mood) {
-    Mood.Calm => "at native speed",
+    Mood.Calm  => "at native speed",
     Mood.Sharp => "without the pile of tools",
   };
 

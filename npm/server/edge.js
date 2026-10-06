@@ -251,7 +251,7 @@ function directoryRedirectRequest(request: Request, response: Response): Request
   }
 
   return new Request(next, {
-    method: request.method,
+    method : request.method,
     headers: request.headers,
   });
 }
@@ -264,8 +264,8 @@ function directoryRedirectRequest(request: Request, response: Response): Request
  * to hold open until the request is torn down.
  */
 async function assetFile(
-  assets: AssetsBinding,
-  request: Request,
+  assets  : AssetsBinding,
+  request : Request,
   pathname: string,
 ): Promise<Response | null> {
   const response = await assets.fetch(new Request(new URL(pathname, request.url)));
@@ -325,7 +325,7 @@ function uncompressedStream(response: Response): Response {
   const headers = new Headers(response.headers);
   headers.set("content-encoding", "identity");
   return new Response(response.body, {
-    status: response.status,
+    status    : response.status,
     statusText: response.statusText,
     headers,
   });
@@ -358,15 +358,15 @@ function uncompressedStream(response: Response): Response {
  */
 export function createWorkerFetch(options: WorkerHandlerOptions): (
   request: Request,
-  env: EdgeEnvironment,
-  ctx?: ExecutionContext,
+  env    : EdgeEnvironment,
+  ctx?   : ExecutionContext,
 ) => Promise<Response> {
   const { handle, beginRequest, routing } = options;
 
   return async function fetchFromWorker(
     request: Request,
-    env: EdgeEnvironment,
-    ctx?: ExecutionContext,
+    env    : EdgeEnvironment,
+    ctx?   : ExecutionContext,
   ): Promise<Response> {
     const lifecycle = beginRequest(request);
     const started = Temporal.Now.instant();
@@ -447,15 +447,15 @@ export function createWorkerFetch(options: WorkerHandlerOptions): (
         processLogger().error("request failed", { error });
       }
       return new Response("500 Internal Server Error\n", {
-        status: 500,
+        status : 500,
         headers: { "content-type": "text/plain; charset=utf-8" },
       });
     } finally {
       logRequest(processLogger(), {
         requestId: lifecycle.context.id,
-        method: request.method.toUpperCase(),
-        path: new URL(request.url).pathname,
-        route: lifecycle.context.route,
+        method   : request.method.toUpperCase(),
+        path     : new URL(request.url).pathname,
+        route    : lifecycle.context.route,
         status,
         durationMs: elapsedMs(started),
       });
@@ -480,7 +480,7 @@ export { SCHEDULED_HEADER, SCHEDULED_ORIGIN } from "./schedule.js";
 /** What Cloudflare hands a `scheduled()` export. */
 export type ScheduledEvent = {
   /** The expression that fired, exactly as `wrangler.json` spells it. */
-  readonly cron: string,
+  readonly cron          : string,
   readonly scheduledTime?: number,
   ...
 };
@@ -515,16 +515,16 @@ export type ScheduledEvent = {
  * schedule that fires into silence.
  */
 export function createWorkerScheduled(options: {|
-  readonly handle: (request: Request) => Promise<Response>,
+  readonly handle      : (request: Request) => Promise<Response>,
   readonly beginRequest: (request: Request) => RequestLifecycle,
-  readonly routes: { readonly [cron: string]: string },
+  readonly routes      : { readonly [cron: string]: string },
 |}): (event: ScheduledEvent, env: mixed, ctx?: ExecutionContext) => Promise<void> {
   const { handle, beginRequest, routes } = options;
 
   return async function scheduledFromWorker(
     event: ScheduledEvent,
-    env: mixed,
-    ctx?: ExecutionContext,
+    env  : mixed,
+    ctx? : ExecutionContext,
   ): Promise<void> {
     const path = routes[event.cron];
     if (path == null) {

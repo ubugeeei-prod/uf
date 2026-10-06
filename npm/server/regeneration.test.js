@@ -89,15 +89,15 @@ function regeneratingApp(): Application {
   const app: Application = {
     beginRequest,
     runMiddleware: async (_request: Request) => null,
-    callAction: async (_request: Request) => null,
-    dispatch: async (_request: Request) => null,
+    callAction   : async (_request: Request) => null,
+    dispatch     : async (_request: Request) => null,
     render: async (url: string) => {
       cacheLife({ revalidate: 60 });
       cacheTag("clock");
       renders.push(url);
       const html = `<!doctype html><p>rendered ${url}</p><b>${renders.length}</b>`;
       return {
-        status: 200,
+        status : 200,
         headers: undefined,
         pipe: (destination: WritableLike) => {
           destination.write(html);
@@ -120,7 +120,7 @@ function regeneratingApp(): Application {
 /** Answer one request the way every host does: begin, run, settle. */
 async function serve(
   handle: (request: Request) => Promise<Response>,
-  url: string,
+  url   : string,
 ): Promise<Response> {
   const asRequest = request(url);
   const { run, settle } = beginRequest(asRequest);
@@ -139,8 +139,8 @@ function manifestFor(renderedAt: number) {
         document: "/__uf/regenerate/clock/",
         renderedAt,
         revalidate: 60,
-        expire: null,
-        tags: ["clock"],
+        expire    : null,
+        tags      : ["clock"],
       },
     },
   };
@@ -166,7 +166,7 @@ describe("a key started from a seed", () => {
     const store = createCacheStore({ now: time.now, onError: () => {} });
     let asked = 0;
     const seeding = {
-      key: ["page"],
+      key               : ["page"],
       staleUntilReplaced: true,
       seed: async () => {
         asked += 1;
@@ -201,7 +201,7 @@ describe("a key started from a seed", () => {
     const store = createCacheStore({ now: time.now, onError: () => {} });
     let asked = 0;
     const seeding = {
-      key: ["page"],
+      key               : ["page"],
       staleUntilReplaced: true,
       seed: async () => {
         asked += 1;
@@ -313,7 +313,7 @@ describe("what a host waits for", () => {
       remove: async (key: string) => {
         written.delete(key);
       },
-      invalidateTag: async () => 0,
+      invalidateTag : async () => 0,
       invalidatePath: async () => 0,
       clear: async () => {
         written.clear();
@@ -322,7 +322,7 @@ describe("what a host waits for", () => {
     const store = createCacheStore({
       now: time.now,
       provider,
-      build: "build-one",
+      build  : "build-one",
       onError: () => {},
     });
     let release: () => void = () => {};
@@ -372,10 +372,10 @@ describe("what a prerender declared", () => {
     });
 
     expect(declared).toEqual({
-      value: "<p>page</p>",
+      value   : "<p>page</p>",
       lifetime: { revalidate: 60, expire: 600 },
-      tags: ["posts", "authors"],
-      denied: null,
+      tags    : ["posts", "authors"],
+      denied  : null,
     });
   });
 
@@ -399,8 +399,8 @@ describe("a regenerated page", () => {
       staticDir: buildDirectory(),
       handle: createFetchHandler({
         app,
-        document: assets,
-        cache: { store, route: true, fetch: false },
+        document    : assets,
+        cache       : { store, route: true, fetch: false },
         regeneration: manifestFor(time.now()),
       }),
     });
@@ -430,8 +430,8 @@ describe("a regenerated page", () => {
     const app = regeneratingApp();
     const handle = createFetchHandler({
       app,
-      document: assets,
-      cache: { store: createCacheStore(), route: true, fetch: false },
+      document    : assets,
+      cache       : { store: createCacheStore(), route: true, fetch: false },
       regeneration: manifestFor(Date.now()),
     });
 
@@ -448,8 +448,8 @@ describe("a regenerated page", () => {
       staticDir: buildDirectory(),
       handle: createFetchHandler({
         app,
-        document: assets,
-        cache: { store, route: true, fetch: false },
+        document    : assets,
+        cache       : { store, route: true, fetch: false },
         regeneration: manifestFor(time.now()),
       }),
     });
@@ -466,17 +466,17 @@ describe("a regenerated page", () => {
     const time = clock();
     const kv = fakeNamespace();
     const store = createCacheStore({
-      now: time.now,
+      now     : time.now,
       provider: createKvCache(),
-      build: "build-one",
-      onError: () => {},
+      build   : "build-one",
+      onError : () => {},
     });
     const app = regeneratingApp();
     const handle = createWorkerFetch({
       handle: createFetchHandler({
         app,
-        document: assets,
-        cache: { store, route: true, fetch: false },
+        document    : assets,
+        cache       : { store, route: true, fetch: false },
         regeneration: manifestFor(time.now()),
       }),
       beginRequest,
@@ -643,11 +643,11 @@ function invalidatingApp(): Application {
 function nodeProcess(
   time: {| now: () => number, advance: (seconds: number) => void |},
   options: {|
-    staticDir: string,
+    staticDir : string,
     renderedAt: number,
-    provider?: $FlowFixMe,
-    build?: string,
-    onError?: (error: mixed) => void,
+    provider? : $FlowFixMe,
+    build?    : string,
+    onError?  : (error: mixed) => void,
   |},
 ) {
   const onError = options.onError ?? (() => {});
@@ -658,14 +658,14 @@ function nodeProcess(
           now: time.now,
           onError,
           provider: options.provider,
-          build: options.build ?? "build-one",
+          build   : options.build ?? "build-one",
         });
   const handle = createServeHandler({
     staticDir: options.staticDir,
     handle: createFetchHandler({
-      app: invalidatingApp(),
-      document: assets,
-      cache: { store, route: true, fetch: false },
+      app         : invalidatingApp(),
+      document    : assets,
+      cache       : { store, route: true, fetch: false },
       regeneration: manifestFor(options.renderedAt),
     }),
   });
@@ -696,7 +696,7 @@ describe("an invalidation a restart remembers", () => {
     const before = nodeProcess(time, {
       staticDir,
       renderedAt: built,
-      provider: createFilesystemCache({ directory }),
+      provider  : createFilesystemCache({ directory }),
     });
     expect(await (await serve(before.handle, "/clock")).text()).toContain("the build's copy");
     time.advance(1);
@@ -708,7 +708,7 @@ describe("an invalidation a restart remembers", () => {
     const after = nodeProcess(time, {
       staticDir,
       renderedAt: built,
-      provider: createFilesystemCache({ directory }),
+      provider  : createFilesystemCache({ directory }),
     });
     const answer = await serve(after.handle, "/clock");
     expect(await answer.text()).toContain("rendered /clock");
@@ -723,12 +723,12 @@ describe("an invalidation a restart remembers", () => {
     const one = nodeProcess(time, {
       staticDir,
       renderedAt: built,
-      provider: createFilesystemCache({ directory }),
+      provider  : createFilesystemCache({ directory }),
     });
     const two = nodeProcess(time, {
       staticDir,
       renderedAt: built,
-      provider: createFilesystemCache({ directory }),
+      provider  : createFilesystemCache({ directory }),
     });
 
     time.advance(1);
@@ -760,7 +760,7 @@ describe("an invalidation a restart remembers", () => {
     const serving = nodeProcess(time, {
       staticDir,
       renderedAt: renderedBefore,
-      provider: createFilesystemCache({ directory }),
+      provider  : createFilesystemCache({ directory }),
     });
     serving.store.revalidateTag("clock");
     await serving.store.settled();
@@ -769,8 +769,8 @@ describe("an invalidation a restart remembers", () => {
     const deployed = nodeProcess(time, {
       staticDir,
       renderedAt: renderedBefore,
-      provider: createFilesystemCache({ directory }),
-      build: "build-two",
+      provider  : createFilesystemCache({ directory }),
+      build     : "build-two",
     });
     expect((await serve(deployed.handle, "/clock")).headers.get("x-uf-cache")).toBe("MISS");
 
@@ -778,8 +778,8 @@ describe("an invalidation a restart remembers", () => {
     const rebuilt = nodeProcess(time, {
       staticDir,
       renderedAt: time.now(),
-      provider: createFilesystemCache({ directory }),
-      build: "build-three",
+      provider  : createFilesystemCache({ directory }),
+      build     : "build-three",
     });
     const answer = await serve(rebuilt.handle, "/clock");
     expect(await answer.text()).toContain("the build's copy");
@@ -794,16 +794,16 @@ describe("an invalidation a restart remembers", () => {
       read: async () => {
         throw new Error("the store is unreachable");
       },
-      write: async () => {},
-      remove: async () => {},
-      invalidateTag: async () => 0,
+      write         : async () => {},
+      remove        : async () => {},
+      invalidateTag : async () => 0,
       invalidatePath: async () => 0,
-      clear: async () => {},
+      clear         : async () => {},
     };
     const server = nodeProcess(time, {
-      staticDir: buildDirectory(),
+      staticDir : buildDirectory(),
       renderedAt: time.now(),
-      provider: unreachable,
+      provider  : unreachable,
       onError: (error) => {
         failures.push(error);
       },
@@ -828,16 +828,16 @@ describe("an invalidation a restart remembers", () => {
     };
     const worker = () => {
       const store = createCacheStore({
-        now: time.now,
+        now     : time.now,
         provider: createKvCache(),
-        build: "build-one",
-        onError: () => {},
+        build   : "build-one",
+        onError : () => {},
       });
       const handle = createWorkerFetch({
         handle: createFetchHandler({
-          app: invalidatingApp(),
-          document: assets,
-          cache: { store, route: true, fetch: false },
+          app         : invalidatingApp(),
+          document    : assets,
+          cache       : { store, route: true, fetch: false },
           regeneration: manifestFor(built),
         }),
         beginRequest,

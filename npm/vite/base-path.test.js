@@ -54,10 +54,10 @@ describe("the settings as the config is read", () => {
 describe("the asset URLs a build writes into a document", () => {
   const manifest = {
     "virtual:uf/client": {
-      file: "assets/client-abc.js",
-      name: "client",
+      file   : "assets/client-abc.js",
+      name   : "client",
       isEntry: true,
-      css: ["assets/client-abc.css"],
+      css    : ["assets/client-abc.css"],
       imports: ["_shared-def.js"],
     },
     "_shared-def.js": { file: "assets/shared-def.js", css: ["assets/shared-def.css"] },
@@ -65,16 +65,16 @@ describe("the asset URLs a build writes into a document", () => {
 
   it("are at the root of the host without a base path", () => {
     expect(assetsFromManifest(manifest)).toEqual({
-      scripts: ["/assets/client-abc.js"],
-      styles: ["/assets/client-abc.css", "/assets/shared-def.css"],
+      scripts : ["/assets/client-abc.js"],
+      styles  : ["/assets/client-abc.css", "/assets/shared-def.css"],
       preloads: ["/assets/shared-def.js"],
     });
   });
 
   it("carry the base path in front of every one", () => {
     expect(assetsFromManifest(manifest, "/docs")).toEqual({
-      scripts: ["/docs/assets/client-abc.js"],
-      styles: ["/docs/assets/client-abc.css", "/docs/assets/shared-def.css"],
+      scripts : ["/docs/assets/client-abc.js"],
+      styles  : ["/docs/assets/client-abc.css", "/docs/assets/shared-def.css"],
       preloads: ["/docs/assets/shared-def.js"],
     });
   });
@@ -121,9 +121,9 @@ describe("a static build under `uf preview`", () => {
   // every page was left to Vite's file server, which answered each one the
   // build prerendered with a 404 and knew nothing of the base path.
   const files = {
-    "index.html": "<p>home</p>",
+    "index.html"      : "<p>home</p>",
     "guide/index.html": "<p>guide</p>",
-    "404.html": "<p>missing</p>",
+    "404.html"        : "<p>missing</p>",
     "assets/client.js": "export {};",
   };
 
@@ -139,11 +139,11 @@ describe("a static build under `uf preview`", () => {
   /** A `ServerResponse` that keeps what it was sent. */
   function recorder(): $FlowFixMe {
     const response = {
-      statusCode: 200,
+      statusCode   : 200,
       statusMessage: "",
-      headersSent: false,
-      headers: {} as { [string]: mixed },
-      body: "",
+      headersSent  : false,
+      headers      : {} as { [string]: mixed },
+      body         : "",
       setHeader(name: string, value: mixed) {
         response.headers[name.toLowerCase()] = value;
       },
@@ -164,8 +164,8 @@ describe("a static build under `uf preview`", () => {
 
   async function ask(
     basePath: string,
-    url: string,
-    accept: string = "text/html",
+    url     : string,
+    accept  : string = "text/html",
   ): Promise<{ answered: boolean, status: number, body: string, location: mixed }> {
     const root = outDir();
     try {
@@ -177,8 +177,8 @@ describe("a static build under `uf preview`", () => {
       );
       return {
         answered,
-        status: response.statusCode,
-        body: response.body,
+        status  : response.statusCode,
+        body    : response.body,
         location: response.headers.location,
       };
     } finally {
@@ -189,8 +189,8 @@ describe("a static build under `uf preview`", () => {
   it("answers every page it prerendered, by the path a person types", async () => {
     expect(await ask("", "/")).toEqual({
       answered: true,
-      status: 200,
-      body: "<p>home</p>",
+      status  : 200,
+      body    : "<p>home</p>",
       location: undefined,
     });
     expect((await ask("", "/guide/")).body).toBe("<p>guide</p>");

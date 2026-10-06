@@ -66,55 +66,55 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   overlay: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 50,
+    position       : "fixed",
+    inset          : 0,
+    zIndex         : 50,
     backgroundColor: ufTokens.scrim,
     // Enter: the page dims as the panel arrives, over the panel's duration,
     // rather than going dark first and then showing a dialog. Opacity only, so
     // it is the same under reduced motion.
     // Exit: it clears with the panel, in the panel's shorter exit time.
-    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    opacity           : { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transitionProperty: "opacity",
     transitionDuration: {
-      default: ufTokens.durationSlow,
+      default                   : ufTokens.durationSlow,
       ":is([data-state=closed])": ufTokens.durationBase,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
   // Centred by `inset: 0` and `margin: auto` rather than by a translate, which
   // leaves text on a half pixel and blurs it on a screen with no scaling.
   panel: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 50,
-    boxSizing: "border-box",
-    display: "grid",
-    gap: ufTokens.space4,
-    width: "calc(100% - 32px)",
-    maxWidth: "32rem",
-    height: "fit-content",
-    maxHeight: "calc(100% - 32px)",
-    margin: "auto",
-    overflowY: "auto",
-    padding: ufTokens.space6,
+    position       : "fixed",
+    inset          : 0,
+    zIndex         : 50,
+    boxSizing      : "border-box",
+    display        : "grid",
+    gap            : ufTokens.space4,
+    width          : "calc(100% - 32px)",
+    maxWidth       : "32rem",
+    height         : "fit-content",
+    maxHeight      : "calc(100% - 32px)",
+    margin         : "auto",
+    overflowY      : "auto",
+    padding        : ufTokens.space6,
     backgroundColor: ufTokens.surface,
-    color: ufTokens.ink,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusLg,
+    color          : ufTokens.ink,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    lineHeight     : ufTokens.leadingBase,
+    borderWidth    : "1px",
+    borderStyle    : "solid",
+    borderColor    : ufTokens.border,
+    borderRadius   : ufTokens.radiusLg,
     // The panel takes focus itself when it holds nothing focusable, so it is
     // drawn like anything else that can.
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "2px",
     // Enter: it fades in and comes forward from 96% of its size, as if it
     // rose out of the page. 0.96 is enough to be seen at this size and too
@@ -129,74 +129,74 @@ const styles = stylex.create({
     // and focus is already back on the trigger. Under reduced motion it only
     // fades: `--uf-exit-travel` is 0 there, so the scale does not jump.
     "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
-    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    opacity           : { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transform: {
-      default: "none",
-      "@starting-style": "scale(0.96)",
+      default                   : "none",
+      "@starting-style"         : "scale(0.96)",
       ":is([data-state=closed])": "scale(calc(1 - 0.04 * var(--uf-exit-travel)))",
     },
     transitionProperty: {
-      default: "opacity, transform",
+      default                                  : "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
     transitionDuration: {
-      default: ufTokens.durationSlow,
+      default                   : ufTokens.durationSlow,
       ":is([data-state=closed])": ufTokens.durationBase,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
   header: {
     display: "grid",
-    gap: ufTokens.space2,
+    gap    : ufTokens.space2,
     // Room for the close button, which is drawn over this corner.
     paddingInlineEnd: ufTokens.space8,
   },
   footer: {
-    display: "flex",
-    flexWrap: "wrap",
+    display       : "flex",
+    flexWrap      : "wrap",
     justifyContent: "flex-end",
-    gap: ufTokens.space2,
+    gap           : ufTokens.space2,
   },
   title: {
-    margin: 0,
-    fontSize: ufTokens.textLg,
+    margin    : 0,
+    fontSize  : ufTokens.textLg,
     fontWeight: ufTokens.weightBold,
     lineHeight: ufTokens.leadingTight,
   },
   description: {
     margin: 0,
-    color: ufTokens.muted,
+    color : ufTokens.muted,
   },
   close: {
-    position: "absolute",
-    top: ufTokens.space4,
-    insetInlineEnd: ufTokens.space4,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "32px",
-    height: "32px",
-    padding: 0,
-    borderWidth: 0,
-    borderRadius: ufTokens.radiusSm,
+    position       : "absolute",
+    top            : ufTokens.space4,
+    insetInlineEnd : ufTokens.space4,
+    display        : "inline-flex",
+    alignItems     : "center",
+    justifyContent : "center",
+    width          : "32px",
+    height         : "32px",
+    padding        : 0,
+    borderWidth    : 0,
+    borderRadius   : ufTokens.radiusSm,
     backgroundColor: { default: "transparent", ":hover": ufTokens.surfaceHover },
-    color: { default: ufTokens.muted, ":hover": ufTokens.ink },
-    cursor: "pointer",
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    color          : { default: ufTokens.muted, ":hover": ufTokens.ink },
+    cursor         : "pointer",
+    outlineWidth   : { default: "0", ":focus-visible": "2px" },
+    outlineStyle   : "solid",
+    outlineColor   : ufTokens.focus,
+    outlineOffset  : "2px",
   },
 });
 
 /** The dialog, open or closed. Uncontrolled unless `open` is given. */
 component DialogRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
@@ -211,10 +211,10 @@ component DialogRoot(
  * closes. It is a `Button`, so it takes a `tone` and a `size`.
  */
 component DialogTrigger(
-  children: React.Node,
-  tone?: ButtonTone = "neutral",
-  size?: ButtonSize = "md",
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  tone?     : ButtonTone = "neutral",
+  size?     : ButtonSize = "md",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -243,11 +243,11 @@ component DialogTrigger(
  * with no visible title, `initialFocus`, `dismissOnOutsidePress`.
  */
 component DialogContent(
-  children: React.Node,
+  children   : React.Node,
   closeLabel?: string = "Close",
-  hideClose?: boolean = false,
-  xstyle?: StyleArgument,
-  className?: string,
+  hideClose? : boolean = false,
+  xstyle?    : StyleArgument,
+  className? : string,
   ...rest: Rest
 ) {
   return (
@@ -270,8 +270,8 @@ component DialogContent(
 
 /** The title and description, stacked. */
 component DialogHeader(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -287,8 +287,8 @@ component DialogHeader(
 
 /** The row the actions sit in, at the end of the reading direction. */
 component DialogFooter(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -307,8 +307,8 @@ component DialogFooter(
  * is a fact about the page around the dialog rather than about the dialog.
  */
 component DialogTitle(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -324,8 +324,8 @@ component DialogTitle(
 
 /** What the dialog is for, read with its name when focus arrives. */
 component DialogDescription(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -341,10 +341,10 @@ component DialogDescription(
 
 /** A button that closes the dialog: Cancel, Done, or the action itself. */
 component DialogClose(
-  children: React.Node,
-  tone?: ButtonTone = "neutral",
-  size?: ButtonSize = "md",
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  tone?     : ButtonTone = "neutral",
+  size?     : ButtonSize = "md",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

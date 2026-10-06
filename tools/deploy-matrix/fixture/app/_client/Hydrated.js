@@ -21,7 +21,7 @@ function subscribe(): () => void {
 
 /** The marker and the counter; rendered once, by the layout. */
 export default component Hydrated() {
-  const hydrated = useSyncExternalStore(
+  const hydrated            = useSyncExternalStore(
     subscribe,
     () => true,
     () => false,

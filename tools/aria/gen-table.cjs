@@ -20,8 +20,8 @@
 // An ARIA attribute: its value type, the tokens it takes, and for the 1.3
 // index-text names below, the 1.2 attribute each is the text form of.
 type AttributeSpec = {
-  readonly type: string,
-  readonly values?: $ReadOnlyArray<string | boolean>,
+  readonly type    : string,
+  readonly values? : $ReadOnlyArray<string | boolean>,
   readonly mirrors?: string,
   ...
 };
@@ -30,20 +30,20 @@ type AttributeSpec = {
 type Implicit = {
   readonly element: string,
   readonly attributes: $ReadOnlyArray<{
-    readonly name: string,
-    readonly value: string | null,
-    readonly set: boolean,
+    readonly name               : string,
+    readonly value              : string | null,
+    readonly set                : boolean,
     readonly undefinedConstraint: boolean,
   }>,
   readonly constrained: boolean,
-  readonly role: string,
+  readonly role       : string,
 };
 
 // A role, and the elements that carry it natively.
 type RoleElements = {
   readonly role: string,
   readonly tags: $ReadOnlyArray<{
-    readonly name: string,
+    readonly name      : string,
     readonly attributes: $ReadOnlyArray<{ readonly name: string, readonly value: string | null }>,
   }>,
 };
@@ -79,14 +79,14 @@ if (attributeNames.length > 64) throw new Error("mask no longer fits in a u64");
 // `void` for a type aria-query adds and this table has not met, which the
 // emitter below refuses by name.
 const KIND /*: { readonly [string]: ((spec: AttributeSpec) => string) | void } */ = {
-  boolean: () => "Kind::Boolean",
-  tristate: () => "Kind::Tristate",
-  integer: () => "Kind::Integer",
-  number: () => "Kind::Number",
-  string: () => "Kind::Text",
-  id: () => "Kind::Id",
-  idlist: () => "Kind::IdList",
-  token: (spec) => `Kind::Token(&[${tokens(spec)}])`,
+  boolean  : () => "Kind::Boolean",
+  tristate : () => "Kind::Tristate",
+  integer  : () => "Kind::Integer",
+  number   : () => "Kind::Number",
+  string   : () => "Kind::Text",
+  id       : () => "Kind::Id",
+  idlist   : () => "Kind::IdList",
+  token    : (spec) => `Kind::Token(&[${tokens(spec)}])`,
   tokenlist: (spec) => `Kind::TokenList(&[${tokens(spec)}])`,
 };
 
@@ -248,9 +248,9 @@ for (const [concept, roles] of q.elementRoles.entries()) {
   implicit.push({
     element: concept.name,
     attributes: (concept.attributes || []).map((attribute) => ({
-      name: attribute.name,
-      value: attribute.value === undefined ? null : String(attribute.value),
-      set: (attribute.constraints || []).includes("set"),
+      name               : attribute.name,
+      value              : attribute.value === undefined ? null : String(attribute.value),
+      set                : (attribute.constraints || []).includes("set"),
       undefinedConstraint: (attribute.constraints || []).includes("undefined"),
     })),
     constrained: (concept.constraints || []).length > 0,
@@ -292,7 +292,7 @@ for (const [role, concepts] of q.roleElements.entries()) {
   const tags = Array.from(concepts).map((concept) => ({
     name: concept.name,
     attributes: (concept.attributes || []).map((attribute) => ({
-      name: attribute.name,
+      name : attribute.name,
       value: attribute.value === undefined ? null : String(attribute.value),
     })),
   }));

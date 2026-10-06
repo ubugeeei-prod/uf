@@ -29,7 +29,7 @@ export type CursorOptions = {
 /** A varint decoded from the start of a byte slice. */
 export type VarintResult = {
   readonly value: bigint,
-  readonly read: number,
+  readonly read : number,
 };
 
 /** A malformed binary value. */
@@ -273,7 +273,7 @@ export function varint(bytes: Uint8Array): VarintResult {
   const half = result.value >> 1n;
   return {
     value: (result.value & 1n) === 0n ? half : -(half + 1n),
-    read: result.read,
+    read : result.read,
   };
 }
 

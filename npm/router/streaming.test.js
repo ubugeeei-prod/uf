@@ -95,8 +95,8 @@ describe("scanning for `$loading.js`", () => {
 
   it("gives a route the boundary declared in its own segment", () => {
     const root = appRoot({
-      "$layout.js": "export default function Layout() {}",
-      "slow/$page.js": "export default function Page() {}",
+      "$layout.js"      : "export default function Layout() {}",
+      "slow/$page.js"   : "export default function Page() {}",
       "slow/$loading.js": "export default function Loading() {}",
     });
 
@@ -114,9 +114,9 @@ describe("scanning for `$loading.js`", () => {
     // The fallback shows *inside* the frame the segment draws, so a segment
     // that declares both a layout and a loading file has the layout above.
     const root = appRoot({
-      "slow/$layout.js": "export default function Layout() {}",
+      "slow/$layout.js" : "export default function Layout() {}",
       "slow/$loading.js": "export default function Loading() {}",
-      "slow/$page.js": "export default function Page() {}",
+      "slow/$page.js"   : "export default function Page() {}",
     });
 
     const { routes } = scanRoutes(root);
@@ -127,10 +127,10 @@ describe("scanning for `$loading.js`", () => {
 
   it("nests the boundaries a route inherits, outermost first", () => {
     const root = appRoot({
-      "$layout.js": "export default function Layout() {}",
-      "$loading.js": "export default function Loading() {}",
-      "docs/$layout.js": "export default function Layout() {}",
-      "docs/$loading.js": "export default function Loading() {}",
+      "$layout.js"        : "export default function Layout() {}",
+      "$loading.js"       : "export default function Loading() {}",
+      "docs/$layout.js"   : "export default function Layout() {}",
+      "docs/$loading.js"  : "export default function Loading() {}",
       "docs/deep/$page.js": "export default function Page() {}",
     });
 
@@ -152,8 +152,8 @@ describe("scanning for `$loading.js`", () => {
     // routes must not be fifty imports of the same file.
     const root = appRoot({
       "$loading.js": "export default function Loading() {}",
-      "a/$page.js": "export default function Page() {}",
-      "b/$page.js": "export default function Page() {}",
+      "a/$page.js" : "export default function Page() {}",
+      "b/$page.js" : "export default function Page() {}",
     });
 
     const source = routesModuleSource(scanRoutes(root));
@@ -195,11 +195,11 @@ function suspendingTable(waited: Promise<string>, options?: {| readonly loading?
   return {
     routes: [
       {
-        path: "/slow",
-        params: [],
-        mdx: false,
-        file: "app/slow/$page.js",
-        page: () => Promise.resolve({ default: SlowPage }),
+        path   : "/slow",
+        params : [],
+        mdx    : false,
+        file   : "app/slow/$page.js",
+        page   : () => Promise.resolve({ default: SlowPage }),
         layouts: [() => Promise.resolve({ default: SiteLayout })],
         loading:
           options?.loading === false
@@ -208,7 +208,7 @@ function suspendingTable(waited: Promise<string>, options?: {| readonly loading?
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   };
 }
 
@@ -223,17 +223,17 @@ function rootSuspendingTable(waited: Promise<string>) {
   return {
     routes: [
       {
-        path: "/slow",
-        params: [],
-        mdx: false,
-        file: "app/slow/$page.js",
-        page: () => Promise.resolve({ default: SlowPage }),
+        path   : "/slow",
+        params : [],
+        mdx    : false,
+        file   : "app/slow/$page.js",
+        page   : () => Promise.resolve({ default: SlowPage }),
         layouts: [],
         loading: [{ above: 0, module: () => Promise.resolve({ default: Loading }) }],
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   };
 }
 
@@ -429,8 +429,8 @@ describe("rendering a route that suspends", () => {
     const renderer = createRenderer({ App: routerView("./app"), ...table });
 
     const result = await renderer.render("/slow", {
-      scripts: ["/assets/client.js"],
-      styles: ["/assets/app.css"],
+      scripts : ["/assets/client.js"],
+      styles  : ["/assets/app.css"],
       preloads: [],
     });
     setTimeout(waited.resolve, 0);
@@ -499,9 +499,9 @@ describe("rendering a route that suspends", () => {
 function loaderTable(
   waited: Promise<string>,
   options?: {|
-    readonly loading?: boolean,
+    readonly loading?         : boolean,
     readonly generateMetadata?: boolean,
-    readonly layout?: boolean,
+    readonly layout?          : boolean,
   |},
 ) {
   component DataPage(data: mixed) {
@@ -520,7 +520,7 @@ function loaderTable(
   }
   const page = {
     default: DataPage,
-    loader: () => waited,
+    loader : () => waited,
     ...(options?.generateMetadata === true
       ? {
           generateMetadata: (args: { readonly data: mixed, ... }) => ({ title: String(args.data) }),
@@ -530,25 +530,25 @@ function loaderTable(
   return {
     routes: [
       {
-        path: "/slow",
-        params: [],
-        mdx: false,
-        file: "app/slow/$page.js",
-        page: () => Promise.resolve(page),
+        path   : "/slow",
+        params : [],
+        mdx    : false,
+        file   : "app/slow/$page.js",
+        page   : () => Promise.resolve(page),
         layouts: options?.layout === false ? [] : [() => Promise.resolve({ default: SiteLayout })],
         loading:
           options?.loading === false
             ? []
             : [
                 {
-                  above: options?.layout === false ? 0 : 1,
+                  above : options?.layout === false ? 0 : 1,
                   module: () => Promise.resolve({ default: Loading }),
                 },
               ],
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   };
 }
 
@@ -775,10 +775,10 @@ describe("hydrating a route whose loader answered on the server", () => {
     return {
       routes: [
         {
-          path: "/slow",
+          path  : "/slow",
           params: [],
-          mdx: false,
-          file: "app/slow/$page.js",
+          mdx   : false,
+          file  : "app/slow/$page.js",
           page: () =>
             Promise.resolve({
               default: DataPage,
@@ -792,7 +792,7 @@ describe("hydrating a route whose loader answered on the server", () => {
         },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     };
   }
 
@@ -849,8 +849,8 @@ describe("hydrating a route whose loader answered on the server", () => {
           ...counted.routes[0],
           page: () =>
             Promise.resolve({
-              default: TitledPage,
-              loader: () => "the page is here",
+              default : TitledPage,
+              loader  : () => "the page is here",
               metadata: { title: "The manual", canonical: "https://docs.uniflowed.dev/slow" },
             }),
         },
@@ -928,9 +928,9 @@ describe("hoisting head elements into the shell's own head", () => {
   // own `<html>` gets uf's tags spliced before the `</head>` React wrote, and
   // an app that does not gets them from `open` and `body` instead.
   const shell = {
-    head: "",
-    open: "<!doctype html><html><head>",
-    body: "</head><body>",
+    head : "",
+    open : "<!doctype html><html><head>",
+    body : "</head><body>",
     close: "</body></html>",
   };
 
@@ -953,7 +953,7 @@ describe("hoisting head elements into the shell's own head", () => {
 
   /** The document those chunks assemble into. */
   async function documentOf(
-    chunks: $ReadOnlyArray<string>,
+    chunks        : $ReadOnlyArray<string>,
     transformHead?: (html: string) => Promise<string>,
   ): Promise<string> {
     const body = await renderWithReadableStream(writing(chunks), <p>unused</p>, {
@@ -1072,9 +1072,9 @@ describe("the Web-standard renderer", () => {
   }
 
   const shell = {
-    head: "",
-    open: "<!doctype html><html><head>",
-    body: "</head><body>",
+    head : "",
+    open : "<!doctype html><html><head>",
+    body : "</head><body>",
     close: "</body></html>",
   };
 
@@ -1114,29 +1114,29 @@ describe("the Web-standard renderer", () => {
 /** A one-route table whose page is `Page` and whose layouts are `layouts`. */
 /** The three tables `createRenderer` takes, as the tests build them. */
 type TableParts = {|
-  readonly routes: RouteTable["routes"],
+  readonly routes  : RouteTable["routes"],
   readonly notFound: RouteTable["notFound"],
-  readonly errors: RouteTable["errors"],
+  readonly errors  : RouteTable["errors"],
 |};
 
 function tableOf(
-  Page: React.ComponentType<empty>,
+  Page   : React.ComponentType<empty>,
   layouts: $ReadOnlyArray<React.ComponentType<empty>>,
 ): TableParts {
   return {
     routes: [
       {
-        path: "/",
-        params: [],
-        mdx: false,
-        file: "app/$page.js",
-        page: () => Promise.resolve({ default: Page }),
+        path   : "/",
+        params : [],
+        mdx    : false,
+        file   : "app/$page.js",
+        page   : () => Promise.resolve({ default: Page }),
         layouts: layouts.map((layout) => () => Promise.resolve({ default: layout })),
         loading: [],
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   };
 }
 

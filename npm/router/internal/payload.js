@@ -264,8 +264,8 @@ function setKey(target: { [string]: mixed }, key: string, value: mixed): void {
   if (key === "__proto__") {
     Object.defineProperty(target, key, {
       value,
-      writable: true,
-      enumerable: true,
+      writable    : true,
+      enumerable  : true,
       configurable: true,
     });
     return;
@@ -276,9 +276,9 @@ function setKey(target: { [string]: mixed }, key: string, value: mixed): void {
 /** One entry of an explicit walk stack, with the slot to write the result into. */
 type Frame = {|
   readonly value: mixed,
-  readonly path: string,
+  readonly path : string,
   readonly depth: number,
-  readonly emit: (encoded: mixed) => void,
+  readonly emit : (encoded: mixed) => void,
 |};
 
 /**
@@ -348,7 +348,7 @@ export function encodePayload(root: mixed, label: string): EncodedPayload {
   const stack: Array<Frame> = [
     {
       value: root,
-      path: label,
+      path : label,
       depth: 0,
       emit: (encoded) => {
         model = encoded;
@@ -388,7 +388,7 @@ export function encodePayload(root: mixed, label: string): EncodedPayload {
       for (let index = value.length - 1; index >= 0; index -= 1) {
         stack.push({
           value: value[index],
-          path: `${path}[${String(index)}]`,
+          path : `${path}[${String(index)}]`,
           depth: depth + 1,
           emit: (child) => {
             encoded[index] = child;
@@ -411,7 +411,7 @@ export function encodePayload(root: mixed, label: string): EncodedPayload {
       const key = keys[index];
       stack.push({
         value: source[key],
-        path: `${path}.${key}`,
+        path : `${path}.${key}`,
         depth: depth + 1,
         emit: (child) => {
           setKey(encoded, key, child);
@@ -468,7 +468,7 @@ export function decodePayload(root: mixed, resolve: RowResolver, label: string):
   const stack: Array<Frame> = [
     {
       value: root,
-      path: label,
+      path : label,
       depth: 0,
       emit: (value) => {
         out = value;
@@ -496,7 +496,7 @@ export function decodePayload(root: mixed, resolve: RowResolver, label: string):
       for (let index = value.length - 1; index >= 0; index -= 1) {
         stack.push({
           value: value[index],
-          path: `${path}[${String(index)}]`,
+          path : `${path}[${String(index)}]`,
           depth: depth + 1,
           emit: (child) => {
             rebuilt[index] = child;
@@ -517,7 +517,7 @@ export function decodePayload(root: mixed, resolve: RowResolver, label: string):
       const key = keys[index];
       stack.push({
         value: source[key],
-        path: `${path}.${key}`,
+        path : `${path}.${key}`,
         depth: depth + 1,
         emit: (child) => {
           setKey(rebuilt, key, child);

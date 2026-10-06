@@ -134,8 +134,8 @@ export function installBrowserModules(): void {
   // `parcelRequire` is exactly the global nothing declares. `Object`'s throws
   // where this answers `false`, so the throw is kept.
   const defined = Reflect.defineProperty(globalThis, "parcelRequire", {
-    value: parcelRequire,
-    writable: true,
+    value       : parcelRequire,
+    writable    : true,
     configurable: true,
   });
   if (!defined) {
@@ -170,7 +170,7 @@ type ElementLike = interface {
  */
 export function documentPayload(
   document: DocumentLike,
-  observe: ?(callback: () => void) => (() => void) | null,
+  observe : ?(callback: () => void) => (() => void) | null,
 ): ReadableStream<Uint8Array> {
   const seen: WeakSet<ElementLike> = new WeakSet();
   let stop: (() => void) | null = null;
@@ -219,7 +219,7 @@ export function documentPayload(
 /** Read the payload a document carries into its root value. */
 export function readDocumentPayload(
   document: DocumentLike,
-  observe: ?(callback: () => void) => (() => void) | null,
+  observe : ?(callback: () => void) => (() => void) | null,
 ): Promise<FlightRoot> {
   requireServerComponentsReact(ENTRY);
   return createFromReadableStream(documentPayload(document, observe));
@@ -241,7 +241,7 @@ export function readDocumentPayload(
  * refusal — is a document, whatever its status.
  */
 export async function fetchFlight(
-  url: string,
+  url     : string,
   options?: FlightFetchOptions,
 ): Promise<FetchedFlight> {
   // Outside the `try` below, which answers every failure to fetch with a
@@ -294,7 +294,7 @@ export async function fetchFlight(
   }
   return {
     kind: "flight",
-    url: `${document}${landed.search}`,
+    url : `${document}${landed.search}`,
     root: createFromFetch(Promise.resolve(payload)),
   };
 }

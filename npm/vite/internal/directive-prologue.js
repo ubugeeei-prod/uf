@@ -71,8 +71,8 @@ export function insertAfterDirectivePrologue(code, statement) {
   const at = directivePrologueEnd(code);
   const piece = statement.endsWith("\n") ? statement : `${statement}\n`;
   return {
-    code: code.slice(0, at) + piece + code.slice(at),
-    line: countNewlines(code, at),
+    code      : code.slice(0, at) + piece + code.slice(at),
+    line      : countNewlines(code, at),
     addedLines: countNewlines(piece, piece.length),
   };
 }

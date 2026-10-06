@@ -41,9 +41,9 @@ const ERROR_TAG = "E".charCodeAt(0);
 /** One row's place in the payload. */
 type Row = {|
   readonly start: number,
-  readonly end: number,
-  readonly tag: number,
-  readonly body: number,
+  readonly end  : number,
+  readonly tag  : number,
+  readonly body : number,
 |};
 
 /**
@@ -96,7 +96,7 @@ function rowsOf(bytes: Uint8Array): Array<Row> {
  */
 export function withoutErrorRows(
   payload: Uint8Array,
-  left: (digest: string) => boolean,
+  left   : (digest: string) => boolean,
 ): {| readonly payload: Uint8Array, readonly removed: number |} {
   const decoder = new TextDecoder();
   const kept: Array<Uint8Array> = [];

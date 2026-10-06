@@ -149,16 +149,16 @@ export async function checkBrowser(origin, label, output) {
     await page("Runtime.enable");
     await page("Network.enable");
     await page("Emulation.setDeviceMetricsOverride", {
-      width: 1440,
-      height: 1000,
+      width            : 1440,
+      height           : 1000,
       deviceScaleFactor: 1,
-      mobile: false,
+      mobile           : false,
     });
     evaluate = async (expression) => {
       const result = await page("Runtime.evaluate", {
         expression,
         returnByValue: true,
-        awaitPromise: true,
+        awaitPromise : true,
       });
       if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
       return result.result.value;
@@ -221,13 +221,13 @@ export async function checkBrowser(origin, label, output) {
       await page("Input.dispatchMouseEvent", {
         type: "mousePressed",
         ...point,
-        button: "left",
+        button    : "left",
         clickCount: 1,
       });
       await page("Input.dispatchMouseEvent", {
         type: "mouseReleased",
         ...point,
-        button: "left",
+        button    : "left",
         clickCount: 1,
       });
     };
@@ -284,10 +284,10 @@ export async function checkBrowser(origin, label, output) {
     assert.equal((await anonymous.text()).includes(`${label}@example.test`), false);
     await navigate("/", "document.querySelector('#compose') != null");
     await page("Emulation.setDeviceMetricsOverride", {
-      width: 390,
-      height: 844,
+      width            : 390,
+      height           : 844,
       deviceScaleFactor: 1,
-      mobile: true,
+      mobile           : true,
     });
     assert.equal(
       await evaluate("document.documentElement.scrollWidth <= innerWidth"),
@@ -297,10 +297,10 @@ export async function checkBrowser(origin, label, output) {
     const shot = await page("Page.captureScreenshot", { format: "png" });
     fs.writeFileSync(path.join(output, `${label}-mobile.png`), Buffer.from(shot.data, "base64"));
     await page("Emulation.setDeviceMetricsOverride", {
-      width: 1440,
-      height: 1000,
+      width            : 1440,
+      height           : 1000,
       deviceScaleFactor: 1,
-      mobile: false,
+      mobile           : false,
     });
     await click('button[aria-label="Sign out"]');
     await waitFor(

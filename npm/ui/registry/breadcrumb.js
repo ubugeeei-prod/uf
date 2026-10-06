@@ -41,48 +41,48 @@ type RenderProp = (props: Rest) => React.Node;
 
 const styles = stylex.create({
   list: {
-    display: "flex",
-    flexWrap: "wrap",
+    display   : "flex",
+    flexWrap  : "wrap",
     alignItems: "center",
-    gap: ufTokens.space1,
-    margin: 0,
-    padding: 0,
-    listStyle: "none",
+    gap       : ufTokens.space1,
+    margin    : 0,
+    padding   : 0,
+    listStyle : "none",
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
+    fontSize  : ufTokens.textSm,
     lineHeight: ufTokens.leadingTight,
-    color: ufTokens.muted,
+    color     : ufTokens.muted,
   },
   item: {
-    display: "inline-flex",
+    display   : "inline-flex",
     alignItems: "center",
   },
   link: {
-    color: { default: ufTokens.muted, ":hover": ufTokens.ink },
-    textDecorationLine: { default: "none", ":hover": "underline" },
+    color              : { default: ufTokens.muted, ":hover": ufTokens.ink },
+    textDecorationLine : { default: "none", ":hover": "underline" },
     textUnderlineOffset: "3px",
-    borderRadius: ufTokens.radiusSm,
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    borderRadius       : ufTokens.radiusSm,
+    outlineWidth       : { default: "0", ":focus-visible": "2px" },
+    outlineStyle       : "solid",
+    outlineColor       : ufTokens.focus,
+    outlineOffset      : "2px",
   },
   page: {
-    color: ufTokens.ink,
+    color     : ufTokens.ink,
     fontWeight: ufTokens.weightMedium,
   },
   separator: {
-    display: "inline-flex",
+    display   : "inline-flex",
     alignItems: "center",
-    color: ufTokens.muted,
+    color     : ufTokens.muted,
   },
 });
 
 /** The trail. `label` names the `<nav>`, "Breadcrumb" unless it is given. */
 component BreadcrumbRoot(
-  children: React.Node,
-  label?: string = "Breadcrumb",
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  label?    : string = "Breadcrumb",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -99,8 +99,8 @@ component BreadcrumbRoot(
 
 /** The ordered list of crumbs and the separators between them. */
 component BreadcrumbList(
-  children: renders* (BreadcrumbItem | BreadcrumbSeparator),
-  xstyle?: StyleArgument,
+  children  : renders* (BreadcrumbItem | BreadcrumbSeparator),
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -116,8 +116,8 @@ component BreadcrumbList(
 
 /** One crumb. */
 component BreadcrumbItem(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Breadcrumb.Item {
@@ -133,9 +133,9 @@ component BreadcrumbItem(
 
 /** A crumb that leads somewhere. `render` for the router's own link. */
 component BreadcrumbLink(
-  children: React.Node,
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -152,8 +152,8 @@ component BreadcrumbLink(
 
 /** The page the reader is on, which is not a link. */
 component BreadcrumbPage(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -169,8 +169,8 @@ component BreadcrumbPage(
 
 /** The mark between two crumbs, a chevron unless it is given; decoration. */
 component BreadcrumbSeparator(
-  children?: React.Node,
-  xstyle?: StyleArgument,
+  children? : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Breadcrumb.Separator {

@@ -504,8 +504,8 @@ describe("the next file in the same worker", () => {
 
 /** One request, in the shape `host.rs` writes it. */
 type StubRequest = {|
-  readonly file: string,
-  readonly timeoutMs: number,
+  readonly file      : string,
+  readonly timeoutMs : number,
   readonly generation: number,
 |};
 
@@ -547,8 +547,8 @@ function stubLoaderArguments(): Array<string> {
  * this would be testing Node's process handling rather than this file's.
  */
 function eventsFromWorker(
-  code: number | null,
-  signal: string | null,
+  code   : number | null,
+  signal : string | null,
   written: string,
 ): Array<StubEvent> {
   if (code !== 0 || signal != null) {

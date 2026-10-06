@@ -113,13 +113,13 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
    */
   async function documentOf(
     stream: ReadableStream<Uint8Array>,
-    url: string,
+    url   : string,
     assets: RenderAssets,
     settings: {|
-      readonly onError: (error: mixed) => void,
+      readonly onError       : (error: mixed) => void,
       readonly transformHead?: (html: string) => Promise<string>,
-      readonly onStream?: (record: StreamRecord) => void,
-      readonly formState?: FormState,
+      readonly onStream?     : (record: StreamRecord) => void,
+      readonly formState?    : FormState,
     |},
   ): Promise<DocumentBody> {
     const [forHtml, forBrowser] = stream.tee();
@@ -130,11 +130,11 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
     const nonce = currentNonce();
     try {
       return await renderDocument(<App url={url} flight={readPayload(forHtml)} />, {
-        shell: shellFor(assets, nonce, settings.formState),
-        onError: settings.onError,
+        shell        : shellFor(assets, nonce, settings.formState),
+        onError      : settings.onError,
         transformHead: settings.transformHead,
-        onStream: settings.onStream,
-        payload: forBrowser,
+        onStream     : settings.onStream,
+        payload      : forBrowser,
         nonce,
         formState: settings.formState,
       });
@@ -145,8 +145,8 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
   }
 
   async function render(
-    url: string,
-    assets: RenderAssets,
+    url      : string,
+    assets   : RenderAssets,
     settings?: RenderOptions,
   ): Promise<RenderResult> {
     const report = settings?.onError ?? ((_error: mixed) => {});
@@ -249,8 +249,8 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
   }
 
   async function prerender(
-    url: string,
-    assets: RenderAssets,
+    url      : string,
+    assets   : RenderAssets,
     settings?: RenderOptions,
   ): Promise<PrerenderResult> {
     const report = settings?.onError ?? ((_error: mixed) => {});
@@ -319,7 +319,7 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
         return redirectResult(redirectDocument(cause));
       }
       const recovered = await renderFlight(url, {
-        defer: false,
+        defer  : false,
         failure: { error: cause },
         onError: onServerError,
       });
@@ -363,10 +363,10 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
    */
   async function partialDocumentOf(
     payload: Uint8Array,
-    url: string,
-    assets: RenderAssets,
+    url    : string,
+    assets : RenderAssets,
     onError: (error: mixed) => void,
-    reads: $ReadOnlyArray<string>,
+    reads  : $ReadOnlyArray<string>,
   ): Promise<PrerenderedShell | null> {
     try {
       await staticDocumentOf(payload, url, assets, onError);
@@ -405,9 +405,9 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
    * with the shell is the same markup.
    */
   async function resume(
-    url: string,
-    assets: RenderAssets,
-    shell: PrerenderedShell,
+    url      : string,
+    assets   : RenderAssets,
+    shell    : PrerenderedShell,
     settings?: RenderOptions,
   ): Promise<RenderResult> {
     const report = settings?.onError ?? ((_error: mixed) => {});
@@ -435,8 +435,8 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
           report(error);
         }
       },
-      payload: forBrowser,
-      nonce: currentNonce(),
+      payload : forBrowser,
+      nonce   : currentNonce(),
       onStream: send == null ? undefined : streamReporter(url, send),
     });
     return { status: 200, pipe: body.pipe, stream: body.stream, text: body.text };
@@ -445,8 +445,8 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
   /** A finished document for a finished payload, with the payload written into it. */
   function staticDocumentOf(
     payload: Uint8Array,
-    url: string,
-    assets: RenderAssets,
+    url    : string,
+    assets : RenderAssets,
     onError: (error: mixed) => void,
   ): Promise<string> {
     return prerenderDocument(<App url={url} flight={readPayload(streamOf(payload))} />, {
@@ -459,15 +459,15 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
   async function flight(
     url: string,
     settings?: {|
-      readonly onError?: (error: mixed) => void,
+      readonly onError?        : (error: mixed) => void,
       readonly interceptedFrom?: string,
-      readonly notFound?: boolean,
+      readonly notFound?       : boolean,
     |},
   ): Promise<FlightResponse> {
     const rendered = await renderFlight(url, {
-      onError: settings?.onError,
+      onError        : settings?.onError,
       interceptedFrom: settings?.interceptedFrom,
-      notFound: settings?.notFound,
+      notFound       : settings?.notFound,
     });
     if (rendered.kind === "redirect") {
       const { location } = rendered;
@@ -477,16 +477,16 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
       // loads the URL as a document instead.
       const onThisOrigin = location.startsWith("/") && !location.startsWith("//");
       return {
-        status: rendered.status,
+        status : rendered.status,
         headers: { location: onThisOrigin ? flightUrl(addressOf(location)) : location },
-        stream: null,
+        stream : null,
       };
     }
     return {
       status: rendered.status,
       headers: {
         "content-type": FLIGHT_CONTENT_TYPE,
-        vary: `${INTERCEPTED_FROM_HEADER}, ${NOT_FOUND_HEADER}`,
+        vary          : `${INTERCEPTED_FROM_HEADER}, ${NOT_FOUND_HEADER}`,
         // The payload carries the page's strings as they were rendered — a
         // comment body with `<img onerror>` in it included — and its URL is one
         // anybody can open as a document. `text/x-component` is not a type a
@@ -495,7 +495,7 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
         "x-content-type-options": "nosniff",
       },
       stream: rendered.stream,
-      error: rendered.failure,
+      error : rendered.failure,
     };
   }
 

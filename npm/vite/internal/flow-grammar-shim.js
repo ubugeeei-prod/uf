@@ -124,7 +124,7 @@ export function shimFlowGrammar(source) {
     return { code: source, restore: (lines) => lines };
   }
   return {
-    code: shimmed.join("\n"),
+    code   : shimmed.join("\n"),
     restore: (lines) => restore(lines, edits, original),
   };
 }
@@ -145,8 +145,8 @@ function editsFor(line) {
   }
   for (const brace of line.matchAll(EXACT_OBJECT)) {
     found.push({
-      column: brace.index ?? 0,
-      text: brace[0],
+      column : brace.index ?? 0,
+      text   : brace[0],
       standIn: EXACT_OBJECT_STAND_INS[brace[0]],
     });
   }

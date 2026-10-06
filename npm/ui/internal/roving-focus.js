@@ -157,19 +157,19 @@ export function directionOf(element: HTMLElement): Direction {
  * row the first item is the rightmost one, and `Home` should go to it.
  */
 export function movementFor(
-  key: string,
+  key        : string,
   orientation: Orientation,
-  direction: Direction,
+  direction  : Direction,
 ): Movement | null {
   const rtl = direction === "rtl";
   return match (key) {
-    "Home" => "first",
-    "End" => "last",
-    "ArrowUp" => orientation === "vertical" ? "previous" : null,
-    "ArrowDown" => orientation === "vertical" ? "next" : null,
-    "ArrowLeft" => orientation === "horizontal" ? (rtl ? "next" : "previous") : null,
+    "Home"       => "first",
+    "End"        => "last",
+    "ArrowUp"    => orientation === "vertical" ? "previous" : null,
+    "ArrowDown"  => orientation === "vertical" ? "next" : null,
+    "ArrowLeft"  => orientation === "horizontal" ? (rtl ? "next" : "previous") : null,
     "ArrowRight" => orientation === "horizontal" ? (rtl ? "previous" : "next") : null,
-    _ => null,
+    _            => null,
   };
 }
 
@@ -194,10 +194,10 @@ export function movementFor(
  * leave focus where it is rather than move it somewhere arbitrary.
  */
 export function moveTo(
-  items: $ReadOnlyArray<HTMLElement>,
-  from: number,
-  movement: Movement,
-  wrap: boolean,
+  items        : $ReadOnlyArray<HTMLElement>,
+  from         : number,
+  movement     : Movement,
+  wrap         : boolean,
   skipDisabled?: boolean = true,
 ): HTMLElement | null {
   const count = items.length;
@@ -219,9 +219,9 @@ export function moveTo(
   // the first item.
   const aim = match (movement) {
     "previous" => [from < 0 ? count - 1 : from - 1, -1],
-    "next" => [from + 1, 1],
-    "first" => [0, 1],
-    "last" => [count - 1, -1],
+    "next"     => [from + 1, 1],
+    "first"    => [0, 1],
+    "last"     => [count - 1, -1],
   };
   const [target, direction] = aim;
 
@@ -251,8 +251,8 @@ export function indexOfActive(items: $ReadOnlyArray<HTMLElement>, active: mixed)
  * nested set steals its parent's items.
  */
 export type RovingSet = {|
-  readonly item: string,
-  readonly owner: string,
+  readonly item       : string,
+  readonly owner      : string,
   readonly orientation: Orientation,
   /** Whether running off the end cycles or stops. */
   readonly wrap: boolean,
@@ -262,7 +262,7 @@ export type RovingSet = {|
 
 /** The part of a key event a set reads, and the right to claim the key. */
 type KeyPress = {
-  readonly key: string,
+  readonly key           : string,
   readonly preventDefault: () => mixed,
   ...
 };
@@ -286,9 +286,9 @@ type KeyPress = {
  * propagating between nested menus, which is a different job.
  */
 export function moveOnKey(
-  event: KeyPress,
+  event    : KeyPress,
   container: HTMLElement,
-  set: RovingSet,
+  set      : RovingSet,
 ): HTMLElement | null {
   const movement = movementFor(event.key, set.orientation, directionOf(container));
   if (movement == null) {
@@ -336,8 +336,8 @@ export function moveOnKey(
  */
 export hook useFirstItem(
   container: { current: HTMLElement | null },
-  set: RovingSet,
-  wanted: boolean,
+  set      : RovingSet,
+  wanted   : boolean,
 ): string | null {
   const [first, setFirst] = useState<string | null>(null);
 
@@ -382,11 +382,11 @@ export hook useFirstItem(
  */
 export hook useTypeahead(): (
   items: $ReadOnlyArray<HTMLElement>,
-  from: number,
-  key: string,
+  from : number,
+  key  : string,
 ) => HTMLElement | null {
   const { locale } = useLocale();
-  const buffer = useRef<{| text: string, at: number |}>({ text: "", at: 0 });
+  const buffer     = useRef<{| text: string, at: number |}>({ text: "", at: 0 });
 
   return useCallback(
     (items: $ReadOnlyArray<HTMLElement>, from: number, key: string): HTMLElement | null => {
@@ -428,8 +428,8 @@ export hook useTypeahead(): (
  * the selection somewhere the reader did not ask for.
  */
 export function isTypeaheadKey(event: {
-  readonly key: string,
-  readonly altKey?: boolean,
+  readonly key     : string,
+  readonly altKey? : boolean,
   readonly ctrlKey?: boolean,
   readonly metaKey?: boolean,
   ...

@@ -59,10 +59,10 @@ type Driver = {
 
 /** What one step of one configuration comes out as. */
 type Row = {
-  readonly bytes: number,
+  readonly bytes   : number,
   readonly medianMs: number,
-  readonly minMs: number,
-  readonly maxMs: number,
+  readonly minMs   : number,
+  readonly maxMs   : number,
 };
 
 const NAMES: $ReadOnlyArray<string> = ["first", ...STEPS.map((step) => step.name)];
@@ -153,9 +153,9 @@ async function ufDriver(): Promise<Driver> {
         stdout: sink,
         // Nothing is typed at this, and a renderer holding the real stdin open
         // would keep the process alive after the benchmark finished.
-        stdin: { isTTY: false },
-        color: "never",
-        env: { COLUMNS: String(WIDTH), LINES: String(HEIGHT) },
+        stdin          : { isTTY: false },
+        color          : "never",
+        env            : { COLUMNS: String(WIDTH), LINES: String(HEIGHT) },
         alternateScreen: false,
       });
       return () => {
@@ -227,15 +227,15 @@ async function inkDriver(incremental: boolean): Promise<Driver> {
     name: incremental ? "ink (incrementalRendering)" : "ink (default)",
     async start(sink: Sink, store: Store) {
       const instance = ink.render(jsx(InkApp, { store }), {
-        stdout: sink,
-        stderr: sink,
-        stdin: quietStdin(),
+        stdout      : sink,
+        stderr      : sink,
+        stdin       : quietStdin(),
         patchConsole: false,
-        exitOnCtrlC: false,
+        exitOnCtrlC : false,
         // The frame limiter is thirty frames a second by default. Leaving it
         // there would measure the limiter rather than the renderer; it does not
         // touch the byte counts either way.
-        maxFps: 10_000,
+        maxFps              : 10_000,
         incrementalRendering: incremental,
       });
       return () => {
@@ -271,10 +271,10 @@ function summarise(driver: Driver, series: { [string]: Array<Sample> }): { [stri
     }
     const times = samples.map((entry) => entry.ms);
     rows[name] = {
-      bytes: low,
+      bytes   : low,
       medianMs: round(median(times)),
-      minMs: round(Math.min(...times)),
-      maxMs: round(Math.max(...times)),
+      minMs   : round(Math.min(...times)),
+      maxMs   : round(Math.max(...times)),
     };
   }
   return rows;
@@ -296,7 +296,7 @@ async function main(): Promise<void> {
   process.stdout.write(
     `${JSON.stringify(
       {
-        node: process.version,
+        node    : process.version,
         platform: `${process.platform} ${process.arch}`,
         terminal: `${String(WIDTH)}x${String(HEIGHT)}`,
         runs,

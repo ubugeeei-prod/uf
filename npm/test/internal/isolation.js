@@ -66,7 +66,7 @@ import { restoreRealClock } from "./timers.js";
  * references is a list nobody can check against the paragraph above it.
  */
 type Shared = {|
-  readonly what: string,
+  readonly what   : string,
   readonly restore: () => void,
 |};
 
@@ -80,20 +80,20 @@ type Shared = {|
  */
 const SHARED: $ReadOnlyArray<Shared> = [
   {
-    what: "the tests, hooks and spies this package registered",
+    what   : "the tests, hooks and spies this package registered",
     restore: reset,
   },
   {
     // `process.env` belongs to the process. `uft.stubEnv("NODE_ENV",
     // "production")` in one file is still set when the next one imports, and
     // the file that fails is the one that read it.
-    what: "environment variables `uft.stubEnv` replaced",
+    what   : "environment variables `uft.stubEnv` replaced",
     restore: unstubAllEnvs,
   },
   {
     // `globalThis` likewise, and worse: a stubbed `fetch` makes the next file
     // talk to a stand-in that does not know about it.
-    what: "globals `uft.stubGlobal` replaced",
+    what   : "globals `uft.stubGlobal` replaced",
     restore: unstubAllGlobals,
   },
   {
@@ -104,18 +104,18 @@ const SHARED: $ReadOnlyArray<Shared> = [
     // case against — so the file hangs with nothing on screen until `uf`'s own
     // deadline kills the worker, and the report names the file that waited
     // rather than the file that stopped time.
-    what: "the clock, whatever `uft.useFakeTimers` did to it",
+    what   : "the clock, whatever `uft.useFakeTimers` did to it",
     restore: restoreRealClock,
   },
   {
     // A worker serves many files out of one module registry, so this is the
     // difference between "one file at a time" and "one file's mocks at a
     // time".
-    what: "modules `uft.mock` stood in for",
+    what   : "modules `uft.mock` stood in for",
     restore: resetModuleState,
   },
   {
-    what: "the document, if this process has one",
+    what   : "the document, if this process has one",
     restore: restoreDocument,
   },
 ];

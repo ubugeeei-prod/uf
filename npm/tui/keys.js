@@ -88,9 +88,9 @@ export type KeyEvent = {
   readonly raw: string,
   /** Which parser produced it. */
   readonly source: KeySource,
-  readonly ctrl: boolean,
-  readonly shift: boolean,
-  readonly meta: boolean,
+  readonly ctrl  : boolean,
+  readonly shift : boolean,
+  readonly meta  : boolean,
   /** Whether this was a press, terminal repeat, or release event. */
   readonly eventType: KeyEventType,
   /** Skip the focused node's handler, without silencing later global ones. */
@@ -142,12 +142,12 @@ const CSI_FINAL: { [string]: string } = {
 
 /** The `CSI n ~` numbers, which is the other half of the same vocabulary. */
 const CSI_TILDE: { [string]: string } = {
-  "1": "home",
-  "2": "insert",
-  "3": "delete",
-  "4": "end",
-  "5": "pageup",
-  "6": "pagedown",
+  "1" : "home",
+  "2" : "insert",
+  "3" : "delete",
+  "4" : "end",
+  "5" : "pageup",
+  "6" : "pagedown",
   "11": "f1",
   "12": "f2",
   "13": "f3",
@@ -164,10 +164,10 @@ const CSI_TILDE: { [string]: string } = {
 
 /** Non-Unicode Kitty `CSI u` key codes that do not already have legacy names. */
 const CSI_U_FUNCTION: { [string]: string } = {
-  "9": "tab",
-  "13": "return",
-  "27": "escape",
-  "127": "backspace",
+  "9"    : "tab",
+  "13"   : "return",
+  "27"   : "escape",
+  "127"  : "backspace",
   "57358": "caps-lock",
   "57359": "scroll-lock",
   "57360": "num-lock",
@@ -257,26 +257,26 @@ const CSI_U_FUNCTION: { [string]: string } = {
 
 /** Build an event with its two propagation flags wired up. */
 function event(fields: {
-  name: string,
-  sequence: string,
-  raw: string,
-  source: KeySource,
-  ctrl?: boolean,
-  shift?: boolean,
-  meta?: boolean,
+  name      : string,
+  sequence  : string,
+  raw       : string,
+  source    : KeySource,
+  ctrl?     : boolean,
+  shift?    : boolean,
+  meta?     : boolean,
   eventType?: KeyEventType,
 }): KeyEvent {
   const key: KeyEvent = {
-    kind: "key",
-    name: fields.name,
-    sequence: fields.sequence,
-    raw: fields.raw,
-    source: fields.source,
-    ctrl: fields.ctrl === true,
-    shift: fields.shift === true,
-    meta: fields.meta === true,
-    eventType: fields.eventType ?? "press",
-    defaultPrevented: false,
+    kind              : "key",
+    name              : fields.name,
+    sequence          : fields.sequence,
+    raw               : fields.raw,
+    source            : fields.source,
+    ctrl              : fields.ctrl === true,
+    shift             : fields.shift === true,
+    meta              : fields.meta === true,
+    eventType         : fields.eventType ?? "press",
+    defaultPrevented  : false,
     propagationStopped: false,
     preventDefault() {
       key.defaultPrevented = true;
@@ -629,13 +629,13 @@ function decodeOne(input: string, start: number, events: Array<InputEvent>): num
   const inner = decodePlain(next);
   events.push(
     event({
-      name: inner.name,
+      name    : inner.name,
       sequence: inner.sequence,
-      raw: ESC + next,
-      source: "escape",
-      ctrl: inner.ctrl,
-      shift: inner.shift,
-      meta: true,
+      raw     : ESC + next,
+      source  : "escape",
+      ctrl    : inner.ctrl,
+      shift   : inner.shift,
+      meta    : true,
     }),
   );
   return 2;
@@ -684,7 +684,7 @@ function decodeSequence(input: string, start: number): { key: KeyEvent, length: 
     }
     const mods = modifiers(second);
     return {
-      key: event({ name, sequence: "", raw, source: "escape", ...mods }),
+      key   : event({ name, sequence: "", raw, source: "escape", ...mods }),
       length: raw.length,
     };
   }
@@ -714,7 +714,7 @@ function decodeKittyKey(parameters: string, raw: string): KeyEvent | null {
   const functionName = CSI_U_FUNCTION[String(key)];
   if (functionName != null) {
     return event({
-      name: functionName,
+      name    : functionName,
       sequence: "",
       raw,
       source: "escape",
@@ -724,7 +724,7 @@ function decodeKittyKey(parameters: string, raw: string): KeyEvent | null {
   }
   if (key === 0) {
     return event({
-      name: "text",
+      name    : "text",
       sequence: eventType === "release" ? "" : associatedText,
       raw,
       source: "escape",
@@ -775,10 +775,10 @@ function decodePlain(character: string): KeyEvent {
   // report outside the Kitty protocol, and `A` is what Shift+A means.
   const lower = character.toLowerCase();
   return event({
-    name: lower,
+    name    : lower,
     sequence: character,
-    raw: character,
-    source: "raw",
-    shift: character !== lower,
+    raw     : character,
+    source  : "raw",
+    shift   : character !== lower,
   });
 }

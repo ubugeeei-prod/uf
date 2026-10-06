@@ -54,12 +54,12 @@ import { waitFor } from "./render.js";
  * say.
  */
 type Forms<TTarget, TOptions> = {|
-  readonly get: (target: TTarget, options?: TOptions) => HTMLElement,
-  readonly getAll: (target: TTarget, options?: TOptions) => Array<HTMLElement>,
-  readonly query: (target: TTarget, options?: TOptions) => HTMLElement | null,
+  readonly get     : (target: TTarget, options?: TOptions) => HTMLElement,
+  readonly getAll  : (target: TTarget, options?: TOptions) => Array<HTMLElement>,
+  readonly query   : (target: TTarget, options?: TOptions) => HTMLElement | null,
   readonly queryAll: (target: TTarget, options?: TOptions) => Array<HTMLElement>,
-  readonly find: (target: TTarget, options?: TOptions) => Promise<HTMLElement>,
-  readonly findAll: (target: TTarget, options?: TOptions) => Promise<Array<HTMLElement>>,
+  readonly find    : (target: TTarget, options?: TOptions) => Promise<HTMLElement>,
+  readonly findAll : (target: TTarget, options?: TOptions) => Promise<Array<HTMLElement>>,
 |};
 
 /**
@@ -72,22 +72,22 @@ type Forms<TTarget, TOptions> = {|
  * they wait. [`queried`] says why `HTMLElement` rather than `Element`.
  */
 export type Queries = {|
-  readonly getByText: (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
-  readonly getAllByText: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
-  readonly queryByText: (matcher: Matcher, options?: MatcherOptions) => HTMLElement | null,
+  readonly getByText     : (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
+  readonly getAllByText  : (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
+  readonly queryByText   : (matcher: Matcher, options?: MatcherOptions) => HTMLElement | null,
   readonly queryAllByText: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
-  readonly findByText: (matcher: Matcher, options?: MatcherOptions) => Promise<HTMLElement>,
+  readonly findByText    : (matcher: Matcher, options?: MatcherOptions) => Promise<HTMLElement>,
   readonly findAllByText: (
-    matcher: Matcher,
+    matcher : Matcher,
     options?: MatcherOptions,
   ) => Promise<Array<HTMLElement>>,
 
-  readonly getByRole: (role: string, options?: RoleOptions) => HTMLElement,
-  readonly getAllByRole: (role: string, options?: RoleOptions) => Array<HTMLElement>,
-  readonly queryByRole: (role: string, options?: RoleOptions) => HTMLElement | null,
+  readonly getByRole     : (role: string, options?: RoleOptions) => HTMLElement,
+  readonly getAllByRole  : (role: string, options?: RoleOptions) => Array<HTMLElement>,
+  readonly queryByRole   : (role: string, options?: RoleOptions) => HTMLElement | null,
   readonly queryAllByRole: (role: string, options?: RoleOptions) => Array<HTMLElement>,
-  readonly findByRole: (role: string, options?: RoleOptions) => Promise<HTMLElement>,
-  readonly findAllByRole: (role: string, options?: RoleOptions) => Promise<Array<HTMLElement>>,
+  readonly findByRole    : (role: string, options?: RoleOptions) => Promise<HTMLElement>,
+  readonly findAllByRole : (role: string, options?: RoleOptions) => Promise<Array<HTMLElement>>,
 
   readonly getByLabelText: (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
   readonly getAllByLabelText: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
@@ -95,52 +95,52 @@ export type Queries = {|
   readonly queryAllByLabelText: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
   readonly findByLabelText: (matcher: Matcher, options?: MatcherOptions) => Promise<HTMLElement>,
   readonly findAllByLabelText: (
-    matcher: Matcher,
+    matcher : Matcher,
     options?: MatcherOptions,
   ) => Promise<Array<HTMLElement>>,
 
   readonly getByPlaceholderText: (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
   readonly getAllByPlaceholderText: (
-    matcher: Matcher,
+    matcher : Matcher,
     options?: MatcherOptions,
   ) => Array<HTMLElement>,
   readonly queryByPlaceholderText: (
-    matcher: Matcher,
+    matcher : Matcher,
     options?: MatcherOptions,
   ) => HTMLElement | null,
   readonly queryAllByPlaceholderText: (
-    matcher: Matcher,
+    matcher : Matcher,
     options?: MatcherOptions,
   ) => Array<HTMLElement>,
   readonly findByPlaceholderText: (
-    matcher: Matcher,
+    matcher : Matcher,
     options?: MatcherOptions,
   ) => Promise<HTMLElement>,
   readonly findAllByPlaceholderText: (
-    matcher: Matcher,
+    matcher : Matcher,
     options?: MatcherOptions,
   ) => Promise<Array<HTMLElement>>,
 
-  readonly getByTestId: (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
-  readonly getAllByTestId: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
-  readonly queryByTestId: (matcher: Matcher, options?: MatcherOptions) => HTMLElement | null,
+  readonly getByTestId     : (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
+  readonly getAllByTestId  : (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
+  readonly queryByTestId   : (matcher: Matcher, options?: MatcherOptions) => HTMLElement | null,
   readonly queryAllByTestId: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
-  readonly findByTestId: (matcher: Matcher, options?: MatcherOptions) => Promise<HTMLElement>,
+  readonly findByTestId    : (matcher: Matcher, options?: MatcherOptions) => Promise<HTMLElement>,
   readonly findAllByTestId: (
-    matcher: Matcher,
+    matcher : Matcher,
     options?: MatcherOptions,
   ) => Promise<Array<HTMLElement>>,
 
-  readonly getByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
+  readonly getByDisplayValue   : (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
   readonly getAllByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
-  readonly queryByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => HTMLElement | null,
+  readonly queryByDisplayValue : (matcher: Matcher, options?: MatcherOptions) => HTMLElement | null,
   readonly queryAllByDisplayValue: (
-    matcher: Matcher,
+    matcher : Matcher,
     options?: MatcherOptions,
   ) => Array<HTMLElement>,
   readonly findByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Promise<HTMLElement>,
   readonly findAllByDisplayValue: (
-    matcher: Matcher,
+    matcher : Matcher,
     options?: MatcherOptions,
   ) => Promise<Array<HTMLElement>>,
 |};
@@ -189,9 +189,9 @@ function queried(element: Element): HTMLElement {
  * test, not a condition that is about to come true.
  */
 function forms<TTarget extends Matcher, TOptions>(
-  name: string,
-  find: (root: Element, target: TTarget, options?: TOptions) => Array<Element>,
-  root: () => Element,
+  name : string,
+  find : (root: Element, target: TTarget, options?: TOptions) => Array<Element>,
+  root : () => Element,
   known: $ReadOnlyArray<string>,
 ): Forms<TTarget, TOptions> {
   const all = (target: TTarget, options?: TOptions): Array<HTMLElement> =>
@@ -277,47 +277,47 @@ function queriesFor(root: () => Element): Queries {
   const displayValue = forms("DisplayValue", allByDisplayValue, root, MATCHER_OPTION_KEYS);
 
   return {
-    getByText: text.get,
-    getAllByText: text.getAll,
-    queryByText: text.query,
+    getByText     : text.get,
+    getAllByText  : text.getAll,
+    queryByText   : text.query,
     queryAllByText: text.queryAll,
-    findByText: text.find,
-    findAllByText: text.findAll,
+    findByText    : text.find,
+    findAllByText : text.findAll,
 
-    getByRole: role.get,
-    getAllByRole: role.getAll,
-    queryByRole: role.query,
+    getByRole     : role.get,
+    getAllByRole  : role.getAll,
+    queryByRole   : role.query,
     queryAllByRole: role.queryAll,
-    findByRole: role.find,
-    findAllByRole: role.findAll,
+    findByRole    : role.find,
+    findAllByRole : role.findAll,
 
-    getByLabelText: labelText.get,
-    getAllByLabelText: labelText.getAll,
-    queryByLabelText: labelText.query,
+    getByLabelText     : labelText.get,
+    getAllByLabelText  : labelText.getAll,
+    queryByLabelText   : labelText.query,
     queryAllByLabelText: labelText.queryAll,
-    findByLabelText: labelText.find,
-    findAllByLabelText: labelText.findAll,
+    findByLabelText    : labelText.find,
+    findAllByLabelText : labelText.findAll,
 
-    getByPlaceholderText: placeholderText.get,
-    getAllByPlaceholderText: placeholderText.getAll,
-    queryByPlaceholderText: placeholderText.query,
+    getByPlaceholderText     : placeholderText.get,
+    getAllByPlaceholderText  : placeholderText.getAll,
+    queryByPlaceholderText   : placeholderText.query,
     queryAllByPlaceholderText: placeholderText.queryAll,
-    findByPlaceholderText: placeholderText.find,
-    findAllByPlaceholderText: placeholderText.findAll,
+    findByPlaceholderText    : placeholderText.find,
+    findAllByPlaceholderText : placeholderText.findAll,
 
-    getByTestId: testId.get,
-    getAllByTestId: testId.getAll,
-    queryByTestId: testId.query,
+    getByTestId     : testId.get,
+    getAllByTestId  : testId.getAll,
+    queryByTestId   : testId.query,
     queryAllByTestId: testId.queryAll,
-    findByTestId: testId.find,
-    findAllByTestId: testId.findAll,
+    findByTestId    : testId.find,
+    findAllByTestId : testId.findAll,
 
-    getByDisplayValue: displayValue.get,
-    getAllByDisplayValue: displayValue.getAll,
-    queryByDisplayValue: displayValue.query,
+    getByDisplayValue     : displayValue.get,
+    getAllByDisplayValue  : displayValue.getAll,
+    queryByDisplayValue   : displayValue.query,
     queryAllByDisplayValue: displayValue.queryAll,
-    findByDisplayValue: displayValue.find,
-    findAllByDisplayValue: displayValue.findAll,
+    findByDisplayValue    : displayValue.find,
+    findAllByDisplayValue : displayValue.findAll,
   };
 }
 

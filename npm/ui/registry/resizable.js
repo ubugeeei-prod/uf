@@ -46,72 +46,72 @@ const OrientationContext = createContext<Orientation>("horizontal");
 
 const styles = stylex.create({
   group: {
-    display: "flex",
+    display  : "flex",
     boxSizing: "border-box",
-    width: "100%",
-    height: "100%",
-    overflow: "hidden",
+    width    : "100%",
+    height   : "100%",
+    overflow : "hidden",
   },
   groupVertical: {
     flexDirection: "column",
   },
   panel: {
-    flexBasis: "var(--uf-resizable-size, 50%)",
-    flexGrow: 1,
+    flexBasis : "var(--uf-resizable-size, 50%)",
+    flexGrow  : 1,
     flexShrink: 1,
-    minWidth: 0,
-    minHeight: 0,
-    overflow: "auto",
+    minWidth  : 0,
+    minHeight : 0,
+    overflow  : "auto",
   },
   // Nine pixels a pointer can grab, drawn as a one-pixel line: transparent
   // borders either side of a one-pixel box whose background stops at them, and
   // negative margins so the grab area overlaps the panels rather than pushing
   // them apart.
   handle: {
-    position: "relative",
-    zIndex: 1,
-    flexShrink: 0,
-    alignSelf: "stretch",
-    boxSizing: "content-box",
-    width: "1px",
-    marginInlineStart: "-4px",
-    marginInlineEnd: "-4px",
+    position              : "relative",
+    zIndex                : 1,
+    flexShrink            : 0,
+    alignSelf             : "stretch",
+    boxSizing             : "content-box",
+    width                 : "1px",
+    marginInlineStart     : "-4px",
+    marginInlineEnd       : "-4px",
     borderInlineStartWidth: "4px",
-    borderInlineEndWidth: "4px",
+    borderInlineEndWidth  : "4px",
     borderInlineStartStyle: "solid",
-    borderInlineEndStyle: "solid",
+    borderInlineEndStyle  : "solid",
     borderInlineStartColor: "transparent",
-    borderInlineEndColor: "transparent",
-    backgroundClip: "padding-box",
+    borderInlineEndColor  : "transparent",
+    backgroundClip        : "padding-box",
     backgroundColor: {
-      default: ufTokens.border,
-      ":hover": ufTokens.accent,
-      ":focus-visible": ufTokens.accent,
+      default                    : ufTokens.border,
+      ":hover"                   : ufTokens.accent,
+      ":focus-visible"           : ufTokens.accent,
       ":is([aria-disabled=true])": ufTokens.border,
     },
-    cursor: { default: "col-resize", ":is([aria-disabled=true])": "default" },
-    touchAction: "none",
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    cursor       : { default: "col-resize", ":is([aria-disabled=true])": "default" },
+    touchAction  : "none",
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "0",
   },
   handleVertical: {
-    width: "auto",
-    height: "1px",
-    marginInlineStart: 0,
-    marginInlineEnd: 0,
-    marginBlockStart: "-4px",
-    marginBlockEnd: "-4px",
+    width                 : "auto",
+    height                : "1px",
+    marginInlineStart     : 0,
+    marginInlineEnd       : 0,
+    marginBlockStart      : "-4px",
+    marginBlockEnd        : "-4px",
     borderInlineStartWidth: 0,
-    borderInlineEndWidth: 0,
-    borderBlockStartWidth: "4px",
-    borderBlockEndWidth: "4px",
-    borderBlockStartStyle: "solid",
-    borderBlockEndStyle: "solid",
-    borderBlockStartColor: "transparent",
-    borderBlockEndColor: "transparent",
-    cursor: { default: "row-resize", ":is([aria-disabled=true])": "default" },
+    borderInlineEndWidth  : 0,
+    borderBlockStartWidth : "4px",
+    borderBlockEndWidth   : "4px",
+    borderBlockStartStyle : "solid",
+    borderBlockEndStyle   : "solid",
+    borderBlockStartColor : "transparent",
+    borderBlockEndColor   : "transparent",
+    cursor                : { default: "row-resize", ":is([aria-disabled=true])": "default" },
   },
 });
 
@@ -120,17 +120,17 @@ const styles = stylex.create({
  * and `max`; `orientation` says whether the panels sit side by side or stacked.
  */
 component ResizablePanelGroup(
-  children: React.Node,
-  value?: number,
-  defaultValue?: number = 50,
+  children      : React.Node,
+  value?        : number,
+  defaultValue? : number = 50,
   onValueChange?: (value: number) => void,
-  min?: number = 0,
-  max?: number = 100,
-  step?: number = 10,
-  orientation?: Orientation = "horizontal",
-  disabled?: boolean = false,
-  xstyle?: StyleArgument,
-  className?: string,
+  min?          : number = 0,
+  max?          : number = 100,
+  step?         : number = 10,
+  orientation?  : Orientation = "horizontal",
+  disabled?     : boolean = false,
+  xstyle?       : StyleArgument,
+  className?    : string,
   ...rest: Rest
 ) {
   const vertical = orientation === "vertical";
@@ -159,9 +159,9 @@ component ResizablePanelGroup(
 
 /** One panel. The `primary` one is the panel the group's value measures. */
 component ResizablePanel(
-  children: React.Node,
-  primary?: boolean = false,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  primary?  : boolean = false,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -178,8 +178,8 @@ component ResizablePanel(
 
 /** The handle between the panels. */
 component ResizableHandle(
-  label?: string = "Resize",
-  xstyle?: StyleArgument,
+  label?    : string = "Resize",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

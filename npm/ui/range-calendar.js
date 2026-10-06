@@ -12,22 +12,22 @@ import { visuallyHiddenStyle } from "./internal/visually-hidden-style.js";
 export type { DateRange } from "./internal/date-range.js";
 
 component RangeCalendarRoot(
-  children?: React.Node = <CalendarMonth />,
-  value?: DateRange | null,
-  defaultValue?: DateRange | null = null,
-  onValueChange?: (value: DateRange | null) => void,
-  minValue?: string,
-  maxValue?: string,
+  children?      : React.Node = <CalendarMonth />,
+  value?         : DateRange | null,
+  defaultValue?  : DateRange | null = null,
+  onValueChange? : (value: DateRange | null) => void,
+  minValue?      : string,
+  maxValue?      : string,
   isDateDisabled?: (date: PlainDate) => boolean,
   defaultFocused?: string,
-  today?: string,
-  locale?: string,
-  focusedDayRef?: { current: HTMLElement | null },
+  today?         : string,
+  locale?        : string,
+  focusedDayRef? : { current: HTMLElement | null },
   ...rest: Rest
 ) {
-  const [range, setRange] = useControlled(value, defaultValue, onValueChange);
-  const [anchor, setAnchor] = useState<string | null>(null);
-  const [announcement, announce] = useState("");
+  const [range,        setRange]  = useControlled(value, defaultValue, onValueChange);
+  const [anchor,       setAnchor] = useState<string | null>(null);
+  const [announcement, announce]  = useState("");
   validateRange(range);
   const disabled = (date: PlainDate) =>
     (minValue != null && date.toString() < minValue) ||

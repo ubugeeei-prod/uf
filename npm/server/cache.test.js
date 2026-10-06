@@ -105,11 +105,11 @@ async function settled(): Promise<void> {
 
 /** What a fixture app does, all of it optional. */
 type AppOptions = {
-  guard?: (request: Request) => Promise<Response | null> | Response | null,
+  guard?  : (request: Request) => Promise<Response | null> | Response | null,
   handler?: (request: Request) => Promise<Response | null> | Response | null,
-  render?: (url: string) => mixed,
-  tail?: () => mixed,
-  status?: number,
+  render? : (url: string) => mixed,
+  tail?   : () => mixed,
+  status? : number,
   headers?: { [string]: string },
   renders?: Array<string>,
   /** Text sent after the document's first chunk, once this resolves: a boundary. */
@@ -149,13 +149,13 @@ function appWith(options: AppOptions): Application {
     // that omitted it would be a double of a contract nothing implements —
     // which is what `standalone.js` found when it called this.
     callAction: async (_request: Request) => null,
-    dispatch: async (request: Request) => (options.handler ? options.handler(request) : null),
+    dispatch  : async (request: Request) => (options.handler ? options.handler(request) : null),
     render: async (url: string) => {
       renders.push(url);
       if (options.render) options.render(url);
       const html = `<!doctype html><p>${url}</p><b>${renders.length}</b>`;
       return {
-        status: options.status ?? 200,
+        status : options.status ?? 200,
         headers: options.headers,
         pipe: (destination: WritableLike) => {
           destination.write(html);
@@ -189,9 +189,9 @@ function appWith(options: AppOptions): Application {
  */
 async function serve(
   handle: (request: Request) => Promise<Response>,
-  app: Application,
-  url: string,
-  init?: RequestOptions,
+  app   : Application,
+  url   : string,
+  init? : RequestOptions,
 ): Promise<Response> {
   const asRequest = request(url, init);
   const { run, settle } = app.beginRequest(asRequest);
@@ -210,7 +210,7 @@ function servingWith(options: AppOptions, cacheOptions?: {| route?: boolean, fet
   const handle = createFetchHandler({
     app,
     document: assets,
-    cache: { store, route: cacheOptions?.route ?? true, fetch: cacheOptions?.fetch ?? false },
+    cache   : { store, route: cacheOptions?.route ?? true, fetch: cacheOptions?.fetch ?? false },
   });
   return { app, handle, store, time };
 }
@@ -236,9 +236,9 @@ async function fillsThroughAdapter(runtime: string, serveOn: typeof serveOnBun):
       staticDir: tempDirectory(),
       handle,
       beginRequest: app.beginRequest,
-      host: "127.0.0.1",
-      port: 0,
-      log: recordingLogger().logger,
+      host        : "127.0.0.1",
+      port        : 0,
+      log         : recordingLogger().logger,
     }),
   );
 
@@ -283,7 +283,7 @@ async function fillsThroughAdapter(runtime: string, serveOn: typeof serveOnBun):
  */
 async function withRuntimeServe(
   runtime: string,
-  start: () => Promise<mixed>,
+  start  : () => Promise<mixed>,
 ): Promise<(request: Request) => Promise<Response>> {
   let kept: ((request: Request) => Promise<Response>) | null = null;
   const fake =
@@ -295,7 +295,7 @@ async function withRuntimeServe(
       : (_options: mixed, handler: (request: Request) => Promise<Response>) => {
           kept = handler;
           return {
-            addr: { hostname: "127.0.0.1", port: 0, transport: "tcp" },
+            addr    : { hostname: "127.0.0.1", port: 0, transport: "tcp" },
             shutdown: async () => {},
           };
         };
@@ -343,8 +343,8 @@ function fakeProvider(): $FlowFixMe {
   const provider: $FlowFixMe = {
     name: "fake",
     entries,
-    reads: 0,
-    writes: 0,
+    reads   : 0,
+    writes  : 0,
     failures: 0,
     /** Set to a message to make every read and write throw. */
     broken: null,
@@ -401,9 +401,9 @@ function tempDirectory(): string {
 /** A store over `provider`, with an injectable clock and a stated build. */
 function durableStore(provider: mixed, options?: {| now?: () => number, build?: string |}) {
   return createCacheStore({
-    now: options?.now,
+    now     : options?.now,
     provider: provider as $FlowFixMe,
-    build: options?.build ?? "build-one",
+    build   : options?.build ?? "build-one",
     // Collected rather than printed: several of these tests make a provider
     // fail on purpose, and a suite that prints a stack per deliberate failure
     // teaches its reader to skip the output.
@@ -946,9 +946,9 @@ describe("the route cache", () => {
       handler: createDispatcher({
         handlers: [
           {
-            path: "/api/preview",
+            path  : "/api/preview",
             params: [],
-            file: "app/api/preview/$route.js",
+            file  : "app/api/preview/$route.js",
             load: async () => ({
               GET: () => {
                 draftMode().enable();
@@ -1067,7 +1067,7 @@ describe("the route cache", () => {
     const handle = createFetchHandler({
       app,
       document: assets,
-      cache: { store, route: true, fetch: false },
+      cache   : { store, route: true, fetch: false },
     });
 
     await serve(handle, app, "/posts");
@@ -1093,7 +1093,7 @@ describe("the route cache", () => {
     const handle = createFetchHandler({
       app,
       document: assets,
-      cache: { store, route: true, fetch: false },
+      cache   : { store, route: true, fetch: false },
     });
 
     await serve(handle, app, "/posts");
@@ -1271,7 +1271,7 @@ describe("the fetch cache", () => {
     const handle = createFetchHandler({
       app,
       document: assets,
-      cache: { store, route: false, fetch: true },
+      cache   : { store, route: false, fetch: true },
     });
 
     const first = await serve(handle, app, "/api/users");
@@ -1293,7 +1293,7 @@ describe("the fetch cache", () => {
     const handle = createFetchHandler({
       app,
       document: assets,
-      cache: { store, route: true, fetch: false },
+      cache   : { store, route: true, fetch: false },
     });
 
     await serve(handle, app, "/api/users");
@@ -1498,7 +1498,7 @@ describe("a durable store", () => {
     const body = new TextEncoder().encode("<!doctype html><p>hello</p>");
 
     await before.resolve({ key: ["route", "/"], lifetime: { revalidate: 60 } }, async () => ({
-      status: 200,
+      status : 200,
       headers: { "x-thing": "1" },
       body,
     }));
@@ -1522,9 +1522,9 @@ describe("a durable store", () => {
     const provider = fakeProvider();
     const failures = [];
     const store = createCacheStore({
-      now: clock().now,
+      now     : clock().now,
       provider: provider as $FlowFixMe,
-      build: "b",
+      build   : "b",
       onError: (error) => {
         failures.push(error);
       },
@@ -1554,9 +1554,9 @@ describe("a durable store", () => {
     provider.broken = "the disk is gone";
     const failures = [];
     const store = createCacheStore({
-      now: clock().now,
+      now     : clock().now,
       provider: provider as $FlowFixMe,
-      build: "b",
+      build   : "b",
       onError: (error) => {
         failures.push(error);
       },
@@ -1821,7 +1821,7 @@ describe("the route cache, on a disk", () => {
       createApplicationHandler({
         entry: first,
         assets,
-        root: directory,
+        root : directory,
         build: "build-one",
         cache: { route: true, store: "filesystem", storeDir: directory },
       }),
@@ -1834,7 +1834,7 @@ describe("the route cache, on a disk", () => {
       createApplicationHandler({
         entry: second,
         assets,
-        root: directory,
+        root : directory,
         build: "build-two",
         cache: { route: true, store: "filesystem", storeDir: directory },
       }),
@@ -1929,7 +1929,7 @@ describe("what rendering.cache.store reaches", () => {
     const handle = createApplicationHandler({
       entry: app,
       assets,
-      root: directory,
+      root : directory,
       cache: { route: true, store: "filesystem" },
     });
 
@@ -1971,7 +1971,7 @@ export function createCacheProvider() {
     const handle = createApplicationHandler({
       entry: app,
       assets,
-      root: directory,
+      root : directory,
       build: "build-one",
       // Relative to the *project*, which is what somebody writing this in
       // `uf.config.js` means and is not what `import()` from inside
@@ -2000,7 +2000,7 @@ export function createCacheProvider() {
     const handle = createApplicationHandler({
       entry: app,
       assets,
-      root: directory,
+      root : directory,
       build: "build-one",
       cache: { route: true },
     });

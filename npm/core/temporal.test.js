@@ -252,9 +252,9 @@ describe("Temporal.ZonedDateTime", () => {
     expect(() =>
       zoned.toLocaleString("en-US", {
         timeZone: "UTC",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
+        hour    : "2-digit",
+        minute  : "2-digit",
+        hour12  : false,
       }),
     ).toThrow(TypeError);
     expect(
@@ -434,15 +434,15 @@ describe("Temporal on a host that has one of its own", () => {
     },
   };
   const host = nativeShaped({
-    Now: hostNow,
-    PlainDate: LitePlainDate,
-    PlainTime: LitePlainTime,
-    PlainDateTime: class PlainDateTime {},
-    ZonedDateTime: LiteZonedDateTime,
-    Duration: LiteDuration,
-    Instant: LiteInstant,
+    Now           : hostNow,
+    PlainDate     : LitePlainDate,
+    PlainTime     : LitePlainTime,
+    PlainDateTime : class PlainDateTime {},
+    ZonedDateTime : LiteZonedDateTime,
+    Duration      : LiteDuration,
+    Instant       : LiteInstant,
     PlainYearMonth: class PlainYearMonth {},
-    PlainMonthDay: class PlainMonthDay {},
+    PlainMonthDay : class PlainMonthDay {},
   });
 
   /** A namespace shaped like a built-in one: every member there, none enumerable. */
@@ -451,8 +451,8 @@ describe("Temporal on a host that has one of its own", () => {
     for (const [name, value] of Object.entries(members)) {
       Object.defineProperty(namespace, name, {
         value,
-        writable: true,
-        enumerable: false,
+        writable    : true,
+        enumerable  : false,
         configurable: true,
       });
     }
@@ -471,9 +471,9 @@ describe("Temporal on a host that has one of its own", () => {
   async function copyOnNativeHost() {
     const found = Object.getOwnPropertyDescriptor(globalThis, "Temporal");
     Object.defineProperty(globalThis, "Temporal", {
-      value: host,
-      writable: true,
-      enumerable: false,
+      value       : host,
+      writable    : true,
+      enumerable  : false,
       configurable: true,
     });
     try {

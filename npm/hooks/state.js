@@ -37,25 +37,25 @@ import { useStableCallback } from "./lifecycle.js";
 
 /** A boolean and the three things a caller ever does to one. */
 export type UseToggleReturn = {|
-  readonly on: boolean,
+  readonly on    : boolean,
   readonly toggle: () => void,
-  readonly set: (value: boolean) => void,
+  readonly set   : (value: boolean) => void,
 |};
 
 /** A boolean with the three things a caller ever does to one. */
 export hook useToggle(initial: boolean = false): UseToggleReturn {
   const [on, setOn] = useState(initial);
-  const toggle = useCallback(() => setOn((value) => !value), []);
+  const toggle      = useCallback(() => setOn((value) => !value), []);
   return useMemo(() => ({ on, toggle, set: setOn }), [on, toggle]);
 }
 
 /** A number and the operations that suit one. */
 export type UseCounterReturn = {|
-  readonly count: number,
+  readonly count    : number,
   readonly increment: (by?: number) => void,
   readonly decrement: (by?: number) => void,
-  readonly set: (value: number) => void,
-  readonly reset: () => void,
+  readonly set      : (value: number) => void,
+  readonly reset    : () => void,
 |};
 
 /** A number, optionally clamped. */
@@ -82,8 +82,8 @@ export hook useCounter(
       count,
       increment: (by?: number) => move(by ?? 1),
       decrement: (by?: number) => move(-(by ?? 1)),
-      set: (value: number) => setCount(clamp(value)),
-      reset: () => setCount(clamp(initial)),
+      set      : (value: number) => setCount(clamp(value)),
+      reset    : () => setCount(clamp(initial)),
     }),
     [count, move, clamp, initial],
   );
@@ -91,14 +91,14 @@ export hook useCounter(
 
 /** A list and the edits anyone makes to one. */
 export type UseListReturn<T> = {|
-  readonly items: $ReadOnlyArray<T>,
-  readonly set: (items: $ReadOnlyArray<T>) => void,
-  readonly push: (item: T) => void,
-  readonly insertAt: (index: number, item: T) => void,
+  readonly items    : $ReadOnlyArray<T>,
+  readonly set      : (items: $ReadOnlyArray<T>) => void,
+  readonly push     : (item: T) => void,
+  readonly insertAt : (index: number, item: T) => void,
   readonly replaceAt: (index: number, item: T) => void,
-  readonly removeAt: (index: number) => void,
-  readonly move: (from: number, to: number) => void,
-  readonly clear: () => void,
+  readonly removeAt : (index: number) => void,
+  readonly move     : (from: number, to: number) => void,
+  readonly clear    : () => void,
 |};
 
 /**
@@ -163,13 +163,13 @@ export hook useList<T>(initial: $ReadOnlyArray<T> = []): UseListReturn<T> {
 
 /** A set of members, and the questions asked of one. */
 export type UseSetReturn<T> = {|
-  readonly items: $ReadOnlySet<T>,
-  readonly has: (item: T) => boolean,
-  readonly add: (item: T) => void,
+  readonly items : $ReadOnlySet<T>,
+  readonly has   : (item: T) => boolean,
+  readonly add   : (item: T) => void,
   readonly remove: (item: T) => void,
   readonly toggle: (item: T) => void,
-  readonly clear: () => void,
-  readonly set: (items: Iterable<T>) => void,
+  readonly clear : () => void,
+  readonly set   : (items: Iterable<T>) => void,
 |};
 
 /**
@@ -231,11 +231,11 @@ export hook useSet<T>(initial?: Iterable<T>): UseSetReturn<T> {
 /** A position in a list that wraps. */
 export type UseCycleReturn<T> = {|
   /** The value at the current position, or `null` when the list is empty. */
-  readonly value: T | null,
-  readonly index: number,
-  readonly next: () => void,
+  readonly value   : T | null,
+  readonly index   : number,
+  readonly next    : () => void,
   readonly previous: () => void,
-  readonly go: (index: number) => void,
+  readonly go      : (index: number) => void,
 |};
 
 /**
@@ -254,9 +254,9 @@ export type UseCycleReturn<T> = {|
 export hook useCycle<T>(values: $ReadOnlyArray<T>, initialIndex: number = 0): UseCycleReturn<T> {
   const [raw, setRaw] = useState(initialIndex);
 
-  const next = useStableCallback(() => setRaw((current) => current + 1));
+  const next     = useStableCallback(() => setRaw((current) => current + 1));
   const previous = useStableCallback(() => setRaw((current) => current - 1));
-  const go = useStableCallback((index: number) => setRaw(index));
+  const go       = useStableCallback((index: number) => setRaw(index));
 
   const length = values.length;
   // Two modulos, because JavaScript's `%` keeps the sign of its left operand
@@ -269,10 +269,10 @@ export hook useCycle<T>(values: $ReadOnlyArray<T>, initialIndex: number = 0): Us
 
 /** A value with the history behind and ahead of it. */
 export type UseUndoableReturn<T> = {|
-  readonly value: T,
-  readonly set: (next: T) => void,
-  readonly undo: () => void,
-  readonly redo: () => void,
+  readonly value  : T,
+  readonly set    : (next: T) => void,
+  readonly undo   : () => void,
+  readonly redo   : () => void,
   readonly canUndo: boolean,
   readonly canRedo: boolean,
   /** Keep the current value, forget how it got here. */
@@ -283,9 +283,9 @@ export type UseUndoableReturn<T> = {|
 
 /** The three parts of an undo stack, kept in one state so they cannot disagree. */
 type Timeline<T> = {|
-  readonly past: $ReadOnlyArray<T>,
+  readonly past   : $ReadOnlyArray<T>,
   readonly present: T,
-  readonly future: $ReadOnlyArray<T>,
+  readonly future : $ReadOnlyArray<T>,
 |};
 
 /**
@@ -302,14 +302,14 @@ type Timeline<T> = {|
  * out.
  */
 export hook useUndoable<T>(
-  initial: T,
+  initial : T,
   options?: {| readonly limit?: number |},
 ): UseUndoableReturn<T> {
   const limit = options?.limit ?? 100;
   const [timeline, setTimeline] = useState<Timeline<T>>({
-    past: [],
+    past   : [],
     present: initial,
-    future: [],
+    future : [],
   });
 
   const set = useStableCallback((next: T) =>
@@ -319,9 +319,9 @@ export hook useUndoable<T>(
       }
       const past = [...current.past, current.present];
       return {
-        past: past.length > limit ? past.slice(past.length - limit) : past,
+        past   : past.length > limit ? past.slice(past.length - limit) : past,
         present: next,
-        future: [],
+        future : [],
       };
     }),
   );
@@ -333,9 +333,9 @@ export hook useUndoable<T>(
         return current;
       }
       return {
-        past: current.past.slice(0, -1),
+        past   : current.past.slice(0, -1),
         present: previous,
-        future: [current.present, ...current.future],
+        future : [current.present, ...current.future],
       };
     }),
   );
@@ -438,8 +438,8 @@ function area(session: boolean): Storage | null {
  * of a stale key would be worse than starting fresh.
  */
 export hook useStorage<T>(
-  key: string,
-  initial: T,
+  key     : string,
+  initial : T,
   options?: {| readonly session?: boolean |},
 ): [T, (value: T) => void] {
   const session = options?.session ?? false;

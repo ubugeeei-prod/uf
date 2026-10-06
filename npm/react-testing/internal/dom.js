@@ -348,10 +348,10 @@ function registerBetweenFiles(): void {
   if (!(registry instanceof Map)) {
     registry = new Map();
     Reflect.defineProperty(globalThis, SHARED_STATE, {
-      value: registry,
-      writable: true,
+      value       : registry,
+      writable    : true,
       configurable: true,
-      enumerable: false,
+      enumerable  : false,
     });
   }
   registry.set("the window and document a render installed", restoreBetweenFiles);
@@ -460,7 +460,7 @@ export function beforeWindowRestore(step: () => void): void {
 
 /** Put `target`'s own properties back to `pristine`, adding, replacing and deleting. */
 function restoreOwnProperties(
-  target: HostWindow,
+  target  : HostWindow,
   pristine: Map<string | symbol, PropertyDescriptor<mixed>>,
 ): void {
   for (const key of Reflect.ownKeys(target)) {
@@ -562,9 +562,9 @@ let declared = false;
 function define(name: string, value: mixed): void {
   Object.defineProperty(globalThis, name, {
     value,
-    writable: true,
+    writable    : true,
     configurable: true,
-    enumerable: true,
+    enumerable  : true,
   });
 }
 

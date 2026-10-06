@@ -12,23 +12,23 @@ import { useLocale } from "../i18n-provider.js";
 import { visuallyHiddenStyle } from "./visually-hidden-style.js";
 
 type Segment = "year" | "month" | "day" | "hour" | "minute" | "second" | "dayPeriod";
-type Fields = { [string]: string };
+type Fields  = { [string]: string };
 export type DateFieldProps = {
-  value?: string | null,
-  defaultValue?: string | null,
-  onValueChange?: (value: string | null) => void,
-  minValue?: string,
-  isDateUnavailable?: (value: string) => boolean,
-  maxValue?: string,
-  disabled?: boolean,
-  readOnly?: boolean,
-  required?: boolean,
-  granularity?: "minute" | "second",
-  hourCycle?: "h12" | "h23",
-  segmentLabels?: { [string]: string },
+  value?             : string | null,
+  defaultValue?      : string | null,
+  onValueChange?     : (value: string | null) => void,
+  minValue?          : string,
+  isDateUnavailable? : (value: string) => boolean,
+  maxValue?          : string,
+  disabled?          : boolean,
+  readOnly?          : boolean,
+  required?          : boolean,
+  granularity?       : "minute" | "second",
+  hourCycle?         : "h12" | "h23",
+  segmentLabels?     : { [string]: string },
   onValidationChange?: (invalid: boolean) => void,
-  render?: RenderProp,
-  readonly key?: empty,
+  render?            : RenderProp,
+  readonly key?      : empty,
   readonly [string]: mixed,
 };
 function names(time: boolean, seconds: boolean): Array<Segment> {
@@ -72,9 +72,9 @@ function maximum(name: Segment, fields: Fields): number {
   if (name !== "day") return 59;
   try {
     return Temporal.PlainDate.from({
-      year: Number(fields.year) || 2000,
+      year : Number(fields.year) || 2000,
       month: Number(fields.month) || 1,
-      day: 1,
+      day  : 1,
     }).daysInMonth;
   } catch {
     return 31;
@@ -103,12 +103,12 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
   const { locale } = useLocale();
   const seconds = granularity === "second";
   const [current, setCurrent] = useControlled(value, defaultValue, onValueChange);
-  const [draft, setDraft] = useState<Fields | null>(null);
+  const [draft,   setDraft]   = useState<Fields | null>(null);
   // The draft as the last event handler left it, which can be ahead of the
   // `draft` this render read: two keystrokes can land before React renders
   // the first (#1609). Every handler reads and writes the fields through this,
   // so none of them acts on — or commits — a render's stale copy.
-  const pending = useRef<Fields | null>(null);
+  const pending                  = useRef<Fields | null>(null);
   const [announcement, announce] = useState("");
   const minimum =
     minValue == null ? null : serialize(fieldsFor(minValue, time, seconds), time, seconds);
@@ -139,16 +139,16 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
       locale,
       time
         ? {
-            hour: "2-digit",
+            hour  : "2-digit",
             minute: "2-digit",
             second: seconds ? "2-digit" : undefined,
             hourCycle,
             timeZone: "UTC",
           }
         : {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
+            year    : "numeric",
+            month   : "2-digit",
+            day     : "2-digit",
             calendar: "gregory",
             timeZone: "UTC",
           },
@@ -158,8 +158,8 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
   const hour12 = time && parts.some((part) => part.type === "dayPeriod");
   const periodNames: Array<string> = useMemo(() => {
     const formatter: $FlowFixMe = new Intl.DateTimeFormat(locale, {
-      hour: "numeric",
-      hour12: true,
+      hour    : "numeric",
+      hour12  : true,
       timeZone: "UTC",
     });
     return [0, 12].map(
@@ -179,14 +179,14 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
       result = result.split(digits.format(digit)).join(String(digit));
     return result.replace(/[^0-9]/g, "");
   };
-  const latest = useStableCallback(
+  const latest   = useStableCallback(
     (): Fields => pending.current ?? fieldsFor(current, time, seconds),
   );
-  const propose = useStableCallback((next: Fields) => {
+  const propose  = useStableCallback((next: Fields) => {
     pending.current = next;
     setDraft(next);
   });
-  const commit = useStableCallback(() => {
+  const commit   = useStableCallback(() => {
     if (disabled || readOnly) return;
     const { empty, serialized, invalid } = assess(latest());
     onValidationChange?.(invalid);
@@ -199,7 +199,7 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
     setDraft(null);
     announce(serialized ?? "Cleared");
   });
-  const edit = useStableCallback((part: Segment, change: (fields: Fields) => string) => {
+  const edit     = useStableCallback((part: Segment, change: (fields: Fields) => string) => {
     if (disabled || readOnly) return;
     const fields = latest();
     propose({ ...fields, [part]: change(fields) });
@@ -322,9 +322,9 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
     );
   });
   const props = withProps(rest, {
-    role: "group",
+    role            : "group",
     "data-segmented": time ? "time" : "date",
-    "aria-invalid": invalid || rest["aria-invalid"],
+    "aria-invalid"  : invalid || rest["aria-invalid"],
     onBlur: composeHandlers(rest.onBlur, (event: $FlowFixMe) => {
       if (!event.currentTarget.contains(event.relatedTarget)) commit();
     }),
@@ -338,7 +338,7 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
     ),
   });
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

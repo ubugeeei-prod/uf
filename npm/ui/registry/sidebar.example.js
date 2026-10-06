@@ -6,16 +6,16 @@ import * as Sidebar from "./sidebar.js";
 
 const styles = stylex.create({
   frame: {
-    height: "20rem",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
+    height      : "20rem",
+    borderWidth : "1px",
+    borderStyle : "solid",
+    borderColor : ufTokens.border,
     borderRadius: ufTokens.radiusMd,
-    overflow: "hidden",
+    overflow    : "hidden",
   },
   main: {
     flexGrow: 1,
-    padding: ufTokens.space4,
+    padding : ufTokens.space4,
   },
 });
 

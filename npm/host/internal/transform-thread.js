@@ -44,8 +44,8 @@ port.on("message", async (request) => {
         ? { sequence: request.sequence, code: null }
         : {
             sequence: request.sequence,
-            code: out.code,
-            map: out.map,
+            code    : out.code,
+            map     : out.map,
             // The identity of the build that compiled this, which is what the
             // entry is written under. See "The two identities" in
             // `./flow-cache.js`.
@@ -56,11 +56,11 @@ port.on("message", async (request) => {
     reply = {
       sequence: request.sequence,
       error: {
-        name: error.name,
+        name   : error.name,
         message: error.message,
-        id: error.id ?? null,
-        line: error.loc?.line ?? null,
-        column: error.loc?.column ?? null,
+        id     : error.id ?? null,
+        line   : error.loc?.line ?? null,
+        column : error.loc?.column ?? null,
       },
     };
   }

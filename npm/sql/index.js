@@ -91,7 +91,7 @@ export type Queryable = {
  * body would deadlock the same way `await db.query` does inside `transaction`.
  */
 export type SyncQueryable = {
-  readonly engine: Engine,
+  readonly engine   : Engine,
   readonly maxParams: number,
   querySync(text: string, params: $ReadOnlyArray<SqlParam>, mode: QueryMode): QueryResult,
   readonly transactionSync?: <T>(body: (tx: SyncQueryable) => T) => T,
@@ -155,19 +155,19 @@ function explain(failure: SqlFailure, query: string | null): string {
   return (
     where +
     match (failure) {
-      {kind: "decode", expected: const expected, value: const value} =>
+      {kind: "decode", expected: const expected, value: const value}  =>
         `expected ${expected} from the database, got ${show(value)}`,
-      {kind: "encode", expected: const expected, value: const value} =>
+      {kind: "encode", expected: const expected, value: const value}  =>
         `expected ${expected} as a parameter, got ${show(value)}`,
       {kind: "shape", expected: const expected, actual: const actual} =>
         `the adapter returned ${actual} columns where the query has ${expected}; ` +
           "regenerate with `uf sqlc generate`, or check that the adapter returns rows as arrays",
-      {kind: "closed"} => "the transaction has already committed or rolled back",
-      {kind: "unsupported", feature: const feature} =>
+      {kind: "closed"}                                                => "the transaction has already committed or rolled back",
+      {kind: "unsupported", feature: const feature}                   =>
         `${feature} is not supported by this adapter`,
-      {kind: "params", width: const width, max: const max} =>
+      {kind: "params", width: const width, max: const max}            =>
         `a :copyfrom row binds ${width} parameters and this adapter allows ${max}`,
-      {kind: "row", index: const index, length: const length} =>
+      {kind: "row", index: const index, length: const length}         =>
         `a :copyfrom row has ${length} fields and the statement reads index ${index}`,
     }
   );
@@ -229,11 +229,11 @@ function allRows<T>(rows: $ReadOnlyArray<Row>, width: number, decode: (row: Row)
 
 /** `:one` — the first row, or `null`. */
 export async function one<T>(
-  db: Queryable,
-  name: string,
-  text: string,
+  db    : Queryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
-  width: number,
+  width : number,
   decode: (row: Row) => T,
 ): Promise<T | null> {
   try {
@@ -246,11 +246,11 @@ export async function one<T>(
 
 /** `:one` on a [`SyncQueryable`]. */
 export function oneSync<T>(
-  db: SyncQueryable,
-  name: string,
-  text: string,
+  db    : SyncQueryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
-  width: number,
+  width : number,
   decode: (row: Row) => T,
 ): T | null {
   try {
@@ -263,11 +263,11 @@ export function oneSync<T>(
 
 /** `:many` — every row. */
 export async function many<T>(
-  db: Queryable,
-  name: string,
-  text: string,
+  db    : Queryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
-  width: number,
+  width : number,
   decode: (row: Row) => T,
 ): Promise<Array<T>> {
   try {
@@ -280,11 +280,11 @@ export async function many<T>(
 
 /** `:many` on a [`SyncQueryable`]. */
 export function manySync<T>(
-  db: SyncQueryable,
-  name: string,
-  text: string,
+  db    : SyncQueryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
-  width: number,
+  width : number,
   decode: (row: Row) => T,
 ): Array<T> {
   try {
@@ -296,9 +296,9 @@ export function manySync<T>(
 }
 
 async function run(
-  db: Queryable,
-  name: string,
-  text: string,
+  db    : Queryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
 ): Promise<QueryResult> {
   try {
@@ -309,9 +309,9 @@ async function run(
 }
 
 function executed(
-  db: SyncQueryable,
-  name: string,
-  text: string,
+  db    : SyncQueryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
 ): QueryResult {
   try {
@@ -323,9 +323,9 @@ function executed(
 
 /** `:exec`. */
 export async function exec(
-  db: Queryable,
-  name: string,
-  text: string,
+  db    : Queryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
 ): Promise<void> {
   await run(db, name, text, params);
@@ -333,9 +333,9 @@ export async function exec(
 
 /** `:exec` on a [`SyncQueryable`]. */
 export function execSync(
-  db: SyncQueryable,
-  name: string,
-  text: string,
+  db    : SyncQueryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
 ): void {
   executed(db, name, text, params);
@@ -343,9 +343,9 @@ export function execSync(
 
 /** `:execrows` — how many rows the statement changed. */
 export async function execRows(
-  db: Queryable,
-  name: string,
-  text: string,
+  db    : Queryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
 ): Promise<number> {
   return (await run(db, name, text, params)).rowsAffected;
@@ -353,9 +353,9 @@ export async function execRows(
 
 /** `:execrows` on a [`SyncQueryable`]. */
 export function execRowsSync(
-  db: SyncQueryable,
-  name: string,
-  text: string,
+  db    : SyncQueryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
 ): number {
   return executed(db, name, text, params).rowsAffected;
@@ -369,9 +369,9 @@ export type ExecResult = {|
 
 /** `:execresult` — the affected-row count and, on MySQL and SQLite, the last id. */
 export async function execResult(
-  db: Queryable,
-  name: string,
-  text: string,
+  db    : Queryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
 ): Promise<ExecResult> {
   const { rowsAffected, lastInsertId } = await run(db, name, text, params);
@@ -380,9 +380,9 @@ export async function execResult(
 
 /** `:execresult` on a [`SyncQueryable`]. */
 export function execResultSync(
-  db: SyncQueryable,
-  name: string,
-  text: string,
+  db    : SyncQueryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
 ): ExecResult {
   const { rowsAffected, lastInsertId } = executed(db, name, text, params);
@@ -403,9 +403,9 @@ function insertedId(result: QueryResult, name: string): bigint {
  * `:one`, and this throws rather than resolve to a made-up zero.
  */
 export async function execLastId(
-  db: Queryable,
-  name: string,
-  text: string,
+  db    : Queryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
 ): Promise<bigint> {
   return insertedId(await run(db, name, text, params), name);
@@ -413,9 +413,9 @@ export async function execLastId(
 
 /** `:execlastid` on a [`SyncQueryable`]. */
 export function execLastIdSync(
-  db: SyncQueryable,
-  name: string,
-  text: string,
+  db    : SyncQueryable,
+  name  : string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
 ): bigint {
   return insertedId(executed(db, name, text, params), name);
@@ -453,7 +453,7 @@ export function slice(values: $ReadOnlyArray<SqlParam>): Slice {
  * should match.
  */
 export function expand(
-  parts: $ReadOnlyArray<string>,
+  parts : $ReadOnlyArray<string>,
   values: $ReadOnlyArray<SqlParam | Slice>,
 ): {| readonly text: string, readonly params: $ReadOnlyArray<SqlParam> |} {
   const params: Array<SqlParam> = [];
@@ -485,10 +485,10 @@ export function expand(
  * `VALUES ($1, $2)` is `tuple: ["(", ", ", ")"]`, `refs: [0, 1]`.
  */
 export type CopyPlan = {|
-  readonly head: string,
+  readonly head : string,
   readonly tuple: $ReadOnlyArray<string>,
-  readonly refs: $ReadOnlyArray<number>,
-  readonly tail: string,
+  readonly refs : $ReadOnlyArray<number>,
+  readonly tail : string,
 |};
 
 /** The most rows one statement carries when a row has no parameters at all. */
@@ -496,9 +496,9 @@ const COPY_ROWS_WITHOUT_PARAMS = 1000;
 
 function copyChunk(
   engine: Engine,
-  plan: CopyPlan,
-  chunk: $ReadOnlyArray<$ReadOnlyArray<SqlParam>>,
-  name: string,
+  plan  : CopyPlan,
+  chunk : $ReadOnlyArray<$ReadOnlyArray<SqlParam>>,
+  name  : string,
 ): {| readonly text: string, readonly params: $ReadOnlyArray<SqlParam> |} {
   const width = plan.refs.length;
   const params: Array<SqlParam> = [];
@@ -536,7 +536,7 @@ function copyWidth(db: { readonly maxParams: number, ... }, plan: CopyPlan, name
  * now several statements. Resolves to the number of rows inserted.
  */
 export async function copyFrom(
-  db: Queryable,
+  db  : Queryable,
   name: string,
   plan: CopyPlan,
   rows: $ReadOnlyArray<$ReadOnlyArray<SqlParam>>,
@@ -562,7 +562,7 @@ export async function copyFrom(
 
 /** `:copyfrom` on a [`SyncQueryable`]. */
 export function copyFromSync(
-  db: SyncQueryable,
+  db  : SyncQueryable,
   name: string,
   plan: CopyPlan,
   rows: $ReadOnlyArray<$ReadOnlyArray<SqlParam>>,
@@ -598,9 +598,9 @@ export function copyFromSync(
  * order without one, and the docs say so.
  */
 export async function batch<A, R>(
-  db: Queryable,
+  db   : Queryable,
   items: $ReadOnlyArray<A>,
-  body: (q: Queryable, item: A) => Promise<R>,
+  body : (q: Queryable, item: A) => Promise<R>,
 ): Promise<Array<R>> {
   const each = async (q: Queryable): Promise<Array<R>> => {
     const out: Array<R> = [];
@@ -623,9 +623,9 @@ export async function batch<A, R>(
  * items still run in order, on this thread.
  */
 export function batchSync<A, R>(
-  db: SyncQueryable,
+  db   : SyncQueryable,
   items: $ReadOnlyArray<A>,
-  body: (q: SyncQueryable, item: A) => R,
+  body : (q: SyncQueryable, item: A) => R,
 ): Array<R> {
   const each = (q: SyncQueryable): Array<R> => {
     const out: Array<R> = [];
@@ -646,23 +646,23 @@ export function batchSync<A, R>(
 
 /** How an adapter runs one statement on one connection. */
 export type Run = (
-  text: string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
-  mode: QueryMode,
+  mode  : QueryMode,
 ) => Promise<QueryResult>;
 
 /** [`Run`] for a driver that finishes the statement before returning. */
 export type RunSync = (
-  text: string,
+  text  : string,
   params: $ReadOnlyArray<SqlParam>,
-  mode: QueryMode,
+  mode  : QueryMode,
 ) => QueryResult;
 
 /** What [`transactionOn`] needs from an adapter. */
 export type Connection = {|
-  readonly engine: Engine,
+  readonly engine   : Engine,
   readonly maxParams: number,
-  readonly run: Run,
+  readonly run      : Run,
   /** Present when the driver can also run a statement on the calling thread. */
   readonly runSync?: RunSync,
   /** The statement that opens a transaction; `BEGIN` unless the adapter knows better. */
@@ -681,7 +681,7 @@ export type Connection = {|
  */
 export async function transactionOn<T>(
   connection: Connection,
-  body: (tx: Queryable) => Promise<T>,
+  body      : (tx: Queryable) => Promise<T>,
 ): Promise<T> {
   await connection.run(connection.begin ?? "BEGIN", [], "exec");
   return scoped(connection, 0, body, "COMMIT", "ROLLBACK");
@@ -689,10 +689,10 @@ export async function transactionOn<T>(
 
 async function scoped<T>(
   connection: Connection,
-  depth: number,
-  body: (tx: Queryable) => Promise<T>,
-  commit: string,
-  rollback: string,
+  depth     : number,
+  body      : (tx: Queryable) => Promise<T>,
+  commit    : string,
+  rollback  : string,
 ): Promise<T> {
   let open = true;
   const guarded: Run = (text, params, mode) => {
@@ -702,9 +702,9 @@ async function scoped<T>(
     return connection.run(text, params, mode);
   };
   const tx: Queryable = {
-    engine: connection.engine,
+    engine   : connection.engine,
     maxParams: connection.maxParams,
-    query: guarded,
+    query    : guarded,
     transaction: async <U>(inner: (tx: Queryable) => Promise<U>): Promise<U> => {
       const savepoint = `uf_sp_${depth + 1}`;
       await guarded(`SAVEPOINT ${savepoint}`, [], "exec");
@@ -773,12 +773,12 @@ export function transactionOnSync<T>(connection: Connection, body: (tx: SyncQuer
 }
 
 function scopedSync<T>(
-  runSync: RunSync,
+  runSync   : RunSync,
   connection: Connection,
-  depth: number,
-  body: (tx: SyncQueryable) => T,
-  commit: string,
-  rollback: string,
+  depth     : number,
+  body      : (tx: SyncQueryable) => T,
+  commit    : string,
+  rollback  : string,
 ): T {
   let open = true;
   const guarded: RunSync = (text, params, mode) => {
@@ -788,7 +788,7 @@ function scopedSync<T>(
     return runSync(text, params, mode);
   };
   const tx: SyncQueryable = {
-    engine: connection.engine,
+    engine   : connection.engine,
     maxParams: connection.maxParams,
     querySync: guarded,
     transactionSync: <U>(inner: (tx: SyncQueryable) => U): U => {
@@ -863,9 +863,9 @@ function connect(connection: Connection): Handle {
   const runSync = connection.runSync;
 
   const query = async (
-    text: string,
+    text  : string,
     params: $ReadOnlyArray<SqlParam>,
-    mode: QueryMode,
+    mode  : QueryMode,
   ): Promise<QueryResult> => {
     if (syncOpen) {
       unsupported("an asynchronous query while a synchronous transaction is open");
@@ -894,9 +894,9 @@ function connect(connection: Connection): Handle {
     }
   };
   const querySync = (
-    text: string,
+    text  : string,
     params: $ReadOnlyArray<SqlParam>,
-    mode: QueryMode,
+    mode  : QueryMode,
   ): QueryResult => {
     const run =
       connection.runSync ?? unsupported("a synchronous query on an asynchronous connection");
@@ -930,7 +930,7 @@ function connect(connection: Connection): Handle {
     }
   };
   return {
-    engine: connection.engine,
+    engine   : connection.engine,
     maxParams: connection.maxParams,
     query,
     transaction,

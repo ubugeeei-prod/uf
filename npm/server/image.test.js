@@ -60,7 +60,7 @@ function fakeFetch(table: { readonly [url: string]: () => Response }): {|
 /** A transformer that records its inputs and answers with a labelled body. */
 function fakeTransform(): {|
   readonly transform: ImageTransform,
-  readonly calls: Array<TransformInput>,
+  readonly calls    : Array<TransformInput>,
 |} {
   const calls: Array<TransformInput> = [];
   return {
@@ -69,7 +69,7 @@ function fakeTransform(): {|
       calls.push(input);
       return {
         bytes: new TextEncoder().encode(`${input.avif ? "avif" : "png"}@${input.width}`),
-        type: input.avif ? "image/avif" : "image/png",
+        type : input.avif ? "image/avif" : "image/png",
       };
     },
   };
@@ -84,16 +84,16 @@ function png(cacheControl?: string): () => Response {
 }
 
 function endpointWith(
-  fetch: ImageFetch,
+  fetch    : ImageFetch,
   transform: ImageTransform,
-  extra?: {| readonly qualities?: $ReadOnlyArray<number> |},
+  extra?   : {| readonly qualities?: $ReadOnlyArray<number> |},
 ) {
   return createImageEndpoint({
     remotePatterns: [
       { hostname: "images.example.com", pathname: "/uploads/**" },
       { hostname: "*.cdn.example.com" },
     ],
-    widths: [320, 640],
+    widths : [320, 640],
     quality: 75,
     ...extra,
     fetch,
@@ -108,7 +108,7 @@ function ask(source: string, query: string = "w=640&q=75", accept?: string): Req
 
 async function answered(
   endpoint: (request: Request) => Promise<Response | null>,
-  request: Request,
+  request : Request,
 ): Promise<Response> {
   const response = await endpoint(request);
   if (response == null) throw new Error("the endpoint declined its own path");
@@ -145,13 +145,13 @@ describe("the allow-list", () => {
     const { fetch, asked } = fakeFetch({
       "https://images.example.com/uploads/moved.png": () =>
         new Response(null, {
-          status: 301,
+          status : 301,
           headers: { location: "https://x.cdn.example.com/a.png" },
         }),
       "https://x.cdn.example.com/a.png": png(),
       "https://images.example.com/uploads/escape.png": () =>
         new Response(null, {
-          status: 302,
+          status : 302,
           headers: { location: "http://169.254.169.254/latest/meta-data/" },
         }),
       "https://images.example.com/uploads/relative.png": () =>
@@ -183,7 +183,7 @@ describe("the allow-list", () => {
   it("stops after three redirects", async () => {
     const loop = () =>
       new Response(null, {
-        status: 302,
+        status : 302,
         headers: { location: "https://images.example.com/uploads/loop.png" },
       });
     const { fetch, asked } = fakeFetch({ "https://images.example.com/uploads/loop.png": loop });
@@ -197,9 +197,9 @@ describe("the allow-list", () => {
     const build = (remotePatterns: $FlowFixMe) => () =>
       createImageEndpoint({
         remotePatterns,
-        widths: [640],
-        quality: 75,
-        fetch: fakeFetch({}).fetch,
+        widths   : [640],
+        quality  : 75,
+        fetch    : fakeFetch({}).fetch,
         transform: fakeTransform().transform,
       });
     expect(build([])).toThrow("at least one entry");
@@ -269,7 +269,7 @@ describe("what a request may ask for", () => {
     const { fetch } = fakeFetch({
       "https://images.example.com/uploads/declared.png": () =>
         new Response(null, {
-          status: 200,
+          status : 200,
           headers: { "content-length": String(MAX_SOURCE_BYTES + 1) },
         }),
       // No length, so it is found out while the body arrives.
@@ -375,9 +375,9 @@ describe("the variant", () => {
     const fetch: ImageFetch = async (...args) => {
       calls.push(args);
       const headers = new Headers({
-        "content-type": "text/html",
+        "content-type"       : "text/html",
         "content-disposition": 'attachment; filename="invoice.html"',
-        "set-cookie": "session=origin",
+        "set-cookie"         : "session=origin",
       });
       return new Response(PNG, { status: 200, headers });
     };
@@ -444,9 +444,9 @@ describe("the fetch handler", () => {
     };
     const app: Application = {
       runMiddleware: untouched,
-      callAction: untouched,
-      dispatch: untouched,
-      render: untouched,
+      callAction   : untouched,
+      dispatch     : untouched,
+      render       : untouched,
       beginRequest,
     } as $FlowFixMe;
     const document: DocumentAssets = { scripts: [], styles: [], preloads: [] };
@@ -470,9 +470,9 @@ describe("the fetch handler", () => {
     };
     const app: Application = {
       runMiddleware: untouched,
-      callAction: untouched,
-      dispatch: untouched,
-      render: untouched,
+      callAction   : untouched,
+      dispatch     : untouched,
+      render       : untouched,
       beginRequest,
       routing: { trailingSlash: "always" },
     } as $FlowFixMe;
@@ -480,7 +480,7 @@ describe("the fetch handler", () => {
     const handle = createFetchHandler({
       app,
       document: { scripts: [], styles: [], preloads: [] },
-      images: endpointWith(fetch, fakeTransform().transform),
+      images  : endpointWith(fetch, fakeTransform().transform),
     });
     const request = ask("https://images.example.com/uploads/a.png");
     const lifecycle = beginRequest(request);
@@ -541,8 +541,8 @@ describe("the address check", () => {
 describe("the Node fetch", () => {
   /** A server on loopback that counts what reaches it. */
   async function origin(answer: (path: string, response: $FlowFixMe) => void): Promise<{|
-    readonly port: number,
-    readonly hits: () => number,
+    readonly port : number,
+    readonly hits : () => number,
     readonly close: () => Promise<void>,
   |}> {
     let hits = 0;
@@ -576,7 +576,7 @@ describe("the Node fetch", () => {
         { protocol: "http", hostname: "images.example.com", port },
         { protocol: "http", hostname: "metadata.example.com", port },
       ],
-      widths: [640],
+      widths : [640],
       quality: 75,
       fetch: nodeImageFetch({
         // What a hostile DNS answers: a name the allow-list admitted, pointed
@@ -639,9 +639,9 @@ describe("the Node fetch", () => {
       const { transform, calls } = fakeTransform();
       const endpoint = createImageEndpoint({
         remotePatterns: [{ protocol: "http", hostname: "127.0.0.1", port: String(served.port) }],
-        widths: [640],
-        quality: 75,
-        fetch: nodeImageFetch({ allowPrivateAddresses: true }),
+        widths        : [640],
+        quality       : 75,
+        fetch         : nodeImageFetch({ allowPrivateAddresses: true }),
         transform,
       });
       const base = `http://127.0.0.1:${served.port}`;

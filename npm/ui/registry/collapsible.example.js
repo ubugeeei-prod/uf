@@ -6,9 +6,9 @@ import * as Collapsible from "./collapsible.js";
 
 const styles = stylex.create({
   list: {
-    display: "grid",
-    gap: ufTokens.space1,
-    margin: 0,
+    display           : "grid",
+    gap               : ufTokens.space1,
+    margin            : 0,
     paddingInlineStart: ufTokens.space6,
   },
 });

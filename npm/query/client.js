@@ -49,22 +49,22 @@ import type { RetryDelay, RetryPolicy } from "./retry.js";
 
 /** What a whole application decides once. */
 export type QueryDefaults = {|
-  readonly staleTime?: number,
-  readonly gcTime?: number,
-  readonly retry?: RetryPolicy,
-  readonly retryDelay?: RetryDelay,
-  readonly refetchInterval?: number | null,
+  readonly staleTime?           : number,
+  readonly gcTime?              : number,
+  readonly retry?               : RetryPolicy,
+  readonly retryDelay?          : RetryDelay,
+  readonly refetchInterval?     : number | null,
   readonly refetchOnWindowFocus?: boolean,
-  readonly refetchOnReconnect?: boolean,
+  readonly refetchOnReconnect?  : boolean,
 |};
 
 export type MutationDefaults = {|
-  readonly retry?: RetryPolicy,
+  readonly retry?     : RetryPolicy,
   readonly retryDelay?: RetryDelay,
 |};
 
 export type QueryClientOptions = {|
-  readonly queries?: QueryDefaults,
+  readonly queries?  : QueryDefaults,
   readonly mutations?: MutationDefaults,
   /** Replaceable so React Native and tests can drive focus themselves. */
   readonly presence?: Presence,
@@ -72,11 +72,11 @@ export type QueryClientOptions = {|
 
 /** What `fetchQuery` needs, which is a query without anything React-shaped. */
 export type FetchQueryOptions<TData> = {|
-  readonly queryKey: QueryKey,
-  readonly queryFn: (context: FetchContext<TData>) => Promise<TData>,
-  readonly staleTime?: number,
-  readonly gcTime?: number,
-  readonly retry?: RetryPolicy,
+  readonly queryKey   : QueryKey,
+  readonly queryFn    : (context: FetchContext<TData>) => Promise<TData>,
+  readonly staleTime? : number,
+  readonly gcTime?    : number,
+  readonly retry?     : RetryPolicy,
   readonly retryDelay?: RetryDelay,
 |};
 
@@ -91,23 +91,23 @@ export type FetchQueryOptions<TData> = {|
  */
 /** Every query option a client has a default for, filled in. */
 type ResolvedQueryDefaults = {|
-  readonly staleTime: number,
-  readonly gcTime: number,
-  readonly retry: RetryPolicy,
-  readonly retryDelay: RetryDelay,
-  readonly refetchInterval: number | null,
+  readonly staleTime           : number,
+  readonly gcTime              : number,
+  readonly retry               : RetryPolicy,
+  readonly retryDelay          : RetryDelay,
+  readonly refetchInterval     : number | null,
   readonly refetchOnWindowFocus: boolean,
-  readonly refetchOnReconnect: boolean,
+  readonly refetchOnReconnect  : boolean,
 |};
 
 const QUERY_DEFAULTS: ResolvedQueryDefaults = {
-  staleTime: 0,
-  gcTime: DEFAULT_GC_TIME,
-  retry: 3,
-  retryDelay: backoffDelay,
-  refetchInterval: null,
+  staleTime           : 0,
+  gcTime              : DEFAULT_GC_TIME,
+  retry               : 3,
+  retryDelay          : backoffDelay,
+  refetchInterval     : null,
   refetchOnWindowFocus: true,
-  refetchOnReconnect: true,
+  refetchOnReconnect  : true,
 };
 
 /**
@@ -119,7 +119,7 @@ const QUERY_DEFAULTS: ResolvedQueryDefaults = {
  * decision about idempotency that only the caller can make.
  */
 const MUTATION_DEFAULTS: {| readonly retry: RetryPolicy, readonly retryDelay: RetryDelay |} = {
-  retry: false,
+  retry     : false,
   retryDelay: backoffDelay,
 };
 
@@ -133,10 +133,10 @@ export class QueryClient {
     this.presence = options?.presence ?? new Presence();
     const queries = options?.queries;
     this.queryDefaults = {
-      staleTime: given(queries?.staleTime, QUERY_DEFAULTS.staleTime),
-      gcTime: given(queries?.gcTime, QUERY_DEFAULTS.gcTime),
-      retry: given(queries?.retry, QUERY_DEFAULTS.retry),
-      retryDelay: given(queries?.retryDelay, QUERY_DEFAULTS.retryDelay),
+      staleTime      : given(queries?.staleTime, QUERY_DEFAULTS.staleTime),
+      gcTime         : given(queries?.gcTime, QUERY_DEFAULTS.gcTime),
+      retry          : given(queries?.retry, QUERY_DEFAULTS.retry),
+      retryDelay     : given(queries?.retryDelay, QUERY_DEFAULTS.retryDelay),
       refetchInterval: given(queries?.refetchInterval, QUERY_DEFAULTS.refetchInterval),
       refetchOnWindowFocus: given(
         queries?.refetchOnWindowFocus,
@@ -146,7 +146,7 @@ export class QueryClient {
     };
     const mutations = options?.mutations;
     this.mutationDefaults = {
-      retry: given(mutations?.retry, MUTATION_DEFAULTS.retry),
+      retry     : given(mutations?.retry, MUTATION_DEFAULTS.retry),
       retryDelay: given(mutations?.retryDelay, MUTATION_DEFAULTS.retryDelay),
     };
   }
@@ -157,18 +157,18 @@ export class QueryClient {
   ): ResolvedQueryOptions<TData, TSelected> {
     const defaults = this.queryDefaults;
     return {
-      queryKey: options.queryKey,
-      queryFn: options.queryFn,
-      enabled: options.enabled ?? true,
-      staleTime: options.staleTime ?? defaults.staleTime,
-      gcTime: options.gcTime ?? defaults.gcTime,
-      retry: options.retry ?? defaults.retry,
-      retryDelay: options.retryDelay ?? defaults.retryDelay,
-      select: options.select,
-      placeholderData: options.placeholderData,
-      refetchInterval: options.refetchInterval ?? defaults.refetchInterval,
+      queryKey            : options.queryKey,
+      queryFn             : options.queryFn,
+      enabled             : options.enabled ?? true,
+      staleTime           : options.staleTime ?? defaults.staleTime,
+      gcTime              : options.gcTime ?? defaults.gcTime,
+      retry               : options.retry ?? defaults.retry,
+      retryDelay          : options.retryDelay ?? defaults.retryDelay,
+      select              : options.select,
+      placeholderData     : options.placeholderData,
+      refetchInterval     : options.refetchInterval ?? defaults.refetchInterval,
       refetchOnWindowFocus: options.refetchOnWindowFocus ?? defaults.refetchOnWindowFocus,
-      refetchOnReconnect: options.refetchOnReconnect ?? defaults.refetchOnReconnect,
+      refetchOnReconnect  : options.refetchOnReconnect ?? defaults.refetchOnReconnect,
     };
   }
 
@@ -177,7 +177,7 @@ export class QueryClient {
   ): ResolvedMutationOptions<TVariables, TData, TContext> {
     return {
       ...options,
-      retry: options.retry ?? this.mutationDefaults.retry,
+      retry     : options.retry ?? this.mutationDefaults.retry,
       retryDelay: options.retryDelay ?? this.mutationDefaults.retryDelay,
     };
   }
@@ -230,8 +230,8 @@ export class QueryClient {
       return Promise.resolve(query.state.data);
     }
     return query.fetch((context) => resolved.queryFn(context as $FlowFixMe), {
-      retry: resolved.retry,
-      retryDelay: resolved.retryDelay,
+      retry        : resolved.retry,
+      retryDelay   : resolved.retryDelay,
       cancelRefetch: false,
     });
   }

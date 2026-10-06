@@ -100,7 +100,7 @@ describe("requests", () => {
   it("merges headers, with the request's winning", async () => {
     const impl = scripted([json({})]);
     const client = createFetch({
-      fetch: impl,
+      fetch  : impl,
       headers: { authorization: "token", accept: "application/json" },
     });
     await client.request<mixed>("/x", { headers: { accept: "text/plain" } });
@@ -291,7 +291,7 @@ describe("extend", () => {
     await child.request<mixed>("/x");
     expect(headersOf(impl.calls[0])).toEqual({
       authorization: "token",
-      "x-trace": "1",
+      "x-trace"    : "1",
     });
   });
 });

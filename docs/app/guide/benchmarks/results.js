@@ -14,49 +14,49 @@ import * as React from "@uniflowed/react";
 
 /** The committed run, as text, by path: one entry, or none before the first. */
 const FILES = import.meta.glob<string>("../../../../tools/bench/toolchain/baseline.json", {
-  eager: true,
+  eager : true,
   import: "default",
-  query: "?raw",
+  query : "?raw",
 });
 
 type Cpu = {| readonly median: number |};
 
 type Row = {|
-  readonly tool: string,
-  readonly stage: string,
+  readonly tool   : string,
+  readonly stage  : string,
   readonly fixture: string,
-  readonly title: string,
+  readonly title  : string,
   readonly command: string,
-  readonly cache: string,
-  readonly runs: number,
-  readonly median: number,
-  readonly min: number,
-  readonly max: number,
-  readonly cpu: Cpu | null,
+  readonly cache  : string,
+  readonly runs   : number,
+  readonly median : number,
+  readonly min    : number,
+  readonly max    : number,
+  readonly cpu    : Cpu | null,
 |};
 
 type Skipped = {| readonly tool: string, readonly stage: string | null, readonly reason: string |};
 
 type Run = {|
-  readonly finishedAt: string,
+  readonly finishedAt : string,
   readonly provisional: boolean,
   readonly machine: {|
-    readonly platform: string,
-    readonly arch: string,
-    readonly cpu: string,
-    readonly cores: number,
+    readonly platform   : string,
+    readonly arch       : string,
+    readonly cpu        : string,
+    readonly cores      : number,
     readonly memoryBytes: number,
-    readonly ci: string | null,
-    readonly loadBefore: string,
-    readonly loadAfter: string,
+    readonly ci         : string | null,
+    readonly loadBefore : string,
+    readonly loadAfter  : string,
   |},
-  readonly versions: $ReadOnlyArray<[string, string]>,
-  readonly runs: number,
-  readonly warmup: number,
+  readonly versions : $ReadOnlyArray<[string, string]>,
+  readonly runs     : number,
+  readonly warmup   : number,
   readonly arguments: string,
-  readonly fixtures: $ReadOnlyArray<[string, string]>,
-  readonly skipped: $ReadOnlyArray<Skipped>,
-  readonly rows: $ReadOnlyArray<Row>,
+  readonly fixtures : $ReadOnlyArray<[string, string]>,
+  readonly skipped  : $ReadOnlyArray<Skipped>,
+  readonly rows     : $ReadOnlyArray<Row>,
 |};
 
 function fail(what: string): empty {
@@ -128,21 +128,21 @@ function parse(source: string): Run {
     ]);
   }
   return {
-    finishedAt: text(top.finishedAt, "finishedAt"),
+    finishedAt : text(top.finishedAt, "finishedAt"),
     provisional: top.provisional === true,
     machine: {
-      platform: text(machine.platform, "machine platform"),
-      arch: text(machine.arch, "machine arch"),
-      cpu: text(machine.cpu, "machine cpu"),
-      cores: number(machine.cores, "machine cores"),
+      platform   : text(machine.platform, "machine platform"),
+      arch       : text(machine.arch, "machine arch"),
+      cpu        : text(machine.cpu, "machine cpu"),
+      cores      : number(machine.cores, "machine cores"),
       memoryBytes: number(machine.memoryBytes, "machine memory"),
-      ci: machine.ci == null ? null : text(machine.ci, "machine ci"),
-      loadBefore: load(machine.before),
-      loadAfter: load(machine.after),
+      ci         : machine.ci == null ? null : text(machine.ci, "machine ci"),
+      loadBefore : load(machine.before),
+      loadAfter  : load(machine.after),
     },
     versions: Object.keys(versions).map((name) => [name, text(versions[name], `version ${name}`)]),
-    runs: number(settings.runs, "settings runs"),
-    warmup: number(settings.warmup, "settings warmup"),
+    runs    : number(settings.runs, "settings runs"),
+    warmup  : number(settings.warmup, "settings warmup"),
     arguments: array(top.arguments, "arguments")
       .map((one) => text(one, "an argument"))
       .join(" "),
@@ -150,8 +150,8 @@ function parse(source: string): Run {
     skipped: array(top.skipped ?? [], "skipped").map((value) => {
       const one = object(value, "a skipped tool");
       return {
-        tool: text(one.tool, "skipped tool"),
-        stage: one.stage == null ? null : text(one.stage, "skipped stage"),
+        tool  : text(one.tool, "skipped tool"),
+        stage : one.stage == null ? null : text(one.stage, "skipped stage"),
         reason: text(one.reason, "skipped reason"),
       };
     }),
@@ -159,17 +159,17 @@ function parse(source: string): Run {
       const row = object(value, "a result");
       const cpu = row.cpu == null ? null : object(row.cpu, "a result's cpu");
       return {
-        tool: text(row.tool, "a result's tool"),
-        stage: text(row.stage, "a result's stage"),
+        tool   : text(row.tool, "a result's tool"),
+        stage  : text(row.stage, "a result's stage"),
         fixture: text(row.fixture, "a result's fixture"),
-        title: text(row.title, "a result's title"),
+        title  : text(row.title, "a result's title"),
         command: text(row.command, "a result's command"),
-        cache: text(row.cache, "a result's cache"),
-        runs: number(row.runs, "a result's runs"),
-        median: number(row.median, "a result's median"),
-        min: number(row.min, "a result's min"),
-        max: number(row.max, "a result's max"),
-        cpu: cpu == null ? null : { median: number(cpu.median, "a result's cpu median") },
+        cache  : text(row.cache, "a result's cache"),
+        runs   : number(row.runs, "a result's runs"),
+        median : number(row.median, "a result's median"),
+        min    : number(row.min, "a result's min"),
+        max    : number(row.max, "a result's max"),
+        cpu    : cpu == null ? null : { median: number(cpu.median, "a result's cpu median") },
       };
     }),
   };
@@ -211,7 +211,7 @@ function groups(rows: $ReadOnlyArray<Row>): $ReadOnlyArray<Group> {
   return [...found.entries()].map(([key, members]) => ({
     key,
     title: `${members[0].title} — ${members[0].fixture}`,
-    rows: [...members].sort((a, b) => a.median - b.median),
+    rows : [...members].sort((a, b) => a.median - b.median),
   }));
 }
 

@@ -9,34 +9,34 @@ import { compareScreenshot } from "./screenshots.js";
 // boundary here; the application-facing page API has concrete Flow types.
 type WireValue = $FlowFixMe;
 export type ControlOptions = {|
-  readonly root?: string,
-  readonly baselines?: string,
-  readonly threshold?: number,
+  readonly root?      : string,
+  readonly baselines? : string,
+  readonly threshold? : number,
   readonly executable?: string,
-  readonly timeoutMs?: number,
+  readonly timeoutMs? : number,
 |};
 export type BrowserTransport = {|
   readonly id: string,
   readonly command: (
-    id: string | null,
+    id    : string | null,
     method: string,
-    args?: $ReadOnlyArray<WireValue>,
+    args? : $ReadOnlyArray<WireValue>,
   ) => Promise<WireValue>,
   readonly close: () => Promise<void>,
 |};
 /** The page commands `connectPipe` answers over one browser connection. */
 export type PipeController = {|
   readonly command: (
-    id: string | null,
+    id    : string | null,
     method: string,
-    args?: $ReadOnlyArray<WireValue>,
+    args? : $ReadOnlyArray<WireValue>,
   ) => Promise<WireValue>,
   readonly closePages: () => Promise<void>,
 |};
 type Pending = {|
-  timer: TimeoutID,
+  timer  : TimeoutID,
   resolve: (value: WireValue) => void,
-  reject: (error: Error) => void,
+  reject : (error: Error) => void,
 |};
 
 /** CDP over the private pipe: closing the test worker also closes Chromium. */
@@ -87,8 +87,8 @@ export function connectPipe(child: $FlowFixMe, options: ControlOptions = {}): Pi
   child.once("error", disconnect);
   child.stdio[3].on("error", disconnect);
   function send(
-    method: string,
-    params: { readonly [string]: mixed } = {},
+    method    : string,
+    params    : { readonly [string]: mixed } = {},
     sessionId?: string,
   ): Promise<WireValue> {
     if (closed) return Promise.reject(new Error("test browser closed"));
@@ -115,8 +115,8 @@ export function connectPipe(child: $FlowFixMe, options: ControlOptions = {}): Pi
     return result.result.value;
   }
   async function until(
-    session: string,
-    expression: string,
+    session    : string,
+    expression : string,
     description: string,
   ): Promise<WireValue> {
     const end = Date.now() + (options.timeoutMs ?? 15000);
@@ -159,9 +159,9 @@ export function connectPipe(child: $FlowFixMe, options: ControlOptions = {}): Pi
     return targetId;
   }
   async function command(
-    id: string | null,
+    id    : string | null,
     method: string,
-    args: $ReadOnlyArray<WireValue> = [],
+    args  : $ReadOnlyArray<WireValue> = [],
   ): Promise<WireValue> {
     if (method === "create") return createPage();
     if (id == null) throw new Error("unknown test page");
@@ -252,19 +252,19 @@ export function connectPipe(child: $FlowFixMe, options: ControlOptions = {}): Pi
       }
       case "press": {
         const keys = {
-          Enter: 13,
-          Tab: 9,
-          Escape: 27,
-          Backspace: 8,
-          ArrowLeft: 37,
-          ArrowUp: 38,
+          Enter     : 13,
+          Tab       : 9,
+          Escape    : 27,
+          Backspace : 8,
+          ArrowLeft : 37,
+          ArrowUp   : 38,
           ArrowRight: 39,
-          ArrowDown: 40,
-          " ": 32,
+          ArrowDown : 40,
+          " "       : 32,
         };
         if (!(first in keys)) throw new Error(`unsupported test key ${first}`);
         const params = {
-          key: first,
+          key                  : first,
           windowsVirtualKeyCode: keys[first],
           ...(first === "Enter" ? { text: "\r" } : first === " " ? { text: " " } : {}),
         };
@@ -302,7 +302,7 @@ export function connectPipe(child: $FlowFixMe, options: ControlOptions = {}): Pi
           session,
         );
         return compareScreenshot(data, first, {
-          root: options.root,
+          root     : options.root,
           threshold: second?.threshold ?? options.threshold,
           baselines: second?.baselines ?? options.baselines,
         });

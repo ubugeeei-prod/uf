@@ -88,19 +88,19 @@ import { useControlled } from "./internal/controlled-state.js";
 export type { Orientation } from "./internal/roving-focus.js";
 
 type CarouselState = {|
-  readonly base: string,
-  readonly count: number,
-  readonly index: number,
-  readonly setIndex: (next: number) => void,
-  readonly loop: boolean,
+  readonly base       : string,
+  readonly count      : number,
+  readonly index      : number,
+  readonly setIndex   : (next: number) => void,
+  readonly loop       : boolean,
   readonly orientation: Orientation,
   /** Whether it is rotating right now, which is what `aria-live` reads. */
   readonly rotating: boolean,
   /** Whether the reader stopped it on purpose, which nothing but they undo. */
-  readonly stopped: boolean,
+  readonly stopped   : boolean,
   readonly setStopped: (stopped: boolean) => void,
   /** Whether a rotation was ever asked for, so `Carousel.Pause` can say so. */
-  readonly rotates: boolean,
+  readonly rotates      : boolean,
   readonly registerPause: (present: boolean) => void,
 |};
 
@@ -129,27 +129,27 @@ hook useCarousel(part: string): CarouselState {
  * inside it; both are checked.
  */
 component CarouselRoot(
-  children: React.Node,
-  autoplay?: number | null = null,
-  count: number,
-  defaultIndex?: number = 0,
-  index?: number,
-  label: string,
-  loop?: boolean = true,
+  children      : React.Node,
+  autoplay?     : number | null = null,
+  count         : number,
+  defaultIndex? : number = 0,
+  index?        : number,
+  label         : string,
+  loop?         : boolean = true,
   onIndexChange?: (index: number) => void,
-  orientation?: Orientation = "horizontal",
+  orientation?  : Orientation = "horizontal",
   ...rest: Rest
 ) {
-  const base = useId();
-  const [current, setIndex] = useControlled(index, defaultIndex, onIndexChange);
-  const rootRef = useRef<HTMLElement | null>(null);
-  const paused = useRef(0);
+  const base                  = useId();
+  const [current, setIndex]   = useControlled(index, defaultIndex, onIndexChange);
+  const rootRef               = useRef<HTMLElement | null>(null);
+  const paused                = useRef(0);
   const [stopped, setStopped] = useState(false);
   // Whether the pointer or focus is resting on it. State rather than a ref,
   // because the timer below is an effect and has to be torn down when it
   // changes.
   const [held, setHeld] = useState(false);
-  const reducedMotion = usePrefersReducedMotion();
+  const reducedMotion   = usePrefersReducedMotion();
   const passed = withoutComposed(rest, [
     "onBlur",
     "onFocus",
@@ -321,9 +321,9 @@ component CarouselItem(children: React.Node, index: number, ...rest: Rest) {
  * and a reader who has stopped a carousel wants to be told it is stopped.
  */
 component CarouselPause(
-  children?: React.Node,
+  children?  : React.Node,
   pauseLabel?: string = "Stop the carousel",
-  playLabel?: string = "Start the carousel",
+  playLabel? : string = "Start the carousel",
   ...rest: Rest
 ) {
   const carousel = useCarousel("Carousel.Pause");
@@ -356,7 +356,7 @@ component CarouselPause(
 /** The button that goes back one slide. */
 component CarouselPrevious(
   children?: React.Node,
-  label?: string = "Previous slide",
+  label?   : string = "Previous slide",
   ...rest: Rest
 ) renders CarouselStep {
   return (
@@ -369,7 +369,7 @@ component CarouselPrevious(
 /** The button that goes forward one slide. */
 component CarouselNext(
   children?: React.Node,
-  label?: string = "Next slide",
+  label?   : string = "Next slide",
   ...rest: Rest
 ) renders CarouselStep {
   return (

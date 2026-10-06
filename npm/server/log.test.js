@@ -125,17 +125,17 @@ describe("redaction", () => {
     const { logger: log, records } = recordingLogger();
 
     log.info("exchanged", {
-      accessToken: "at-secret",
+      accessToken  : "at-secret",
       refresh_token: "rt-secret",
-      "Set-Cookie": "session=abc",
-      subject: "user-1",
+      "Set-Cookie" : "session=abc",
+      subject      : "user-1",
     });
 
     expect(records[0].fields).toEqual({
-      accessToken: "[redacted]",
+      accessToken  : "[redacted]",
       refresh_token: "[redacted]",
-      "Set-Cookie": "[redacted]",
-      subject: "user-1",
+      "Set-Cookie" : "[redacted]",
+      subject      : "user-1",
     });
   });
 
@@ -208,18 +208,18 @@ describe("formats", () => {
     // So a query is `status:500` rather than `fields.status:500`, which is the
     // difference between a structured log and a JSON-shaped string.
     const line = formatJson({
-      level: "info",
-      time: Temporal.Instant.from("2026-01-02T03:04:05.678Z"),
+      level  : "info",
+      time   : Temporal.Instant.from("2026-01-02T03:04:05.678Z"),
       message: "request",
-      fields: { status: 500, route: "/a/:id" },
+      fields : { status: 500, route: "/a/:id" },
     });
 
     expect(JSON.parse(line)).toEqual({
       status: 500,
-      route: "/a/:id",
-      level: "info",
-      time: "2026-01-02T03:04:05.678Z",
-      msg: "request",
+      route : "/a/:id",
+      level : "info",
+      time  : "2026-01-02T03:04:05.678Z",
+      msg   : "request",
     });
   });
 
@@ -227,10 +227,10 @@ describe("formats", () => {
     // A caller — or a header a caller chose — naming a field `level` must not
     // be able to relabel the record's severity.
     const line = formatJson({
-      level: "error",
-      time: Temporal.Instant.fromEpochMilliseconds(0),
+      level  : "error",
+      time   : Temporal.Instant.fromEpochMilliseconds(0),
       message: "real",
-      fields: { level: "debug", msg: "fake" },
+      fields : { level: "debug", msg: "fake" },
     });
 
     expect(JSON.parse(line).level).toBe("error");
@@ -239,10 +239,10 @@ describe("formats", () => {
 
   it("writes a line a person reads for the terminal", () => {
     const line = formatText({
-      level: "warn",
-      time: Temporal.Instant.from("2026-01-02T03:04:05.678Z"),
+      level  : "warn",
+      time   : Temporal.Instant.from("2026-01-02T03:04:05.678Z"),
       message: "request",
-      fields: { route: "/a/:id", status: 404 },
+      fields : { route: "/a/:id", status: 404 },
     });
 
     expect(line).toBe("03:04:05.678 warn  request route=/a/:id status=404");
@@ -254,10 +254,10 @@ describe("formats", () => {
     // `…:05.500Z` in every collector that sorts the string it was handed. This
     // is the case that fails if the formatter ever goes back to `toString`.
     const line = formatJson({
-      level: "info",
-      time: Temporal.Instant.from("2026-01-02T03:04:05Z"),
+      level  : "info",
+      time   : Temporal.Instant.from("2026-01-02T03:04:05Z"),
       message: "on the second",
-      fields: {},
+      fields : {},
     });
 
     expect(JSON.parse(line).time).toBe("2026-01-02T03:04:05.000Z");
@@ -472,16 +472,16 @@ describe("the line a finished request leaves behind", () => {
 
   /** A Node response that records what was written to it. */
   const outgoing = () => ({
-    statusCode: 200,
+    statusCode   : 200,
     statusMessage: "",
-    headersSent: false,
-    setHeader: () => {},
-    write: () => true,
-    end: () => {},
-    destroy: () => {},
-    on: () => {},
-    once: () => {},
-    off: () => {},
+    headersSent  : false,
+    setHeader    : () => {},
+    write        : () => true,
+    end          : () => {},
+    destroy      : () => {},
+    on           : () => {},
+    once         : () => {},
+    off          : () => {},
   });
 
   /** A host that begins a request and answers it with `answer`. */
@@ -491,7 +491,7 @@ describe("the line a finished request leaves behind", () => {
         const context = contextFor(request);
         return {
           context,
-          run: (body) => runWithContext(context, body),
+          run   : (body) => runWithContext(context, body),
           settle: () => drainDeferred(context),
         };
       },

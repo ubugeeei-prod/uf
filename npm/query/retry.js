@@ -77,10 +77,10 @@ export function backoffDelay(failureCount: number): number {
  * the policy is.
  */
 export async function runWithRetry<T>(options: {|
-  readonly attempt: (failureCount: number) => Promise<T>,
-  readonly retry: RetryPolicy,
+  readonly attempt   : (failureCount: number) => Promise<T>,
+  readonly retry     : RetryPolicy,
   readonly retryDelay: RetryDelay,
-  readonly signal: AbortSignal,
+  readonly signal    : AbortSignal,
   readonly onFailure?: (failureCount: number, error: Error) => void,
 |}): Promise<T> {
   let failureCount = 0;
@@ -149,9 +149,9 @@ function delayFor(delay: RetryDelay, failureCount: number, error: Error): number
  * and the entry's fetch id makes sure a late answer cannot write.
  */
 async function race<T>(
-  attempt: (failureCount: number) => Promise<T>,
+  attempt     : (failureCount: number) => Promise<T>,
   failureCount: number,
-  signal: AbortSignal,
+  signal      : AbortSignal,
 ): Promise<T> {
   let onAbort = () => {};
   const cancelled: Promise<empty> = new Promise((_resolve, reject) => {

@@ -104,9 +104,9 @@ const packedPaths = (names: Array<string>): Map<string, Set<string>> => {
   let stdout;
   try {
     stdout = execFileSync("npm", ["pack", "--dry-run", "--json", ...specs], {
-      cwd: repository,
+      cwd     : repository,
       encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio   : ["ignore", "pipe", "pipe"],
       // npm's default cache is `~/.npm`, and it writes there even for a dry
       // run that fetches nothing. A machine whose cache holds root-owned files
       // — a real state, and one npm's own error tells you to fix with `sudo` —

@@ -60,7 +60,7 @@ export type WrapMode = "word" | "char" | "none";
 
 /** One grapheme, its width, and how it is painted. */
 type Cluster = {
-  readonly text: string,
+  readonly text : string,
   readonly width: number,
   readonly style: Style,
 };
@@ -68,7 +68,7 @@ type Cluster = {
 /** A laid-out line of clusters, with the columns it occupies. */
 type Line = {
   readonly clusters: Array<Cluster>,
-  readonly width: number,
+  readonly width   : number,
 };
 
 /**
@@ -84,9 +84,9 @@ type Line = {
  * the alternative is a line that overflows no matter what, and a URL is a word.
  */
 export function wrapRuns(
-  runs: $ReadOnlyArray<{ readonly text: string, readonly style: Style }>,
+  runs     : $ReadOnlyArray<{ readonly text: string, readonly style: Style }>,
   available: number,
-  mode: WrapMode,
+  mode     : WrapMode,
 ): Array<Line> {
   const lines: Array<Line> = [];
   let current: Array<Cluster> = [];
@@ -135,9 +135,9 @@ export function wrapRuns(
 
 /** The size a text node wants, given the width it may use. */
 export function measureText(
-  node: TuiNode,
+  node     : TuiNode,
   available: number,
-  mode: WrapMode,
+  mode     : WrapMode,
 ): { readonly width: number, readonly height: number } {
   const runs = textRuns(node, textStyleFromProps(node.props, ROOT_TEXT_STYLE));
   const lines = wrapRuns(runs, available, mode);
@@ -176,12 +176,12 @@ export function wrapModeOf(node: TuiNode): WrapMode {
  * everything under that node.
  */
 export function paint(
-  node: TuiNode,
-  frame: Frame,
+  node        : TuiNode,
+  frame       : Frame,
   capabilities: Capabilities,
-  clip: Rect,
-  hits: HitGrid | null = null,
-  selectable: boolean = true,
+  clip        : Rect,
+  hits        : HitGrid | null = null,
+  selectable  : boolean = true,
 ): void {
   // `hideInstance` — React's for a Suspense fallback and for `<Activity>` —
   // sets `width: 0, height: 0, hidden: true`. The zero size is not enough on
@@ -261,12 +261,12 @@ function selectableOf(node: TuiNode, inherited: boolean): boolean {
 }
 
 function paintBox(
-  node: TuiNode,
-  frame: Frame,
+  node        : TuiNode,
+  frame       : Frame,
   capabilities: Capabilities,
-  clip: Rect,
-  hits: HitGrid | null,
-  selectable: boolean,
+  clip        : Rect,
+  hits        : HitGrid | null,
+  selectable  : boolean,
 ): void {
   const area = { x: node.x, y: node.y, width: node.width, height: node.height };
   // Before the children, so that a child overwrites its parent — a click on a
@@ -302,9 +302,9 @@ function paintBox(
   const clipped = node.style.overflow === "hidden" || node.style.overflow === "scroll";
   const childClip = clipped
     ? intersect(clip, {
-        x: node.x + node.borderWidth,
-        y: node.y + node.borderWidth,
-        width: Math.max(0, node.width - node.borderWidth * 2),
+        x     : node.x + node.borderWidth,
+        y     : node.y + node.borderWidth,
+        width : Math.max(0, node.width - node.borderWidth * 2),
         height: Math.max(0, node.height - node.borderWidth * 2),
       })
     : clip;
@@ -350,12 +350,12 @@ function paintBox(
  * which is the one thing that is not true here.
  */
 function paintScrollbar(
-  node: TuiNode,
-  frame: Frame,
+  node        : TuiNode,
+  frame       : Frame,
   capabilities: Capabilities,
-  clip: Rect,
-  style: Style,
-  hits: HitGrid | null,
+  clip        : Rect,
+  style       : Style,
+  hits        : HitGrid | null,
 ): void {
   const top = node.scrollViewTop;
   const viewport = node.scrollViewRows;
@@ -368,8 +368,8 @@ function paintScrollbar(
   const trackGlyph = ascii ? "|" : "│";
   const thumbGlyph = ascii ? "#" : "█";
   const trackStyle: Style = {
-    fg: parseColor(readColor(node.props, ["scrollbarColor", "borderColor"])),
-    bg: style.bg,
+    fg        : parseColor(readColor(node.props, ["scrollbarColor", "borderColor"])),
+    bg        : style.bg,
     attributes: 0,
   };
 
@@ -391,12 +391,12 @@ function paintScrollbar(
 }
 
 function paintBorder(
-  node: TuiNode,
-  frame: Frame,
+  node        : TuiNode,
+  frame       : Frame,
   capabilities: Capabilities,
-  clip: Rect,
-  border: BorderStyle,
-  background: number,
+  clip        : Rect,
+  border      : BorderStyle,
+  background  : number,
 ): void {
   const glyphs = borderGlyphs(border, capabilities.glyphs);
   const color = parseColor(readColor(node.props, ["borderColor"]));
@@ -437,13 +437,13 @@ function paintBorder(
  * two corners.
  */
 function paintTitle(
-  node: TuiNode,
-  frame: Frame,
-  clip: Rect,
-  style: Style,
+  node     : TuiNode,
+  frame    : Frame,
+  clip     : Rect,
+  style    : Style,
   titleProp: string,
   alignProp: string,
-  row: number,
+  row      : number,
 ): void {
   const raw = node.props[titleProp];
   if (typeof raw !== "string" || raw === "") {
@@ -454,7 +454,7 @@ function paintTitle(
       parseColor(readColor(node.props, ["titleColor"])) === INHERIT
         ? style.fg
         : parseColor(readColor(node.props, ["titleColor"])),
-    bg: style.bg,
+    bg        : style.bg,
     attributes: style.attributes,
   };
   const available = Math.max(0, node.width - 2);
@@ -482,10 +482,10 @@ function paintTitle(
 }
 
 function paintText(
-  node: TuiNode,
-  frame: Frame,
-  clip: Rect,
-  hits: HitGrid | null,
+  node      : TuiNode,
+  frame     : Frame,
+  clip      : Rect,
+  hits      : HitGrid | null,
   selectable: boolean,
 ): void {
   const own = textStyleFromProps(node.props, ROOT_TEXT_STYLE);
@@ -527,9 +527,9 @@ function paintText(
  * across a blank line in a terminal gives you the blank line.
  */
 type SelectedRow = {
-  readonly y: number,
+  readonly y   : number,
   readonly from: number,
-  readonly to: number,
+  readonly to  : number,
 };
 
 /**

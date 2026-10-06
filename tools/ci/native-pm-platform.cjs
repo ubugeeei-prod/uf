@@ -14,19 +14,19 @@ fs.mkdirSync(runtime);
 fs.mkdirSync(project);
 const environment = {
   ...process.env,
-  CI: "1",
-  NO_COLOR: "1",
+  CI         : "1",
+  NO_COLOR   : "1",
   UF_PM_STORE: path.join(temporary, "store"),
-  UF_STORE: path.join(temporary, "tools"),
-  UF_ROOTS: path.join(temporary, "roots"),
+  UF_STORE   : path.join(temporary, "tools"),
+  UF_ROOTS   : path.join(temporary, "roots"),
 };
 
 function run(argv /*: $ReadOnlyArray<string> */) /*: string */ {
   return execFileSync(argv[0], argv.slice(1), {
-    cwd: project,
-    env: environment,
+    cwd     : project,
+    env     : environment,
     encoding: "utf8",
-    timeout: 180000,
+    timeout : 180000,
   });
 }
 
@@ -42,9 +42,9 @@ try {
   fs.writeFileSync(
     path.join(project, "package.json"),
     JSON.stringify({
-      name: "native-platform-fixture",
-      private: true,
-      type: "module",
+      name        : "native-platform-fixture",
+      private     : true,
+      type        : "module",
       dependencies: { vite: "8.3.1", "@uniflowed/test": "0.13.0" },
     }),
   );

@@ -23,9 +23,9 @@ import {
 } from "./internal/stream.js";
 
 const shell: DocumentShell = {
-  head: "",
-  open: '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">',
-  body: '</head><body><div id="uf-root">',
+  head : "",
+  open : '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">',
+  body : '</head><body><div id="uf-root">',
   close: "</div></body></html>\n",
 };
 
@@ -82,8 +82,8 @@ const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
 /** A payload stream the test writes into by hand. */
 function handPayload(): {|
   readonly stream: ReadableStream<Uint8Array>,
-  readonly write: (text: string) => void,
-  readonly end: () => void,
+  readonly write : (text: string) => void,
+  readonly end   : () => void,
 |} {
   let controller = null;
   const stream = new ReadableStream({
@@ -94,7 +94,7 @@ function handPayload(): {|
   return {
     stream,
     write: (text) => controller?.enqueue(encode(text)),
-    end: () => controller?.close(),
+    end  : () => controller?.close(),
   };
 }
 

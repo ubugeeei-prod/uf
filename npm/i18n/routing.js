@@ -4,10 +4,10 @@ import { negotiate, parseAcceptLanguage } from "./negotiate.js";
 
 /** The same locale union is used by middleware, pages and generated parameters. */
 export type LocaleRouting<L extends string> = {|
-  readonly locales: $ReadOnlyArray<L>,
-  readonly locale: (params: { readonly [string]: mixed }) => L,
+  readonly locales     : $ReadOnlyArray<L>,
+  readonly locale      : (params: { readonly [string]: mixed }) => L,
   readonly staticParams: () => $ReadOnlyArray<{| locale: L |}>,
-  readonly middleware: (request: Request) => Response | null,
+  readonly middleware  : (request: Request) => Response | null,
   readonly metadata: (path?: string) => {|
     alternates: {| languages: { [string]: string } |},
   |},
@@ -19,9 +19,9 @@ export type LocaleRouting<L extends string> = {|
  * Negotiated redirects are private because a cookie can change their answer.
  */
 export function createLocaleRouting<L extends string>(options: {|
-  readonly locales: $ReadOnlyArray<L>,
+  readonly locales      : $ReadOnlyArray<L>,
   readonly defaultLocale: L,
-  readonly cookie?: string,
+  readonly cookie?      : string,
 |}): LocaleRouting<L> {
   const locales = [...options.locales];
   if (
@@ -78,8 +78,8 @@ export function createLocaleRouting<L extends string>(options: {|
       return new Response(null, {
         status: 307,
         headers: {
-          location: url.href,
-          vary: "Accept-Language, Cookie",
+          location       : url.href,
+          vary           : "Accept-Language, Cookie",
           "cache-control": "private, no-store",
         },
       });

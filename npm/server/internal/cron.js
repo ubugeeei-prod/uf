@@ -41,11 +41,11 @@ type Field = $ReadOnlySet<number> | null;
 
 /** A parsed five-field expression. */
 export type Cron = {|
-  readonly minute: Field,
-  readonly hour: Field,
+  readonly minute    : Field,
+  readonly hour      : Field,
   readonly dayOfMonth: Field,
-  readonly month: Field,
-  readonly dayOfWeek: Field,
+  readonly month     : Field,
+  readonly dayOfWeek : Field,
   /** The expression as written, for an error message and for a manifest. */
   readonly source: string,
 |};
@@ -53,8 +53,8 @@ export type Cron = {|
 /** What a field may hold, and what to call it when it does not. */
 const FIELDS: $ReadOnlyArray<{|
   readonly name: string,
-  readonly min: number,
-  readonly max: number,
+  readonly min : number,
+  readonly max : number,
 |}> = [
   { name: "minute", min: 0, max: 59 },
   { name: "hour", min: 0, max: 23 },
@@ -80,10 +80,10 @@ export function parseCron(source: string): Cron {
   }
   const fields = parts.map((part, index) => parseField(part, FIELDS[index], source));
   return {
-    minute: fields[0],
-    hour: fields[1],
+    minute    : fields[0],
+    hour      : fields[1],
     dayOfMonth: fields[2],
-    month: fields[3],
+    month     : fields[3],
     // Both spellings of Sunday collapse to 0 here, so `dayOfWeekOf` below has
     // one number to compare against rather than two.
     dayOfWeek: fields[4] == null ? null : new Set([...fields[4]].map((day) => day % 7)),
@@ -119,8 +119,8 @@ function inField(field: Field, value: number): boolean {
 }
 
 function parseField(
-  part: string,
-  spec: {| readonly name: string, readonly min: number, readonly max: number |},
+  part  : string,
+  spec  : {| readonly name: string, readonly min: number, readonly max: number |},
   source: string,
 ): Field {
   if (part === "*") return null;
@@ -147,9 +147,9 @@ function parseField(
 
 /** `a-b/n` into `["a-b", n]`, with `n` defaulting to one. */
 function splitStep(
-  term: string,
-  spec: {| readonly name: string, readonly min: number, readonly max: number |},
-  part: string,
+  term  : string,
+  spec  : {| readonly name: string, readonly min: number, readonly max: number |},
+  part  : string,
   source: string,
 ): [string, number] {
   const at = term.indexOf("/");
@@ -177,9 +177,9 @@ function splitStep(
 
 /** `a-b` or `a` or `*` into the pair of numbers it covers. */
 function splitRange(
-  range: string,
-  spec: {| readonly name: string, readonly min: number, readonly max: number |},
-  part: string,
+  range : string,
+  spec  : {| readonly name: string, readonly min: number, readonly max: number |},
+  part  : string,
   source: string,
 ): [number, number] {
   if (range === "*") return [spec.min, spec.max];
@@ -201,9 +201,9 @@ function splitRange(
 }
 
 function numberIn(
-  text: string,
-  spec: {| readonly name: string, readonly min: number, readonly max: number |},
-  part: string,
+  text  : string,
+  spec  : {| readonly name: string, readonly min: number, readonly max: number |},
+  part  : string,
   source: string,
 ): number {
   const value = Number(text);

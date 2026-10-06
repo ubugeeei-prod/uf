@@ -236,7 +236,7 @@ export type BoundaryFinding = {|
  */
 export function boundaryFindings(
   boundaries: Map<string, RouteBoundary>,
-  document: Document,
+  document  : Document,
 ): $ReadOnlyArray<BoundaryFinding> {
   const findings: Array<BoundaryFinding> = [];
   for (const boundary of boundaries.values()) {
@@ -259,8 +259,8 @@ export function boundaryFindings(
     }
     findings.push({
       boundary,
-      owns: owned.slice(0, NAMED_LIMIT),
-      more: Math.max(0, owned.length - NAMED_LIMIT),
+      owns    : owned.slice(0, NAMED_LIMIT),
+      more    : Math.max(0, owned.length - NAMED_LIMIT),
       rendered: true,
     });
   }
@@ -303,13 +303,13 @@ export function describeElement(element: Element): string {
  * on it without opening this file.
  */
 export function formatBoundaries(
-  path: string,
+  path    : string,
   findings: $ReadOnlyArray<BoundaryFinding>,
 ): {| readonly message: string, readonly detail: $ReadOnlyArray<string> |} {
   const count = findings.length;
   return {
     message: `${count} ${count === 1 ? "boundary renders" : "boundaries render"} ${path}`,
-    detail: findings.map(describeFinding),
+    detail : findings.map(describeFinding),
   };
 }
 
@@ -373,9 +373,9 @@ function signature(boundaries: Map<string, RouteBoundary>): string {
  * answer and the automatic one are the same sentence about the same page.
  */
 export function reportBoundaries(
-  path: string,
+  path      : string,
   boundaries: Map<string, RouteBoundary>,
-  document: Document,
+  document  : Document,
 ): $ReadOnlyArray<BoundaryFinding> {
   const findings = boundaryFindings(boundaries, document);
   const { message, detail } = formatBoundaries(path, findings);
@@ -463,7 +463,7 @@ function installOnDemand(): void {
       }
       return reportBoundaries(live.path, live.boundaries, document);
     },
-    writable: true,
+    writable    : true,
     configurable: true,
   });
 }

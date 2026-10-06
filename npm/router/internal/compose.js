@@ -315,8 +315,8 @@ export function loadingComponent(module: LoadingModule): React.ComponentType<{||
 export function insideTemplates(
   element: React.Node,
   resolved: {
-    readonly pathname: string,
-    readonly params: RouteParams,
+    readonly pathname : string,
+    readonly params   : RouteParams,
     readonly templates: $ReadOnlyArray<ResolvedTemplate>,
     ...
   },
@@ -429,8 +429,8 @@ component SlotView(slot: ResolvedSlot, pathname: string, searchParams: SearchPar
   // uf-lint-disable-next-line react-compiler/static-components
   let element: React.Node = <Page params={slot.params} searchParams={query} data={undefined} />;
   const templateContext = {
-    pathname: at,
-    params: slot.params,
+    pathname : at,
+    params   : slot.params,
     templates: slot.templates,
   };
   for (let depth = slot.layouts.length; depth >= 0; depth -= 1) {

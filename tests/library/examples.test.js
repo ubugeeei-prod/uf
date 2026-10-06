@@ -87,8 +87,8 @@ async function account(handle: string): Promise<{| user: User, cookie: string |}
     form({
       handle,
       password: "a sample password 123",
-      name: handle,
-      email: `${handle}@example.test`,
+      name    : handle,
+      email   : `${handle}@example.test`,
     }),
     "signup",
   );
@@ -110,14 +110,14 @@ function cell(db: SyncQueryable, sql: string, param: string): string | null {
 }
 function request(values: { [string]: string }, headers: { [string]: string } = {}): Request {
   const requestHeaders = new Headers({
-    origin: "http://localhost",
+    origin        : "http://localhost",
     "content-type": "application/x-www-form-urlencoded",
   });
   for (const [key, value] of Object.entries(headers)) requestHeaders.set(key, value);
   return new Request("http://localhost/auth/session", {
-    method: "POST",
+    method : "POST",
     headers: requestHeaders,
-    body: new URLSearchParams(values).toString(),
+    body   : new URLSearchParams(values).toString(),
   });
 }
 
@@ -126,7 +126,7 @@ describe("Commonplace server contracts", () => {
     expect(feedFilter("unknown", "  hello  ", "-8")).toEqual({
       topic: "all",
       query: "hello",
-      page: 1,
+      page : 1,
     });
     expect(feedFilter("design", "x".repeat(200), "99999").query.length).toBe(100);
     expect((await as("", () => timelineData("all", "' OR 1=1 --"))).posts).toEqual([]);
@@ -135,8 +135,8 @@ describe("Commonplace server contracts", () => {
   it("never accepts the previous action state as an identity", async () => {
     const alice = await account("alice");
     const forged: FormState<Post> = {
-      status: "success",
-      value: { ...insertPost(alice.user, "Original", "design", "original") },
+      status : "success",
+      value  : { ...insertPost(alice.user, "Original", "design", "original") },
       message: "OK",
     };
     const denied = await as("", () =>
@@ -251,9 +251,9 @@ describe("Commonplace server contracts", () => {
       bob = await account("bobby");
     const input = form({
       displayName: "Changed",
-      handle: "bobby",
-      bio: "Bio",
-      email: "new@example.test",
+      handle     : "bobby",
+      bio        : "Bio",
+      email      : "new@example.test",
     });
     expect((await as(alice.cookie, () => updateSettings(IDLE, input))).status).toBe("error");
     expect(settingsFor(alice.user).displayName).toBe("alice");
@@ -356,10 +356,10 @@ describe("Commonplace server contracts", () => {
       const incoming = new Request("http://localhost/auth/session", {
         method: "POST",
         headers: {
-          origin: "http://localhost",
+          origin        : "http://localhost",
           "content-type": "application/x-www-form-urlencoded",
         },
-        body: stream,
+        body  : stream,
         duplex: "half",
       } as $FlowFixMe);
 
@@ -373,11 +373,11 @@ describe("Commonplace server contracts", () => {
 
   it("issues the session only in HTTP headers and invalidates it on logout", async () => {
     const signup = request({
-      mode: "signup",
-      handle: "alice",
+      mode    : "signup",
+      handle  : "alice",
       password: "a sample password 123",
-      name: "Alice",
-      email: "alice@example.test",
+      name    : "Alice",
+      email   : "alice@example.test",
     });
     const response = await as("", () => POST(signup));
     expect(response.status).toBe(200);

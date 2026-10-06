@@ -44,20 +44,20 @@ export type Setting = {
   readonly key: string,
   // `javascript` for `"[javascript]": { … }`, or null for a top-level key.
   readonly language: string | null,
-  readonly value: mixed,
+  readonly value   : mixed,
   // One line, for the output channel and the confirmation.
   readonly why: string,
 };
 
 // `WorkspaceConfiguration.inspect(key)`, cut down to what the plan reads.
 export type Inspection = {
-  readonly globalValue?: mixed,
-  readonly workspaceValue?: mixed,
-  readonly workspaceFolderValue?: mixed,
-  readonly globalLanguageValue?: mixed,
-  readonly workspaceLanguageValue?: mixed,
+  readonly globalValue?                 : mixed,
+  readonly workspaceValue?              : mixed,
+  readonly workspaceFolderValue?        : mixed,
+  readonly globalLanguageValue?         : mixed,
+  readonly workspaceLanguageValue?      : mixed,
   readonly workspaceFolderLanguageValue?: mixed,
-  readonly defaultValue?: mixed,
+  readonly defaultValue?                : mixed,
   ...
 };
 
@@ -83,24 +83,24 @@ const VALIDATION_UNIFIED /*: Setting */ = {
 };
 
 const FORMATTER_FLOW /*: Setting */ = {
-  key: "editor.defaultFormatter",
+  key     : "editor.defaultFormatter",
   language: "flow",
-  value: EXTENSION_ID,
-  why: "format Flow documents with this project's uf",
+  value   : EXTENSION_ID,
+  why     : "format Flow documents with this project's uf",
 };
 
 const FORMATTER_JS /*: Setting */ = {
-  key: "editor.defaultFormatter",
+  key     : "editor.defaultFormatter",
   language: "javascript",
-  value: EXTENSION_ID,
-  why: "Format Document and format on save use uf fmt, with this project's uf.config.js",
+  value   : EXTENSION_ID,
+  why     : "Format Document and format on save use uf fmt, with this project's uf.config.js",
 };
 
 const FORMATTER_JSX /*: Setting */ = {
-  key: "editor.defaultFormatter",
+  key     : "editor.defaultFormatter",
   language: "javascriptreact",
-  value: EXTENSION_ID,
-  why: "the same, for .jsx files",
+  value   : EXTENSION_ID,
+  why     : "the same, for .jsx files",
 };
 
 // What the extension may write on its own, in a uf project.

@@ -136,7 +136,7 @@ describe("typed synchronous operations", () => {
   it("runs lazily and preserves synchronous and asynchronous execution", async () => {
     let calls = 0;
     const operation = trySync({
-      try: () => ++calls,
+      try  : () => ++calls,
       catch: () => "unreachable",
     });
 
@@ -834,7 +834,7 @@ describe("retry", () => {
         return 0.5;
       },
       integer: () => 0,
-      fork: () => counting,
+      fork   : () => counting,
     };
     const restore = setRandom(counting);
     try {
@@ -859,7 +859,7 @@ describe("promises", () => {
 
   it("turns a rejected promise into a failure through the given mapper", async () => {
     const program = tryPromise({
-      try: () => Promise.reject(new Error("network")),
+      try  : () => Promise.reject(new Error("network")),
       catch: (error) => ({ kind: "NetworkError", cause: String(error) }),
     });
 
@@ -1555,8 +1555,8 @@ describe("retry counts", () => {
     const flaky = failing();
     await runPromiseExit(
       retry(flaky.effect, {
-        kind: "intersect",
-        left: { kind: "recurs", times: 2 },
+        kind : "intersect",
+        left : { kind: "recurs", times: 2 },
         right: { kind: "spaced", millis: 0 },
       }),
     );
@@ -1569,8 +1569,8 @@ describe("retry counts", () => {
     const flaky = failing();
     await runPromiseExit(
       retry(flaky.effect, {
-        kind: "union",
-        left: { kind: "recurs", times: 1 },
+        kind : "union",
+        left : { kind: "recurs", times: 1 },
         right: { kind: "upTo", millis: 0 },
       }),
     );
@@ -1583,9 +1583,9 @@ describe("retry counts", () => {
     const flaky = failing();
     await runPromiseExit(
       retry(flaky.effect, {
-        kind: "maxDelay",
+        kind    : "maxDelay",
         schedule: { kind: "recurs", times: 1 },
-        millis: 100,
+        millis  : 100,
       }),
     );
     // Capping a delay must not turn "give up" into "wait and try for ever".
@@ -1714,9 +1714,9 @@ describe("schedules", () => {
    */
   const decisionsOf = <In>(
     schedule: Schedule<In>,
-    count: number,
-    input: In,
-    factor?: number,
+    count   : number,
+    input   : In,
+    factor? : number,
   ): Array<ScheduleDecision> => {
     const made = [];
     let state = scheduleStart(0);
@@ -1856,8 +1856,8 @@ describe("schedules", () => {
 
   it("takes the longer wait of an intersection and stops with the first side", () => {
     const schedule: Schedule<mixed> = {
-      kind: "intersect",
-      left: { kind: "recurs", times: 2 },
+      kind : "intersect",
+      left : { kind: "recurs", times: 2 },
       right: { kind: "spaced", millis: 40 },
     };
     expect(delaysOf(schedule, 4)).toEqual([40, 40, null]);
@@ -1865,8 +1865,8 @@ describe("schedules", () => {
 
   it("takes the shorter wait of a union and continues while either side does", () => {
     const schedule: Schedule<mixed> = {
-      kind: "union",
-      left: { kind: "recurs", times: 1 },
+      kind : "union",
+      left : { kind: "recurs", times: 1 },
       right: { kind: "spaced", millis: 40 },
     };
     expect(delaysOf(schedule, 3)).toEqual([0, 40, 40]);
@@ -1874,7 +1874,7 @@ describe("schedules", () => {
 
   it("spreads a wait over a range, and the midpoint leaves it alone", () => {
     const schedule: Schedule<mixed> = {
-      kind: "jittered",
+      kind    : "jittered",
       schedule: { kind: "spaced", millis: 100 },
     };
     // The factor is an argument, so the whole range is testable without a seed
@@ -1889,8 +1889,8 @@ describe("schedules", () => {
 
   it("honours a jitter range given as percentages", () => {
     const schedule: Schedule<mixed> = {
-      kind: "jittered",
-      schedule: { kind: "spaced", millis: 200 },
+      kind      : "jittered",
+      schedule  : { kind: "spaced", millis: 200 },
       minPercent: 50,
       maxPercent: 150,
     };
@@ -1901,7 +1901,7 @@ describe("schedules", () => {
   it("jitters the schedule it wraps rather than replacing it", () => {
     // A jittered exponential still grows.
     const schedule: Schedule<mixed> = {
-      kind: "jittered",
+      kind    : "jittered",
       schedule: { kind: "exponential", baseMillis: 10 },
     };
     expect(delaysOf(schedule, 4, 1)).toEqual([12, 24, 48, 96]);
@@ -1921,7 +1921,7 @@ describe("schedules", () => {
 
   it("clamps a factor outside the unit interval rather than escaping the range", () => {
     const schedule: Schedule<mixed> = {
-      kind: "jittered",
+      kind    : "jittered",
       schedule: { kind: "spaced", millis: 100 },
     };
     expect(delaysOf(schedule, 1, -1)).toEqual([80]);
@@ -1944,8 +1944,8 @@ describe("schedules", () => {
     // The thing an attempt counter could not do at all: a policy that looks at
     // what it is being asked about.
     const schedule: Schedule<string> = {
-      kind: "whileInput",
-      schedule: { kind: "spaced", millis: 10 },
+      kind     : "whileInput",
+      schedule : { kind: "spaced", millis: 10 },
       predicate: (error: string) => error !== "forbidden",
     };
     expect(decisionsOf(schedule, 2, "busy").map((decision) => decision.kind)).toEqual([
@@ -1959,8 +1959,8 @@ describe("schedules", () => {
 
   it("stops as soon as untilInput is satisfied", () => {
     const schedule: Schedule<{ done: boolean }> = {
-      kind: "untilInput",
-      schedule: { kind: "spaced", millis: 10 },
+      kind     : "untilInput",
+      schedule : { kind: "spaced", millis: 10 },
       predicate: (job: { done: boolean }) => job.done,
     };
     expect(decisionsOf(schedule, 2, { done: false }).map((decision) => decision.kind)).toEqual([
@@ -1976,8 +1976,8 @@ describe("schedules", () => {
     // "Back off, but stop once the wait would pass 50ms" without a second
     // schedule to intersect with.
     const schedule: Schedule<mixed> = {
-      kind: "whileOutput",
-      schedule: { kind: "exponential", baseMillis: 10 },
+      kind     : "whileOutput",
+      schedule : { kind: "exponential", baseMillis: 10 },
       predicate: (delay: number) => delay <= 50,
     };
     expect(delaysOf(schedule, 5)).toEqual([10, 20, 40, null]);
@@ -1988,8 +1988,8 @@ describe("schedules", () => {
 
   it("stops as soon as untilOutput is satisfied", () => {
     const schedule: Schedule<mixed> = {
-      kind: "untilOutput",
-      schedule: { kind: "count" },
+      kind     : "untilOutput",
+      schedule : { kind: "count" },
       predicate: (count: number) => count >= 3,
     };
     expect(outputsOf(schedule, 5)).toEqual([1, 2, 3]);
@@ -2007,11 +2007,11 @@ describe("schedules", () => {
     // combinator that has to name the type between two schedules, and it can
     // only because the output type is fixed rather than a parameter.
     const schedule: Schedule<mixed> = {
-      kind: "compose",
+      kind : "compose",
       first: { kind: "elapsed" },
       second: {
-        kind: "untilInput",
-        schedule: { kind: "spaced", millis: 5 },
+        kind     : "untilInput",
+        schedule : { kind: "spaced", millis: 5 },
         predicate: (elapsed: number) => elapsed >= 500,
       },
     };
@@ -2081,8 +2081,8 @@ describe("repeat", () => {
     });
 
     const schedule: Schedule<{ done: boolean }> = {
-      kind: "untilInput",
-      schedule: { kind: "recurs", times: 20 },
+      kind     : "untilInput",
+      schedule : { kind: "recurs", times: 20 },
       predicate: (job: { done: boolean }) => job.done,
     };
 
@@ -2759,7 +2759,7 @@ describe("one value, everybody listening", () => {
           const waiting = yield* fork(queueTake(listener));
           yield* pubSubShutdown(topic);
           return {
-            waited: yield* exit(join(waiting)),
+            waited   : yield* exit(join(waiting)),
             published: yield* exit(pubSubPublish(topic, "too late")),
           };
         }),
@@ -3569,7 +3569,7 @@ describe("streams", () => {
       counting,
       (source) =>
         new ReadableStream({
-          pull: (controller) => source.pull(controller),
+          pull  : (controller) => source.pull(controller),
           cancel: (reason) => source.cancel(reason),
         }),
     );
@@ -3593,7 +3593,7 @@ describe("streams", () => {
       streamFromArray([1, 2, 3], { chunkSize: 2 }),
       (source) =>
         new ReadableStream({
-          pull: (controller) => source.pull(controller),
+          pull  : (controller) => source.pull(controller),
           cancel: (reason) => source.cancel(reason),
         }),
     );
@@ -3622,7 +3622,7 @@ describe("streams", () => {
       failing,
       (source) =>
         new ReadableStream({
-          pull: (controller) => source.pull(controller),
+          pull  : (controller) => source.pull(controller),
           cancel: (reason) => source.cancel(reason),
         }),
     );

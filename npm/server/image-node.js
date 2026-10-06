@@ -98,10 +98,10 @@ function get(url: URL, pinned: ResolvedAddress, signal: AbortSignal): Promise<Re
   return new Promise((resolve, reject) => {
     const outgoing = send(
       {
-        host: pinned.address,
+        host  : pinned.address,
         family: pinned.family,
-        port: url.port === "" ? (secure ? 443 : 80) : Number(url.port),
-        path: `${url.pathname}${url.search}`,
+        port  : url.port === "" ? (secure ? 443 : 80) : Number(url.port),
+        path  : `${url.pathname}${url.search}`,
         method: "GET",
         // The name the allow-list admitted, for the virtual host and — below —
         // for the certificate. An IPv6 literal keeps its brackets in `Host`.

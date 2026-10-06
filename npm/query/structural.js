@@ -126,7 +126,7 @@ export function structuralShare<T>(previous: mixed, next: T): T {
  * here would be paying twice for an answer we already have.
  */
 export function shallowEqual(
-  left: { readonly [string]: mixed },
+  left : { readonly [string]: mixed },
   right: { readonly [string]: mixed },
 ): boolean {
   if (left === right) {

@@ -72,7 +72,7 @@ export type ListenerTarget<T> = Ref<T> | (() => T | null) | null;
 export type ListenerOptions = {|
   readonly capture?: boolean,
   readonly passive?: boolean,
-  readonly once?: boolean,
+  readonly once?   : boolean,
 |};
 
 /**
@@ -88,13 +88,13 @@ export type ListenerOptions = {|
  * again, which is what React does anyway when the element is conditional.
  */
 export hook useEventListener<TTarget extends EventTarget>(
-  target: ListenerTarget<TTarget>,
-  name: string,
-  handler: (event: Event) => mixed,
+  target  : ListenerTarget<TTarget>,
+  name    : string,
+  handler : (event: Event) => mixed,
   options?: ListenerOptions,
 ): void {
   const stable = useStableCallback(handler);
-  const find = useStableCallback(() =>
+  const find   = useStableCallback(() =>
     typeof target === "function" ? target() : (target?.current ?? null),
   );
   // A ref is a stable object and a function target is not, so only the ref
@@ -185,8 +185,8 @@ function pointOf(event: Event): {| x: number, y: number |} | null {
  * is when a long press is supposed to be felt.
  */
 export hook useLongPress(
-  ref: Ref<HTMLElement>,
-  handler: (event: Event) => mixed,
+  ref     : Ref<HTMLElement>,
+  handler : (event: Event) => mixed,
   options?: {| readonly delay?: number, readonly moveThreshold?: number |},
 ): void {
   const stable = useStableCallback(handler);
@@ -196,7 +196,7 @@ export hook useLongPress(
   // Written and read only from event handlers and the effect's cleanup, never
   // during a render, so a render React throws away cannot see a press.
   const pending = useRef<TimeoutID | null>(null);
-  const origin = useRef<{| x: number, y: number |} | null>(null);
+  const origin  = useRef<{| x: number, y: number |} | null>(null);
 
   const cancel = useStableCallback(() => {
     if (pending.current != null) {
@@ -272,7 +272,7 @@ export hook useElementSize(ref: Ref<HTMLElement>): Size {
 
 /** Whether the element is in the viewport. */
 export hook useIntersecting(
-  ref: Ref<HTMLElement>,
+  ref     : Ref<HTMLElement>,
   options?: {| readonly rootMargin?: string, readonly threshold?: number |},
 ): boolean {
   const [intersecting, setIntersecting] = useState(false);
@@ -306,8 +306,8 @@ export type MutationOptions = {|
   /** Children added or removed. The default, unless another kind is asked for. */
   readonly childList?: boolean,
   /** Descendants as well as the element itself. */
-  readonly subtree?: boolean,
-  readonly attributes?: boolean,
+  readonly subtree?      : boolean,
+  readonly attributes?   : boolean,
   readonly characterData?: boolean,
   /** Only these attributes, where `attributes` is on. */
   readonly attributeFilter?: $ReadOnlyArray<string>,
@@ -327,8 +327,8 @@ export type MutationOptions = {|
  * an array written inline in the call does not re-observe on every render.
  */
 export hook useMutationObserver(
-  ref: Ref<HTMLElement>,
-  handler: (records: $ReadOnlyArray<MutationRecord>) => mixed,
+  ref     : Ref<HTMLElement>,
+  handler : (records: $ReadOnlyArray<MutationRecord>) => mixed,
   options?: MutationOptions,
 ): void {
   const stable = useStableCallback(handler);
@@ -416,6 +416,6 @@ export hook useElementRef<T extends HTMLElement>(): { current: T | null } {
  */
 export hook useElementState<T extends HTMLElement>(): [T | null, (node: T | null) => void] {
   const [node, setNode] = useState<T | null>(null);
-  const attach = useStableCallback((next: T | null) => setNode(next));
+  const attach          = useStableCallback((next: T | null) => setNode(next));
   return useMemo(() => [node, attach], [node, attach]);
 }

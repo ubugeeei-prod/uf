@@ -10,8 +10,8 @@ export function validateRange(range: DateRange | null): void {
 }
 
 export function unavailableInRange(
-  start: string,
-  end: string,
+  start      : string,
+  end        : string,
   unavailable: ((date: PlainDate) => boolean) | void,
 ): boolean {
   if (unavailable == null) return false;

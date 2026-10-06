@@ -98,17 +98,17 @@ import { useControlled } from "./internal/controlled-state.js";
  */
 function radioSet(orientation: Orientation): RovingSet {
   return {
-    item: '[role="radio"]',
+    item : '[role="radio"]',
     owner: '[role="radiogroup"]',
     orientation,
-    wrap: true,
+    wrap        : true,
     skipDisabled: true,
   };
 }
 
 type RadioGroupState = {|
   readonly selected: string | null,
-  readonly select: (value: string) => void,
+  readonly select  : (value: string) => void,
   /** The item holding the tab stop while nothing is chosen; see `useFirstItem`. */
   readonly firstId: string | null,
 |};
@@ -145,13 +145,13 @@ hook useRadioGroup(part: string): RadioGroupState {
  * below.
  */
 component RadioGroupRoot(
-  children: React.Node,
-  defaultValue?: string | null = null,
-  value?: string | null,
+  children      : React.Node,
+  defaultValue? : string | null = null,
+  value?        : string | null,
   onValueChange?: (value: string) => void,
-  orientation?: Orientation = "vertical",
-  name?: string,
-  render?: RenderProp,
+  orientation?  : Orientation = "vertical",
+  name?         : string,
+  render?       : RenderProp,
   ...rest: Rest
 ) {
   // `onValueChange` promises a `string` while the group's *state* is
@@ -161,7 +161,7 @@ component RadioGroupRoot(
   // because no gesture inside a radio group unchooses an answer. Widening the
   // prop to `string | null` would also make every `(plan: string) => void` a
   // caller already has a type error at the call site.
-  const report = useCallback(
+  const report             = useCallback(
     (next: string | null) => {
       if (next != null) {
         onValueChange?.(next);
@@ -170,7 +170,7 @@ component RadioGroupRoot(
     [onValueChange],
   );
   const [selected, select] = useControlled<string | null>(value, defaultValue, report);
-  const rootRef = useRef<HTMLElement | null>(null);
+  const rootRef            = useRef<HTMLElement | null>(null);
   // Only while nothing is chosen. Once there is an answer it holds the tab
   // stop, and asking the document which item comes first is work with no reader.
   const firstId = useFirstItem(rootRef, radioSet(orientation), selected == null);
@@ -197,7 +197,7 @@ component RadioGroupRoot(
   );
   const props = withProps(passed, {
     "aria-orientation": orientation,
-    children: content,
+    children          : content,
     onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
       const group: $FlowFixMe = event.currentTarget;
       const next = moveOnKey(event, group, radioSet(orientation));
@@ -220,7 +220,7 @@ component RadioGroupRoot(
     <RadioGroupContext.Provider value={state}>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -238,19 +238,19 @@ component RadioGroupRoot(
  * either way, and so does the search for the item that holds the tab stop.
  */
 component RadioGroupItem(
-  value: string,
+  value    : string,
   children?: React.Node,
   disabled?: boolean = false,
-  render?: RenderProp,
+  render?  : RenderProp,
   ...rest: Rest
 ) {
   const group = useRadioGroup("RadioGroup.Item");
-  const id = useId();
+  const id    = useId();
   const checked = group.selected === value;
   const item = useMemo(() => ({ checked }), [checked]);
   const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);
   const props = withProps(passed, {
-    "aria-checked": checked ? "true" : "false",
+    "aria-checked" : checked ? "true" : "false",
     "aria-disabled": disabled ? "true" : undefined,
     // Read by the group's key handler, which finds items in the document
     // rather than in a registry and so needs each one to carry its value.
@@ -283,7 +283,7 @@ component RadioGroupItem(
     <RadioItemContext.Provider value={item}>
       {
         match (render) {
-          undefined => <button {...props} type="button" />,
+          undefined    => <button {...props} type="button" />,
           const custom => custom(props),
         }
       }
@@ -311,7 +311,7 @@ component RadioGroupIndicator(children?: React.Node, render?: RenderProp, ...res
   }
   const props = withProps(rest, { "aria-hidden": "true", children });
   return match (render) {
-    undefined => <span {...props} />,
+    undefined    => <span {...props} />,
     const custom => custom(props),
   };
 }

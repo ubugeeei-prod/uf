@@ -43,9 +43,9 @@ describe("a matcher is a name the checker knows", () => {
 
   it("reports every misuse, and only the misuses", () => {
     everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "matchers.js"),
+      fixture  : path.join("tests", "type-tests", "matchers.js"),
       alongside: ["npm/test", "npm/react-testing"],
-      atLeast: 6,
+      atLeast  : 6,
       checker,
     });
   });
@@ -62,9 +62,9 @@ describe("an event name is a name the checker knows", () => {
 
   it("reports every misuse, and only the misuses", () => {
     everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "event-names.js"),
+      fixture  : path.join("tests", "type-tests", "event-names.js"),
       alongside: ["npm/test", "npm/react-testing"],
-      atLeast: 2,
+      atLeast  : 2,
       checker,
     });
   });

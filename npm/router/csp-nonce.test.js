@@ -66,17 +66,17 @@ function plainTable() {
   return {
     routes: [
       {
-        path: "/",
-        params: [],
-        mdx: false,
-        file: "app/$page.js",
-        page: () => Promise.resolve({ default: Page }),
+        path   : "/",
+        params : [],
+        mdx    : false,
+        file   : "app/$page.js",
+        page   : () => Promise.resolve({ default: Page }),
         layouts: [() => Promise.resolve({ default: SiteLayout })],
         loading: [],
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   };
 }
 

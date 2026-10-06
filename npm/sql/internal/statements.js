@@ -13,7 +13,7 @@ export const DEFAULT_STATEMENT_CACHE = 256;
 
 export function statementCache<S>(
   prepare: (text: string) => S,
-  limit: number,
+  limit  : number,
 ): (text: string) => S {
   const cache: Map<string, S> = new Map();
   return (text) => {
