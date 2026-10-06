@@ -250,6 +250,12 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `import typeof * as any` and `import typeof { any as Local }` bind a
+    // value. `import type { any }` stays a type.
+    if names_an_import_typeof(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -649,6 +655,57 @@ fn names_a_for_update(code: &str, at: usize, len: usize) -> bool {
 /// x: any }` still names a type.
 fn names_a_namespace(code: &str, at: usize) -> bool {
     previous_word(code, at).is_some_and(|(_, word)| word == "namespace")
+}
+
+/// Whether the name is an `import typeof` binding.
+///
+/// `import typeof * as any` and `import typeof { any as Local }` bind a value.
+/// `import type { any }` and `import { type any }` stay types: the word in
+/// front of the brace is `type`, not `typeof`.
+fn names_an_import_typeof(code: &str, at: usize) -> bool {
+    if import_typeof_namespace(code, at) {
+        return true;
+    }
+    let Some(brace) = import_specifier_brace(code, at) else {
+        return false;
+    };
+    let Some((typeof_at, "typeof")) = previous_word(code, brace) else {
+        return false;
+    };
+    previous_word(code, typeof_at).is_some_and(|(_, word)| word == "import")
+}
+
+/// `import typeof * as any`.
+fn import_typeof_namespace(code: &str, at: usize) -> bool {
+    let Some((as_at, "as")) = previous_word(code, at) else {
+        return false;
+    };
+    let Some((star_at, b'*')) = prev_non_space(code, as_at) else {
+        return false;
+    };
+    let Some((typeof_at, "typeof")) = previous_word(code, star_at) else {
+        return false;
+    };
+    previous_word(code, typeof_at).is_some_and(|(_, word)| word == "import")
+}
+
+/// The `{` of an import specifier, including `Name as Local`.
+fn import_specifier_brace(code: &str, at: usize) -> Option<usize> {
+    match prev_non_space(code, at) {
+        Some((index, b'{')) => Some(index),
+        Some((index, b',')) => enclosing_brace(code, index),
+        _ => {
+            let Some((as_at, "as")) = previous_word(code, at) else {
+                return None;
+            };
+            let (imported, _) = previous_word(code, as_at)?;
+            match prev_non_space(code, imported) {
+                Some((index, b'{')) => Some(index),
+                Some((index, b',')) => enclosing_brace(code, index),
+                _ => None,
+            }
+        }
+    }
 }
 
 /// Whether the name is a function or arrow parameter's default.
@@ -1932,6 +1989,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_for_initializer(code, at, len)
                 || names_a_for_update(code, at, len)
                 || names_a_namespace(code, at)
+                || names_an_import_typeof(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)

@@ -2411,3 +2411,56 @@ fn internal_type_ignores_a_namespace() {
     assert_eq!(still.len(), 1, "{still:?}");
     assert_eq!((still[0].line, still[0].column), (2, 38), "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_an_import_typeof() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nimport typeof * as any from \"./m\";\nimport typeof { any as Local } from \"./m\";\nimport typeof { Object as any } from \"./m\";\nimport typeof { any } from \"./m\";\ntype T = typeof any;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nimport type { any } from \"./m\";\nimport { type any } from \"./m\";\nimport type { any as Box } from \"./m\";\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 15), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 15), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_an_import_typeof() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nimport typeof * as bool from \"./m\";\nimport typeof { bool as Flag } from \"./m\";\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nimport type { bool } from \"./m\";\nimport { type bool } from \"./m\";\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 15), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_an_import_typeof() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nimport typeof * as React$Node from \"./m\";\nimport typeof { React$Node as Box } from \"./m\";\nimport typeof { Box as React$Node } from \"./m\";\ntype T = typeof React$Node;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nimport type { React$Node } from \"./m\";\nimport { type React$Node } from \"./m\";\nimport type { React$Node as Box } from \"./m\";\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 15), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 15), "{still:?}");
+}
