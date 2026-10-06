@@ -239,6 +239,11 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `for (;; any)` and `for (let i = 0; i < n; any)` name the update.
+    if names_a_for_update(code, at, len) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -602,6 +607,34 @@ fn names_a_for_initializer(code: &str, at: usize, len: usize) -> bool {
         return false;
     };
     previous_word(code, paren).is_some_and(|(_, word)| word == "for")
+}
+
+/// Whether this name is the update clause of a `for` loop.
+///
+/// `for (;; any)` and `for (let i = 0; i < n; any)` name a value. A `for` whose
+/// header has fewer than two semicolons is not one: `for (const item of
+/// React$Node)` and `type F = (any) => void` stay types.
+fn names_a_for_update(code: &str, at: usize, len: usize) -> bool {
+    if !next_non_space(code, at + len).is_some_and(|(_, byte)| byte == b')') {
+        return false;
+    }
+    let mut semis = 0usize;
+    let mut paren = 0usize;
+    let mut index = at;
+    while let Some((prev, byte)) = prev_non_space(code, index) {
+        match byte {
+            b')' => paren += 1,
+            b'(' if paren > 0 => paren -= 1,
+            b'(' => {
+                return semis == 2
+                    && previous_word(code, prev).is_some_and(|(_, word)| word == "for");
+            }
+            b';' if paren == 0 => semis += 1,
+            _ => {}
+        }
+        index = prev;
+    }
+    false
 }
 
 /// Whether the name is a function or arrow parameter's default.
@@ -1883,6 +1916,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_private_name(code, at)
                 || names_a_decorator(code, at)
                 || names_a_for_initializer(code, at, len)
+                || names_a_for_update(code, at, len)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)
