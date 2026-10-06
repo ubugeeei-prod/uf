@@ -99,12 +99,15 @@ pub fn merge(base: &str, ours: &str, theirs: &str, from: &str) -> Merge {
 
 /// Drop a conflict the project did not really edit.
 ///
-/// Two shapes of that. The registry aligns `name? : Type` while a codemodded
-/// copy still has `name?: Type`: the tokens match, and keeping the registry's
-/// side leaves the aligned spelling. Or the copy's only change in the region
-/// is the codemod taking `export` off `export component`, while the registry
-/// also reflowed the signature and added `renders`. Spaces inside a string
-/// still count, and a conflict that changes a token stays, markers and all.
+/// The registry aligns `name? : Type` while a codemodded copy still has
+/// `name?: Type`: the tokens match, and keeping the registry's side leaves the
+/// aligned spelling. Or the copy's only change in the region is the namespace
+/// codemod — `export` off `export component`, a root `DatePicker` renamed to
+/// `DatePickerRoot`, `CalendarHeader` written `Calendar.Header`,
+/// `Primitive.DatePickerRoot` written `DatePicker.Root` — while the registry
+/// also reflowed the signature, added `renders`, or replaced `children ??`
+/// with `match`. Spaces inside a string still count, and a token the project
+/// added or changed stays a conflict, markers and all.
 fn resolve_alignment_conflicts(merged: &str) -> (String, usize) {
     let mut out = String::with_capacity(merged.len());
     let mut conflicts = 0usize;
@@ -190,16 +193,18 @@ fn same_aside_from_alignment(ours: &[&str], theirs: &[&str]) -> bool {
             .all(|(left, right)| tokens(left) == tokens(right))
 }
 
-/// Whether `ours` is `base`, or `base` with one `export` removed.
+/// Whether `ours` is `base` after the namespace codemod and nothing else.
 ///
-/// That is the codemod and nothing the project typed. A `renders` clause or a
-/// signature the registry broke onto several lines is then the registry's
-/// text, not a conflict. A token the project added or changed does not match,
-/// so that conflict stays.
+/// The codemod drops one `export`, renames a root component `Name` to
+/// `NameRoot`, writes a prefixed part `CalendarHeader` as `Calendar.Header`
+/// (including inside a `` `CalendarHeader` `` comment), and writes
+/// `Primitive.DatePickerRoot` as `DatePicker.Root`. A local `RootPart` aliased
+/// from that prefixed name is written `Skeleton.Root`. A `renders` clause, a
+/// signature the registry broke onto several lines, or a `match` in place of
+/// `children ??` is then the registry's text. A token the project added or
+/// changed does not match, so that conflict stays.
 fn project_did_not_edit(base: &[&str], ours: &[&str]) -> bool {
-    let base_tokens = token_stream(base);
-    let ours_tokens = token_stream(ours);
-    ours_tokens == drop_one_export(&base_tokens)
+    codemod_equivalent(&token_stream(base), &token_stream(ours))
 }
 
 fn token_stream(lines: &[&str]) -> Vec<String> {
@@ -209,17 +214,133 @@ fn token_stream(lines: &[&str]) -> Vec<String> {
         .collect()
 }
 
-fn drop_one_export(tokens: &[String]) -> Vec<String> {
-    let mut dropped = false;
-    let mut out = Vec::with_capacity(tokens.len());
-    for token in tokens {
-        if !dropped && token == "export" {
-            dropped = true;
+/// `ours` reads as `base` once the namespace codemod's renames are applied.
+fn codemod_equivalent(base: &[String], ours: &[String]) -> bool {
+    let mut base_at = 0;
+    let mut ours_at = 0;
+    let mut dropped_export = false;
+    while base_at < base.len() && ours_at < ours.len() {
+        if base[base_at] == ours[ours_at] {
+            base_at += 1;
+            ours_at += 1;
             continue;
         }
-        out.push(token.clone());
+        if backtick_member(&base[base_at], &ours[ours_at]) {
+            base_at += 1;
+            ours_at += 1;
+            continue;
+        }
+        if !dropped_export && base[base_at] == "export" {
+            dropped_export = true;
+            base_at += 1;
+            continue;
+        }
+        // `Primitive.DatePickerRoot` is the headless part `DatePicker.Root`.
+        if base[base_at] == "Primitive"
+            && base.get(base_at + 1).map(String::as_str) == Some(".")
+            && base_at + 2 < base.len()
+        {
+            base_at += 2;
+            continue;
+        }
+        if let Some(next) = split_prefixed(&base[base_at], ours, ours_at) {
+            base_at += 1;
+            ours_at = next;
+            continue;
+        }
+        if root_renamed(&base[base_at], &ours[ours_at]) {
+            base_at += 1;
+            ours_at += 1;
+            continue;
+        }
+        if let Some(next) = part_alias(&base[base_at], ours, ours_at) {
+            base_at += 1;
+            ours_at = next;
+            continue;
+        }
+        return false;
     }
-    out
+    if !dropped_export && base.get(base_at).map(String::as_str) == Some("export") {
+        base_at += 1;
+    }
+    base_at == base.len() && ours_at == ours.len()
+}
+
+/// `CalendarHeader` on the base and `Calendar.Header` on the copy.
+fn split_prefixed(name: &str, ours: &[String], at: usize) -> Option<usize> {
+    let left = ours.get(at)?;
+    let dot = ours.get(at + 1)?;
+    let right = ours.get(at + 2)?;
+    if dot == "."
+        && is_pascal(left)
+        && is_pascal(right)
+        && left.len() >= 2
+        && right.len() >= 2
+        && name.len() == left.len() + right.len()
+        && name.starts_with(left)
+        && name.ends_with(right)
+    {
+        Some(at + 3)
+    } else {
+        None
+    }
+}
+
+/// The root component `DatePicker`, declared `DatePickerRoot` after the codemod.
+fn root_renamed(base: &str, ours: &str) -> bool {
+    is_pascal(base)
+        && base.len() >= 2
+        && !base.ends_with("Root")
+        && ours.len() == base.len() + 4
+        && ours.starts_with(base)
+        && ours.ends_with("Root")
+}
+
+/// `SkeletonRoot as RootPart` is used as `Skeleton.Root` after the codemod.
+fn part_alias(name: &str, ours: &[String], at: usize) -> Option<usize> {
+    let stem = name.strip_suffix("Part")?;
+    if stem.len() < 2 || !is_pascal(stem) || !is_pascal(name) {
+        return None;
+    }
+    let left = ours.get(at)?;
+    let dot = ours.get(at + 1)?;
+    let right = ours.get(at + 2)?;
+    if dot == "." && is_pascal(left) && left.len() >= 2 && right == stem {
+        Some(at + 3)
+    } else {
+        None
+    }
+}
+
+/// A comment's `` `CalendarHeader` `` rewritten to `` `Calendar.Header` ``.
+fn backtick_member(base: &str, ours: &str) -> bool {
+    let Some(base_inner) = base
+        .strip_prefix('`')
+        .and_then(|text| text.strip_suffix('`'))
+    else {
+        return false;
+    };
+    let Some(ours_inner) = ours
+        .strip_prefix('`')
+        .and_then(|text| text.strip_suffix('`'))
+    else {
+        return false;
+    };
+    let Some((left, right)) = ours_inner.split_once('.') else {
+        return false;
+    };
+    !right.contains('.')
+        && is_pascal(left)
+        && is_pascal(right)
+        && left.len() >= 2
+        && right.len() >= 2
+        && base_inner.len() == left.len() + right.len()
+        && base_inner.starts_with(left)
+        && base_inner.ends_with(right)
+}
+
+fn is_pascal(name: &str) -> bool {
+    name.starts_with(|letter: char| letter.is_ascii_uppercase())
 }
 
 /// Words, strings, and punctuation. Spaces are not tokens, and `?` is not part
@@ -558,6 +679,46 @@ mod tests {
         let merged = merge(base, ours, theirs, "0.2.0");
         assert_eq!(merged.conflicts, 0, "{}", merged.text);
         assert_eq!(merged.text, theirs);
+    }
+
+    #[test]
+    fn a_renamed_root_and_its_headless_part_take_the_registry() {
+        let base = "export component DatePicker(children: React.Node, ...rest: Rest) {\n  return <Primitive.DatePickerRoot {...forwarded(rest)}>{children}</Primitive.DatePickerRoot>;\n}\n";
+        let ours = "component DatePickerRoot(children: React.Node, ...rest: Rest) {\n  return <DatePicker.Root {...forwarded(rest)}>{children}</DatePicker.Root>;\n}\n";
+        let theirs = "component DatePickerRoot(children: React.Node, ...rest: Rest) renders DatePicker.Root {\n  return <DatePicker.Root {...forwarded(rest)}>{children}</DatePicker.Root>;\n}\n";
+        let merged = merge(base, ours, theirs, "0.2.0");
+        assert_eq!(merged.conflicts, 0, "{}", merged.text);
+        assert_eq!(merged.text, theirs);
+    }
+
+    #[test]
+    fn a_prefixed_part_inside_a_default_child_takes_the_registry() {
+        let base = "      {children ?? (\n        <>\n          <CalendarHeader>\n            <CalendarPrevious />\n            <CalendarNext />\n          </CalendarHeader>\n          <CalendarMonth />\n        </>\n      )}\n    </Primitive.DatePickerCalendar>\n";
+        let ours = "      {children ?? (\n        <>\n          <Calendar.Header>\n            <Calendar.Previous />\n            <Calendar.Next />\n          </Calendar.Header>\n          <Calendar.Month />\n        </>\n      )}\n    </DatePicker.Calendar>\n";
+        let theirs = "      {\n        match (children) {\n          null | undefined =>\n            <>\n              <Calendar.Header>\n                <Calendar.Previous />\n                <Calendar.Next />\n              </Calendar.Header>\n              <Calendar.Month />\n            </>,\n          const given      => given,\n        }\n      }\n    </DatePicker.Calendar>\n";
+        let merged = merge(base, ours, theirs, "0.2.0");
+        assert_eq!(merged.conflicts, 0, "{}", merged.text);
+        assert_eq!(merged.text, theirs);
+    }
+
+    #[test]
+    fn a_part_alias_takes_the_registry() {
+        let base = "    <RootPart\n      busy={busy}\n    />\n";
+        let ours = "    <Skeleton.Root\n      busy={busy}\n    />\n";
+        let theirs = "    <Skeleton.Root\n      busy={busy}\n      fallback={fallback}\n    />\n";
+        let merged = merge(base, ours, theirs, "0.2.0");
+        assert_eq!(merged.conflicts, 0, "{}", merged.text);
+        assert_eq!(merged.text, theirs);
+    }
+
+    #[test]
+    fn a_part_the_project_renamed_stays_a_conflict() {
+        let base = "  return <CalendarHeader />;\n";
+        let ours = "  return <MyHeader />;\n";
+        let theirs = "  return <Calendar.Header />;\n";
+        let merged = merge(base, ours, theirs, "0.2.0");
+        assert_eq!(merged.conflicts, 1, "{}", merged.text);
+        assert!(merged.text.contains("<<<<<<<"), "{}", merged.text);
     }
 
     #[test]
