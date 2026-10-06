@@ -2223,3 +2223,48 @@ fn internal_type_ignores_an_unannotated_class_field() {
     assert_eq!((still[1].line, still[1].column), (3, 23), "{still:?}");
     assert_eq!((still[2].line, still[2].column), (4, 15), "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_decorator() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass C { @any method() {} }\nclass D { @Object field = 1 }\n@any()\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/unclear-type", "// @flow\nclass C { @dec x: any }\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 19), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_decorator() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass C { @bool method() {} }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass C { @dec x: bool }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 19), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_decorator() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass C { @React$Node method() {} }\nclass D { @React$Node field = 1 }\n@React$Node.foo\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass C { @dec x: React$Node }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 19), "{still:?}");
+}

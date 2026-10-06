@@ -227,6 +227,12 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `class C { @any method() {} }` names a decorator. `@` is not part of the
+    // word. `class C { @dec x: any }` still names a type.
+    if names_a_decorator(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -773,6 +779,15 @@ fn matching_close_angle(code: &str, open: usize) -> Option<usize> {
 /// any; }` still reports the annotation.
 fn names_a_private_name(code: &str, at: usize) -> bool {
     at > 0 && code.as_bytes()[at - 1] == b'#'
+}
+
+/// Whether `@` is glued to the front of the word.
+///
+/// `class C { @any method() {} }` names a decorator. Flow has no decorator
+/// types, so the name is a value. `class C { @dec x: any }` still reports the
+/// annotation.
+fn names_a_decorator(code: &str, at: usize) -> bool {
+    at > 0 && code.as_bytes()[at - 1] == b'@'
 }
 
 /// Whether the name is an enum member.
@@ -1846,6 +1861,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_parameter_default(code, at, outer)
                 || names_a_type_parameter(code, at)
                 || names_a_private_name(code, at)
+                || names_a_decorator(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)
