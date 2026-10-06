@@ -198,7 +198,8 @@ fn same_aside_from_alignment(ours: &[&str], theirs: &[&str]) -> bool {
 /// The codemod drops one `export`, renames a root component `Name` to
 /// `NameRoot`, writes a prefixed part `CalendarHeader` as `Calendar.Header`
 /// (including inside a `` `CalendarHeader` `` comment), and writes
-/// `Primitive.DatePickerRoot` as `DatePicker.Root`. A local `RootPart` aliased
+/// `Primitive.DatePickerRoot` as `DatePicker.Root`, or as `HeadlessRangeCalendar.Root`
+/// when the copy itself declares that name. A local `RootPart` aliased
 /// from that prefixed name is written `Skeleton.Root`. A `renders` clause, a
 /// signature the registry broke onto several lines, or a `match` in place of
 /// `children ??` is then the registry's text. A token the project added or
@@ -248,6 +249,11 @@ fn codemod_equivalent(base: &[String], ours: &[String]) -> bool {
             ours_at = next;
             continue;
         }
+        if let Some(next) = headless_split(&base[base_at], ours, ours_at) {
+            base_at += 1;
+            ours_at = next;
+            continue;
+        }
         if root_renamed(&base[base_at], &ours[ours_at]) {
             base_at += 1;
             ours_at += 1;
@@ -278,6 +284,30 @@ fn split_prefixed(name: &str, ours: &[String], at: usize) -> Option<usize> {
         && right.len() >= 2
         && name.len() == left.len() + right.len()
         && name.starts_with(left)
+        && name.ends_with(right)
+    {
+        Some(at + 3)
+    } else {
+        None
+    }
+}
+
+/// `Primitive.RangeCalendarRoot` written `HeadlessRangeCalendar.Root`.
+///
+/// The copy declares `RangeCalendar` itself, so the codemod cannot import the
+/// headless part under that name and prefixes it with `Headless`.
+fn headless_split(name: &str, ours: &[String], at: usize) -> Option<usize> {
+    let left = ours.get(at)?;
+    let dot = ours.get(at + 1)?;
+    let right = ours.get(at + 2)?;
+    let stem = left.strip_prefix("Headless")?;
+    if dot == "."
+        && is_pascal(stem)
+        && is_pascal(right)
+        && stem.len() >= 2
+        && right.len() >= 2
+        && name.len() == stem.len() + right.len()
+        && name.starts_with(stem)
         && name.ends_with(right)
     {
         Some(at + 3)
@@ -706,6 +736,16 @@ mod tests {
         let base = "    <RootPart\n      busy={busy}\n    />\n";
         let ours = "    <Skeleton.Root\n      busy={busy}\n    />\n";
         let theirs = "    <Skeleton.Root\n      busy={busy}\n      fallback={fallback}\n    />\n";
+        let merged = merge(base, ours, theirs, "0.2.0");
+        assert_eq!(merged.conflicts, 0, "{}", merged.text);
+        assert_eq!(merged.text, theirs);
+    }
+
+    #[test]
+    fn a_headless_alias_inside_a_default_child_takes_the_registry() {
+        let base = "      {children ?? (\n        <>\n          <CalendarHeader />\n          <CalendarMonth />\n        </>\n      )}\n    </Primitive.RangeCalendarRoot>\n";
+        let ours = "      {children ?? (\n        <>\n          <Calendar.Header />\n          <Calendar.Month />\n        </>\n      )}\n    </HeadlessRangeCalendar.Root>\n";
+        let theirs = "      {\n        match (children) {\n          null | undefined =>\n            <>\n              <Calendar.Header />\n              <Calendar.Month />\n            </>,\n          const given => given,\n        }\n      }\n    </HeadlessRangeCalendar.Root>\n";
         let merged = merge(base, ours, theirs, "0.2.0");
         assert_eq!(merged.conflicts, 0, "{}", merged.text);
         assert_eq!(merged.text, theirs);
