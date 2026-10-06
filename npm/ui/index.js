@@ -525,8 +525,10 @@ export * as Field from "./field.js";
 /**
  * Tabs, with the arrow-key behaviour the pattern requires.
  *
- * `activationMode="manual"` moves focus without selecting, for panels that cost
- * something to show.
+ * Automatic activation keeps every panel mounted and hides the rest, so a field
+ * keeps what was typed. `Tabs.Panel`'s `fallback` is what a suspending panel
+ * shows. `activationMode="manual"` leaves an unselected panel unmounted, for a
+ * panel that costs something to show.
  *
  *   <Tabs.Root defaultValue="one">
  *     <Tabs.List aria-label="Sections">
@@ -1185,6 +1187,14 @@ export * as Avatar from "./avatar.js";
  *
  *   <Skeleton.Root busy={pending}>
  *     {pending ? <Skeleton.Box /> : <Invoices rows={invoices} />}
+ *   </Skeleton.Root>
+ *
+ * A child that suspends can be the thing that is loading. The root stays
+ * mounted, `<Suspense>` shows `fallback`, and `<ViewTransition>` reveals the
+ * content. Omit `busy` and the boundary says when the wait starts and ends:
+ *
+ *   <Skeleton.Root fallback={<Skeleton.Box />}>
+ *     <Invoices />
  *   </Skeleton.Root>
  *
  * The boxes are `aria-hidden`, the region is `aria-busy`, and a live region

@@ -16,8 +16,10 @@
 //
 // # The closed content stays in the document
 //
-// `Tabs.Panel` returns `null` when it is not selected and that is right for a
-// tab set. Here it is wrong, and the reason is the browser's find-in-page: text
+// An unselected tab panel is not findable — manual activation leaves it
+// unmounted, automatic activation hides it with `<Activity>` (`display: none`)
+// — and that is right for a tab set. Here it is wrong, and the reason is the
+// browser's find-in-page: text
 // in a section that is not in the document cannot be found, so a page of
 // collapsed sections is a page a reader has to open by hand to search.
 // `internal/disclosure.js` explains what is done instead, and why React needs a

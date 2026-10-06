@@ -16,9 +16,9 @@
 //
 // # What to keep true when you change it
 //
-// * **Set `busy` to false when the content arrives,** or replace the skeleton
-//   with the content. A skeleton left busy tells a reader the page is still
-//   loading.
+// * **Set `busy` to false when the content arrives,** or pass `fallback` and
+//   let a suspending child say when the wait starts and ends. A skeleton left
+//   busy tells a reader the page is still loading.
 // * **Nothing real goes in a box.** A box is `aria-hidden`, so text inside one
 //   is text nobody using a screen reader hears.
 // * **Match the content's shape,** so the page does not jump when it arrives.
@@ -64,10 +64,11 @@ const styles = stylex.create({
   },
 });
 
-/** The region a skeleton stands in for. `busy` goes false once the content is there. */
+/** The region a skeleton stands in for. `busy` goes false once the content is there, or `fallback` follows a child that suspends. */
 component SkeletonRoot(
   children  : React.Node,
-  busy?     : boolean = true,
+  busy?     : boolean,
+  fallback? : React.Node,
   label?    : string = "Loading…",
   doneLabel?: string = "Loaded",
   xstyle?   : StyleArgument,
@@ -80,6 +81,7 @@ component SkeletonRoot(
       busy={busy}
       className={classNames(props(styles.root, xstyle).className, className)}
       doneLabel={doneLabel}
+      fallback={fallback}
       label={label}
     >
       {children}

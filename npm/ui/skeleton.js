@@ -48,6 +48,16 @@
 // lets `aria-busy` go from true to false on one element, which is what it is
 // for.
 //
+// # A child that suspends
+//
+// `busy` is the caller saying the wait is happening. A child that suspends is
+// the wait happening. Pass `fallback` and omit `busy`: `<Suspense>` shows the
+// fallback, the region is `aria-busy` for exactly that wait, and
+// `<ViewTransition>` reveals the content when it arrives — unless the reader
+// asked for less motion, in which case the reveal is instant. The root stays
+// mounted either way. Omit `fallback` and nothing wraps `children`, so a page
+// that toggles `busy` itself renders the same markup it always did.
+//
 // # Not `Progress`
 //
 // A skeleton says *that* something is loading. `Progress` says *how far along*
@@ -58,10 +68,33 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { useEffect, useRef, useState } from "@uniflowed/react";
+import {
+  Suspense,
+  ViewTransition,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "@uniflowed/react";
+import { usePrefersReducedMotion } from "@uniflowed/hooks/browser";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { withProps } from "./internal/merge-props.js";
+
+/**
+ * Tells the root whether the fallback or the content is what just committed.
+ *
+ * A layout effect, so `aria-busy` matches the picture before the browser
+ * paints. It does not report again from cleanup: the fallback and the content
+ * are never both mounted, and a cleanup that raced the next signal would
+ * announce the wrong one.
+ */
+component SuspendSignal(report: (shown: boolean) => void, shown: boolean) {
+  useLayoutEffect(() => {
+    report(shown);
+  }, [report, shown]);
+  return null;
+}
 
 /**
  * The region that is being filled in, and the sentence that says so.
@@ -81,12 +114,21 @@ import { withProps } from "./internal/merge-props.js";
  *       )}
  *     </Skeleton.Root>
  *
+ * `fallback`, when given, is what `<Suspense>` shows while `children` suspend.
+ * Omit `busy` then: the region is busy exactly while that fallback is showing,
+ * and `<ViewTransition>` reveals the content. Omit `fallback` and `children`
+ * are the region's children, with nothing wrapped around them.
+ *
+ *     <Skeleton.Root fallback={<Skeleton.Box />}>
+ *       <Invoices />
+ *     </Skeleton.Root>
+ *
  * `label` and `doneLabel` are what is announced. English defaults, because a
  * component that announces nothing by default is the component this one exists
  * to replace; a real application passes its translation.
  *
- * `doneLabel` is announced only after a spell of `busy`, so a region that was
- * never loading never says it has loaded.
+ * `doneLabel` is announced only after a spell of being busy, so a region that
+ * was never loading never says it has loaded.
  *
  * `render` changes the element that owns the busy state. The live region stays
  * beside it, mounted by this component, because that timing is the accessibility
@@ -94,32 +136,69 @@ import { withProps } from "./internal/merge-props.js";
  */
 component SkeletonRoot(
   children  : React.Node,
-  busy?     : boolean = true,
+  busy?     : boolean,
+  fallback? : React.Node,
   label?    : string = "Loading…",
   doneLabel?: string = "Loaded",
   render?   : RenderProp,
   ...rest: Rest
 ) {
-  const [message, setMessage] = useState("");
+  const [message,   setMessage]   = useState("");
+  const [suspended, setSuspended] = useState(false);
   // Whether there has been anything to finish. Written and read in effects
   // only, and nothing renders it — the promise `index.js` makes about refs.
   const waited = useRef(false);
+  // The latest busy flag, written in layout so a passive effect from the
+  // render before it still announces what is on screen now.
+  const waitingNow = useRef(false);
+  const motion     = usePrefersReducedMotion() ? "none" : "auto";
+  // No `busy` and no `fallback` is the picture of a wait, which is what this
+  // component was: busy until told otherwise. A fallback means the child is
+  // the wait, and an explicit `busy` still wins — except that a child which
+  // is actually suspended is busy even when `busy` is false, because that is
+  // the picture on screen.
+  const waiting = (busy ?? fallback === undefined) || suspended;
+
+  useLayoutEffect(() => {
+    waitingNow.current = waiting;
+  }, [waiting]);
 
   useEffect(() => {
-    if (busy) {
+    if (waitingNow.current) {
       waited.current = true;
       // The live-region text changes after commit so assistive tech can announce it.
-      // uf-lint-disable-next-line react-compiler/set-state-in-effect
       setMessage(label);
       return;
     }
     // The live-region text changes after commit so assistive tech can announce it.
     setMessage(waited.current ? doneLabel : "");
-  }, [busy, doneLabel, label]);
+  }, [waiting, doneLabel, label]);
+
+  // Inside the boundary, so the reveal is the transition's enter. Wrapped
+  // the other way, the boundary staying mounted would be an update, and
+  // `enter` would never play.
+  const content =
+    fallback === undefined ? (
+      children
+    ) : (
+      <Suspense
+        fallback={
+          <>
+            <SuspendSignal report={setSuspended} shown={true} />
+            {fallback}
+          </>
+        }
+      >
+        <ViewTransition default="none" enter={motion} exit="none">
+          <SuspendSignal report={setSuspended} shown={false} />
+          {children}
+        </ViewTransition>
+      </Suspense>
+    );
 
   const props = withProps(rest, {
-    "aria-busy": busy ? "true" : undefined,
-    children,
+    "aria-busy": waiting ? "true" : undefined,
+    children   : content,
   });
 
   return (

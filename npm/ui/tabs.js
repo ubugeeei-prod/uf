@@ -15,13 +15,20 @@
 // preference: it is about what a panel costs to show.
 //
 //   * **Automatic** — the default. Moving to a tab selects it, so reaching a
-//     panel is one key press. This is what the pattern prescribes when the
-//     panels are already in the document and showing one is free.
+//     panel is one key press. Every panel stays mounted. The one that is not
+//     selected is hidden with `<Activity>`, so a field there keeps what was
+//     typed and a panel that reads a promise can have it ready before it is
+//     shown. Hiding is `display: none`: the panel is not announced and
+//     find-in-page does not land in it. Its `<Suspense>` is its own, so the
+//     wait replaces that panel and not the tab list. `<ViewTransition>` plays
+//     the enter and the exit when the selection is a transition, and plays
+//     nothing when the reader has asked for less motion.
 //   * **Manual** — arrow keys move focus and select nothing until `Enter` or
 //     `Space`. This is what a panel that fetches, or that takes real work to
 //     render, needs: with automatic activation a reader arrowing from the first
 //     tab to the fourth starts three loads they did not ask for, and a screen
-//     reader announces three panels they never wanted to hear about.
+//     reader announces three panels they never wanted to hear about. A panel
+//     that is not selected is not mounted, so passing it starts nothing.
 //
 // # Which arrow keys
 //
@@ -61,7 +68,19 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useEffect, useId, useRef, useState } from "@uniflowed/react";
+import {
+  Activity,
+  Suspense,
+  ViewTransition,
+  createContext,
+  startTransition,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "@uniflowed/react";
+import { usePrefersReducedMotion } from "@uniflowed/hooks/browser";
 
 import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
 import {
@@ -115,9 +134,21 @@ component TabsRoot(
   render?        : RenderProp,
   ...rest: Rest
 ) {
-  const base                   = useId();
-  const [selected, select]     = useControlled(value, defaultValue, onValueChange);
-  const [mounted,  setMounted] = useState<$ReadOnlyArray<string>>([]);
+  const base                    = useId();
+  const [selected, selectValue] = useControlled(value, defaultValue, onValueChange);
+  const [mounted,  setMounted]  = useState<$ReadOnlyArray<string>>([]);
+  // A transition, so `<ViewTransition>` on an automatic panel actually runs.
+  // Manual activation stays a plain update: a transition that suspends keeps
+  // the previous panel up and never shows this panel's fallback.
+  const select = (next: string) => {
+    if (activationMode === "manual") {
+      selectValue(next);
+      return;
+    }
+    startTransition(() => {
+      selectValue(next);
+    });
+  };
 
   // Functional updates, so two panels mounting in the same commit do not each
   // overwrite the other's registration with a list computed before it existed.
@@ -356,17 +387,33 @@ component TabsTab(
 }
 
 /**
- * The panel a tab controls, rendered only while its tab is selected.
+ * The panel a tab controls.
  *
- * It registers itself with the root while it is mounted, which is what lets
- * `Tabs.Tab` decide whether it has a panel to name. That has to be a real
- * subscription rather than "the selected value equals mine", because a caller
- * may render a subset of panels, or none at all until data arrives.
+ * Automatic activation keeps every panel mounted and hides the rest with
+ * `<Activity>`. Manual activation renders this one only while it is selected,
+ * so a panel the reader has not asked for does not load. Either way it
+ * registers while it is the selected panel, which is what lets `Tabs.Tab`
+ * decide whether it has a panel to name. That has to be a real subscription
+ * rather than "the selected value equals mine", because a caller may render a
+ * subset of panels, or none at all until data arrives. A hidden panel is in
+ * the document and still is not named: `display: none` is not somewhere a
+ * reader can land.
+ *
+ * `fallback` is what this panel shows while `children` suspend. The boundary
+ * is here, so the tab list stays put.
  */
-component TabsPanel(value: string, children: React.Node, render?: RenderProp, ...rest: Rest) {
+component TabsPanel(
+  value    : string,
+  children : React.Node,
+  fallback?: React.Node = null,
+  render?  : RenderProp,
+  ...rest: Rest
+) {
   const tabs = useTabs("Tabs.Panel");
   const register = tabs.registerPanel;
   const selected = tabs.selected === value;
+  const manual = tabs.activation === "manual";
+  const motion = usePrefersReducedMotion() ? "none" : "auto";
 
   useEffect(() => {
     if (!selected) {
@@ -376,25 +423,48 @@ component TabsPanel(value: string, children: React.Node, render?: RenderProp, ..
     return () => register(value, false);
   }, [register, value, selected]);
 
-  if (!selected) {
+  if (manual && !selected) {
     return null;
   }
 
   const props = withProps(rest, {
     "aria-labelledby": `${tabs.base}-tab-${value}`,
-    children,
-    id  : `${tabs.base}-panel-${value}`,
-    role: "tabpanel",
+    children         : <Suspense fallback={fallback}>{children}</Suspense>,
+    id               : `${tabs.base}-panel-${value}`,
+    role             : "tabpanel",
     // The panel itself is focusable so that Tab out of the tab list lands on
     // the content the tab describes, which is where the reader expects to go
     // and where a panel of plain prose has nothing else to offer.
     tabIndex: 0,
   });
 
-  return match (render) {
-    undefined    => <div {...props} />,
-    const custom => custom(props),
-  };
+  const panel = (
+    <ViewTransition default="none" enter={motion} exit={motion}>
+      {
+        match (render) {
+          undefined    => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
+    </ViewTransition>
+  );
+
+  if (manual) {
+    return panel;
+  }
+
+  return (
+    <Activity
+      mode={
+        match (selected) {
+          true  => "visible",
+          false => "hidden",
+        }
+      }
+    >
+      {panel}
+    </Activity>
+  );
 }
 
 /**

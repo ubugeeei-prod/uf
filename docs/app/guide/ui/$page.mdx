@@ -460,8 +460,10 @@ does not change until `Enter` or `Space`.
 The ARIA: `role="tablist"` with `aria-orientation`, `role="tab"` with
 `aria-selected` and a roving `tabindex`, `role="tabpanel"` with
 `aria-labelledby` pointing back at its tab. A tab points at its panel with
-`aria-controls` **only while that panel is mounted** — an unselected tab's panel
-does not exist, and naming it would be naming nothing. A disabled tab keeps
+`aria-controls` **only while that panel is selected**. Automatic activation
+keeps the others mounted and hidden; manual activation does not mount them.
+Either way an unselected tab does not name a place the reader cannot land. A
+disabled tab keeps
 `role="tab"` and gets `aria-disabled`, never the native `disabled` attribute,
 so it stays in the accessibility tree and is skipped by the arrows rather than
 vanishing from the list.

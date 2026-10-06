@@ -340,7 +340,10 @@ component TabsTab(
   );
 }
 
-/** The panel a tab shows, in the document only while its tab is selected. */
+/**
+ * The panel a tab shows. Automatic activation keeps the others mounted and
+ * hidden; manual activation omits a panel until its tab is selected.
+ */
 component TabsPanel(
   value     : string,
   children  : React.Node,
