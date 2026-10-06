@@ -169,7 +169,7 @@ component AlertDialogRoot(
   defaultOpen? : boolean = false,
   open?        : boolean,
   onOpenChange?: (open: boolean) => void,
-) {
+) renders AlertDialog.Root {
   return (
     <AlertDialog.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
@@ -189,21 +189,24 @@ component AlertDialogTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders AlertDialog.Trigger {
   return (
     <AlertDialog.Trigger
       {...forwarded(rest)}
       render={
-        render ??
-        ((trigger) => (
-          <Button
-            {...forwarded(trigger)}
-            className={className}
-            size={size}
-            tone={tone}
-            xstyle={xstyle}
-          />
-        ))
+        match (render) {
+          undefined    =>
+            (trigger) => (
+              <Button
+                {...forwarded(trigger)}
+                className={className}
+                size={size}
+                tone={tone}
+                xstyle={xstyle}
+              />
+            ),
+          const custom => custom,
+        }
       }
     >
       {children}
@@ -237,7 +240,7 @@ component AlertDialogHeader(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders AlertDialog.Header {
   return (
     <AlertDialog.Header
       {...forwarded(rest)}
@@ -254,7 +257,7 @@ component AlertDialogFooter(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders AlertDialog.Footer {
   return (
     <AlertDialog.Footer
       {...forwarded(rest)}
@@ -271,7 +274,7 @@ component AlertDialogTitle(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders AlertDialog.Title {
   return (
     <AlertDialog.Title
       {...forwarded(rest)}
@@ -288,7 +291,7 @@ component AlertDialogDescription(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders AlertDialog.Description {
   return (
     <AlertDialog.Description
       {...forwarded(rest)}
@@ -308,21 +311,24 @@ component AlertDialogAction(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders AlertDialog.Action {
   return (
     <AlertDialog.Action
       {...forwarded(rest)}
       render={
-        render ??
-        ((action) => (
-          <Button
-            {...forwarded(action)}
-            className={className}
-            size={size}
-            tone={tone}
-            xstyle={xstyle}
-          />
-        ))
+        match (render) {
+          undefined    =>
+            (action) => (
+              <Button
+                {...forwarded(action)}
+                className={className}
+                size={size}
+                tone={tone}
+                xstyle={xstyle}
+              />
+            ),
+          const custom => custom,
+        }
       }
     >
       {children}
@@ -339,21 +345,24 @@ component AlertDialogCancel(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders AlertDialog.Cancel {
   return (
     <AlertDialog.Cancel
       {...forwarded(rest)}
       render={
-        render ??
-        ((cancel) => (
-          <Button
-            {...forwarded(cancel)}
-            className={className}
-            size={size}
-            tone={tone}
-            xstyle={xstyle}
-          />
-        ))
+        match (render) {
+          undefined    =>
+            (cancel) => (
+              <Button
+                {...forwarded(cancel)}
+                className={className}
+                size={size}
+                tone={tone}
+                xstyle={xstyle}
+              />
+            ),
+          const custom => custom,
+        }
       }
     >
       {children}

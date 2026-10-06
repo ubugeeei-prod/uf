@@ -294,21 +294,24 @@ component DrawerTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Drawer.Trigger {
   return (
     <Drawer.Trigger
       {...forwarded(rest)}
       render={
-        render ??
-        ((trigger) => (
-          <Button
-            {...forwarded(trigger)}
-            className={className}
-            size={size}
-            tone={tone}
-            xstyle={xstyle}
-          />
-        ))
+        match (render) {
+          undefined    =>
+            (trigger) => (
+              <Button
+                {...forwarded(trigger)}
+                className={className}
+                size={size}
+                tone={tone}
+                xstyle={xstyle}
+              />
+            ),
+          const custom => custom,
+        }
       }
     >
       {children}
@@ -338,18 +341,22 @@ component DrawerContent(
         className={classNames(props(styles.panel, xstyle).className, className)}
       >
         {children}
-        {hideHandle ? null : (
-          <Drawer.Handle
-            className={props(styles.handle).className}
-            data-side={side}
-            label={handleLabel}
-            render={(handle) => (
-              <div {...forwarded(handle)}>
-                <span {...props(styles.grip)} aria-hidden="true" />
-              </div>
-            )}
-          />
-        )}
+        {
+          match (hideHandle) {
+            true  => null,
+            false =>
+              <Drawer.Handle
+                className={props(styles.handle).className}
+                data-side={side}
+                label={handleLabel}
+                render={(handle) => (
+                  <div {...forwarded(handle)}>
+                    <span {...props(styles.grip)} aria-hidden="true" />
+                  </div>
+                )}
+              />,
+          }
+        }
       </Drawer.Body>
     </>
   );
@@ -361,7 +368,7 @@ component DrawerHeader(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Drawer.Header {
   return (
     <Drawer.Header
       {...forwarded(rest)}
@@ -378,7 +385,7 @@ component DrawerFooter(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Drawer.Footer {
   return (
     <Drawer.Footer
       {...forwarded(rest)}
@@ -395,7 +402,7 @@ component DrawerTitle(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Drawer.Title {
   return (
     <Drawer.Title
       {...forwarded(rest)}
@@ -412,7 +419,7 @@ component DrawerDescription(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Drawer.Description {
   return (
     <Drawer.Description
       {...forwarded(rest)}
@@ -435,21 +442,24 @@ component DrawerClose(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Drawer.Close {
   return (
     <Drawer.Close
       {...forwarded(rest)}
       render={
-        render ??
-        ((close) => (
-          <Button
-            {...forwarded(close)}
-            className={className}
-            size={size}
-            tone={tone}
-            xstyle={xstyle}
-          />
-        ))
+        match (render) {
+          undefined    =>
+            (close) => (
+              <Button
+                {...forwarded(close)}
+                className={className}
+                size={size}
+                tone={tone}
+                xstyle={xstyle}
+              />
+            ),
+          const custom => custom,
+        }
       }
     >
       {children}

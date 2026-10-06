@@ -105,7 +105,7 @@ export component ScrollArea(
   xstyle?     : StyleArgument,
   className?  : string,
   ...rest: Rest
-) {
+) renders HeadlessScrollArea.Root {
   const down = orientation !== "horizontal";
   const across = orientation !== "vertical";
   return (
@@ -117,22 +117,30 @@ export component ScrollArea(
       <HeadlessScrollArea.Viewport className={props(styles.viewport).className}>
         {children}
       </HeadlessScrollArea.Viewport>
-      {down ? (
-        <HeadlessScrollArea.Scrollbar
-          className={props(styles.scrollbar, styles.scrollbarVertical).className}
-          orientation="vertical"
-        >
-          <div {...props(styles.thumb, styles.thumbVertical)} />
-        </HeadlessScrollArea.Scrollbar>
-      ) : null}
-      {across ? (
-        <HeadlessScrollArea.Scrollbar
-          className={props(styles.scrollbar, styles.scrollbarHorizontal).className}
-          orientation="horizontal"
-        >
-          <div {...props(styles.thumb, styles.thumbHorizontal)} />
-        </HeadlessScrollArea.Scrollbar>
-      ) : null}
+      {
+        match (down) {
+          true  =>
+            <HeadlessScrollArea.Scrollbar
+              className={props(styles.scrollbar, styles.scrollbarVertical).className}
+              orientation="vertical"
+            >
+              <div {...props(styles.thumb, styles.thumbVertical)} />
+            </HeadlessScrollArea.Scrollbar>,
+          false => null,
+        }
+      }
+      {
+        match (across) {
+          true  =>
+            <HeadlessScrollArea.Scrollbar
+              className={props(styles.scrollbar, styles.scrollbarHorizontal).className}
+              orientation="horizontal"
+            >
+              <div {...props(styles.thumb, styles.thumbHorizontal)} />
+            </HeadlessScrollArea.Scrollbar>,
+          false => null,
+        }
+      }
     </HeadlessScrollArea.Root>
   );
 }

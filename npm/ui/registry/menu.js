@@ -195,7 +195,7 @@ component MenuRoot(
   defaultOpen? : boolean = false,
   open?        : boolean,
   onOpenChange?: (open: boolean) => void,
-) {
+) renders Menu.Root {
   return (
     <Menu.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
@@ -215,21 +215,24 @@ component MenuTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Menu.Trigger {
   return (
     <Menu.Trigger
       {...forwarded(rest)}
       render={
-        render ??
-        ((trigger) => (
-          <Button
-            {...forwarded(trigger)}
-            className={className}
-            size={size}
-            tone={tone}
-            xstyle={xstyle}
-          />
-        ))
+        match (render) {
+          undefined    =>
+            (trigger) => (
+              <Button
+                {...forwarded(trigger)}
+                className={className}
+                size={size}
+                tone={tone}
+                xstyle={xstyle}
+              />
+            ),
+          const custom => custom,
+        }
       }
     >
       {children}
@@ -257,7 +260,7 @@ component MenuContent(
   xstyle?          : StyleArgument,
   className?       : string,
   ...rest: Rest
-) {
+) renders Menu.Body {
   return (
     <Menu.Body
       {...forwarded(rest)}
@@ -479,7 +482,7 @@ component MenuSubTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Menu.SubTrigger {
   return (
     <Menu.SubTrigger
       {...forwarded(rest)}

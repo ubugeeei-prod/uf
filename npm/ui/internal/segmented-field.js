@@ -1,7 +1,7 @@
 // @flow
 "use client";
 import * as React from "@uniflowed/react";
-import { useMemo, useRef, useState } from "@uniflowed/react";
+import { useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import { Temporal } from "@uniflowed/core/temporal";
 import { useControlled } from "./controlled-state.js";
@@ -129,46 +129,43 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
   };
   const fields = draft ?? fieldsFor(current, time, seconds);
   const { invalid } = assess(fields);
-  const digits = useMemo(() => new Intl.NumberFormat(locale, { useGrouping: false }), [locale]);
-  const labels: $FlowFixMe = useMemo(
-    () => new (Intl as $FlowFixMe).DisplayNames(locale, { type: "dateTimeField" }),
-    [locale],
+  const digits = new Intl.NumberFormat(locale, { useGrouping: false });
+  const labels: $FlowFixMe = new (Intl as $FlowFixMe).DisplayNames(locale, {
+    type: "dateTimeField",
+  });
+  const partFormatter: $FlowFixMe = new Intl.DateTimeFormat(
+    locale,
+    time
+      ? {
+          hour  : "2-digit",
+          minute: "2-digit",
+          second: seconds ? "2-digit" : undefined,
+          hourCycle,
+          timeZone: "UTC",
+        }
+      : {
+          year    : "numeric",
+          month   : "2-digit",
+          day     : "2-digit",
+          calendar: "gregory",
+          timeZone: "UTC",
+        },
   );
-  const parts: Array<{ type: string, value: string }> = useMemo(() => {
-    const formatter: $FlowFixMe = new Intl.DateTimeFormat(
-      locale,
-      time
-        ? {
-            hour  : "2-digit",
-            minute: "2-digit",
-            second: seconds ? "2-digit" : undefined,
-            hourCycle,
-            timeZone: "UTC",
-          }
-        : {
-            year    : "numeric",
-            month   : "2-digit",
-            day     : "2-digit",
-            calendar: "gregory",
-            timeZone: "UTC",
-          },
-    );
-    return formatter.formatToParts(new Date("2000-01-02T12:34:56Z"));
-  }, [locale, time, seconds, hourCycle]);
+  const parts: Array<{ type: string, value: string }> = partFormatter.formatToParts(
+    new Date("2000-01-02T12:34:56Z"),
+  );
   const hour12 = time && parts.some((part) => part.type === "dayPeriod");
-  const periodNames: Array<string> = useMemo(() => {
-    const formatter: $FlowFixMe = new Intl.DateTimeFormat(locale, {
-      hour    : "numeric",
-      hour12  : true,
-      timeZone: "UTC",
-    });
-    return [0, 12].map(
-      (hour) =>
-        formatter
-          .formatToParts(new Date(Date.UTC(2000, 0, 1, hour)))
-          .find((part) => part.type === "dayPeriod")?.value ?? (hour === 0 ? "AM" : "PM"),
-    );
-  }, [locale]);
+  const periodFormatter: $FlowFixMe = new Intl.DateTimeFormat(locale, {
+    hour    : "numeric",
+    hour12  : true,
+    timeZone: "UTC",
+  });
+  const periodNames: Array<string> = [0, 12].map(
+    (hour) =>
+      periodFormatter
+        .formatToParts(new Date(Date.UTC(2000, 0, 1, hour)))
+        .find((part) => part.type === "dayPeriod")?.value ?? (hour === 0 ? "AM" : "PM"),
+  );
   const encode = (text: string): string =>
     Array.from(text)
       .map((digit) => digits.format(Number(digit)))

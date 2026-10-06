@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import * as React from "@uniflowed/react";
-import { useState } from "@uniflowed/react";
+import { use, useState } from "@uniflowed/react";
 import { afterEach, beforeEach, describe, expect, fn, it, uft } from "@uniflowed/test";
 import {
   accessibleName,
@@ -694,10 +694,12 @@ describe("Tabs", () => {
     expect(screen.getAllByRole("tab").length).toBe(3);
   });
 
-  it("renders only the selected panel", () => {
+  it("tells a reader about only the selected panel", () => {
     render(<Example />);
+    // The others stay mounted and hidden. A role query is what a reader is
+    // told; the hidden panel's text is still in the document.
     expect(screen.getByRole("tabpanel").textContent).toBe("first panel");
-    expect(screen.queryByText("second panel")).toBe(null);
+    expect(screen.getAllByRole("tabpanel").length).toBe(1);
   });
 
   it("keeps exactly one tab in the page's tab order", () => {
@@ -778,9 +780,9 @@ describe("Tabs", () => {
 
   it("does not point a tab at a panel that is not rendered", () => {
     render(<Example />);
-    // Panels are mounted on demand, so an unselected tab has nothing to name.
-    // Naming it anyway tells a reader there is somewhere to go and then has
-    // nowhere to send them.
+    // A hidden panel is in the document and still is not named. `display: none`
+    // is not somewhere a reader can land, and naming it tells them there is
+    // somewhere to go.
     expect(screen.getByRole("tab", { name: "Two" })).not.toHaveAttribute("aria-controls");
     expect(danglingReferences()).toEqual([]);
   });
@@ -801,6 +803,29 @@ describe("Tabs", () => {
     expect(onValueChange).toHaveBeenCalledWith("two");
   });
 
+  it("keeps what was typed in a panel that is not showing", async () => {
+    render(
+      <Tabs.Root defaultValue="one">
+        <Tabs.List aria-label="Sections">
+          <Tabs.Tab value="one">One</Tabs.Tab>
+          <Tabs.Tab value="two">Two</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="one">first panel</Tabs.Panel>
+        <Tabs.Panel value="two">
+          <input aria-label="Note" />
+        </Tabs.Panel>
+      </Tabs.Root>,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Two" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "kept");
+    await userEvent.click(screen.getByRole("tab", { name: "One" }));
+    // Hidden with `<Activity>`, which is `display: none`: not in the tree a
+    // reader walks, and still the same field when they come back.
+    expect(screen.queryByRole("textbox", { name: "Note" })).toBe(null);
+    await userEvent.click(screen.getByRole("tab", { name: "Two" }));
+    expect(screen.getByRole("textbox", { name: "Note" })).toHaveValue("kept");
+  });
+
   it("does not select a disabled tab", async () => {
     render(
       <Tabs.Root defaultValue="one">
@@ -818,6 +843,10 @@ describe("Tabs", () => {
     expect(screen.getByRole("tabpanel").textContent).toBe("first");
   });
 });
+
+component Slow(promise: Promise<string>) {
+  return use(promise);
+}
 
 describe("Tabs: manual activation", () => {
   component Deferred() {
@@ -852,6 +881,58 @@ describe("Tabs: manual activation", () => {
     await userEvent.keyboard("{ArrowRight}");
     await userEvent.keyboard("{Enter}");
     expect(screen.getByRole("tabpanel").textContent).toBe("second panel");
+  });
+
+  it("starts a panel over when leaving it unmounted", async () => {
+    render(
+      <Tabs.Root activationMode="manual" defaultValue="one">
+        <Tabs.List aria-label="Sections">
+          <Tabs.Tab value="one">One</Tabs.Tab>
+          <Tabs.Tab value="two">Two</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="one">first panel</Tabs.Panel>
+        <Tabs.Panel value="two">
+          <input aria-label="Note" />
+        </Tabs.Panel>
+      </Tabs.Root>,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Two" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "kept");
+    await userEvent.click(screen.getByRole("tab", { name: "One" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Two" }));
+    expect(screen.getByRole("textbox", { name: "Note" })).toHaveValue("");
+  });
+
+  it("shows a panel's own fallback while its content suspends", async () => {
+    let resolve: (value: string) => void = () => {};
+    const promise: Promise<string> = new Promise((done) => {
+      resolve = done;
+    });
+    render(
+      <Tabs.Root activationMode="manual" defaultValue="one">
+        <Tabs.List aria-label="Sections">
+          <Tabs.Tab value="one">One</Tabs.Tab>
+          <Tabs.Tab value="two">Two</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="one">first panel</Tabs.Panel>
+        <Tabs.Panel fallback={<p>loading the panel</p>} value="two">
+          <Slow promise={promise} />
+        </Tabs.Panel>
+      </Tabs.Root>,
+    );
+    // The click suspends the panel. React 19 only finishes that render when
+    // the `act` around it is awaited; `userEvent.click` closes its scope first.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: "Two" }));
+    });
+    // The boundary is the panel. The tab list is still there to move with.
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel").textContent).toBe("loading the panel");
+    await act(async () => {
+      resolve("the invoices");
+      await promise;
+    });
+    expect(screen.getByRole("tabpanel").textContent).toBe("the invoices");
   });
 
   it("selects on Space", async () => {
@@ -7346,6 +7427,46 @@ describe("Skeleton", () => {
       </Skeleton.Root>,
     );
     expect(screen.getByRole("status").textContent).toBe("Chargement…");
+  });
+
+  it("says the page is loading while a child suspends, then that it loaded", async () => {
+    let resolve: (value: string) => void = () => {};
+    const promise: Promise<string> = new Promise((done) => {
+      resolve = done;
+    });
+    // React 19 leaves a suspending render unfinished unless `act` is awaited.
+    // `render` itself stays synchronous, so the await wraps it.
+    await act(async () => {
+      render(
+        <Skeleton.Root fallback={<Skeleton.Box>placeholder</Skeleton.Box>}>
+          <Slow promise={promise} />
+        </Skeleton.Root>,
+      );
+    });
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
+    expect(document.querySelector('[aria-busy="true"]')).not.toBe(null);
+    // The box is `aria-hidden`, so the placeholder is a picture, not text a
+    // reader is offered. It is still the thing on screen during the wait.
+    expect(document.querySelector('[aria-hidden="true"]')?.textContent).toBe("placeholder");
+    await act(async () => {
+      resolve("Two invoices, both overdue.");
+      await promise;
+    });
+    expect(screen.getByRole("status").textContent).toBe("Loaded");
+    expect(screen.getByText("Two invoices, both overdue.")).toBeInTheDocument();
+    expect(document.querySelector("[aria-busy]")).toBe(null);
+  });
+
+  it("does not announce a load for content that was already there", () => {
+    const { container } = render(
+      <Skeleton.Root fallback={<Skeleton.Box>placeholder</Skeleton.Box>}>
+        <p>already here</p>
+      </Skeleton.Root>,
+    );
+    expect(screen.getByText("already here")).toBeInTheDocument();
+    expect(screen.getByRole("status").textContent).toBe("");
+    expect(container.querySelector("[aria-busy]")).toBe(null);
+    expect(container.querySelector('[aria-hidden="true"]')).toBe(null);
   });
 
   it("hands the busy region and hidden boxes to caller-rendered elements", () => {

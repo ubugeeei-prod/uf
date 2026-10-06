@@ -54,7 +54,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { useCallback, useContext, useMemo, useRef, useState } from "@uniflowed/react";
+import { useCallback, useContext, useRef, useState } from "@uniflowed/react";
 import { useLongPress } from "@uniflowed/hooks/dom";
 
 import type { Rect } from "./internal/anchor.js";
@@ -102,8 +102,8 @@ component ContextMenuRoot(
   // somewhere else has to be a new value React has committed rather than a
   // mutation nothing heard about.
   const [point, setPoint] = useState<Rect | null>(null);
-  const openAt            = useCallback((next: Rect | null) => setPoint(next), []);
-  const state             = useMemo(() => ({ point, openAt }), [point, openAt]);
+  const openAt = (next: Rect | null) => setPoint(next);
+  const state = { point, openAt };
 
   return (
     <PointContext.Provider value={state}>

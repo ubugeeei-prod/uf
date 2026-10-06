@@ -94,15 +94,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "@uniflowed/react";
 
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
@@ -182,22 +174,19 @@ component ResizablePanelGroup(
   const [hasPrimary, setHasPrimary] = useState(false);
   const groupRef                    = useRef<HTMLElement | null>(null);
 
-  const state = useMemo(
-    () => ({
-      base,
-      value   : clamp(share, min, max),
-      setValue: setShare,
-      min,
-      max,
-      step,
-      orientation,
-      disabled,
-      hasPrimary,
-      registerPrimary: setHasPrimary,
-      groupRef,
-    }),
-    [base, share, setShare, min, max, step, orientation, disabled, hasPrimary],
-  );
+  const state = {
+    base,
+    value   : clamp(share, min, max),
+    setValue: setShare,
+    min,
+    max,
+    step,
+    orientation,
+    disabled,
+    hasPrimary,
+    registerPrimary: setHasPrimary,
+    groupRef,
+  };
 
   const passed = withoutComposed(rest, ["ref"]);
 

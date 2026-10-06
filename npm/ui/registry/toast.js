@@ -163,7 +163,7 @@ component Toaster(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Toast.Region {
   return (
     <Toast.Region
       {...forwarded(rest)}
@@ -204,7 +204,7 @@ component ToastTitle(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Toast.Title {
   return (
     <Toast.Title
       {...forwarded(rest)}
@@ -221,7 +221,7 @@ component ToastDescription(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Toast.Description {
   return (
     <Toast.Description
       {...forwarded(rest)}
@@ -238,7 +238,7 @@ component ToastAction(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Toast.Action {
   return (
     <Toast.Action
       {...forwarded(rest)}
@@ -256,7 +256,7 @@ component ToastClose(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Toast.Close {
   return (
     <Toast.Close
       {...forwarded(rest)}

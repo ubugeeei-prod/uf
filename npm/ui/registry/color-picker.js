@@ -67,7 +67,7 @@ component ColorPickerRoot(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders ColorPicker.Root {
   return (
     <ColorPicker.Root
       {...forwarded(rest)}
@@ -77,7 +77,11 @@ component ColorPickerRoot(
     </ColorPicker.Root>
   );
 }
-component ColorPickerInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component ColorPickerInput(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders ColorPicker.Input {
   return (
     <ColorPicker.Input
       {...forwarded(rest)}
@@ -85,7 +89,11 @@ component ColorPickerInput(xstyle?: StyleArgument, className?: string, ...rest: 
     />
   );
 }
-component ColorPickerField(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component ColorPickerField(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders ColorPicker.Field {
   return (
     <ColorPicker.Field
       {...forwarded(rest)}
@@ -93,7 +101,11 @@ component ColorPickerField(xstyle?: StyleArgument, className?: string, ...rest: 
     />
   );
 }
-component ColorPickerChannel(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component ColorPickerChannel(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders ColorPicker.Channel {
   return (
     <ColorPicker.Channel
       {...forwarded(rest)}
@@ -101,7 +113,11 @@ component ColorPickerChannel(xstyle?: StyleArgument, className?: string, ...rest
     />
   );
 }
-component ColorPickerSwatch(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component ColorPickerSwatch(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders ColorPicker.Swatch {
   return (
     <ColorPicker.Swatch
       {...forwarded(rest)}

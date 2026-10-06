@@ -155,7 +155,7 @@ component AccordionRoot(
   xstyle?       : StyleArgument,
   className?    : string,
   ...rest: Rest
-) {
+) renders Accordion.Root {
   return (
     <Accordion.Root
       {...forwarded(rest)}

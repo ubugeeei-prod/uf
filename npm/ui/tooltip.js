@@ -69,7 +69,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useEffect, useId, useMemo, useRef } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useRef } from "@uniflowed/react";
 import { useEventListener } from "@uniflowed/hooks/dom";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
@@ -157,7 +157,7 @@ component TooltipProvider(
   skipDelayDuration?: number = DEFAULT_SKIP_DELAY,
 ) {
   const group = useDelayGroup(skipDelayDuration);
-  const scope = useMemo(() => ({ delayDuration, group }), [delayDuration, group]);
+  const scope = { delayDuration, group };
 
   return <TooltipScopeContext.Provider value={scope}>{children}</TooltipScopeContext.Provider>;
 }
@@ -214,19 +214,16 @@ component TooltipRoot(
     [group],
   );
 
-  const state = useMemo(
-    () => ({
-      base,
-      closeDelay,
-      dismissedRef,
-      intent,
-      open     : isOpen,
-      openDelay: () => group?.delayFor(own) ?? own,
-      setOpen,
-      triggerRef,
-    }),
-    [base, closeDelay, group, intent, isOpen, own, setOpen],
-  );
+  const state = {
+    base,
+    closeDelay,
+    dismissedRef,
+    intent,
+    open     : isOpen,
+    openDelay: () => group?.delayFor(own) ?? own,
+    setOpen,
+    triggerRef,
+  };
 
   return <TooltipContext.Provider value={state}>{children}</TooltipContext.Provider>;
 }

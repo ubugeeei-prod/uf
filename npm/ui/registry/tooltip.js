@@ -134,7 +134,7 @@ component TooltipRoot(
   defaultOpen? : boolean = false,
   open?        : boolean,
   onOpenChange?: (open: boolean) => void,
-) {
+) renders Tooltip.Root {
   return (
     <Tooltip.Root
       closeDelay={closeDelay}
@@ -160,21 +160,24 @@ component TooltipTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Tooltip.Trigger {
   return (
     <Tooltip.Trigger
       {...forwarded(rest)}
       render={
-        render ??
-        ((trigger) => (
-          <Button
-            {...forwarded(trigger)}
-            className={className}
-            size={size}
-            tone={tone}
-            xstyle={xstyle}
-          />
-        ))
+        match (render) {
+          undefined    =>
+            (trigger) => (
+              <Button
+                {...forwarded(trigger)}
+                className={className}
+                size={size}
+                tone={tone}
+                xstyle={xstyle}
+              />
+            ),
+          const custom => custom,
+        }
       }
     >
       {children}
@@ -193,7 +196,7 @@ component TooltipContent(
   xstyle?          : StyleArgument,
   className?       : string,
   ...rest: Rest
-) {
+) renders Tooltip.Body {
   return (
     <Tooltip.Body
       {...forwarded(rest)}

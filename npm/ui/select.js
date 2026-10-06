@@ -135,15 +135,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import { useInteractOutside } from "./interactions.js";
@@ -304,39 +296,24 @@ component SelectRoot(
     );
   });
 
-  const state = useMemo(
-    () => ({
-      base,
-      open: isOpen,
-      setOpen,
-      disabled,
-      value: chosen,
-      choose,
-      activeId,
-      setActiveId,
-      pendingLandingRef,
-      triggerRef,
-      listRef,
-      labels,
-      registerLabel,
-      labelled,
-      registerFieldLabel: setLabelled,
-      typeahead,
-    }),
-    [
-      base,
-      isOpen,
-      setOpen,
-      disabled,
-      chosen,
-      choose,
-      activeId,
-      labels,
-      registerLabel,
-      labelled,
-      typeahead,
-    ],
-  );
+  const state = {
+    base,
+    open: isOpen,
+    setOpen,
+    disabled,
+    value: chosen,
+    choose,
+    activeId,
+    setActiveId,
+    pendingLandingRef,
+    triggerRef,
+    listRef,
+    labels,
+    registerLabel,
+    labelled,
+    registerFieldLabel: setLabelled,
+    typeahead,
+  };
 
   return (
     <SelectContext.Provider value={state}>
@@ -845,7 +822,7 @@ component SelectGroup(children: renders* (SelectOption | SelectGroupLabel), ...r
   const base                    = useId();
   const [labelled, setLabelled] = useState(false);
 
-  const group = useMemo(() => ({ labelId: `${base}-label`, registerLabel: setLabelled }), [base]);
+  const group = { labelId: `${base}-label`, registerLabel: setLabelled };
 
   return (
     <SelectGroupContext.Provider value={group}>

@@ -94,7 +94,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useEffect, useId, useMemo, useState } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useState } from "@uniflowed/react";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { withProps } from "./internal/merge-props.js";
@@ -207,51 +207,34 @@ component FieldRoot(
   const message = field?.message ?? null;
   const control = field?.control ?? NO_CONTROL;
 
-  const state = useMemo(() => {
-    const descriptionId = `${base}-description`;
-    const statusId = `${base}-status`;
-    const errorId = `${base}-error`;
-    const wrong = invalid || sourceInvalid;
-    // Only ids that are in the document. `aria-describedby` naming a missing
-    // element makes a screen reader announce nothing rather than skipping it.
-    const described = [
-      hasDescription ? descriptionId : null,
-      hasStatus ? statusId : null,
-      wrong && hasError ? errorId : null,
-    ].filter(Boolean);
-
-    return {
-      controlId: `${base}-control`,
-      labelId  : `${base}-label`,
-      descriptionId,
-      statusId,
-      errorId,
-      invalid : wrong,
-      required: required || sourceRequired,
-      busy    : busy || sourceBusy,
-      group,
-      message,
-      control,
-      describedBy        : described.length === 0 ? undefined : described.join(" "),
-      registerDescription: setHasDescription,
-      registerStatus     : setHasStatus,
-      registerError      : setHasError,
-    };
-  }, [
-    base,
-    invalid,
-    sourceInvalid,
-    required,
-    sourceRequired,
-    busy,
-    sourceBusy,
+  const descriptionId = `${base}-description`;
+  const statusId = `${base}-status`;
+  const errorId = `${base}-error`;
+  const wrong = invalid || sourceInvalid;
+  // Only ids that are in the document. `aria-describedby` naming a missing
+  // element makes a screen reader announce nothing rather than skipping it.
+  const described = [
+    hasDescription ? descriptionId : null,
+    hasStatus ? statusId : null,
+    wrong && hasError ? errorId : null,
+  ].filter(Boolean);
+  const state = {
+    controlId: `${base}-control`,
+    labelId  : `${base}-label`,
+    descriptionId,
+    statusId,
+    errorId,
+    invalid : wrong,
+    required: required || sourceRequired,
+    busy    : busy || sourceBusy,
     group,
     message,
     control,
-    hasDescription,
-    hasStatus,
-    hasError,
-  ]);
+    describedBy        : described.length === 0 ? undefined : described.join(" "),
+    registerDescription: setHasDescription,
+    registerStatus     : setHasStatus,
+    registerError      : setHasError,
+  };
 
   const props = withProps(rest, {
     // A group names itself, describes itself and reports its own validity,

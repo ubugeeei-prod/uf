@@ -44,7 +44,7 @@
 // happen to work today, which is a different and much weaker promise than the
 // one the components make.
 
-import { useCallback, useEffect, useRef, useState } from "@uniflowed/react";
+import { useEffect, useRef, useState } from "@uniflowed/react";
 import { useLocale, startsWithLocale } from "../i18n-provider.js";
 
 /** Which way a key asks the focus to move within a set. */
@@ -388,36 +388,33 @@ export hook useTypeahead(): (
   const { locale } = useLocale();
   const buffer     = useRef<{| text: string, at: number |}>({ text: "", at: 0 });
 
-  return useCallback(
-    (items: $ReadOnlyArray<HTMLElement>, from: number, key: string): HTMLElement | null => {
-      const now = Date.now();
-      const text = now - buffer.current.at > TYPEAHEAD_WINDOW ? key : buffer.current.text + key;
-      buffer.current = { text, at: now };
+  return (items: $ReadOnlyArray<HTMLElement>, from: number, key: string): HTMLElement | null => {
+    const now = Date.now();
+    const text = now - buffer.current.at > TYPEAHEAD_WINDOW ? key : buffer.current.text + key;
+    buffer.current = { text, at: now };
 
-      const repeated = text.length > 1 && text.split("").every((each) => each === text[0]);
-      const needle = repeated ? text[0] : text;
-      // A single character — or the same one again — moves on from where we
-      // are. A longer buffer starts *at* the current item, so typing "sa" after
-      // "s" can keep the item "s" already found.
-      const start = repeated || text.length === 1 ? from + 1 : Math.max(from, 0);
+    const repeated = text.length > 1 && text.split("").every((each) => each === text[0]);
+    const needle = repeated ? text[0] : text;
+    // A single character — or the same one again — moves on from where we
+    // are. A longer buffer starts *at* the current item, so typing "sa" after
+    // "s" can keep the item "s" already found.
+    const start = repeated || text.length === 1 ? from + 1 : Math.max(from, 0);
 
-      for (let tried = 0; tried < items.length; tried += 1) {
-        const candidate = items[(((start + tried) % items.length) + items.length) % items.length];
-        if (
-          isEnabled(candidate) &&
-          startsWithLocale(
-            labelOf(candidate),
-            needle,
-            candidate.closest("[lang]")?.getAttribute("lang") || locale,
-          )
-        ) {
-          return candidate;
-        }
+    for (let tried = 0; tried < items.length; tried += 1) {
+      const candidate = items[(((start + tried) % items.length) + items.length) % items.length];
+      if (
+        isEnabled(candidate) &&
+        startsWithLocale(
+          labelOf(candidate),
+          needle,
+          candidate.closest("[lang]")?.getAttribute("lang") || locale,
+        )
+      ) {
+        return candidate;
       }
-      return null;
-    },
-    [locale],
-  );
+    }
+    return null;
+  };
 }
 
 /**

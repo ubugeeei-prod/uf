@@ -114,7 +114,7 @@ component FieldRoot(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Field.Root {
   return (
     <Field.Root
       {...forwarded(rest)}
@@ -136,7 +136,7 @@ component FieldLabel(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Field.Label {
   return (
     <Field.Label
       {...forwarded(rest)}
@@ -153,7 +153,7 @@ component FieldInput(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Field.Control {
   return (
     <Field.Control
       render={(control) => (
@@ -169,7 +169,11 @@ component FieldInput(
 }
 
 /** A text area, wired the same way as `Field.Input`. */
-component FieldTextarea(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component FieldTextarea(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders Field.Control {
   return (
     <Field.Control
       render={(control) => (
@@ -192,7 +196,7 @@ component FieldDescription(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Field.Description {
   return (
     <Field.Description
       {...forwarded(rest)}
@@ -209,7 +213,7 @@ component FieldStatus(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Field.Status {
   return (
     <Field.Status
       {...forwarded(rest)}
@@ -226,7 +230,7 @@ component FieldError(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Field.Error {
   return (
     <Field.Error
       {...forwarded(rest)}

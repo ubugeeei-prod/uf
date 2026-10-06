@@ -116,15 +116,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import { useInteractOutside } from "./interactions.js";
@@ -254,28 +246,25 @@ component ComboboxRoot(
     setActiveId(null);
   });
 
-  const state = useMemo(
-    () => ({
-      base,
-      open: isOpen,
-      setOpen,
-      value: chosen,
-      text,
-      setText,
-      select,
-      clear,
-      activeId,
-      setActiveId,
-      pendingActiveRef,
-      inputRef,
-      listRef,
-      count,
-      setCount,
-      labelled,
-      registerLabel: setLabelled,
-    }),
-    [base, isOpen, setOpen, chosen, text, setText, select, clear, activeId, count, labelled],
-  );
+  const state = {
+    base,
+    open: isOpen,
+    setOpen,
+    value: chosen,
+    text,
+    setText,
+    select,
+    clear,
+    activeId,
+    setActiveId,
+    pendingActiveRef,
+    inputRef,
+    listRef,
+    count,
+    setCount,
+    labelled,
+    registerLabel: setLabelled,
+  };
 
   return (
     <ComboboxContext.Provider value={state}>
@@ -629,7 +618,7 @@ component ComboboxGroup(children: renders* (ComboboxOption | ComboboxGroupLabel)
   const base                    = useId();
   const [labelled, setLabelled] = useState(false);
 
-  const group = useMemo(() => ({ labelId: `${base}-label`, registerLabel: setLabelled }), [base]);
+  const group = { labelId: `${base}-label`, registerLabel: setLabelled };
 
   return (
     <ComboboxGroupContext.Provider value={group}>

@@ -45,7 +45,7 @@
 // consumer given a copy could build the component that closes on
 // `pointerleave`, which is the failure this exists to prevent.
 
-import { useEffect, useMemo, useRef } from "@uniflowed/react";
+import { useEffect, useRef } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import { FOCUS_STOPS } from "./focus.js";
@@ -134,14 +134,11 @@ export hook useHoverIntent(setOpen: (open: boolean) => void): HoverIntent {
   // timer that outlives it sets state on something that is gone.
   useEffect(() => cancel, [cancel]);
 
-  return useMemo(
-    () => ({
-      cancel,
-      closeAfter: (millis: number) => schedule(false, millis),
-      openAfter : (millis: number) => schedule(true, millis),
-    }),
-    [cancel, schedule],
-  );
+  return {
+    cancel,
+    closeAfter: (millis: number) => schedule(false, millis),
+    openAfter : (millis: number) => schedule(true, millis),
+  };
 }
 
 /**
@@ -169,30 +166,27 @@ export hook useDelayGroup(skipDelay: number): DelayGroup {
 
   useEffect(() => stop, [stop]);
 
-  return useMemo(
-    () => ({
-      closed: () => {
-        stop();
-        if (skipDelay <= 0) {
-          skipping.current = false;
-          return;
-        }
-        skipping.current = true;
-        timer.current = setTimeout(() => {
-          timer.current = null;
-          skipping.current = false;
-        }, skipDelay);
-      },
-      delayFor: (own: number) => (skipping.current ? 0 : own),
-      opened: () => {
-        // While one is open the group is answering instantly, and the window
-        // does not start counting down until it closes.
-        stop();
-        skipping.current = true;
-      },
-    }),
-    [skipDelay, stop],
-  );
+  return {
+    closed: () => {
+      stop();
+      if (skipDelay <= 0) {
+        skipping.current = false;
+        return;
+      }
+      skipping.current = true;
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        skipping.current = false;
+      }, skipDelay);
+    },
+    delayFor: (own: number) => (skipping.current ? 0 : own),
+    opened: () => {
+      // While one is open the group is answering instantly, and the window
+      // does not start counting down until it closes.
+      stop();
+      skipping.current = true;
+    },
+  };
 }
 
 /**

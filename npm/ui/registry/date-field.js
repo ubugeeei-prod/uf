@@ -36,7 +36,11 @@ const styles = stylex.create({
     fontVariantNumeric: "tabular-nums",
   },
 });
-export component DateField(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+export component DateField(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders HeadlessDateField {
   return (
     <HeadlessDateField
       {...forwarded(rest)}

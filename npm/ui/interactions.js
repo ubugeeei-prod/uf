@@ -216,7 +216,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "@uniflowed/react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 /** The input that produced an interaction. */
@@ -1129,28 +1129,16 @@ export hook usePress(options?: PressOptions): PressResult {
     [],
   );
 
-  const pressProps = useMemo(
-    () => ({
-      onClick,
-      onDragStart,
-      onKeyDown,
-      onMouseDown,
-      onPointerDown,
-      onPointerEnter,
-      onPointerLeave,
-      onPointerUp,
-    }),
-    [
-      onClick,
-      onDragStart,
-      onKeyDown,
-      onMouseDown,
-      onPointerDown,
-      onPointerEnter,
-      onPointerLeave,
-      onPointerUp,
-    ],
-  );
+  const pressProps = {
+    onClick,
+    onDragStart,
+    onKeyDown,
+    onMouseDown,
+    onPointerDown,
+    onPointerEnter,
+    onPointerLeave,
+    onPointerUp,
+  };
 
   return { isPressed, pressProps };
 }
@@ -1517,7 +1505,7 @@ export hook useFocusRing(options?: FocusRingOptions): FocusRingResult {
 
   useEffect(() => stopWatching, [stopWatching]);
 
-  const focusProps = useMemo(() => ({ onBlur, onFocus }), [onBlur, onFocus]);
+  const focusProps = { onBlur, onFocus };
   return { focusProps, isFocused, isFocusVisible: isFocused && isFocusVisible };
 }
 
@@ -1690,10 +1678,7 @@ export hook useHover(options?: HoverOptions): HoverResult {
     [],
   );
 
-  const hoverProps = useMemo(
-    () => ({ onPointerEnter, onPointerLeave }),
-    [onPointerEnter, onPointerLeave],
-  );
+  const hoverProps = { onPointerEnter, onPointerLeave };
   return { hoverProps, isHovered };
 }
 
@@ -1966,10 +1951,7 @@ export hook useLongPress(options?: LongPressOptions): LongPressResult {
 
   useEffect(() => settle, [settle]);
 
-  const longPressProps = useMemo(
-    () => ({ ...pressProps, "aria-describedby": describedBy, onPointerDown }),
-    [pressProps, describedBy, onPointerDown],
-  );
+  const longPressProps = { ...pressProps, "aria-describedby": describedBy, onPointerDown };
   return { longPressProps };
 }
 
@@ -2163,7 +2145,7 @@ export hook useMove(options?: MoveOptions): MoveResult {
     [],
   );
 
-  const moveProps = useMemo(() => ({ onKeyDown, onPointerDown }), [onKeyDown, onPointerDown]);
+  const moveProps = { onKeyDown, onPointerDown };
   return { moveProps };
 }
 
@@ -2262,16 +2244,12 @@ export hook useKeyboard(options?: KeyboardOptions): KeyboardResult {
   const disabled = options?.isDisabled === true;
   const hearsDown = options?.onKeyDown != null;
   const hearsUp = options?.onKeyUp != null;
-  const keyboardProps = useMemo(
-    () =>
-      disabled
-        ? {}
-        : {
-            onKeyDown: hearsDown ? onKeyDown : undefined,
-            onKeyUp  : hearsUp ? onKeyUp : undefined,
-          },
-    [disabled, hearsDown, hearsUp, onKeyDown, onKeyUp],
-  );
+  const keyboardProps = disabled
+    ? {}
+    : {
+        onKeyDown: hearsDown ? onKeyDown : undefined,
+        onKeyUp  : hearsUp ? onKeyUp : undefined,
+      };
   return { keyboardProps };
 }
 

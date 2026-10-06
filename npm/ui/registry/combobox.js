@@ -223,7 +223,7 @@ component ComboboxRoot(
   xstyle?            : StyleArgument,
   className?         : string,
   ...rest: Rest
-) {
+) renders Combobox.Root {
   return (
     <Combobox.Root
       {...forwarded(rest)}
@@ -250,7 +250,7 @@ component ComboboxLabel(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Combobox.Label {
   return (
     <Combobox.Label
       {...forwarded(rest)}
@@ -262,7 +262,11 @@ component ComboboxLabel(
 }
 
 /** The text field. */
-component ComboboxInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component ComboboxInput(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders Combobox.Input {
   return (
     <Combobox.Input
       {...forwarded(rest)}
@@ -283,7 +287,7 @@ component ComboboxList(
   xstyle?          : StyleArgument,
   className?       : string,
   ...rest: Rest
-) {
+) renders Combobox.List {
   return (
     <Combobox.List
       {...forwarded(rest)}
@@ -379,7 +383,7 @@ component ComboboxEmpty(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Combobox.Empty {
   return (
     <Combobox.Empty
       {...forwarded(rest)}
@@ -396,7 +400,7 @@ component ComboboxStatus(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Combobox.Status {
   return (
     <Combobox.Status
       {...forwarded(rest)}

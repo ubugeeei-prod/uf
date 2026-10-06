@@ -91,7 +91,7 @@ component MenubarRoot(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Menubar.Root {
   return (
     <Menubar.Root
       {...forwarded(rest)}
@@ -113,7 +113,7 @@ component MenubarTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Menubar.Trigger {
   return (
     <Menubar.Trigger
       {...forwarded(rest)}

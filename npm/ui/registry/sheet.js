@@ -231,7 +231,7 @@ component SheetRoot(
   defaultOpen? : boolean = false,
   open?        : boolean,
   onOpenChange?: (open: boolean) => void,
-) {
+) renders Sheet.Root {
   return (
     <Sheet.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open} side={side}>
       {children}
@@ -248,21 +248,24 @@ component SheetTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Sheet.Trigger {
   return (
     <Sheet.Trigger
       {...forwarded(rest)}
       render={
-        render ??
-        ((trigger) => (
-          <Button
-            {...forwarded(trigger)}
-            className={className}
-            size={size}
-            tone={tone}
-            xstyle={xstyle}
-          />
-        ))
+        match (render) {
+          undefined    =>
+            (trigger) => (
+              <Button
+                {...forwarded(trigger)}
+                className={className}
+                size={size}
+                tone={tone}
+                xstyle={xstyle}
+              />
+            ),
+          const custom => custom,
+        }
       }
     >
       {children}
@@ -290,11 +293,15 @@ component SheetContent(
         className={classNames(props(styles.panel, xstyle).className, className)}
       >
         {children}
-        {hideClose ? null : (
-          <Sheet.Close aria-label={closeLabel} className={props(styles.close).className}>
-            <CloseIcon />
-          </Sheet.Close>
-        )}
+        {
+          match (hideClose) {
+            true  => null,
+            false =>
+              <Sheet.Close aria-label={closeLabel} className={props(styles.close).className}>
+                <CloseIcon />
+              </Sheet.Close>,
+          }
+        }
       </Sheet.Body>
     </>
   );
@@ -306,7 +313,7 @@ component SheetHeader(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Sheet.Header {
   return (
     <Sheet.Header
       {...forwarded(rest)}
@@ -323,7 +330,7 @@ component SheetFooter(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Sheet.Footer {
   return (
     <Sheet.Footer
       {...forwarded(rest)}
@@ -340,7 +347,7 @@ component SheetTitle(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Sheet.Title {
   return (
     <Sheet.Title
       {...forwarded(rest)}
@@ -357,7 +364,7 @@ component SheetDescription(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Sheet.Description {
   return (
     <Sheet.Description
       {...forwarded(rest)}
@@ -377,21 +384,24 @@ component SheetClose(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Sheet.Close {
   return (
     <Sheet.Close
       {...forwarded(rest)}
       render={
-        render ??
-        ((close) => (
-          <Button
-            {...forwarded(close)}
-            className={className}
-            size={size}
-            tone={tone}
-            xstyle={xstyle}
-          />
-        ))
+        match (render) {
+          undefined    =>
+            (close) => (
+              <Button
+                {...forwarded(close)}
+                className={className}
+                size={size}
+                tone={tone}
+                xstyle={xstyle}
+              />
+            ),
+          const custom => custom,
+        }
       }
     >
       {children}

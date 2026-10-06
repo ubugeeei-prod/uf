@@ -208,7 +208,7 @@ component SidebarRoot(
   narrowQuery? : string,
   xstyle?      : StyleArgument,
   className?   : string,
-) {
+) renders Sidebar.Root {
   return (
     <Sidebar.Root
       defaultOpen={defaultOpen}
@@ -233,7 +233,7 @@ component SidebarContent(
   xstyle?        : StyleArgument,
   className?     : string,
   ...rest: Rest
-) {
+) renders Sidebar.Body {
   return (
     <Sidebar.Body
       {...forwarded(rest)}
@@ -254,7 +254,7 @@ component SidebarHeader(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Sidebar.Header {
   return (
     <Sidebar.Header
       {...forwarded(rest)}
@@ -271,7 +271,7 @@ component SidebarFooter(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Sidebar.Footer {
   return (
     <Sidebar.Footer
       {...forwarded(rest)}
@@ -297,7 +297,7 @@ component SidebarItem(
   xstyle?          : StyleArgument,
   className?       : string,
   ...rest: Rest
-) {
+) renders Sidebar.Item {
   return (
     <Sidebar.Item
       {...forwarded(rest)}
@@ -308,11 +308,15 @@ component SidebarItem(
         className: classNames(props(styles.tooltip, tooltipXstyle).className, tooltipClassName),
       }}
     >
-      {icon == null ? null : (
-        <span {...props(styles.icon)} aria-hidden="true">
-          {icon}
-        </span>
-      )}
+      {
+        match (icon) {
+          null | undefined => null,
+          const shown      =>
+            <span {...props(styles.icon)} aria-hidden="true">
+              {shown}
+            </span>,
+        }
+      }
       <span {...props(styles.label)}>{children}</span>
     </Sidebar.Item>
   );
@@ -324,7 +328,7 @@ component SidebarTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Sidebar.Trigger {
   return (
     <Sidebar.Trigger
       {...forwarded(rest)}

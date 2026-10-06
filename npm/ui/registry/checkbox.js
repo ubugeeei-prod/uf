@@ -143,7 +143,7 @@ export component Checkbox(
   xstyle?         : StyleArgument,
   className?      : string,
   ...rest: Rest
-) {
+) renders CheckboxPart {
   return (
     <CheckboxPart
       {...forwarded(rest)}

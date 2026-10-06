@@ -43,7 +43,7 @@ export component VisuallyHidden(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders HeadlessVisuallyHidden {
   return (
     <HeadlessVisuallyHidden
       {...forwarded(rest)}

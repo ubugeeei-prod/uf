@@ -258,7 +258,7 @@ component SelectRoot(
   xstyle?       : StyleArgument,
   className?    : string,
   ...rest: Rest
-) {
+) renders Select.Root {
   return (
     <Select.Root
       {...forwarded(rest)}
@@ -283,7 +283,7 @@ component SelectLabel(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Select.Label {
   return (
     <Select.Label
       {...forwarded(rest)}
@@ -300,7 +300,7 @@ component SelectTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Select.Trigger {
   return (
     <Select.Trigger
       {...forwarded(rest)}
@@ -319,7 +319,7 @@ component SelectValue(
   xstyle?     : StyleArgument,
   className?  : string,
   ...rest: Rest
-) {
+) renders Select.Value {
   return (
     <Select.Value
       {...forwarded(rest)}
@@ -343,7 +343,7 @@ component SelectList(
   xstyle?          : StyleArgument,
   className?       : string,
   ...rest: Rest
-) {
+) renders Select.List {
   return (
     <Select.List
       {...forwarded(rest)}

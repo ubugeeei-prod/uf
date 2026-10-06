@@ -119,7 +119,7 @@ export component Switch(
   xstyle?         : StyleArgument,
   className?      : string,
   ...rest: Rest
-) {
+) renders SwitchPart {
   return (
     <SwitchPart
       {...forwarded(rest)}

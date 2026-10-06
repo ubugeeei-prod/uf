@@ -127,7 +127,7 @@ component RadioGroupRoot(
   xstyle?       : StyleArgument,
   className?    : string,
   ...rest: Rest
-) {
+) renders RadioGroup.Root {
   return (
     <RadioGroup.Root
       {...forwarded(rest)}
@@ -151,7 +151,7 @@ component RadioGroupItem(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders RadioGroup.Item {
   return (
     <RadioGroup.Item
       {...forwarded(rest)}

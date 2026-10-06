@@ -66,15 +66,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "@uniflowed/react";
 import { useScrollLock } from "@uniflowed/hooks/browser";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
@@ -146,19 +138,16 @@ component DialogRoot(
   const [titled,    setTitled]    = useState(false);
   const [described, setDescribed] = useState(false);
 
-  const state = useMemo(
-    () => ({
-      base,
-      open: isOpen,
-      setOpen,
-      triggerRef,
-      titled,
-      described,
-      registerTitle      : setTitled,
-      registerDescription: setDescribed,
-    }),
-    [base, isOpen, setOpen, titled, described],
-  );
+  const state = {
+    base,
+    open: isOpen,
+    setOpen,
+    triggerRef,
+    titled,
+    described,
+    registerTitle      : setTitled,
+    registerDescription: setDescribed,
+  };
 
   return <DialogContext.Provider value={state}>{children}</DialogContext.Provider>;
 }

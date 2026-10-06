@@ -44,7 +44,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useEffect, useMemo, useRef } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useRef } from "@uniflowed/react";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { composeRefs, forwarded, withoutComposed } from "./internal/merge-props.js";
@@ -106,7 +106,7 @@ component AlertDialogRoot(
 ) {
   const cancelRef   = useRef<HTMLElement | null>(null);
   const describedBy = useRef(0);
-  const state       = useMemo(() => ({ cancelRef, describedBy }), []);
+  const state = { cancelRef, describedBy };
 
   return (
     <AlertDialogContext.Provider value={state}>

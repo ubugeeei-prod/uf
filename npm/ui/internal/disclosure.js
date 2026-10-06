@@ -19,8 +19,9 @@
 //     whatever names it only claims the name while the report says yes. This is
 //     the same subscription `Tabs.Panel` makes to `Tabs.Tab`, for the same
 //     reason.
-//   * **A closed panel is hidden, not absent.** `Tabs.Panel` returns `null`
-//     when it is not selected, which is right for a tab set — the panels are
+//   * **A closed panel is hidden, not absent.** An unselected tab panel is not
+//     findable — manual activation leaves it unmounted, automatic activation
+//     hides it with `<Activity>` — which is right for a tab set: the panels are
 //     alternatives, and a reader looking for text in one of them is looking at
 //     the wrong tab. It is wrong for a disclosure: the browser's find-in-page
 //     cannot find text in a section that is not in the document, so a

@@ -114,7 +114,7 @@ export component Toggle(
   xstyle?         : StyleArgument,
   className?      : string,
   ...rest: Rest
-) {
+) renders TogglePart {
   const styled = props(
     styles.base,
     match (tone) {

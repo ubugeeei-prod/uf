@@ -173,7 +173,7 @@ component TableCaption(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Table.Caption {
   return (
     <Table.Caption
       {...forwarded(rest)}
@@ -190,7 +190,7 @@ component TableHeader(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Table.Header {
   return (
     <Table.Header {...forwarded(rest)} className={classNames(props(xstyle).className, className)}>
       {children}
@@ -204,7 +204,7 @@ component TableBody(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Table.Body {
   return (
     <Table.Body {...forwarded(rest)} className={classNames(props(xstyle).className, className)}>
       {children}
@@ -219,7 +219,7 @@ component TableRow(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Table.Row {
   return (
     <Table.Row
       {...forwarded(rest)}
@@ -283,7 +283,7 @@ component TableCell(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Table.Cell {
   return (
     <Table.Cell
       {...forwarded(rest)}
@@ -300,7 +300,7 @@ component TableRowHeader(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Table.RowHeader {
   return (
     <Table.RowHeader
       {...forwarded(rest)}
@@ -319,7 +319,7 @@ component TableSelectAll(
   disabled?      : boolean = false,
   xstyle?        : StyleArgument,
   className?     : string,
-) {
+) renders Checkbox {
   return (
     <Checkbox
       aria-label={label}
@@ -341,7 +341,7 @@ component TableRowSelect(
   disabled?      : boolean = false,
   xstyle?        : StyleArgument,
   className?     : string,
-) {
+) renders Checkbox {
   return (
     <Checkbox
       aria-label={label}

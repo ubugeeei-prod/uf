@@ -139,7 +139,6 @@ import {
   useContext,
   useEffect,
   useId,
-  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -595,15 +594,12 @@ component ToastRoot(children: React.Node, ...rest: Rest) {
     startedAt.current = Date.now();
   }, [duration]);
 
-  const parts = useMemo(
-    () => ({
-      titleId            : `${base}-title`,
-      descriptionId      : `${base}-description`,
-      registerTitle      : setTitled,
-      registerDescription: setDescribed,
-    }),
-    [base],
-  );
+  const parts = {
+    titleId            : `${base}-title`,
+    descriptionId      : `${base}-description`,
+    registerTitle      : setTitled,
+    registerDescription: setDescribed,
+  };
 
   if (!present) {
     return null;

@@ -129,7 +129,7 @@ component PopoverRoot(
   defaultOpen? : boolean = false,
   open?        : boolean,
   onOpenChange?: (open: boolean) => void,
-) {
+) renders Popover.Root {
   return (
     <Popover.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
@@ -149,21 +149,24 @@ component PopoverTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Popover.Trigger {
   return (
     <Popover.Trigger
       {...forwarded(rest)}
       render={
-        render ??
-        ((trigger) => (
-          <Button
-            {...forwarded(trigger)}
-            className={className}
-            size={size}
-            tone={tone}
-            xstyle={xstyle}
-          />
-        ))
+        match (render) {
+          undefined    =>
+            (trigger) => (
+              <Button
+                {...forwarded(trigger)}
+                className={className}
+                size={size}
+                tone={tone}
+                xstyle={xstyle}
+              />
+            ),
+          const custom => custom,
+        }
       }
     >
       {children}
@@ -182,7 +185,7 @@ component PopoverContent(
   xstyle?          : StyleArgument,
   className?       : string,
   ...rest: Rest
-) {
+) renders Popover.Body {
   return (
     <Popover.Body
       {...forwarded(rest)}

@@ -62,15 +62,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "@uniflowed/react";
+import { createContext, useContext, useEffect, useRef, useState } from "@uniflowed/react";
 import { useTimeout } from "@uniflowed/hooks/timing";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
@@ -131,7 +123,7 @@ component AvatarRoot(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const [seen,     setSeen]     = useState<Seen>(START);
   const [hasImage, setHasImage] = useState(false);
 
-  const report = useCallback((source: string | null, status: AvatarStatus) => {
+  const report = (source: string | null, status: AvatarStatus) => {
     setSeen((current) => {
       if (current.source !== source) {
         return { source, status };
@@ -145,17 +137,14 @@ component AvatarRoot(children: React.Node, render?: RenderProp, ...rest: Rest) {
       }
       return { source, status };
     });
-  }, []);
+  };
 
-  const state = useMemo(
-    () => ({
-      status: seen.status,
-      hasImage,
-      report,
-      registerImage: setHasImage,
-    }),
-    [seen, hasImage, report],
-  );
+  const state = {
+    status: seen.status,
+    hasImage,
+    report,
+    registerImage: setHasImage,
+  };
   const props = withProps(rest, { children });
 
   return (

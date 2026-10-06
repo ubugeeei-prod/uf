@@ -50,7 +50,7 @@ component ContextMenuRoot(
   defaultOpen? : boolean = false,
   open?        : boolean,
   onOpenChange?: (open: boolean) => void,
-) {
+) renders ContextMenu.Root {
   return (
     <ContextMenu.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
@@ -64,7 +64,7 @@ component ContextMenuTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders ContextMenu.Trigger {
   return (
     <ContextMenu.Trigger
       {...forwarded(rest)}

@@ -62,7 +62,7 @@ export component TagGroup(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders HeadlessTagGroup {
   return (
     <HeadlessTagGroup
       {...forwarded(rest)}

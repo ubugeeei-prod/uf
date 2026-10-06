@@ -56,7 +56,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useEffect, useId, useMemo, useRef } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useRef } from "@uniflowed/react";
 import { useEventListener } from "@uniflowed/hooks/dom";
 
 import type { Orientation } from "./internal/roving-focus.js";
@@ -109,25 +109,22 @@ component ScrollAreaRoot(children: React.Node, label: string, ...rest: Rest) {
   const rememberedRef = useRef<Offset>({ x: 0, y: 0 });
   const scrollbarsRef = useRef<Array<HTMLElement>>([]);
 
-  const state = useMemo(
-    () => ({
-      base,
-      label,
-      rememberedRef,
-      report: () => {
-        const viewport = viewportRef.current;
-        if (viewport == null) {
-          return;
-        }
-        for (const scrollbar of scrollbarsRef.current) {
-          write(scrollbar, viewport);
-        }
-      },
-      scrollbarsRef,
-      viewportRef,
-    }),
-    [base, label],
-  );
+  const state = {
+    base,
+    label,
+    rememberedRef,
+    report: () => {
+      const viewport = viewportRef.current;
+      if (viewport == null) {
+        return;
+      }
+      for (const scrollbar of scrollbarsRef.current) {
+        write(scrollbar, viewport);
+      }
+    },
+    scrollbarsRef,
+    viewportRef,
+  };
 
   return (
     <ScrollAreaContext.Provider value={state}>

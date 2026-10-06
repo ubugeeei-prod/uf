@@ -80,15 +80,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "@uniflowed/react";
+import { createContext, useContext, useId, useRef, useState } from "@uniflowed/react";
 
 import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
 import {
@@ -187,29 +179,23 @@ component AccordionRoot(
 ) {
   const [open, setOpen] = useControlled<$ReadOnlyArray<string>>(value, defaultValue, onValueChange);
 
-  const toggle = useCallback(
-    (item: string) => {
-      const isOpen = open.includes(item);
-      if (type === "multiple") {
-        setOpen(isOpen ? open.filter((each) => each !== item) : [...open, item]);
-        return;
-      }
-      // Opening one closes the other, which is the whole of `single`. Closing
-      // the open one is a separate question, and `collapsible` answers it.
-      if (isOpen && !collapsible) {
-        return;
-      }
-      setOpen(isOpen ? NOTHING : [item]);
-    },
-    [open, setOpen, type, collapsible],
-  );
+  const toggle = (item: string) => {
+    const isOpen = open.includes(item);
+    if (type === "multiple") {
+      setOpen(isOpen ? open.filter((each) => each !== item) : [...open, item]);
+      return;
+    }
+    // Opening one closes the other, which is the whole of `single`. Closing
+    // the open one is a separate question, and `collapsible` answers it.
+    if (isOpen && !collapsible) {
+      return;
+    }
+    setOpen(isOpen ? NOTHING : [item]);
+  };
 
-  const state = useMemo(
-    // `collapsible` only ever narrows a `single` accordion: in `multiple` mode
-    // every section closes on its own, and there is no last one to protect.
-    () => ({ open, toggle, closable: type === "multiple" || collapsible, type, measure }),
-    [open, toggle, type, collapsible, measure],
-  );
+  // `collapsible` only ever narrows a `single` accordion: in `multiple` mode
+  // every section closes on its own, and there is no last one to protect.
+  const state = { open, toggle, closable: type === "multiple" || collapsible, type, measure };
   const props = withProps(withoutComposed(rest, ["onKeyDown"]), {
     children,
     // The name the arrow keys use to tell this accordion's headers from those
@@ -254,19 +240,16 @@ component AccordionItem(
   const open = accordion.open.includes(value);
   const toggle = accordion.toggle;
 
-  const state = useMemo(
-    () => ({
-      triggerId: `${base}-trigger`,
-      contentId: `${base}-content`,
-      open,
-      toggle: () => toggle(value),
-      locked: open && !accordion.closable,
-      disabled,
-      present,
-      registerContent: setPresent,
-    }),
-    [base, open, toggle, value, accordion.closable, disabled, present],
-  );
+  const state = {
+    triggerId: `${base}-trigger`,
+    contentId: `${base}-content`,
+    open,
+    toggle: () => toggle(value),
+    locked: open && !accordion.closable,
+    disabled,
+    present,
+    registerContent: setPresent,
+  };
 
   const props = withProps(rest, { children });
 

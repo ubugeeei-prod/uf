@@ -129,7 +129,7 @@ component HoverCardRoot(
   defaultOpen? : boolean = false,
   open?        : boolean,
   onOpenChange?: (open: boolean) => void,
-) {
+) renders HoverCard.Root {
   return (
     <HoverCard.Root
       closeDelay={closeDelay}
@@ -154,19 +154,22 @@ component HoverCardTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders HoverCard.Trigger {
   return (
     <HoverCard.Trigger
       {...forwarded(rest)}
       render={
-        render ??
-        ((trigger) => (
-          <a
-            {...forwarded(trigger)}
-            className={classNames(props(styles.trigger, xstyle).className, className)}
-            href={href}
-          />
-        ))
+        match (render) {
+          undefined    =>
+            (trigger) => (
+              <a
+                {...forwarded(trigger)}
+                className={classNames(props(styles.trigger, xstyle).className, className)}
+                href={href}
+              />
+            ),
+          const custom => custom,
+        }
       }
     >
       {children}
@@ -185,7 +188,7 @@ component HoverCardContent(
   xstyle?          : StyleArgument,
   className?       : string,
   ...rest: Rest
-) {
+) renders HoverCard.Body {
   return (
     <HoverCard.Body
       {...forwarded(rest)}

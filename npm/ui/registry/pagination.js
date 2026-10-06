@@ -103,7 +103,7 @@ component PaginationRoot(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Pagination.Root {
   return (
     <Pagination.Root
       {...forwarded(rest)}
@@ -123,7 +123,7 @@ component PaginationContent(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Pagination.Content {
   return (
     <Pagination.Content
       {...forwarded(rest)}

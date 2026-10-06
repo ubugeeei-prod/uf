@@ -817,14 +817,14 @@ the arrow keys do the movement inside it.
 | `Tabs.Root` | `div` | `defaultValue` is required. Controlled the moment `value` is given |
 | `Tabs.List` | `div role="tablist"` | `renders* Tabs.Tab`; owns the arrow-key handler, and writes where the selected tab is for a sliding indicator |
 | `Tabs.Tab` | `button role="tab"` | `value`, optional `disabled`; exactly one tab has `tabIndex={0}` |
-| `Tabs.Panel` | `div role="tabpanel"` | Rendered only while its value is selected, and labelled by its tab |
+| `Tabs.Panel` | `div role="tabpanel"` | Automatic activation keeps it mounted and hides it; manual activation renders it only while selected. Labelled by its tab |
 
 The root can be rendered as another element, but it is not the interesting
 part. The contract is between the list, the tabs and the mounted panel:
 `aria-selected` says which tab is active, `aria-labelledby` points the panel
-back to that tab, and `aria-controls` only appears while the panel it names is
-actually in the document. A tab that points at a missing panel tells a reader
-there is somewhere to go and then has nowhere to send them.
+back to that tab, and `aria-controls` only appears on the selected tab. A hidden
+panel can be in the document and still not be named: `display: none` is not
+somewhere a reader can land, and naming it tells them there is somewhere to go.
 
 `Tabs.List` is one of the places composition is checked rather than wished for:
 it accepts `renders* Tabs.Tab`. A stray `<button>` in the list is a type error,
@@ -881,11 +881,22 @@ a behaviour decision, not a presentation decision.
 
 ### Panels are mounted facts
 
-A `Tabs.Panel` returns `null` when it is not selected. When it is selected, it
-registers itself with the root, and that registration is what lets its tab write
-`aria-controls`. The root does not assume a panel exists because a tab with the
-same value exists; callers may render only a subset, wait for data, or put a tab
-in the list before its panel is ready.
+Automatic activation keeps every panel mounted. The one that is not selected is
+hidden with `<Activity>`, so a field there keeps what was typed, and a panel
+that reads a promise can have it ready before it is shown. Hiding is
+`display: none`: the panel is not announced, and find-in-page does not land in
+it. Each panel's `<Suspense>` is its own — pass `fallback` for what the wait
+shows — so a suspending panel replaces itself and not the tab list.
+`<ViewTransition>` plays the enter and the exit when the selection changes, and
+plays nothing when the reader has asked for less motion.
+
+Manual activation still returns `null` for a panel that is not selected, so
+passing it starts nothing.
+
+Either way a panel registers only while it is selected, and that registration is
+what lets its tab write `aria-controls`. The root does not assume a panel exists
+because a tab with the same value exists; callers may render only a subset, wait
+for data, or put a tab in the list before its panel is ready.
 
 The panel itself has `tabIndex={0}`. That is deliberate even when the panel only
 contains prose: `Tab` out of the tab list lands on the content the tab selected,
@@ -1429,6 +1440,17 @@ Which is also the one thing it asks of you: **keep the root mounted across the
 load and toggle `busy`.** Unmount it when the content arrives and the region goes
 with it, so "loaded" is said to nobody and the reader is left holding the last
 thing they heard. `label` and `doneLabel` are the wording.
+
+A child that suspends can be the wait. Pass `fallback` and omit `busy`:
+`<Suspense>` shows the fallback, the region is busy for exactly that wait, and
+`<ViewTransition>` reveals the content unless the reader has asked for less
+motion.
+
+```js
+<Skeleton.Root fallback={<Skeleton.Box />}>
+  <Invoices />
+</Skeleton.Root>
+```
 
 ## Overlays that follow their trigger
 

@@ -62,7 +62,7 @@ export component Tree(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders HeadlessTree {
   return (
     <HeadlessTree
       {...forwarded(rest)}

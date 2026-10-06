@@ -29,7 +29,7 @@
 // promise about their props. Exporting it would publish a second, weaker copy
 // of somebody else's API.
 
-import { useCallback, useState } from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
 
 /**
  * A value the caller may own, and the setter that respects the answer.
@@ -49,17 +49,14 @@ export hook useControlled<T>(
   // render.
   const owned = controlled === undefined;
 
-  const set = useCallback(
-    (next: T) => {
-      if (owned) {
-        setInternal(next);
-      }
-      // Both arrangements report, so a caller can watch a value it does not
-      // own without having to take it over to do so.
-      onChange?.(next);
-    },
-    [owned, onChange],
-  );
+  const set = (next: T) => {
+    if (owned) {
+      setInternal(next);
+    }
+    // Both arrangements report, so a caller can watch a value it does not
+    // own without having to take it over to do so.
+    onChange?.(next);
+  };
 
   return [owned ? internal : (controlled as $FlowFixMe), set];
 }

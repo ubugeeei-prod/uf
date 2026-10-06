@@ -96,7 +96,6 @@
 import * as React from "@uniflowed/react";
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useId,
@@ -186,7 +185,7 @@ component MenuRoot(
   defaultOpen? : boolean = false,
   open?        : boolean,
   onOpenChange?: (open: boolean) => void,
-) {
+) renders MenuLevel {
   return (
     <MenuLevel defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open} parent={null}>
       {children}
@@ -206,7 +205,7 @@ component MenuSub(
   defaultOpen? : boolean = false,
   open?        : boolean,
   onOpenChange?: (open: boolean) => void,
-) {
+) renders MenuLevel {
   const parent = useContext(MenuContext);
   if (parent == null) {
     throw new Error("Menu.Sub must be rendered inside a Menu.Root");
@@ -614,8 +613,8 @@ component MenuCheckboxItem(
   ...rest: Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
-  const toggle      = useCallback(() => setOn(!on), [on, setOn]);
-  const item        = useMenuItem("Menu.CheckboxItem", disabled, closeOnSelect, onSelect, toggle);
+  const toggle = () => setOn(!on);
+  const item = useMenuItem("Menu.CheckboxItem", disabled, closeOnSelect, onSelect, toggle);
   const props = withProps(withoutComposed(rest, ["onClick", "onFocus"]), {
     "aria-checked" : on ? "true" : "false",
     "aria-disabled": disabled ? "true" : undefined,
@@ -657,21 +656,15 @@ component MenuRadioGroup(
 ) {
   const base                    = useId();
   const [labelled, setLabelled] = useState(false);
-  const report                  = useCallback(
-    (next: string | null) => {
-      if (next != null) {
-        onValueChange?.(next);
-      }
-    },
-    [onValueChange],
-  );
-  const [selected, select]      = useControlled<string | null>(value, defaultValue, report);
+  const report = (next: string | null) => {
+    if (next != null) {
+      onValueChange?.(next);
+    }
+  };
+  const [selected, select] = useControlled<string | null>(value, defaultValue, report);
 
-  const group = useMemo(() => ({ labelId: `${base}-label`, registerLabel: setLabelled }), [base]);
-  const radio = useMemo(
-    () => ({ value: selected, choose: (next: string) => select(next) }),
-    [selected, select],
-  );
+  const group = { labelId: `${base}-label`, registerLabel: setLabelled };
+  const radio = { value: selected, choose: (next: string) => select(next) };
 
   const props = withProps(rest, {
     "aria-labelledby": labelled ? group.labelId : undefined,
@@ -714,7 +707,7 @@ component MenuRadioItem(
     throw new Error("Menu.RadioItem must be rendered inside a Menu.RadioGroup");
   }
   const choose = group.choose;
-  const pick = useCallback(() => choose(value), [choose, value]);
+  const pick = () => choose(value);
   const item = useMenuItem("Menu.RadioItem", disabled, closeOnSelect, onSelect, pick);
   const props = withProps(withoutComposed(rest, ["onClick", "onFocus"]), {
     "aria-checked" : group.value === value ? "true" : "false",
@@ -817,7 +810,7 @@ component MenuGroup(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const base                    = useId();
   const [labelled, setLabelled] = useState(false);
 
-  const group = useMemo(() => ({ labelId: `${base}-label`, registerLabel: setLabelled }), [base]);
+  const group = { labelId: `${base}-label`, registerLabel: setLabelled };
   const props = withProps(rest, {
     "aria-labelledby": labelled ? group.labelId : undefined,
     children,

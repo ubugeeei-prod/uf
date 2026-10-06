@@ -89,7 +89,7 @@ component AvatarRoot(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Avatar.Root {
   const styled = props(
     styles.root,
     match (size) {
@@ -113,7 +113,7 @@ component AvatarImage(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Avatar.Image {
   return (
     <Avatar.Image
       {...forwarded(rest)}
@@ -131,7 +131,7 @@ component AvatarFallback(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Avatar.Fallback {
   return (
     <Avatar.Fallback
       {...forwarded(rest)}
