@@ -33,9 +33,9 @@ export type SearchParamsAll = { readonly [string]: $ReadOnlyArray<string> };
  * `["tags", "1"]` for the second `tag`.
  */
 export type SearchParamsIssue = {|
-  readonly code: string,
+  readonly code   : string,
   readonly message: string,
-  readonly path?: $ReadOnlyArray<string>,
+  readonly path?  : $ReadOnlyArray<string>,
 |};
 
 /** A lazy route module entry from the generated route table. */
@@ -43,19 +43,19 @@ export type RouteModule<TModule = mixed> = () => Promise<TModule>;
 
 /** One `$template.js`, as the route table carries it. */
 export type TemplateRecord<TTemplate = mixed> = {|
-  readonly above: number,
+  readonly above : number,
   readonly module: RouteModule<TTemplate>,
 |};
 
 /** One `$loading.js`, as the route table carries it. */
 export type LoadingRecord<TLoading = mixed> = {|
-  readonly above: number,
+  readonly above : number,
   readonly module: RouteModule<TLoading>,
 |};
 
 /** One `$error.js` inside a slot, as the route table carries it. */
 export type SlotErrorBoundaryRecord<TError = mixed> = {|
-  readonly above: number,
+  readonly above : number,
   readonly module: RouteModule<TError>,
 |};
 
@@ -104,16 +104,16 @@ export type SlotRouteRecord<
   TLoading = mixed,
   TError = mixed,
 > = {|
-  readonly path: string,
-  readonly params: $ReadOnlyArray<RouteParamSpec>,
-  readonly mdx: boolean,
-  readonly file: string,
-  readonly page: RouteModule<TPage>,
-  readonly layouts: $ReadOnlyArray<RouteModule<TLayout>>,
-  readonly loading?: $ReadOnlyArray<LoadingRecord<TLoading>>,
-  readonly templates?: $ReadOnlyArray<TemplateRecord<TTemplate>>,
+  readonly path          : string,
+  readonly params        : $ReadOnlyArray<RouteParamSpec>,
+  readonly mdx           : boolean,
+  readonly file          : string,
+  readonly page          : RouteModule<TPage>,
+  readonly layouts       : $ReadOnlyArray<RouteModule<TLayout>>,
+  readonly loading?      : $ReadOnlyArray<LoadingRecord<TLoading>>,
+  readonly templates?    : $ReadOnlyArray<TemplateRecord<TTemplate>>,
   readonly errorBoundary?: ?SlotErrorBoundaryRecord<TError>,
-  readonly slots: $ReadOnlyArray<SlotRecord<TPage, TLayout, TTemplate, TLoading, TError>>,
+  readonly slots         : $ReadOnlyArray<SlotRecord<TPage, TLayout, TTemplate, TLoading, TError>>,
 |};
 
 /** One entry of the generated route table. */
@@ -124,31 +124,31 @@ export type RouteRecord<
   TLoading = mixed,
   TError = mixed,
 > = {|
-  readonly path: string,
-  readonly params: $ReadOnlyArray<RouteParamSpec>,
-  readonly mdx: boolean,
-  readonly file: string,
-  readonly page?: RouteModule<TPage>,
-  readonly layouts: $ReadOnlyArray<RouteModule<TLayout>>,
-  readonly loading?: $ReadOnlyArray<LoadingRecord<TLoading>>,
+  readonly path      : string,
+  readonly params    : $ReadOnlyArray<RouteParamSpec>,
+  readonly mdx       : boolean,
+  readonly file      : string,
+  readonly page?     : RouteModule<TPage>,
+  readonly layouts   : $ReadOnlyArray<RouteModule<TLayout>>,
+  readonly loading?  : $ReadOnlyArray<LoadingRecord<TLoading>>,
   readonly templates?: $ReadOnlyArray<TemplateRecord<TTemplate>>,
-  readonly slots?: $ReadOnlyArray<SlotRecord<TPage, TLayout, TTemplate, TLoading, TError>>,
+  readonly slots?    : $ReadOnlyArray<SlotRecord<TPage, TLayout, TTemplate, TLoading, TError>>,
 |};
 
 /** One not-found boundary: the page for a path under `path` that matched nothing. */
 export type NotFoundBoundary<TPage = mixed, TLayout = mixed> = {|
-  readonly path: string,
-  readonly mdx: boolean,
-  readonly file: string,
-  readonly page: ?RouteModule<TPage>,
+  readonly path   : string,
+  readonly mdx    : boolean,
+  readonly file   : string,
+  readonly page   : ?RouteModule<TPage>,
   readonly layouts: $ReadOnlyArray<RouteModule<TLayout>>,
 |};
 
 /** One error boundary: what renders in place of a subtree that threw. */
 export type ErrorBoundary<TError = mixed, TLayout = mixed> = {|
-  readonly path: string,
-  readonly file: string,
-  readonly module: ?RouteModule<TError>,
+  readonly path   : string,
+  readonly file   : string,
+  readonly module : ?RouteModule<TError>,
   readonly layouts: $ReadOnlyArray<RouteModule<TLayout>>,
 |};
 
@@ -163,17 +163,17 @@ export type RouteTable<
   readonly routes: $ReadOnlyArray<RouteRecord<TPage, TLayout, TTemplate, TLoading, TError>>,
   readonly nativeLinks?: {|
     readonly origins: $ReadOnlyArray<string>,
-    readonly routes: $ReadOnlyArray<string>,
+    readonly routes : $ReadOnlyArray<string>,
   |},
   readonly notFound: $ReadOnlyArray<NotFoundBoundary<TPage, TLayout>>,
-  readonly errors: $ReadOnlyArray<ErrorBoundary<TError, TLayout>>,
+  readonly errors  : $ReadOnlyArray<ErrorBoundary<TError, TLayout>>,
 |};
 
 type UnknownRouteRecord = RouteRecord<mixed, mixed, mixed, mixed, mixed>;
 
 /** A URL matched against a table. */
 export type RouteMatch<TRoute extends { readonly path: string, ... } = UnknownRouteRecord> = {|
-  readonly route: TRoute,
+  readonly route : TRoute,
   readonly params: RouteParams,
 |};
 
@@ -199,9 +199,9 @@ export type RouteError =
 export function routeErrorStatus(error: RouteError): 400 | 401 | 403 | 500 {
   return match (error) {
     {kind: "badRequest", ...} => 400,
-    {kind: "unauthorized"} => 401,
-    {kind: "forbidden"} => 403,
-    {kind: "thrown", ...} => 500,
+    {kind: "unauthorized"}    => 401,
+    {kind: "forbidden"}       => 403,
+    {kind: "thrown", ...}     => 500,
   };
 }
 
@@ -362,9 +362,9 @@ function specificity(segments: $ReadOnlyArray<Segment>): number {
   let score = 0;
   for (const segment of segments) {
     score += match (segment) {
-      {kind: "static", ...} => 3,
-      {kind: "param", ...} => 2,
-      {kind: "catchAll", ...} => 1,
+      {kind: "static", ...}           => 3,
+      {kind: "param", ...}            => 2,
+      {kind: "catchAll", ...}         => 1,
       {kind: "optionalCatchAll", ...} => 0,
     };
   }
@@ -373,26 +373,26 @@ function specificity(segments: $ReadOnlyArray<Segment>): number {
 
 function matchSegments(
   segments: $ReadOnlyArray<Segment>,
-  parts: $ReadOnlyArray<string>,
+  parts   : $ReadOnlyArray<string>,
 ): ?RouteParams {
   const params: { [string]: string | $ReadOnlyArray<string> } = {};
   let index = 0;
   for (const segment of segments) {
     match (segment) {
-      {kind: "static", value: const value} => {
+      {kind: "static", value: const value}         => {
         if (parts[index] !== value) {
           return null;
         }
         index += 1;
       }
-      {kind: "param", name: const name} => {
+      {kind: "param", name: const name}            => {
         if (index >= parts.length) {
           return null;
         }
         params[name] = decodeSegment(parts[index]);
         index += 1;
       }
-      {kind: "catchAll", name: const name} => {
+      {kind: "catchAll", name: const name}         => {
         // `[...slug]` needs something to take: `/docs` is not
         // `/docs/[...slug]`, which is what `[[...slug]]` is for. Without
         // this a catch-all outranked the page at its parent path — one more
@@ -425,10 +425,10 @@ export function buildRoute(routePath: string, params?: RouteParams): string {
   const parts: Array<string> = [];
   for (const segment of compile(routePath)) {
     match (segment) {
-      {kind: "static", value: const value} => {
+      {kind: "static", value: const value}         => {
         parts.push(value);
       }
-      {kind: "param", name: const name} => {
+      {kind: "param", name: const name}            => {
         const value = values[name];
         if (typeof value !== "string") {
           throw new Error(
@@ -437,7 +437,7 @@ export function buildRoute(routePath: string, params?: RouteParams): string {
         }
         parts.push(encodeURIComponent(value));
       }
-      {kind: "catchAll", name: const name} => {
+      {kind: "catchAll", name: const name}         => {
         const value = values[name];
         if (value == null || typeof value === "string") {
           throw new Error(
@@ -497,7 +497,7 @@ export function hasClientPage(route: { readonly page?: mixed, ... }): boolean {
 
 /** Match a pathname against the table, preferring the most specific route. */
 export function matchRoute<TRoute extends { readonly path: string, ... }>(
-  routes: $ReadOnlyArray<TRoute>,
+  routes  : $ReadOnlyArray<TRoute>,
   pathname: string,
 ): ?RouteMatch<TRoute> {
   return matchIn(routes, pathname);
@@ -510,7 +510,7 @@ export function matchRoute<TRoute extends { readonly path: string, ... }>(
  * matched by this function rather than by one of its own.
  */
 export function matchIn<TRoute extends { readonly path: string, ... }>(
-  routes: $ReadOnlyArray<TRoute>,
+  routes  : $ReadOnlyArray<TRoute>,
   pathname: string,
 ): ?RouteMatch<TRoute> {
   const parts = pathname.split("/").filter((part) => part !== "");
@@ -542,9 +542,9 @@ function covers(segments: $ReadOnlyArray<Segment>, parts: $ReadOnlyArray<string>
   for (const segment of segments) {
     const next = match (segment) {
       {kind: "static", value: const value} => parts[index] === value ? index + 1 : -1,
-      {kind: "param", ...} => index < parts.length ? index + 1 : -1,
-      {kind: "catchAll", ...} => index < parts.length ? parts.length : -1,
-      {kind: "optionalCatchAll", ...} => parts.length,
+      {kind: "param", ...}                 => index < parts.length ? index + 1 : -1,
+      {kind: "catchAll", ...}              => index < parts.length ? parts.length : -1,
+      {kind: "optionalCatchAll", ...}      => parts.length,
     };
     if (next === -1) {
       return false;
@@ -557,7 +557,7 @@ function covers(segments: $ReadOnlyArray<Segment>, parts: $ReadOnlyArray<string>
 /** The nearest boundary above `pathname`, or `null` when none covers it. */
 export function nearestBoundary<TBoundary extends { readonly path: string, ... }>(
   boundaries: $ReadOnlyArray<TBoundary>,
-  pathname: string,
+  pathname  : string,
 ): ?TBoundary {
   const parts = pathname.split("/").filter((part) => part !== "");
   let best: ?TBoundary = null;
@@ -585,7 +585,7 @@ export function splitUrl(url: string): {| readonly pathname: string, readonly se
   }
   return {
     pathname: normalizePathname(withoutHash.slice(0, question)),
-    search: withoutHash.slice(question),
+    search  : withoutHash.slice(question),
   };
 }
 

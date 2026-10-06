@@ -75,9 +75,9 @@ export function auditRuntimeSource(settings, base = "/") {
     endpoint: `${base.replace(/\/$/, "")}${DIAGNOSTIC_ENDPOINT}`,
     settleMs: SETTLE_MS,
     axe: {
-      tags: settings?.tags ?? [],
+      tags         : settings?.tags ?? [],
       disabledRules: settings?.disabledRules ?? [],
-      minImpact: settings?.minImpact ?? null,
+      minImpact    : settings?.minImpact ?? null,
     },
   };
   return `${readFileSync(RUNTIME_SOURCE_PATH, "utf8")}\nstart(${JSON.stringify(options)});\n`;
@@ -95,8 +95,8 @@ export function auditRuntimeSource(settings, base = "/") {
 export function auditTag(base, available) {
   if (!available) return null;
   return {
-    tag: "script",
-    attrs: { type: "module", src: `${base}${AUDIT_PUBLIC_PATH.slice(1)}` },
+    tag     : "script",
+    attrs   : { type: "module", src: `${base}${AUDIT_PUBLIC_PATH.slice(1)}` },
     injectTo: "head",
   };
 }

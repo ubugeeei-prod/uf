@@ -24,12 +24,8 @@ export default defineConfig({
   },
 
   fmt: {
-    // Keep this repository's existing Prettier-compatible formatting while
-    // the published default aligns related Flow declarations.
-    align: false,
     // Each example is its own project, formatted from its own directory by
-    // its own config — uf's defaults, so it shows what they produce — which a
-    // run from here would reprint with the `align: false` above.
+    // its own config — uf's defaults, the same ones this root uses.
     // `examples:fmt:check` checks them; lint, check and test still read them
     // from here, which is why this is not the top-level `ignore`.
     ignore: ["examples"],
@@ -51,9 +47,9 @@ export default defineConfig({
       // to do. Keep the findings visible in CI while that work is split into
       // reviewable changes, rather than hiding them or blocking unrelated
       // releases on the whole backlog at once.
-      "import/no-cycle": "warn",
+      "import/no-cycle"                  : "warn",
       "import/no-extraneous-dependencies": "warn",
-      "import/no-relative-packages": "warn",
+      "import/no-relative-packages"      : "warn",
     },
   },
 
@@ -121,7 +117,7 @@ export default defineConfig({
     // settle; a threshold set on the first measurement is a threshold set by
     // whatever happened to be true that afternoon. #280 says what it is.
     coverage: {
-      include: ["npm/"],
+      include  : ["npm/"],
       reporters: ["text", "lcov"],
     },
   },
@@ -167,7 +163,7 @@ export default defineConfig({
     // submodule rather than the 40 MB one.
     "upstream:patches:test": {
       command: "tools/upstream/test-patches.sh",
-      inputs: ["tools/upstream/sync.sh", "tools/upstream/test-patches.sh"],
+      inputs : ["tools/upstream/sync.sh", "tools/upstream/test-patches.sh"],
     },
     // React's compiler crates, Relay's compiler crates, and React Native's
     // codegen and Libraries — pinned in `tools/upstream/repos.txt`, fetched on
@@ -176,12 +172,12 @@ export default defineConfig({
     // uf does instead today.
     "upstream:sync:integrations": "tools/upstream/sync.sh --integrations",
     setup: {
-      command: "echo 'ready: run `uf run ci` to check everything'",
+      command  : "echo 'ready: run `uf run ci` to check everything'",
       dependsOn: ["upstream:sync", "build"],
     },
 
     // --- Rust ----------------------------------------------------------
-    "rust:fmt": "cargo fmt --all",
+    "rust:fmt"      : "cargo fmt --all",
     "rust:fmt:check": "cargo fmt --all -- --check",
     "rust:clippy": {
       command: "cargo clippy --workspace --all-targets --all-features --profile ci -- -D warnings",
@@ -189,12 +185,12 @@ export default defineConfig({
     "rust:test:unit": "cargo test --workspace --lib --all-features --profile ci",
     // `--no-fail-fast`: otherwise the first failing test binary hides every
     // one after it until the next run (#1434).
-    "rust:test": "cargo test --workspace --all-features --profile ci --no-fail-fast",
-    "rust:bench": "cargo bench --workspace --no-run --profile ci",
+    "rust:test"    : "cargo test --workspace --all-features --profile ci --no-fail-fast",
+    "rust:bench"   : "cargo bench --workspace --no-run --profile ci",
     "rust:metadata": "cargo metadata --format-version 1 --locked",
     "rust:lints": {
       command: "tools/ci/workspace-rust-lints.sh",
-      inputs: ["Cargo.toml", "crates/*/Cargo.toml", "tools/ci/workspace-rust-lints.sh"],
+      inputs : ["Cargo.toml", "crates/*/Cargo.toml", "tools/ci/workspace-rust-lints.sh"],
     },
 
     // The parser and the checker are vendored, and they are the thing
@@ -229,12 +225,12 @@ export default defineConfig({
     // suite — and because CI, CONTRIBUTING.md and every muscle memory point at
     // it. What changed is the door, not the room.
     "test:lib:deno": {
-      command: "UF_BINARY=./target/release/uf node tools/ci/deno-library.js",
+      command  : "UF_BINARY=./target/release/uf node tools/ci/deno-library.js",
       dependsOn: ["build"],
     },
 
     "test:lib": {
-      command: "./target/release/uf test",
+      command  : "./target/release/uf test",
       dependsOn: ["build"],
       // No `inputs`, so it runs every time. It executes Flow on the Node that
       // happens to be on `PATH`, through the transform cache in `.uf`, against
@@ -270,7 +266,7 @@ export default defineConfig({
       command: "sh tools/ci/sqlc-wasm-build.sh",
     },
     "test:lib:coverage": {
-      command: "./target/release/uf test --coverage",
+      command  : "./target/release/uf test --coverage",
       dependsOn: ["build"],
     },
 
@@ -283,7 +279,7 @@ export default defineConfig({
       command: "node tools/ci/instrumentation-smoke.mjs",
     },
     "edge:smoke": {
-      command: "tools/ci/edge-worker-smoke.sh",
+      command  : "tools/ci/edge-worker-smoke.sh",
       dependsOn: ["build"],
     },
 
@@ -362,7 +358,7 @@ export default defineConfig({
     // timers, which #237 had already fixed. ubugeeei-prod/uf#225 has the count
     // this replaces.
     "check:lib": {
-      command: "./target/release/uf lint",
+      command  : "./target/release/uf lint",
       dependsOn: ["build"],
       // The same superset, for the same reason, over the same binary.
       inputs: ["**", "!upstream/**", "target/release/uf"],
@@ -377,9 +373,9 @@ export default defineConfig({
     // the root check reads every file they did, in the same project, so a
     // regression any of them would catch fails this one too.
     "check:root": {
-      command: "./target/release/uf check",
+      command  : "./target/release/uf check",
       dependsOn: ["build"],
-      inputs: ["**", "!upstream/**", "target/release/uf"],
+      inputs   : ["**", "!upstream/**", "target/release/uf"],
     },
 
     // The formatter, over the same. `--check` rather than a write, because CI
@@ -404,7 +400,7 @@ export default defineConfig({
     // only the release-queue `native:example` before (#1683); the script says
     // why none of them needs an `npm ci` of its own.
     "examples:fmt:check": {
-      command: "tools/ci/examples-fmt.sh",
+      command  : "tools/ci/examples-fmt.sh",
       dependsOn: ["build"],
       inputs: [
         "examples/**",
@@ -428,7 +424,7 @@ export default defineConfig({
     // either way.
     "corpus:sync": "tools/corpus/sync.sh",
     "fmt:corpus": {
-      command: "cargo test -p uf_fmt --test upstream_corpus -- --nocapture",
+      command  : "cargo test -p uf_fmt --test upstream_corpus -- --nocapture",
       dependsOn: ["corpus:sync"],
     },
 
@@ -446,7 +442,7 @@ export default defineConfig({
     // task is the same run with its report printed.
     "react-compiler:sync": "tools/react-compiler/sync.sh",
     "react-compiler:conformance": {
-      command: "cargo test -p uf_transform --test react_compiler_conformance -- --nocapture",
+      command  : "cargo test -p uf_transform --test react_compiler_conformance -- --nocapture",
       dependsOn: ["react-compiler:sync"],
     },
 
@@ -455,7 +451,7 @@ export default defineConfig({
     // so they live at the repository root — into Vite's public directory
     // first, and then runs `uf build#docs`.
     "docs:build": {
-      command: "UF_BIN=./target/release/uf tools/docs/build.sh",
+      command  : "UF_BIN=./target/release/uf tools/docs/build.sh",
       dependsOn: ["build"],
       // No `inputs`, and the reason is Vite rather than uf: the build runs
       // Node, resolves from `node_modules`, and writes through Vite's own
@@ -463,7 +459,7 @@ export default defineConfig({
     },
     // The documentation site, in a browser, while you edit it.
     "docs:dev": {
-      command: "./target/release/uf dev#docs",
+      command  : "./target/release/uf dev#docs",
       dependsOn: ["build"],
     },
 
@@ -487,7 +483,7 @@ export default defineConfig({
     // Offline, so it can block a pull request: every answer is a function of
     // the output directory. See `docs:links:external` for the other half.
     "docs:links": {
-      command: "tools/ci/links-resolve.sh",
+      command  : "tools/ci/links-resolve.sh",
       dependsOn: ["docs:build"],
       // No `inputs`. What it reads is what `docs:build` wrote, and that task
       // is uncached for Vite's reasons; a cache in front of this one would
@@ -495,7 +491,7 @@ export default defineConfig({
     },
     "docs:links:test": {
       command: "tools/ci/test-links-resolve.sh",
-      inputs: ["tools/ci/links-resolve.sh", "tools/ci/test-links-resolve.sh"],
+      inputs : ["tools/ci/links-resolve.sh", "tools/ci/test-links-resolve.sh"],
     },
     // The same links, resolved over the network. Not in `ci`, and this is the
     // argument rather than an oversight: an external host that is slow, rate
@@ -510,7 +506,7 @@ export default defineConfig({
     // or a `5xx` is reported as unverified and passes, because none of those
     // is a statement about the link.
     "docs:links:external": {
-      command: "tools/ci/links-resolve.sh --external",
+      command  : "tools/ci/links-resolve.sh --external",
       dependsOn: ["docs:build"],
     },
 
@@ -548,7 +544,7 @@ export default defineConfig({
     // regression test: this checks that the row points at something, never
     // that the something still asserts what the row claims.
     "security:scan": {
-      command: "tools/ci/security-scan.sh",
+      command  : "tools/ci/security-scan.sh",
       dependsOn: ["docs:build"],
       // No `inputs`: it reads what `docs:build` wrote and runs `uf new`
       // through the built binary, so its answer is not a function of files
@@ -556,7 +552,7 @@ export default defineConfig({
     },
     "security:scan:test": {
       command: "tools/ci/test-security-scan.sh",
-      inputs: ["tools/ci/security-scan.sh", "tools/ci/test-security-scan.sh"],
+      inputs : ["tools/ci/security-scan.sh", "tools/ci/test-security-scan.sh"],
     },
 
     // The response headers the documentation site is served with, checked
@@ -575,7 +571,7 @@ export default defineConfig({
     // what `docs:build` wrote, and a cache in front of this one would replay a
     // verdict about a build that no longer exists.
     "docs:csp": {
-      command: "tools/ci/docs-csp.sh",
+      command  : "tools/ci/docs-csp.sh",
       dependsOn: ["docs:build"],
     },
 
@@ -585,7 +581,7 @@ export default defineConfig({
     // narrow viewport. This serves the built site locally and loads every HTML
     // route in headless Chrome at both the narrow repro width and desktop.
     "docs:hydration": {
-      command: "tools/ci/docs-hydration.sh",
+      command  : "tools/ci/docs-hydration.sh",
       dependsOn: ["docs:build"],
     },
 
@@ -752,7 +748,7 @@ export default defineConfig({
     // gone out, which half-sends a release. It also reports where each name's
     // `latest` points, which is the other half of #408 and is checked here
     // because nothing in the pipeline can see it.
-    release: "node tools/release/open-release.cjs",
+    release            : "node tools/release/open-release.cjs",
     "release:preflight": "tools/release/preflight.sh",
     // And the step that moves `latest`, after the release. `publish.yml` sends
     // a prerelease on the `alpha` tag — right, and it stays that way, because
@@ -768,7 +764,7 @@ export default defineConfig({
     // `PUT` that asks a 2FA account for a one-time password. So it is a
     // person's step, like `release:bootstrap` and the `npm trust` bind beside
     // it, and the script says so at length.
-    "release:promote": "tools/release/promote-latest.sh",
+    "release:promote"     : "tools/release/promote-latest.sh",
     "release:promote:test": "tools/release/test-promote-latest.sh",
     // What actually reached npm, read from the registry. `publish.yml` runs
     // it after publishing, because `uf@0.0.0-alpha.2` had a tag, a GitHub
@@ -859,22 +855,22 @@ export default defineConfig({
     // so alpha.10 to alpha.39 sorted below alpha.4, where it begins; and CI
     // checked out one commit and no tags, so there it read none and passed. A
     // run that compares nothing is now a failure.
-    "release:changelog": "tools/ci/changelog-covers-the-release.sh",
+    "release:changelog"     : "tools/ci/changelog-covers-the-release.sh",
     "release:changelog:test": "tools/ci/test-changelog-covers.sh",
-    "release:codemods": "node tools/ci/breaking-codemods.cjs",
-    "release:codemods:test": "node tools/ci/test-breaking-codemods.cjs",
+    "release:codemods"      : "node tools/ci/breaking-codemods.cjs",
+    "release:codemods:test" : "node tools/ci/test-breaking-codemods.cjs",
     "migration:smoke": {
-      command: "tools/ci/migration-smoke.sh",
+      command  : "tools/ci/migration-smoke.sh",
       dependsOn: ["build"],
     },
     // `npm trust` binds a name the registry already has and cannot create
     // one, so a name that has never been published is published once by a
     // person and is the workflow's from then on.
-    "release:bootstrap": "tools/release/bootstrap-publish.sh",
+    "release:bootstrap"     : "tools/release/bootstrap-publish.sh",
     "release:bootstrap:test": "tools/release/test-bootstrap-publish.sh",
-    "release:manifest": "tools/release/build-manifest.sh",
-    "release:package": "tools/release/package-binaries.sh",
-    "release:bump": "tools/release/bump-version.sh",
+    "release:manifest"      : "tools/release/build-manifest.sh",
+    "release:package"       : "tools/release/package-binaries.sh",
+    "release:bump"          : "tools/release/bump-version.sh",
 
     // --- Manifests -----------------------------------------------------
     //
@@ -946,7 +942,7 @@ export default defineConfig({
     },
     "scripts:parse:test": {
       command: "tools/ci/test-scripts-parse.sh",
-      inputs: ["tools/ci/scripts-parse.sh", "tools/ci/test-scripts-parse.sh"],
+      inputs : ["tools/ci/scripts-parse.sh", "tools/ci/test-scripts-parse.sh"],
     },
     // And that `ci-setup/` and the installer still agree. The three CI
     // integrations configure `install.sh` entirely through the environment,
@@ -988,7 +984,7 @@ export default defineConfig({
     },
     "ci:recipes:test": {
       command: "UF_BIN=./target/release/uf tools/ci/test-recipes-are-runnable.sh",
-      inputs: ["tools/ci/recipes-are-runnable.sh", "tools/ci/test-recipes-are-runnable.sh"],
+      inputs : ["tools/ci/recipes-are-runnable.sh", "tools/ci/test-recipes-are-runnable.sh"],
     },
     lockfile: {
       command: "tools/ci/lockfile-in-sync.sh",
@@ -1008,7 +1004,7 @@ export default defineConfig({
     // difference that could not be reproduced here afterwards.
     "lockfile:test": {
       command: "tools/ci/test-lockfile-in-sync.sh",
-      inputs: ["tools/ci/lockfile-in-sync.sh", "tools/ci/test-lockfile-in-sync.sh"],
+      inputs : ["tools/ci/lockfile-in-sync.sh", "tools/ci/test-lockfile-in-sync.sh"],
     },
 
     // And that the gate at the bottom of `ci.yml` still covers `ci.yml`. The
@@ -1032,7 +1028,7 @@ export default defineConfig({
     },
     "ci:gate:test": {
       command: "tools/ci/test-gate-covers-every-job.sh",
-      inputs: ["tools/ci/gate-covers-every-job.sh", "tools/ci/test-gate-covers-every-job.sh"],
+      inputs : ["tools/ci/gate-covers-every-job.sh", "tools/ci/test-gate-covers-every-job.sh"],
     },
 
     // And that the flake is still one flake, still reads one toolchain pin,
@@ -1074,7 +1070,7 @@ export default defineConfig({
     // a repository where they are all absent proves nothing on its own.
     "nix:test": {
       command: "tools/ci/test-nix-first-class.sh",
-      inputs: ["tools/ci/nix-first-class.sh", "tools/ci/test-nix-first-class.sh"],
+      inputs : ["tools/ci/nix-first-class.sh", "tools/ci/test-nix-first-class.sh"],
     },
 
     // The crates `cargo semver-checks` cannot compare, which is computed and
@@ -1086,7 +1082,7 @@ export default defineConfig({
     // the workflow is the only place that knows which one.
     "ci:semver:test": {
       command: "tools/ci/test-semver-exclude.sh",
-      inputs: ["tools/ci/semver-exclude.sh", "tools/ci/test-semver-exclude.sh"],
+      inputs : ["tools/ci/semver-exclude.sh", "tools/ci/test-semver-exclude.sh"],
     },
 
     // And that a job which runs the workspace suite installs the runtimes the
@@ -1122,12 +1118,12 @@ export default defineConfig({
     "ci:conflict-markers": "tools/ci/no-conflict-markers.sh",
     "ci:conflict-markers:test": {
       command: "tools/ci/test-no-conflict-markers.sh",
-      inputs: ["tools/ci/no-conflict-markers.sh", "tools/ci/test-no-conflict-markers.sh"],
+      inputs : ["tools/ci/no-conflict-markers.sh", "tools/ci/test-no-conflict-markers.sh"],
     },
 
     "native:smoke": "tools/ci/native-bundle-smoke.sh",
     "native:example": {
-      command: "tools/ci/native-example.sh",
+      command  : "tools/ci/native-example.sh",
       dependsOn: ["build"],
     },
 

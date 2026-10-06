@@ -136,16 +136,16 @@ export const date: Param<Date> = { kind: "date", value: phantom };
 
 /** Which MF2 functions may be applied to a parameter of each kind. */
 const KINDS_TO_FUNCTIONS: { readonly [ParamKind]: $ReadOnlyArray<string> } = {
-  string: ["string"],
-  number: ["number", "integer"],
+  string : ["string"],
+  number : ["number", "integer"],
   boolean: ["string"],
-  date: ["date", "time", "datetime"],
+  date   : ["date", "time", "datetime"],
 };
 
 type MessageCarrier<out TArgs> = {
   readonly source: string,
-  readonly node: MessageNode,
-  readonly usage: MessageUsage,
+  readonly node  : MessageNode,
+  readonly usage : MessageUsage,
   readonly params: ParamMap,
   /** A phantom, for the same reason `ParamCarrier`'s is. */
   readonly args: () => TArgs,
@@ -306,10 +306,10 @@ function contextFor(locale: string, options: CatalogueOptions): FormatContext {
   return {
     locale,
     bidiIsolation: options.bidiIsolation === true,
-    onError: options.onError ?? raise,
+    onError      : options.onError ?? raise,
     numberFormats: new Map(),
-    dateFormats: new Map(),
-    pluralRules: new Map(),
+    dateFormats  : new Map(),
+    pluralRules  : new Map(),
   };
 }
 
@@ -322,7 +322,7 @@ function contextFor(locale: string, options: CatalogueOptions): FormatContext {
  * declared, and a page that never formats anything pays for nothing beyond it.
  */
 export function defineCatalogue<TMessages extends MessageMap>(
-  locale: string,
+  locale  : string,
   messages: TMessages,
   options?: CatalogueOptions,
 ): Catalogue<TMessages> {
@@ -339,11 +339,11 @@ export function defineCatalogue<TMessages extends MessageMap>(
  * different text, with no cast anywhere.
  */
 function build<TMessages extends MessageMap>(
-  locale: string,
-  messages: TMessages,
-  formatting: { readonly [string]: Message<mixed> },
+  locale      : string,
+  messages    : TMessages,
+  formatting  : { readonly [string]: Message<mixed> },
   untranslated: $ReadOnlyArray<string>,
-  options: CatalogueOptions,
+  options     : CatalogueOptions,
 ): Catalogue<TMessages> {
   const context = contextFor(locale, options);
   const compiled: Map<string, Message<mixed>> = new Map();
@@ -374,7 +374,7 @@ function build<TMessages extends MessageMap>(
   return {
     locale,
     untranslated,
-    t: format,
+    t       : format,
     sourceOf: (key: string) => find(key).source,
     messages,
   };
@@ -398,10 +398,10 @@ function build<TMessages extends MessageMap>(
  * package.
  */
 export function translate<TMessages extends MessageMap>(
-  base: Catalogue<TMessages>,
-  locale: string,
+  base        : Catalogue<TMessages>,
+  locale      : string,
   translations: Partial<Translations<TMessages>>,
-  options?: CatalogueOptions,
+  options?    : CatalogueOptions,
 ): Catalogue<TMessages> {
   const sources: { readonly [string]: mixed } = translations;
   const formatting: { [string]: Message<mixed> } = {};
@@ -453,9 +453,9 @@ export type LocaleLoader<TMessages extends MessageMap> = () => Promise<
  * trip.
  */
 export type Locales<TMessages extends MessageMap> = {
-  readonly source: Catalogue<TMessages>,
+  readonly source   : Catalogue<TMessages>,
   readonly available: $ReadOnlyArray<string>,
-  readonly load: (locale: string) => Promise<Catalogue<TMessages>>,
+  readonly load     : (locale: string) => Promise<Catalogue<TMessages>>,
 };
 
 /**
@@ -472,8 +472,8 @@ export type Locales<TMessages extends MessageMap> = {
  * instead of racing to build two catalogues over one download.
  */
 export function defineLocales<TMessages extends MessageMap>(
-  source: Catalogue<TMessages>,
-  loaders: { readonly [string]: LocaleLoader<TMessages> },
+  source  : Catalogue<TMessages>,
+  loaders : { readonly [string]: LocaleLoader<TMessages> },
   options?: CatalogueOptions,
 ): Locales<TMessages> {
   const pending: Map<string, Promise<Catalogue<TMessages>>> = new Map();

@@ -20,7 +20,7 @@
 export type RecordedRequest = {|
   readonly method: string,
   /** The absolute URL, after a relative one was resolved. */
-  readonly url: string,
+  readonly url     : string,
   readonly pathname: string,
   /** Header names lower-cased, as the platform gives them. */
   readonly headers: { readonly [string]: string },
@@ -43,13 +43,13 @@ export type RecordedRequest = {|
  * `body` is written late on purpose: see `begin`.
  */
 type Entry = {|
-  readonly method: string,
-  readonly url: string,
+  readonly method  : string,
+  readonly url     : string,
   readonly pathname: string,
-  readonly headers: { readonly [string]: string },
-  body: string,
-  handled: boolean,
-  readonly json: () => mixed,
+  readonly headers : { readonly [string]: string },
+  body             : string,
+  handled          : boolean,
+  readonly json    : () => mixed,
 |};
 
 /** The log a registry keeps. */
@@ -81,13 +81,13 @@ function describe(request: Request): Entry {
     headers[name] = value;
   }
   const entry: Entry = {
-    method: request.method,
-    url: request.url,
+    method  : request.method,
+    url     : request.url,
     pathname: new URL(request.url).pathname,
     headers,
-    body: "",
+    body   : "",
     handled: false,
-    json: () => JSON.parse(entry.body),
+    json   : () => JSON.parse(entry.body),
   };
   return entry;
 }

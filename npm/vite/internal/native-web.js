@@ -7,7 +7,7 @@ import path from "node:path";
 export function nativeWebPlugin(target) {
   let root = process.cwd();
   return {
-    name: "uf:react-native-web",
+    name   : "uf:react-native-web",
     enforce: "pre",
     configResolved(config) {
       root = config.root;

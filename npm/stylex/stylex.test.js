@@ -49,8 +49,8 @@ function classes(styled: StyleProps): $ReadOnlyArray<string> {
 // Compiled by `uf transform` on the way in. `local.base` is a real compiled
 // namespace, not an object this file wrote to look like one.
 const local = stylex.create({
-  base: { color: "black", paddingTop: 8 },
-  loud: { color: { default: "red", ":hover": "maroon" } },
+  base : { color: "black", paddingTop: 8 },
+  loud : { color: { default: "red", ":hover": "maroon" } },
   quiet: { color: "grey" },
 });
 

@@ -49,7 +49,7 @@ export const GLOBAL_FLAGS: $ReadOnlyArray<string> = ["--cwd", "--color", "--help
 
 export type Help = {|
   readonly subcommands: $ReadOnlyArray<string>,
-  readonly flags: $ReadOnlyArray<string>,
+  readonly flags      : $ReadOnlyArray<string>,
 |};
 
 /**
@@ -122,8 +122,8 @@ export function sections(markdown: string): Array<Section> {
     }
     return {
       heading: head.text.replaceAll("`", ""),
-      depth: head.depth,
-      body: lines.slice(head.line, end).join("\n"),
+      depth  : head.depth,
+      body   : lines.slice(head.line, end).join("\n"),
     };
   });
 }
@@ -180,7 +180,7 @@ export function codeSpans(markdown: string): Array<string> {
  * `react.*` names everything under `react`.
  */
 export function namedKeys(markdown: string): {|
-  readonly exact: $ReadOnlySet<string>,
+  readonly exact   : $ReadOnlySet<string>,
   readonly prefixes: $ReadOnlyArray<string>,
 |} {
   const exact = new Set<string>();
@@ -261,18 +261,18 @@ export function keyPaths(value: mixed, prefix: string = ""): Array<string> {
 /** Whether the reference names `key`, or an ancestor of it as `ancestor.*`. */
 export function keyDocumented(
   named: {| readonly exact: $ReadOnlySet<string>, readonly prefixes: $ReadOnlyArray<string> |},
-  key: string,
+  key  : string,
 ): boolean {
   return named.exact.has(key) || named.prefixes.some((prefix) => key.startsWith(prefix));
 }
 
 /** Every gap, one line each, sorted: `command uf x`, `flag uf x --y`, `config a.b`, `package @s/n`. */
 export function gaps(inputs: {|
-  readonly commands: $ReadOnlyMap<string, $ReadOnlyArray<string>>,
-  readonly keys: $ReadOnlyArray<string>,
-  readonly packages: $ReadOnlyArray<string>,
-  readonly cliPage: string,
-  readonly configPage: string,
+  readonly commands    : $ReadOnlyMap<string, $ReadOnlyArray<string>>,
+  readonly keys        : $ReadOnlyArray<string>,
+  readonly packages    : $ReadOnlyArray<string>,
+  readonly cliPage     : string,
+  readonly configPage  : string,
   readonly packagesPage: string,
 |}): Array<string> {
   const out = [];
@@ -318,7 +318,7 @@ export function compare(
   const knownSet = new Set(known);
   const foundSet = new Set(found);
   return {
-    added: found.filter((line) => !knownSet.has(line)),
+    added : found.filter((line) => !knownSet.has(line)),
     closed: known.filter((line) => !foundSet.has(line)),
   };
 }
@@ -360,7 +360,7 @@ function configKeys(uf: string): Array<string> {
   try {
     const out = execFileSync(uf, ["inspect", "--json", "--cwd", empty], {
       encoding: "utf8",
-      env: noColor(),
+      env     : noColor(),
     });
     const parsed: mixed = JSON.parse(out);
     const config =
@@ -409,11 +409,11 @@ const HEADER = `# What uf ships that the manual does not document yet.
 function main(argv: $ReadOnlyArray<string>): void {
   const uf = process.env.UF_BIN ?? "uf";
   const found = gaps({
-    commands: commandTree(uf),
-    keys: configKeys(uf),
-    packages: publishedPackages(),
-    cliPage: read(CLI_PAGE),
-    configPage: read(CONFIG_PAGE),
+    commands    : commandTree(uf),
+    keys        : configKeys(uf),
+    packages    : publishedPackages(),
+    cliPage     : read(CLI_PAGE),
+    configPage  : read(CONFIG_PAGE),
     packagesPage: read(PACKAGES_PAGE),
   });
 

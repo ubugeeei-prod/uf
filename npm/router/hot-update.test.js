@@ -177,7 +177,7 @@ describe("uf:refresh", () => {
         { path: "/", params: [], mdx: false, file: "app/$page.js", page, layouts: [], loading: [] },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     });
     await increment();
     await increment();

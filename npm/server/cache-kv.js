@@ -74,9 +74,9 @@ export type KvNamespace = {
   put(key: string, value: string, options?: {| expiration?: number |}): Promise<void>,
   delete(key: string): Promise<void>,
   list(options: {| prefix: string, cursor?: string |}): Promise<{
-    readonly keys: $ReadOnlyArray<{ readonly name: string, ... }>,
+    readonly keys         : $ReadOnlyArray<{ readonly name: string, ... }>,
     readonly list_complete: boolean,
-    readonly cursor?: string,
+    readonly cursor?      : string,
     ...
   }>,
   ...
@@ -186,7 +186,7 @@ export function createKvCache(options?: KvCacheOptions): CacheProvider {
  * means nothing to a namespace, is ignored.
  */
 export function createCacheProvider(_options?: {|
-  readonly build?: string,
+  readonly build?    : string,
   readonly directory?: string,
 |}): CacheProvider {
   return createKvCache();

@@ -6,8 +6,8 @@ export default defineConfig({
     runtime: {
       default: "node",
       capabilityJsHost: {
-        default: "node",
-        hosts: ["node", "deno", "bun"],
+        default   : "node",
+        hosts     : ["node", "deno", "bun"],
         autoDetect: true,
       },
     },
@@ -20,20 +20,20 @@ export default defineConfig({
     },
     router: {
       entry: "app.js",
-      root: "app",
+      root : "app",
     },
     rendering: {
       modes: ["ssg"],
       cache: {
-        data: false,
+        data : false,
         fetch: false,
         route: false,
       },
     },
   },
   build: {
-    entries: ["app.js"],
-    outDir: "dist/docs",
+    entries    : ["app.js"],
+    outDir     : "dist/docs",
     staticBuild: true,
   },
   // Where the manual is served from. `uf build` writes `sitemap.xml` and

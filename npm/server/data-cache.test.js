@@ -16,21 +16,21 @@ describe("function data caches", () => {
       let calls = 0;
       const first = createCacheStore({
         provider: createFilesystemCache({ directory }),
-        build: "one",
+        build   : "one",
       });
       const options = { lifetime: { revalidate: 60 }, store: first };
       expect(await cacheFunction("public", async () => ++calls, options)()).toBe(1);
       await first.settled();
       const second = createCacheStore({
         provider: createFilesystemCache({ directory }),
-        build: "one",
+        build   : "one",
       });
       expect(
         await cacheFunction("public", async () => ++calls, { ...options, store: second })(),
       ).toBe(1);
       const nextBuild = createCacheStore({
         provider: createFilesystemCache({ directory }),
-        build: "two",
+        build   : "two",
       });
       expect(
         await cacheFunction("public", async () => ++calls, { ...options, store: nextBuild })(),

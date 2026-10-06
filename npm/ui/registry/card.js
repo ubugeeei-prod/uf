@@ -52,51 +52,51 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   card: {
-    display: "grid",
-    gap: ufTokens.space4,
-    boxSizing: "border-box",
-    paddingBlock: ufTokens.space6,
+    display        : "grid",
+    gap            : ufTokens.space4,
+    boxSizing      : "border-box",
+    paddingBlock   : ufTokens.space6,
     backgroundColor: ufTokens.surface,
-    color: ufTokens.ink,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusLg,
+    color          : ufTokens.ink,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    lineHeight     : ufTokens.leadingBase,
+    borderWidth    : "1px",
+    borderStyle    : "solid",
+    borderColor    : ufTokens.border,
+    borderRadius   : ufTokens.radiusLg,
   },
   header: {
-    display: "grid",
-    gap: ufTokens.space1,
+    display      : "grid",
+    gap          : ufTokens.space1,
     paddingInline: ufTokens.space6,
   },
   title: {
-    margin: 0,
-    fontSize: ufTokens.textMd,
+    margin    : 0,
+    fontSize  : ufTokens.textMd,
     fontWeight: ufTokens.weightBold,
     lineHeight: ufTokens.leadingTight,
   },
   description: {
     margin: 0,
-    color: ufTokens.muted,
+    color : ufTokens.muted,
   },
   content: {
     paddingInline: ufTokens.space6,
   },
   footer: {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: ufTokens.space2,
+    display      : "flex",
+    flexWrap     : "wrap",
+    alignItems   : "center",
+    gap          : ufTokens.space2,
     paddingInline: ufTokens.space6,
   },
 });
 
 /** The surface. */
 component CardRoot(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -109,8 +109,8 @@ component CardRoot(
 
 /** The title, the description under it, and anything that sits beside them. */
 component CardHeader(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -123,9 +123,9 @@ component CardHeader(
 
 /** What the card is about, as a heading at `level`. */
 component CardTitle(
-  children: React.Node,
-  level?: CardTitleLevel = 3,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  level?    : CardTitleLevel = 3,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -145,8 +145,8 @@ component CardTitle(
 
 /** A line under the title, in the quieter colour. */
 component CardDescription(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -159,8 +159,8 @@ component CardDescription(
 
 /** The body. */
 component CardContent(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -173,8 +173,8 @@ component CardContent(
 
 /** The actions, after the content they act on. */
 component CardFooter(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

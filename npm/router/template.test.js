@@ -50,7 +50,7 @@ function appRoot(files: $ReadOnlyArray<string>): string {
 /** The scanned templates of the one route, cut back to the router root. */
 function templatesOf(root: string) {
   return scanRoutes(root).routes[0].templates.map((entry) => ({
-    above: entry.above,
+    above : entry.above,
     module: path.relative(root, entry.module),
   }));
 }
@@ -142,20 +142,20 @@ const loadEnter = () => Promise.resolve({ default: Enter });
 
 /** Two routes under one layout and one template, which is the whole point. */
 const page = (routePath: string, text: string) => ({
-  path: routePath,
-  params: [],
-  mdx: false,
-  file: `app${routePath}/$page.js`,
-  page: () => Promise.resolve({ default: () => <p>{text}</p> }),
-  layouts: [loadFrame],
-  loading: [],
+  path     : routePath,
+  params   : [],
+  mdx      : false,
+  file     : `app${routePath}/$page.js`,
+  page     : () => Promise.resolve({ default: () => <p>{text}</p> }),
+  layouts  : [loadFrame],
+  loading  : [],
   templates: [{ above: 1, module: loadEnter }],
 });
 
 const table = {
-  routes: [page("/first", "the first page"), page("/second", "the second page")],
+  routes  : [page("/first", "the first page"), page("/second", "the second page")],
   notFound: [],
-  errors: [],
+  errors  : [],
 };
 
 const assets = { scripts: [], styles: [], preloads: [] };
@@ -178,10 +178,10 @@ describe("rendering a route that has one", () => {
 
   it("renders the same tree as before for a route with no template", async () => {
     const { prerender } = createRenderer({
-      App: routerView("./app"),
-      routes: [{ ...page("/first", "the first page"), templates: [] }],
+      App     : routerView("./app"),
+      routes  : [{ ...page("/first", "the first page"), templates: [] }],
       notFound: [],
-      errors: [],
+      errors  : [],
     });
 
     const result = await prerender("/first", assets);

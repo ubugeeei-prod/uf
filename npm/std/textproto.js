@@ -14,7 +14,7 @@ export type HeaderMap = { readonly [string]: $ReadOnlyArray<string> };
 
 export type HeaderBlock = {
   readonly headers: HeaderMap,
-  readonly rest: string,
+  readonly rest   : string,
 };
 
 export type StringifyOptions = {
@@ -187,7 +187,7 @@ export function remove(headers: HeaderMap, key: string): HeaderMap {
 
 function consumeLineTerminator(
   source: string,
-  index: number,
+  index : number,
 ): { readonly index: number, readonly done: boolean } {
   if (index >= source.length) {
     return { index, done: true };

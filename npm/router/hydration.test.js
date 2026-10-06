@@ -110,8 +110,8 @@ function reportFor(serverMarkup: string, clientMarkup: string, message: string =
   return hydrationReport({
     message,
     serverMarkup: built.serverMarkup,
-    container: built.container,
-    document: built.document,
+    container   : built.container,
+    document    : built.document,
     componentStack:
       "\n    at Article (http://localhost/src/Article.js:12:3)\n    at Layout\n    at App",
   });
@@ -422,10 +422,10 @@ describe("the snapshot of the server's markup", () => {
     expect(captureServerMarkup(client)).toContain("<p>client</p>");
 
     const report = hydrationReport({
-      message: MISMATCH,
-      serverMarkup: "<html><head></head><body><p>server</p></body></html>",
-      container: client,
-      document: globalThis.document,
+      message       : MISMATCH,
+      serverMarkup  : "<html><head></head><body><p>server</p></body></html>",
+      container     : client,
+      document      : globalThis.document,
       componentStack: null,
     });
     expect(report.difference?.server).toBe("server");
@@ -435,10 +435,10 @@ describe("the snapshot of the server's markup", () => {
   it("says why there is no comparison when there was no snapshot", () => {
     render(<div />);
     const report = hydrationReport({
-      message: MISMATCH,
-      serverMarkup: null,
-      container: globalThis.document.createElement("div"),
-      document: globalThis.document,
+      message       : MISMATCH,
+      serverMarkup  : null,
+      container     : globalThis.document.createElement("div"),
+      document      : globalThis.document,
       componentStack: null,
     });
     expect(report.difference).toBe(null);

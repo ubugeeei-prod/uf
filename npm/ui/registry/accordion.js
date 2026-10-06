@@ -44,9 +44,9 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    display: "grid",
+    display   : "grid",
     fontFamily: ufTokens.fontSans,
-    color: ufTokens.ink,
+    color     : ufTokens.ink,
   },
   item: {
     borderBottomWidth: "1px",
@@ -54,48 +54,48 @@ const styles = stylex.create({
     borderBottomColor: ufTokens.border,
   },
   heading: {
-    margin: 0,
-    fontSize: "inherit",
+    margin    : 0,
+    fontSize  : "inherit",
     fontWeight: "inherit",
   },
   trigger: {
     // Read by the chevron, which cannot see the button's state.
     "--uf-accordion-turn": { default: "0deg", ":is([aria-expanded=true])": "180deg" },
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: ufTokens.space3,
-    boxSizing: "border-box",
-    width: "100%",
-    minHeight: "44px",
-    margin: 0,
-    paddingBlock: ufTokens.space3,
-    paddingInline: 0,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    fontWeight: ufTokens.weightMedium,
-    lineHeight: ufTokens.leadingTight,
-    textAlign: "start",
-    color: ufTokens.ink,
-    backgroundColor: "transparent",
-    borderWidth: 0,
-    borderRadius: ufTokens.radiusSm,
-    textDecorationLine: { default: "none", ":hover": "underline" },
+    display              : "flex",
+    alignItems           : "center",
+    justifyContent       : "space-between",
+    gap                  : ufTokens.space3,
+    boxSizing            : "border-box",
+    width                : "100%",
+    minHeight            : "44px",
+    margin               : 0,
+    paddingBlock         : ufTokens.space3,
+    paddingInline        : 0,
+    fontFamily           : ufTokens.fontSans,
+    fontSize             : ufTokens.textSm,
+    fontWeight           : ufTokens.weightMedium,
+    lineHeight           : ufTokens.leadingTight,
+    textAlign            : "start",
+    color                : ufTokens.ink,
+    backgroundColor      : "transparent",
+    borderWidth          : 0,
+    borderRadius         : ufTokens.radiusSm,
+    textDecorationLine   : { default: "none", ":hover": "underline" },
     cursor: {
-      default: "pointer",
-      ":disabled": "not-allowed",
+      default                    : "pointer",
+      ":disabled"                : "not-allowed",
       ":is([aria-disabled=true])": "not-allowed",
     },
-    opacity: { default: 1, ":disabled": 0.55, ":is([aria-disabled=true])": 0.55 },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    opacity      : { default: 1, ":disabled": 0.55, ":is([aria-disabled=true])": 0.55 },
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "2px",
   },
   chevron: {
     flexShrink: 0,
-    color: ufTokens.muted,
-    transform: "rotate(var(--uf-accordion-turn))",
+    color     : ufTokens.muted,
+    transform : "rotate(var(--uf-accordion-turn))",
     // A half turn is travel, so it takes `durationBase`; under reduced
     // motion the chevron is simply the other way up.
     transitionProperty: { default: "transform", "@media (prefers-reduced-motion: reduce)": "none" },
@@ -114,21 +114,21 @@ const styles = stylex.create({
     //
     // Clipped rather than hidden, so it is not a scroll container, and with
     // room at the edge for the focus ring of a link inside it.
-    boxSizing: "border-box",
-    overflow: "clip",
+    boxSizing         : "border-box",
+    overflow          : "clip",
     overflowClipMargin: "4px",
     height: {
-      default: "var(--uf-collapsible-height)",
-      "@starting-style": "0",
+      default                   : "var(--uf-collapsible-height)",
+      "@starting-style"         : "0",
       ":is([data-state=closed])": "0",
     },
     transitionProperty: { default: "height", "@media (prefers-reduced-motion: reduce)": "none" },
     transitionDuration: {
-      default: ufTokens.durationBase,
+      default                   : ufTokens.durationBase,
       ":is([data-state=closed])": ufTokens.durationFast,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
@@ -136,8 +136,8 @@ const styles = stylex.create({
   // rather than as high as its padding.
   body: {
     paddingBottom: ufTokens.space4,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
+    fontSize     : ufTokens.textSm,
+    lineHeight   : ufTokens.leadingBase,
   },
 });
 
@@ -146,14 +146,14 @@ const styles = stylex.create({
  * close again; `type="multiple"` opens any number.
  */
 component AccordionRoot(
-  children: renders* AccordionItem,
-  type?: AccordionType = "single",
-  collapsible?: boolean = true,
-  defaultValue?: $ReadOnlyArray<string>,
-  value?: $ReadOnlyArray<string>,
+  children      : renders* AccordionItem,
+  type?         : AccordionType = "single",
+  collapsible?  : boolean = true,
+  defaultValue? : $ReadOnlyArray<string>,
+  value?        : $ReadOnlyArray<string>,
   onValueChange?: (value: $ReadOnlyArray<string>) => void,
-  xstyle?: StyleArgument,
-  className?: string,
+  xstyle?       : StyleArgument,
+  className?    : string,
   ...rest: Rest
 ) {
   return (
@@ -174,10 +174,10 @@ component AccordionRoot(
 
 /** One section: its trigger and its panel. */
 component AccordionItem(
-  value: string,
-  children: renders* (AccordionTrigger | AccordionContent),
-  disabled?: boolean = false,
-  xstyle?: StyleArgument,
+  value     : string,
+  children  : renders* (AccordionTrigger | AccordionContent),
+  disabled? : boolean = false,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Accordion.Item {
@@ -195,9 +195,9 @@ component AccordionItem(
 
 /** A section's heading, and the button inside it that opens the section. */
 component AccordionTrigger(
-  children: React.Node,
-  level?: number = 3,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  level?    : number = 3,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Accordion.Header {
@@ -230,8 +230,8 @@ component AccordionTrigger(
 
 /** A section's panel, named by its trigger. */
 component AccordionContent(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Accordion.Content {

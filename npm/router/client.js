@@ -152,20 +152,20 @@ export type ApplicationRoot = { readonly unmount: () => void, ... };
  * that stops a server action from navigating a router that is gone.
  */
 export async function hydrate(options: {|
-  readonly App: React.ComponentType<AppProps>,
-  readonly routes: RouteTable["routes"],
-  readonly notFound: RouteTable["notFound"],
-  readonly errors: RouteTable["errors"],
-  readonly strictMode?: boolean,
-  readonly navigation?: Navigation,
-  readonly basePath?: string,
+  readonly App           : React.ComponentType<AppProps>,
+  readonly routes        : RouteTable["routes"],
+  readonly notFound      : RouteTable["notFound"],
+  readonly errors        : RouteTable["errors"],
+  readonly strictMode?   : boolean,
+  readonly navigation?   : Navigation,
+  readonly basePath?     : string,
   readonly trailingSlash?: TrailingSlash,
-  readonly staleTime?: number,
+  readonly staleTime?    : number,
 |}): Promise<ApplicationRoot | null> {
   const table: RouteTable = {
-    routes: options.routes,
+    routes  : options.routes,
     notFound: options.notFound,
-    errors: options.errors,
+    errors  : options.errors,
   };
   installRoutes(table);
   // Beside the table, and before anything renders. `"client"` when the entry
@@ -294,20 +294,20 @@ export async function hydrate(options: {|
  * was mounted — for the reason `hydrate` gives.
  */
 export async function render(options: {|
-  readonly App: React.ComponentType<AppProps>,
-  readonly routes: RouteTable["routes"],
-  readonly notFound: RouteTable["notFound"],
-  readonly errors: RouteTable["errors"],
-  readonly strictMode?: boolean,
-  readonly navigation?: Navigation,
-  readonly basePath?: string,
+  readonly App           : React.ComponentType<AppProps>,
+  readonly routes        : RouteTable["routes"],
+  readonly notFound      : RouteTable["notFound"],
+  readonly errors        : RouteTable["errors"],
+  readonly strictMode?   : boolean,
+  readonly navigation?   : Navigation,
+  readonly basePath?     : string,
   readonly trailingSlash?: TrailingSlash,
-  readonly staleTime?: number,
+  readonly staleTime?    : number,
 |}): Promise<ApplicationRoot | null> {
   const table: RouteTable = {
-    routes: options.routes,
+    routes  : options.routes,
     notFound: options.notFound,
-    errors: options.errors,
+    errors  : options.errors,
   };
   installRoutes(table);
   installNavigation(options.navigation ?? "client");

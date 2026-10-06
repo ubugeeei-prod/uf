@@ -80,9 +80,9 @@ export type Scroll = {
  * fourth constant here.
  */
 export const MouseButton: {
-  readonly LEFT: number,
+  readonly LEFT  : number,
   readonly MIDDLE: number,
-  readonly RIGHT: number,
+  readonly RIGHT : number,
 } = Object.freeze({ LEFT: 0, MIDDLE: 1, RIGHT: 2 });
 
 /**
@@ -115,11 +115,11 @@ export type MouseEvent = {
    */
   readonly button: number | null,
   /** The cell under the pointer, counted from zero. */
-  readonly x: number,
-  readonly y: number,
-  readonly ctrl: boolean,
+  readonly x    : number,
+  readonly y    : number,
+  readonly ctrl : boolean,
   readonly shift: boolean,
-  readonly meta: boolean,
+  readonly meta : boolean,
   /** The bytes this arrived as. */
   readonly raw: string,
   /** The wheel, on a `"scroll"` event, and `null` on every other. */
@@ -154,35 +154,35 @@ export type MouseEvent = {
 
 /** The fields a decoded report carries before routing fills the rest in. */
 type MouseFields = {
-  type: MouseEventType,
-  button: number | null,
-  x: number,
-  y: number,
-  ctrl: boolean,
-  shift: boolean,
-  meta: boolean,
-  raw: string,
+  type   : MouseEventType,
+  button : number | null,
+  x      : number,
+  y      : number,
+  ctrl   : boolean,
+  shift  : boolean,
+  meta   : boolean,
+  raw    : string,
   scroll?: Scroll | null,
 };
 
 /** Build a mouse event with its propagation flag wired up. */
 export function mouseEvent(fields: MouseFields): MouseEvent {
   const event: MouseEvent = {
-    kind: "mouse",
-    type: fields.type,
-    button: fields.button,
-    x: fields.x,
-    y: fields.y,
-    ctrl: fields.ctrl,
-    shift: fields.shift,
-    meta: fields.meta,
-    raw: fields.raw,
-    scroll: fields.scroll ?? null,
-    target: null,
-    currentTarget: null,
-    source: null,
+    kind              : "mouse",
+    type              : fields.type,
+    button            : fields.button,
+    x                 : fields.x,
+    y                 : fields.y,
+    ctrl              : fields.ctrl,
+    shift             : fields.shift,
+    meta              : fields.meta,
+    raw               : fields.raw,
+    scroll            : fields.scroll ?? null,
+    target            : null,
+    currentTarget     : null,
+    source            : null,
     propagationStopped: false,
-    defaultPrevented: false,
+    defaultPrevented  : false,
     stopPropagation() {
       event.propagationStopped = true;
     },
@@ -206,12 +206,12 @@ export function derive(from: MouseEvent, type: MouseEventType): MouseEvent {
   return mouseEvent({
     type,
     button: from.button,
-    x: from.x,
-    y: from.y,
-    ctrl: from.ctrl,
-    shift: from.shift,
-    meta: from.meta,
-    raw: from.raw,
+    x     : from.x,
+    y     : from.y,
+    ctrl  : from.ctrl,
+    shift : from.shift,
+    meta  : from.meta,
+    raw   : from.raw,
     scroll: from.scroll,
   });
 }
@@ -266,8 +266,8 @@ export function decodeMouse(
   const raw = input.slice(start, cursor + 1);
   const modifiers = {
     shift: (code & SHIFT) !== 0,
-    meta: (code & META) !== 0,
-    ctrl: (code & CTRL) !== 0,
+    meta : (code & META) !== 0,
+    ctrl : (code & CTRL) !== 0,
   };
   // A terminal counts from one, this renderer counts from zero, and the
   // conversion happens exactly here so that no handler ever has to know the
@@ -279,7 +279,7 @@ export function decodeMouse(
   if ((code & WHEEL) !== 0) {
     return {
       event: mouseEvent({
-        type: "scroll",
+        type  : "scroll",
         button: null,
         x,
         y,
@@ -296,7 +296,7 @@ export function decodeMouse(
     final === "m" ? "up" : (code & MOTION) !== 0 ? (button == null ? "move" : "drag") : "down";
 
   return {
-    event: mouseEvent({ type, button, x, y, ...modifiers, raw }),
+    event : mouseEvent({ type, button, x, y, ...modifiers, raw }),
     length: raw.length,
   };
 }

@@ -39,26 +39,26 @@ import type { Metadata, ResolvedRoute } from "./resolve.js";
  * message in development and replaced by React's own sentence in a build.
  */
 export type RouteState = {|
-  readonly pathname: string,
-  readonly search: string,
-  readonly path: string,
-  readonly params: RouteParams,
+  readonly pathname    : string,
+  readonly search      : string,
+  readonly path        : string,
+  readonly params      : RouteParams,
   readonly searchParams: SearchParams,
   /** What the loader returned, once it has. `undefined` while `deferred` is set. */
   readonly data: mixed,
   /** The loader still running, as a promise the browser can `use`. */
-  readonly deferred: ?Promise<mixed>,
-  readonly metadata: Metadata,
+  readonly deferred      : ?Promise<mixed>,
+  readonly metadata      : Metadata,
   readonly viewTransition: ?string,
-  readonly status: 200 | 400 | 401 | 403 | 404 | 500,
-  readonly error: ?RouteError,
-  readonly interception?: ?FlightInterception,
+  readonly status        : 200 | 400 | 401 | 403 | 404 | 500,
+  readonly error         : ?RouteError,
+  readonly interception? : ?FlightInterception,
 |};
 
 /** Row 0 of a route's payload: the route, and the tree it rendered. */
 export type FlightRoot = {|
   readonly route: RouteState,
-  readonly tree: Node,
+  readonly tree : Node,
   /**
    * The build that rendered it, when the build has an id.
    *
@@ -73,8 +73,8 @@ export type FlightRoot = {|
 /** The intercepted URL a Flight payload rendered, and the page it rendered over. */
 export type FlightInterception = {|
   readonly pathname: string,
-  readonly search: string,
-  readonly from: string,
+  readonly search  : string,
+  readonly from    : string,
 |};
 
 /** What the browser may send with a payload request. */
@@ -102,7 +102,7 @@ export type FetchedFlight =
   | {|
       readonly kind: "flight",
       /** The route the server answered for: a redirect's target, when there was one. */
-      readonly url: string,
+      readonly url : string,
       readonly root: Promise<FlightRoot>,
     |}
   | {|
@@ -112,7 +112,7 @@ export type FetchedFlight =
        * document.
        */
       readonly kind: "document",
-      readonly url: string,
+      readonly url : string,
     |};
 
 /**
@@ -152,24 +152,24 @@ export function crossableRouteError(error: ?RouteError): ?RouteError {
 export function routeState(resolved: ResolvedRoute): RouteState {
   const interception = resolved.interception;
   return {
-    pathname: resolved.pathname,
-    search: resolved.search,
-    path: resolved.path,
-    params: resolved.params,
-    searchParams: resolved.searchParams,
-    data: resolved.data,
-    deferred: resolved.deferred,
-    metadata: resolved.metadata,
+    pathname      : resolved.pathname,
+    search        : resolved.search,
+    path          : resolved.path,
+    params        : resolved.params,
+    searchParams  : resolved.searchParams,
+    data          : resolved.data,
+    deferred      : resolved.deferred,
+    metadata      : resolved.metadata,
     viewTransition: resolved.viewTransition,
-    status: resolved.status,
-    error: resolved.error,
+    status        : resolved.status,
+    error         : resolved.error,
     interception:
       interception == null
         ? null
         : {
             pathname: interception.pathname,
-            search: interception.search,
-            from: interception.base.pathname + interception.base.search,
+            search  : interception.search,
+            from    : interception.base.pathname + interception.base.search,
           },
   };
 }

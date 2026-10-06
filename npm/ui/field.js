@@ -126,10 +126,10 @@ import { withProps } from "./internal/merge-props.js";
  * `@uniflowed/form` publishes, this moves there and `@uniflowed/ui` imports it.
  */
 export type FieldSource = {|
-  readonly invalid: boolean,
+  readonly invalid : boolean,
   readonly required: boolean,
   readonly disabled: boolean,
-  readonly busy: boolean,
+  readonly busy    : boolean,
   /** What is wrong, or null while the field is valid. */
   readonly message: string | null,
   readonly control: Rest,
@@ -139,21 +139,21 @@ export type FieldSource = {|
 const NO_CONTROL: Rest = Object.freeze({});
 
 type FieldState = {|
-  readonly controlId: string,
-  readonly labelId: string,
-  readonly descriptionId: string,
-  readonly statusId: string,
-  readonly errorId: string,
-  readonly invalid: boolean,
-  readonly required: boolean,
-  readonly busy: boolean,
-  readonly group: boolean,
-  readonly message: string | null,
-  readonly control: Rest,
-  readonly describedBy: string | void,
+  readonly controlId          : string,
+  readonly labelId            : string,
+  readonly descriptionId      : string,
+  readonly statusId           : string,
+  readonly errorId            : string,
+  readonly invalid            : boolean,
+  readonly required           : boolean,
+  readonly busy               : boolean,
+  readonly group              : boolean,
+  readonly message            : string | null,
+  readonly control            : Rest,
+  readonly describedBy        : string | void,
   readonly registerDescription: (present: boolean) => void,
-  readonly registerStatus: (present: boolean) => void,
-  readonly registerError: (present: boolean) => void,
+  readonly registerStatus     : (present: boolean) => void,
+  readonly registerError      : (present: boolean) => void,
 |};
 
 const FieldContext: React.Context<FieldState | null> = createContext(null);
@@ -188,19 +188,19 @@ hook useField(part: string): FieldState {
  * means and what a server-side error arriving beside a client-side one needs.
  */
 component FieldRoot(
-  children: React.Node,
-  invalid?: boolean = false,
+  children : React.Node,
+  invalid? : boolean = false,
   required?: boolean = false,
-  busy?: boolean = false,
-  field?: FieldSource,
-  group?: boolean = false,
-  render?: RenderProp,
+  busy?    : boolean = false,
+  field?   : FieldSource,
+  group?   : boolean = false,
+  render?  : RenderProp,
   ...rest: Rest
 ) {
-  const base = useId();
+  const base                                = useId();
   const [hasDescription, setHasDescription] = useState(false);
-  const [hasStatus, setHasStatus] = useState(false);
-  const [hasError, setHasError] = useState(false);
+  const [hasStatus,      setHasStatus]      = useState(false);
+  const [hasError,       setHasError]       = useState(false);
   const sourceInvalid = field?.invalid ?? false;
   const sourceRequired = field?.required ?? false;
   const sourceBusy = field?.busy ?? false;
@@ -222,20 +222,20 @@ component FieldRoot(
 
     return {
       controlId: `${base}-control`,
-      labelId: `${base}-label`,
+      labelId  : `${base}-label`,
       descriptionId,
       statusId,
       errorId,
-      invalid: wrong,
+      invalid : wrong,
       required: required || sourceRequired,
-      busy: busy || sourceBusy,
+      busy    : busy || sourceBusy,
       group,
       message,
       control,
-      describedBy: described.length === 0 ? undefined : described.join(" "),
+      describedBy        : described.length === 0 ? undefined : described.join(" "),
       registerDescription: setHasDescription,
-      registerStatus: setHasStatus,
-      registerError: setHasError,
+      registerStatus     : setHasStatus,
+      registerError      : setHasError,
     };
   }, [
     base,
@@ -257,10 +257,10 @@ component FieldRoot(
     // A group names itself, describes itself and reports its own validity,
     // because there is no one control inside it to carry any of the three.
     // See the module header.
-    "aria-busy": group && state.busy ? "true" : undefined,
+    "aria-busy"       : group && state.busy ? "true" : undefined,
     "aria-describedby": group ? state.describedBy : undefined,
-    "aria-invalid": group && state.invalid ? "true" : undefined,
-    "aria-labelledby": group ? state.labelId : undefined,
+    "aria-invalid"    : group && state.invalid ? "true" : undefined,
+    "aria-labelledby" : group ? state.labelId : undefined,
     children,
     role: group ? "group" : undefined,
   });
@@ -269,7 +269,7 @@ component FieldRoot(
     <FieldContext.Provider value={state}>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -291,13 +291,13 @@ component FieldLabel(children: React.Node, render?: RenderProp, ...rest: Rest) {
   if (field.group) {
     const props = withProps(rest, { children, id: field.labelId });
     return match (render) {
-      undefined => <span {...props} />,
+      undefined    => <span {...props} />,
       const custom => custom(props),
     };
   }
   const props = withProps(rest, { children, htmlFor: field.controlId, id: field.labelId });
   return match (render) {
-    undefined => <label {...props} />,
+    undefined    => <label {...props} />,
     const custom => custom(props),
   };
 }
@@ -319,12 +319,12 @@ component FieldControl(render: RenderProp) {
   const own: Rest = field.group
     ? { "aria-required": field.required ? "true" : undefined }
     : {
-        "aria-busy": field.busy ? "true" : undefined,
-        id: field.controlId,
-        "aria-labelledby": field.labelId,
+        "aria-busy"       : field.busy ? "true" : undefined,
+        id                : field.controlId,
+        "aria-labelledby" : field.labelId,
         "aria-describedby": field.describedBy,
-        "aria-invalid": field.invalid ? "true" : undefined,
-        "aria-required": field.required ? "true" : undefined,
+        "aria-invalid"    : field.invalid ? "true" : undefined,
+        "aria-required"   : field.required ? "true" : undefined,
       };
   return render(withProps(field.control, own));
 }
@@ -340,7 +340,7 @@ component FieldDescription(children: React.Node, render?: RenderProp, ...rest: R
 
   const props = withProps(rest, { children, id: field.descriptionId });
   return match (render) {
-    undefined => <p {...props} />,
+    undefined    => <p {...props} />,
     const custom => custom(props),
   };
 }
@@ -362,12 +362,12 @@ component FieldStatus(children?: React.Node, render?: RenderProp, ...rest: Rest)
 
   const props = withProps(rest, {
     "aria-live": "polite",
-    children: children ?? "",
-    id: field.statusId,
-    role: "status",
+    children   : children ?? "",
+    id         : field.statusId,
+    role       : "status",
   });
   return match (render) {
-    undefined => <p {...props} />,
+    undefined    => <p {...props} />,
     const custom => custom(props),
   };
 }
@@ -397,11 +397,11 @@ component FieldError(children?: React.Node, render?: RenderProp, ...rest: Rest) 
   }
   const props = withProps(rest, {
     children: children ?? field.message,
-    id: field.errorId,
-    role: "alert",
+    id      : field.errorId,
+    role    : "alert",
   });
   return match (render) {
-    undefined => <p {...props} />,
+    undefined    => <p {...props} />,
     const custom => custom(props),
   };
 }

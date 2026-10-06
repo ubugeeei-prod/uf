@@ -36,36 +36,36 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   base: {
-    flexShrink: 0,
-    margin: 0,
-    borderWidth: 0,
+    flexShrink     : 0,
+    margin         : 0,
+    borderWidth    : 0,
     backgroundColor: ufTokens.border,
   },
   horizontal: {
-    width: "100%",
-    height: "1px",
+    width      : "100%",
+    height     : "1px",
     marginBlock: ufTokens.space4,
   },
   vertical: {
-    width: "1px",
-    alignSelf: "stretch",
+    width       : "1px",
+    alignSelf   : "stretch",
     marginInline: ufTokens.space2,
   },
 });
 
 /** A line between groups of content. */
 export component Separator(
-  decorative?: boolean = false,
+  decorative? : boolean = false,
   orientation?: SeparatorOrientation = "horizontal",
-  xstyle?: StyleArgument,
-  className?: string,
+  xstyle?     : StyleArgument,
+  className?  : string,
   ...rest: Rest
 ) {
   const styled = props(
     styles.base,
     match (orientation) {
       "horizontal" => styles.horizontal,
-      "vertical" => styles.vertical,
+      "vertical"   => styles.vertical,
     },
     xstyle,
   );

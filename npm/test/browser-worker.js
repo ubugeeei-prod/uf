@@ -52,9 +52,9 @@ import { type PipeController, connectPipe } from "./internal/browser/cdp.js";
 
 /** What `uf` sends for one file. */
 type Request = {|
-  readonly file: string,
-  readonly filter?: string | null,
-  readonly timeoutMs?: number,
+  readonly file       : string,
+  readonly filter?    : string | null,
+  readonly timeoutMs? : number,
   readonly generation?: number,
 |};
 
@@ -178,8 +178,8 @@ async function main(): Promise<void> {
       // writes them reports fewer tests than the Node run of the same files —
       // silently, and with a green summary.
       const result = await service.transform(id, code, {
-        development: true,
-        sourceMap: true,
+        development  : true,
+        sourceMap    : true,
         inSourceTests: inSourceTests(),
       });
       if (result == null) return null;
@@ -297,9 +297,9 @@ async function main(): Promise<void> {
       request = JSON.parse(line);
     } catch (error) {
       write({
-        event: "file",
-        status: "run-failed",
-        message: `malformed request: ${String(error)}`,
+        event     : "file",
+        status    : "run-failed",
+        message   : `malformed request: ${String(error)}`,
         generation: 0,
       });
       return;
@@ -308,9 +308,9 @@ async function main(): Promise<void> {
     // `file` event, and the page runs one file per load, so there is no queue
     // to keep here — the two ends already agree on the shape.
     server.offer({
-      file: request.file,
-      filter: request.filter ?? null,
-      timeoutMs: request.timeoutMs ?? 5000,
+      file      : request.file,
+      filter    : request.filter ?? null,
+      timeoutMs : request.timeoutMs ?? 5000,
       generation: request.generation ?? 0,
     });
   });

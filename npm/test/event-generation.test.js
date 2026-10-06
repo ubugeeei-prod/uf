@@ -114,21 +114,21 @@ describe("the second file", () => {
 
 /** One request, in the shape `host.rs` writes it. */
 type Request = {|
-  readonly file: string,
-  readonly timeoutMs: number,
+  readonly file       : string,
+  readonly timeoutMs  : number,
   readonly generation?: number,
 |};
 
 /** One line the worker wrote back, in the shape `host.rs` reads. */
 type Event = {
-  event: string,
+  event      : string,
   generation?: number,
-  stream?: string,
-  test?: string | null,
-  text?: string,
-  name?: string,
-  status?: string,
-  message?: string,
+  stream?    : string,
+  test?      : string | null,
+  text?      : string,
+  name?      : string,
+  status?    : string,
+  message?   : string,
 };
 
 /**

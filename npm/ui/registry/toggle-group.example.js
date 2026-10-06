@@ -6,9 +6,9 @@ import * as ToggleGroup from "./toggle-group.js";
 
 const styles = stylex.create({
   stack: {
-    display: "grid",
+    display     : "grid",
     justifyItems: "start",
-    gap: ufTokens.space3,
+    gap         : ufTokens.space3,
   },
 });
 

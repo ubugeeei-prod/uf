@@ -19,9 +19,9 @@ import { withoutErrorRows } from "./internal/flight-rows.js";
 import { type DocumentShell, prerenderShell, resumeDocument } from "./internal/stream.js";
 
 const shell: DocumentShell = {
-  head: '<link rel="stylesheet" href="/app.css">',
-  open: '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">',
-  body: '<link rel="stylesheet" href="/app.css"></head><body><div id="uf-root">',
+  head : '<link rel="stylesheet" href="/app.css">',
+  open : '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">',
+  body : '<link rel="stylesheet" href="/app.css"></head><body><div id="uf-root">',
   close: "</div></body></html>\n",
 };
 

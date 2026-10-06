@@ -21,10 +21,10 @@ import remarkFrontmatterExport from "./internal/frontmatter.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 type LockEntry = {
-  readonly version?: string,
-  readonly link?: boolean,
-  readonly resolved?: string,
-  readonly dependencies?: { readonly [string]: string },
+  readonly version?             : string,
+  readonly link?                : boolean,
+  readonly resolved?            : string,
+  readonly dependencies?        : { readonly [string]: string },
   readonly optionalDependencies?: { readonly [string]: string },
 };
 

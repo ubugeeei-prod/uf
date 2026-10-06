@@ -313,9 +313,9 @@ class Scope implements Context {
   #settle: () => void = () => {};
 
   constructor(
-    parent: Context,
-    deadline: number | null,
-    entry: { readonly key: mixed, readonly value: mixed } | null,
+    parent     : Context,
+    deadline   : number | null,
+    entry      : { readonly key: mixed, readonly value: mixed } | null,
     cancellable: boolean,
   ) {
     this.#parent = parent;
@@ -434,12 +434,12 @@ class Scope implements Context {
  * otherwise hold its own dead root.
  */
 const ROOT: Context = {
-  signal: () => ROOT_CONTROLLER.signal,
-  err: () => null,
+  signal  : () => ROOT_CONTROLLER.signal,
+  err     : () => null,
   deadline: () => null,
   // Never resolves, which is what "the root is never cancelled" means. Awaiting
   // it alone hangs; it is here to be raced against.
-  done: () => NEVER,
+  done : () => NEVER,
   value: <T>(_key: Key<T>): T | void => undefined,
 };
 

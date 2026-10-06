@@ -154,13 +154,13 @@ export type { Align, LogicalSide, Side } from "./internal/anchor.js";
  */
 export type MenuSelect = {
   readonly defaultPrevented: boolean,
-  readonly preventDefault: () => mixed,
+  readonly preventDefault  : () => mixed,
   ...
 };
 
 /** The id of a group's label, so `Menu.Group` only claims one that exists. */
 type MenuGroupState = {|
-  readonly labelId: string,
+  readonly labelId      : string,
   readonly registerLabel: (present: boolean) => void,
 |};
 
@@ -168,7 +168,7 @@ const MenuGroupContext: React.Context<MenuGroupState | null> = createContext(nul
 
 /** What a `Menu.RadioGroup` tells the items inside it. */
 type MenuRadioState = {|
-  readonly value: string | null,
+  readonly value : string | null,
   readonly choose: (value: string) => void,
 |};
 
@@ -182,9 +182,9 @@ const MenuRadioContext: React.Context<MenuRadioState | null> = createContext(nul
  * them that the caller then has to style around.
  */
 component MenuRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
@@ -202,9 +202,9 @@ component MenuRoot(
  * item closes everything" are all defined in terms of.
  */
 component MenuSub(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   const parent = useContext(MenuContext);
@@ -229,7 +229,7 @@ component MenuTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) 
     "aria-expanded": menu.open ? "true" : "false",
     "aria-haspopup": "menu",
     children,
-    id: `${menu.base}-trigger`,
+    id     : `${menu.base}-trigger`,
     onClick: composeHandlers(rest.onClick, () => menu.setOpen(!menu.open)),
     onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
       // `ArrowUp` opening onto the *last* item is the behaviour that makes a
@@ -237,8 +237,8 @@ component MenuTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) 
       // reaching it should not mean arrowing past everything else.
       const end = match (event.key) {
         "ArrowDown" => "first",
-        "ArrowUp" => "last",
-        _ => null,
+        "ArrowUp"   => "last",
+        _           => null,
       };
       if (end == null) {
         return;
@@ -257,7 +257,7 @@ component MenuTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) 
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -279,19 +279,19 @@ component MenuBody(
     | MenuGroup
     | MenuSub
   ),
-  align?: Align = "start",
-  alignOffset?: number = 0,
-  avoidCollisions?: boolean = true,
+  align?           : Align = "start",
+  alignOffset?     : number = 0,
+  avoidCollisions? : boolean = true,
   collisionPadding?: number = 0,
-  side?: LogicalSide,
-  sideOffset?: number = 0,
-  render?: RenderProp,
+  side?            : LogicalSide,
+  sideOffset?      : number = 0,
+  render?          : RenderProp,
   ...rest: Rest
 ) {
-  const menu = useMenu("Menu.Body");
-  const bodyRef = useRef<HTMLElement | null>(null);
+  const menu                    = useMenu("Menu.Body");
+  const bodyRef                 = useRef<HTMLElement | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const typeahead = useTypeahead();
+  const typeahead               = useTypeahead();
   // A point to open at, when whatever opened this menu was a pointer rather
   // than a button. Null for every menu that hangs off a trigger.
   const point = useContext(MenuAnchorContext);
@@ -326,9 +326,9 @@ component MenuBody(
     anchorRef: triggerRef,
     avoidCollisions,
     collisionPadding,
-    open: presence.present,
+    open      : presence.present,
     overlayRef: bodyRef,
-    side: placement,
+    side      : placement,
     sideOffset,
   });
   // Set when the menu was dismissed by a press somewhere else, so the cleanup
@@ -397,11 +397,11 @@ component MenuBody(
     ...presenceProps(presence),
     // `triggered` and `base` are menu-tree metadata, not ref values.
     // uf-lint-disable-next-line react-compiler/refs
-    "aria-labelledby": menu.triggered ? `${menu.base}-trigger` : undefined,
+    "aria-labelledby" : menu.triggered ? `${menu.base}-trigger` : undefined,
     "aria-orientation": "vertical",
     children,
     "data-align": anchored.align,
-    "data-side": anchored.side,
+    "data-side" : anchored.side,
     // `base` is menu-tree metadata, not a ref value.
     // uf-lint-disable-next-line react-compiler/refs
     id: `${menu.base}-body`,
@@ -482,7 +482,7 @@ component MenuBody(
     <MenuListContext.Provider value={list}>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -499,20 +499,20 @@ component MenuBody(
  * when a press closes the tree.
  */
 hook useMenuItem(
-  part: string,
-  disabled: boolean,
+  part         : string,
+  disabled     : boolean,
   closeOnSelect: boolean,
-  onSelect: ((event: MenuSelect) => mixed) | void,
-  act: (() => void) | void,
+  onSelect     : ((event: MenuSelect) => mixed) | void,
+  act          : (() => void) | void,
 ): {|
-  readonly id: string,
-  readonly onClick: (event: MenuSelect) => void,
-  readonly onFocus: () => void,
+  readonly id      : string,
+  readonly onClick : (event: MenuSelect) => void,
+  readonly onFocus : () => void,
   readonly tabIndex: number,
 |} {
   const menu = useMenu(part);
   const list = useContext(MenuListContext);
-  const id = useId();
+  const id   = useId();
   const setActiveId = list?.setActiveId;
 
   return {
@@ -531,7 +531,7 @@ hook useMenuItem(
         closeTree(menu);
       }
     },
-    onFocus: () => setActiveId?.(id),
+    onFocus : () => setActiveId?.(id),
     tabIndex: list?.activeId === id ? 0 : -1,
   };
 }
@@ -559,29 +559,29 @@ hook useMenuItem(
  * what this package offers instead of it.
  */
 component MenuItem(
-  children: React.Node,
-  disabled?: boolean = false,
+  children      : React.Node,
+  disabled?     : boolean = false,
   closeOnSelect?: boolean = true,
-  onSelect?: (event: MenuSelect) => mixed,
-  render?: RenderProp,
+  onSelect?     : (event: MenuSelect) => mixed,
+  render?       : RenderProp,
   ...rest: Rest
 ) {
   const item = useMenuItem("Menu.Item", disabled, closeOnSelect, onSelect, undefined);
   const props = withProps(withoutComposed(rest, ["onClick", "onFocus"]), {
     "aria-disabled": disabled ? "true" : undefined,
     children,
-    id: item.id,
+    id     : item.id,
     onClick: composeHandlers(rest.onClick, item.onClick),
     // The roving tab stop follows real focus rather than leading it, so a
     // pointer that moves focus and a key that moves focus agree without the
     // two of them having to be kept in step by hand.
-    onFocus: composeHandlers(rest.onFocus, item.onFocus),
-    role: "menuitem",
+    onFocus : composeHandlers(rest.onFocus, item.onFocus),
+    role    : "menuitem",
     tabIndex: item.tabIndex,
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -601,34 +601,34 @@ component MenuItem(
  * command rather than a summary of a table's rows.
  */
 component MenuCheckboxItem(
-  children: React.Node,
-  checked?: boolean,
-  defaultChecked?: boolean = false,
+  children        : React.Node,
+  checked?        : boolean,
+  defaultChecked? : boolean = false,
   onCheckedChange?: (checked: boolean) => void,
-  disabled?: boolean = false,
+  disabled?       : boolean = false,
   // A menu the reader is still ticking boxes in stays open; see the module
   // header for why this default is the opposite of `Menu.Item`'s.
   closeOnSelect?: boolean = false,
-  onSelect?: (event: MenuSelect) => mixed,
-  render?: RenderProp,
+  onSelect?     : (event: MenuSelect) => mixed,
+  render?       : RenderProp,
   ...rest: Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
-  const toggle = useCallback(() => setOn(!on), [on, setOn]);
-  const item = useMenuItem("Menu.CheckboxItem", disabled, closeOnSelect, onSelect, toggle);
+  const toggle      = useCallback(() => setOn(!on), [on, setOn]);
+  const item        = useMenuItem("Menu.CheckboxItem", disabled, closeOnSelect, onSelect, toggle);
   const props = withProps(withoutComposed(rest, ["onClick", "onFocus"]), {
-    "aria-checked": on ? "true" : "false",
+    "aria-checked" : on ? "true" : "false",
     "aria-disabled": disabled ? "true" : undefined,
     children,
-    id: item.id,
-    onClick: composeHandlers(rest.onClick, item.onClick),
-    onFocus: composeHandlers(rest.onFocus, item.onFocus),
-    role: "menuitemcheckbox",
+    id      : item.id,
+    onClick : composeHandlers(rest.onClick, item.onClick),
+    onFocus : composeHandlers(rest.onFocus, item.onFocus),
+    role    : "menuitemcheckbox",
     tabIndex: item.tabIndex,
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -648,16 +648,16 @@ component MenuCheckboxItem(
  * inside it unchooses an answer.
  */
 component MenuRadioGroup(
-  children: renders* (MenuRadioItem | MenuLabel | MenuSeparator),
-  defaultValue?: string | null = null,
-  value?: string | null,
+  children      : renders* (MenuRadioItem | MenuLabel | MenuSeparator),
+  defaultValue? : string | null = null,
+  value?        : string | null,
   onValueChange?: (value: string) => void,
-  render?: RenderProp,
+  render?       : RenderProp,
   ...rest: Rest
 ) {
-  const base = useId();
+  const base                    = useId();
   const [labelled, setLabelled] = useState(false);
-  const report = useCallback(
+  const report                  = useCallback(
     (next: string | null) => {
       if (next != null) {
         onValueChange?.(next);
@@ -665,7 +665,7 @@ component MenuRadioGroup(
     },
     [onValueChange],
   );
-  const [selected, select] = useControlled<string | null>(value, defaultValue, report);
+  const [selected, select]      = useControlled<string | null>(value, defaultValue, report);
 
   const group = useMemo(() => ({ labelId: `${base}-label`, registerLabel: setLabelled }), [base]);
   const radio = useMemo(
@@ -684,7 +684,7 @@ component MenuRadioGroup(
       <MenuRadioContext.Provider value={radio}>
         {
           match (render) {
-            undefined => <div {...props} />,
+            undefined    => <div {...props} />,
             const custom => custom(props),
           }
         }
@@ -701,12 +701,12 @@ component MenuRadioGroup(
  * the way to say otherwise for a choice that ends the visit.
  */
 component MenuRadioItem(
-  children: React.Node,
-  value: string,
-  disabled?: boolean = false,
+  children      : React.Node,
+  value         : string,
+  disabled?     : boolean = false,
   closeOnSelect?: boolean = false,
-  onSelect?: (event: MenuSelect) => mixed,
-  render?: RenderProp,
+  onSelect?     : (event: MenuSelect) => mixed,
+  render?       : RenderProp,
   ...rest: Rest
 ) {
   const group = useContext(MenuRadioContext);
@@ -717,18 +717,18 @@ component MenuRadioItem(
   const pick = useCallback(() => choose(value), [choose, value]);
   const item = useMenuItem("Menu.RadioItem", disabled, closeOnSelect, onSelect, pick);
   const props = withProps(withoutComposed(rest, ["onClick", "onFocus"]), {
-    "aria-checked": group.value === value ? "true" : "false",
+    "aria-checked" : group.value === value ? "true" : "false",
     "aria-disabled": disabled ? "true" : undefined,
     children,
-    id: item.id,
-    onClick: composeHandlers(rest.onClick, item.onClick),
-    onFocus: composeHandlers(rest.onFocus, item.onFocus),
-    role: "menuitemradio",
+    id      : item.id,
+    onClick : composeHandlers(rest.onClick, item.onClick),
+    onFocus : composeHandlers(rest.onFocus, item.onFocus),
+    role    : "menuitemradio",
     tabIndex: item.tabIndex,
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -780,12 +780,12 @@ component MenuSubTrigger(children: React.Node, render?: RenderProp, ...rest: Res
       // uf-lint-disable-next-line react-compiler/immutability
       menu.triggerRef.current = element;
     }),
-    role: "menuitem",
+    role    : "menuitem",
     tabIndex: list?.activeId === id ? 0 : -1,
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -800,7 +800,7 @@ component MenuSubTrigger(children: React.Node, render?: RenderProp, ...rest: Res
 component MenuSeparator(render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-orientation": "horizontal", role: "separator" });
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }
@@ -814,7 +814,7 @@ component MenuSeparator(render?: RenderProp, ...rest: Rest) {
  * is worse than an unnamed group.
  */
 component MenuGroup(children: React.Node, render?: RenderProp, ...rest: Rest) {
-  const base = useId();
+  const base                    = useId();
   const [labelled, setLabelled] = useState(false);
 
   const group = useMemo(() => ({ labelId: `${base}-label`, registerLabel: setLabelled }), [base]);
@@ -828,7 +828,7 @@ component MenuGroup(children: React.Node, render?: RenderProp, ...rest: Rest) {
     <MenuGroupContext.Provider value={group}>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -857,7 +857,7 @@ component MenuLabel(children: React.Node, render?: RenderProp, ...rest: Rest) {
 
   const props = withProps(rest, { children, id: group?.labelId, role: "presentation" });
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

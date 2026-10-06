@@ -53,7 +53,7 @@ import type { TuiNode } from "./tree.js";
 
 /** The node that owns each cell of one frame. */
 export type HitGrid = {
-  readonly width: number,
+  readonly width : number,
   readonly height: number,
   /** One entry per cell, row-major, `null` where nothing was drawn. */
   readonly nodes: Array<TuiNode | null>,
@@ -75,7 +75,7 @@ export function createHitGrid(width: number, height: number): HitGrid {
     width,
     height,
     nodes: new Array<TuiNode | null>(size).fill(null),
-    text: new Array<TuiNode | null>(size).fill(null),
+    text : new Array<TuiNode | null>(size).fill(null),
   };
 }
 
@@ -120,12 +120,12 @@ export function recordHit(grid: HitGrid, node: TuiNode, area: Rect, clip: Rect):
  * ran into its column.
  */
 export function recordText(
-  grid: HitGrid,
-  node: TuiNode | null,
-  x: number,
-  y: number,
+  grid : HitGrid,
+  node : TuiNode | null,
+  x    : number,
+  y    : number,
   width: number,
-  clip: Rect,
+  clip : Rect,
 ): void {
   if (y < clip.y || y >= clip.y + clip.height || y < 0 || y >= grid.height) {
     return;

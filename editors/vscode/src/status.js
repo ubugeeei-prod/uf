@@ -22,7 +22,7 @@ export type ServerState =
 
 export type StatusView = {
   // With VS Code's `$(icon)` syntax.
-  readonly text: string,
+  readonly text   : string,
   readonly tooltip: string,
   // Which theme colour the item takes: none, a warning or an error.
   readonly severity: "ok" | "warning" | "error",

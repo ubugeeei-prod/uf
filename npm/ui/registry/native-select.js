@@ -59,35 +59,35 @@ const styles = stylex.create({
   // The select and the chevron share one grid cell, so the chevron sits over
   // the select's end without being positioned against anything.
   wrapper: {
-    display: "inline-grid",
+    display   : "inline-grid",
     alignItems: "center",
-    width: "100%",
-    minWidth: "12rem",
+    width     : "100%",
+    minWidth  : "12rem",
   },
   control: {
-    gridArea: "1 / 1",
-    boxSizing: "border-box",
-    width: "100%",
-    minHeight: "36px",
-    margin: 0,
-    paddingBlock: ufTokens.space2,
+    gridArea          : "1 / 1",
+    boxSizing         : "border-box",
+    width             : "100%",
+    minHeight         : "36px",
+    margin            : 0,
+    paddingBlock      : ufTokens.space2,
     paddingInlineStart: ufTokens.space3,
-    paddingInlineEnd: ufTokens.space8,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingTight,
-    color: { default: ufTokens.ink, ":disabled": ufTokens.muted },
-    backgroundColor: { default: ufTokens.surface, ":disabled": ufTokens.sunken },
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: { default: ufTokens.border, ":is([aria-invalid=true])": ufTokens.danger },
-    borderRadius: ufTokens.radiusMd,
+    paddingInlineEnd  : ufTokens.space8,
+    fontFamily        : ufTokens.fontSans,
+    fontSize          : ufTokens.textSm,
+    lineHeight        : ufTokens.leadingTight,
+    color             : { default: ufTokens.ink, ":disabled": ufTokens.muted },
+    backgroundColor   : { default: ufTokens.surface, ":disabled": ufTokens.sunken },
+    borderWidth       : "1px",
+    borderStyle       : "solid",
+    borderColor       : { default: ufTokens.border, ":is([aria-invalid=true])": ufTokens.danger },
+    borderRadius      : ufTokens.radiusMd,
     // The browser's own arrow goes, and the chevron below replaces it.
-    appearance: "none",
-    cursor: { default: "pointer", ":disabled": "not-allowed" },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    appearance   : "none",
+    cursor       : { default: "pointer", ":disabled": "not-allowed" },
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "1px",
   },
   // A list box shows its rows, so it needs no room for a chevron.
@@ -95,11 +95,11 @@ const styles = stylex.create({
     paddingInlineEnd: ufTokens.space3,
   },
   chevron: {
-    gridArea: "1 / 1",
-    justifySelf: "end",
+    gridArea       : "1 / 1",
+    justifySelf    : "end",
     marginInlineEnd: ufTokens.space3,
-    color: ufTokens.muted,
-    pointerEvents: "none",
+    color          : ufTokens.muted,
+    pointerEvents  : "none",
   },
 });
 
@@ -117,9 +117,9 @@ const styles = stylex.create({
  * adds a class of your own beside these.
  */
 export component NativeSelect(
-  children: React.Node,
-  multiple?: boolean = false,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  multiple? : boolean = false,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

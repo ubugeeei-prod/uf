@@ -45,17 +45,17 @@ const MAIN_ID: string = "uf-main";
  */
 const VISUALLY_HIDDEN = {
   position: "absolute",
-  width: "1px",
-  height: "1px",
-  margin: "-1px",
-  padding: 0,
+  width   : "1px",
+  height  : "1px",
+  margin  : "-1px",
+  padding : 0,
   overflow: "hidden",
   // Both spellings: `clip` is deprecated and still the one older screen
   // readers honour.
-  clip: "rect(0 0 0 0)",
-  clipPath: "inset(50%)",
+  clip      : "rect(0 0 0 0)",
+  clipPath  : "inset(50%)",
   whiteSpace: "nowrap",
-  border: 0,
+  border    : 0,
 };
 
 /**
@@ -73,8 +73,8 @@ const VISUALLY_HIDDEN = {
  */
 export component Announcer(
   children?: React.Node,
-  urgency?: "polite" | "assertive" = "polite",
-  atomic?: boolean = true,
+  urgency? : "polite" | "assertive" = "polite",
+  atomic?  : boolean = true,
 ) {
   return (
     <div aria-live={urgency} aria-atomic={atomic} style={VISUALLY_HIDDEN}>
@@ -122,17 +122,17 @@ export component SkipLink(children?: React.Node = "Skip to content") {
         focused
           ? {
               position: "absolute",
-              top: "0.5rem",
-              left: "0.5rem",
+              top     : "0.5rem",
+              left    : "0.5rem",
               // Above anything a page is likely to have stacked, since the
               // link has to be readable wherever it lands.
-              zIndex: 1000,
-              padding: "0.5rem 0.75rem",
+              zIndex    : 1000,
+              padding   : "0.5rem 0.75rem",
               background: "Canvas",
-              color: "CanvasText",
+              color     : "CanvasText",
               // `CanvasText` follows the reader's own light or dark setting,
               // so the link stays legible without knowing the page's theme.
-              border: "1px solid CanvasText",
+              border      : "1px solid CanvasText",
               borderRadius: "0.25rem",
             }
           : VISUALLY_HIDDEN

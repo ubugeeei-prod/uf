@@ -38,14 +38,14 @@ export type { RoutingRules } from "./routing.js";
  */
 export type WritableLike = {
   readonly write: (chunk: string | Uint8Array) => mixed,
-  readonly end: () => mixed,
+  readonly end  : () => mixed,
   ...
 };
 
 /** The script, stylesheet and preload URLs a rendered document references. */
 export type DocumentAssets = {|
-  readonly scripts: $ReadOnlyArray<string>,
-  readonly styles: $ReadOnlyArray<string>,
+  readonly scripts : $ReadOnlyArray<string>,
+  readonly styles  : $ReadOnlyArray<string>,
   readonly preloads: $ReadOnlyArray<string>,
   /**
    * The build these URLs belong to, as the document publishes it.
@@ -69,10 +69,10 @@ export type DocumentAssets = {|
  * pass over the same chunks, so calling both would read a document twice.
  */
 export type RenderedDocument = {|
-  readonly status: number,
+  readonly status  : number,
   readonly headers?: { readonly [string]: string },
-  readonly pipe: (destination: WritableLike) => mixed,
-  readonly stream: () => ReadableStream<Uint8Array>,
+  readonly pipe    : (destination: WritableLike) => mixed,
+  readonly stream  : () => ReadableStream<Uint8Array>,
 |};
 
 /**
@@ -84,8 +84,8 @@ export type RenderedDocument = {|
  * `@uniflowed/router`'s `internal/stream.js` is where each field is argued.
  */
 export type PrerenderedShell = {|
-  readonly html: string,
-  readonly close: string,
+  readonly html     : string,
+  readonly close    : string,
   readonly rootDepth: number,
   readonly postponed: mixed,
 |};
@@ -94,7 +94,7 @@ export type PrerenderedShell = {|
 export type Application = {|
   /** Render `url`, resolving when the shell is ready. */
   readonly render: (
-    url: string,
+    url   : string,
     assets: DocumentAssets,
     options?: {|
       readonly onError?: (error: mixed) => void,
@@ -118,16 +118,16 @@ export type Application = {|
   readonly flight?: (
     url: string,
     options?: {|
-      readonly onError?: (error: mixed) => void,
+      readonly onError?        : (error: mixed) => void,
       readonly interceptedFrom?: string,
       /** Render the URL's not-found page rather than its route. */
       readonly notFound?: boolean,
     |},
   ) => Promise<{|
-    readonly status: number,
+    readonly status : number,
     readonly headers: { readonly [string]: string },
-    readonly stream: ReadableStream<Uint8Array> | null,
-    readonly error?: mixed,
+    readonly stream : ReadableStream<Uint8Array> | null,
+    readonly error? : mixed,
   |}>,
   /**
    * Answer a page `uf build` prerendered partially: its static shell first,
@@ -138,9 +138,9 @@ export type Application = {|
    * `../fetch.js`'s `PartialPrerenders`.
    */
   readonly resume?: (
-    url: string,
-    assets: DocumentAssets,
-    shell: PrerenderedShell,
+    url     : string,
+    assets  : DocumentAssets,
+    shell   : PrerenderedShell,
     options?: {| readonly onError?: (error: mixed) => void |},
   ) => Promise<RenderedDocument>,
   /** The route handler for this request, or `null` when no handler claims it. */

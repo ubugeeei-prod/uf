@@ -124,8 +124,8 @@ export const frozenKeepsItsType: number = read(freezeAtom(tags));
 // issue declined.
 
 const draft = atomWithAsyncStorage("draft", "", {
-  getItem: () => Promise.resolve(""),
-  setItem: () => Promise.resolve(),
+  getItem   : () => Promise.resolve(""),
+  setItem   : () => Promise.resolve(),
   removeItem: () => Promise.resolve(),
 });
 
@@ -136,7 +136,7 @@ export const valueIsNotTheData: string = read(draft);
 // $FlowExpectedError[incompatible-type] object literal is incompatible with
 export const setterDoesNotTakeALoadable: mixed = write(draft, {
   state: "hasData",
-  data: "typed",
+  data : "typed",
 });
 
 // And its reducer is handed the loadable, because a write can happen before

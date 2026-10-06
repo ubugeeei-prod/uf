@@ -83,16 +83,16 @@ export interface Instant {
 /** A date and a time in a named zone: what a reader actually sees on a clock. */
 export interface ZonedDateTime {
   readonly epochMilliseconds: number;
-  readonly timeZoneId: string;
-  readonly year: number;
-  readonly month: number;
-  readonly day: number;
-  readonly hour: number;
-  readonly minute: number;
-  readonly second: number;
-  readonly millisecond: number;
-  readonly dayOfWeek: number;
-  readonly offset: string;
+  readonly timeZoneId       : string;
+  readonly year             : number;
+  readonly month            : number;
+  readonly day              : number;
+  readonly hour             : number;
+  readonly minute           : number;
+  readonly second           : number;
+  readonly millisecond      : number;
+  readonly dayOfWeek        : number;
+  readonly offset           : string;
   toInstant(): Instant;
   toPlainDate(): PlainDate;
   toPlainTime(): PlainTime;
@@ -104,9 +104,9 @@ export interface ZonedDateTime {
 
 /** A calendar date that never had a time to lose. */
 export interface PlainDate {
-  readonly year: number;
+  readonly year : number;
   readonly month: number;
-  readonly day: number;
+  readonly day  : number;
   /** ISO 8601: 1 is Monday and 7 is Sunday, on every host and in every locale. */
   readonly dayOfWeek: number;
   /** 28, 29, 30 or 31, for the month this date is in. */
@@ -121,9 +121,9 @@ export interface PlainDate {
 
 /** A wall-clock time with no date attached. */
 export interface PlainTime {
-  readonly hour: number;
-  readonly minute: number;
-  readonly second: number;
+  readonly hour       : number;
+  readonly minute     : number;
+  readonly second     : number;
   readonly millisecond: number;
   equals(other: PlainTime): boolean;
   toString(): string;
@@ -132,15 +132,15 @@ export interface PlainTime {
 
 /** A length of time, in the units it was written in. */
 export interface Duration {
-  readonly years: number;
-  readonly months: number;
-  readonly weeks: number;
-  readonly days: number;
-  readonly hours: number;
-  readonly minutes: number;
-  readonly seconds: number;
+  readonly years       : number;
+  readonly months      : number;
+  readonly weeks       : number;
+  readonly days        : number;
+  readonly hours       : number;
+  readonly minutes     : number;
+  readonly seconds     : number;
   readonly milliseconds: number;
-  readonly blank: boolean;
+  readonly blank       : boolean;
   negated(): Duration;
   abs(): Duration;
   total(options: { readonly unit: string, ... }): number;
@@ -150,13 +150,13 @@ export interface Duration {
 
 /** What a `Duration` can be written as at a call site. */
 export type DurationLike = {
-  readonly years?: number,
-  readonly months?: number,
-  readonly weeks?: number,
-  readonly days?: number,
-  readonly hours?: number,
-  readonly minutes?: number,
-  readonly seconds?: number,
+  readonly years?       : number,
+  readonly months?      : number,
+  readonly weeks?       : number,
+  readonly days?        : number,
+  readonly hours?       : number,
+  readonly minutes?     : number,
+  readonly seconds?     : number,
   readonly milliseconds?: number,
 };
 
@@ -173,21 +173,21 @@ export type DurationLike = {
  * only way to satisfy that is to write all fourteen at every call site.
  */
 export type DateTimeFormatOptions = {
-  readonly timeZone?: string,
+  readonly timeZone?    : string,
   readonly timeZoneName?: "short" | "long" | "shortOffset" | "longOffset",
-  readonly calendar?: string,
-  readonly dateStyle?: "full" | "long" | "medium" | "short",
-  readonly timeStyle?: "full" | "long" | "medium" | "short",
-  readonly weekday?: "narrow" | "short" | "long",
-  readonly era?: "narrow" | "short" | "long",
-  readonly year?: "numeric" | "2-digit",
-  readonly month?: "numeric" | "2-digit" | "narrow" | "short" | "long",
-  readonly day?: "numeric" | "2-digit",
-  readonly hour?: "numeric" | "2-digit",
-  readonly minute?: "numeric" | "2-digit",
-  readonly second?: "numeric" | "2-digit",
-  readonly hour12?: boolean,
-  readonly hourCycle?: "h11" | "h12" | "h23" | "h24",
+  readonly calendar?    : string,
+  readonly dateStyle?   : "full" | "long" | "medium" | "short",
+  readonly timeStyle?   : "full" | "long" | "medium" | "short",
+  readonly weekday?     : "narrow" | "short" | "long",
+  readonly era?         : "narrow" | "short" | "long",
+  readonly year?        : "numeric" | "2-digit",
+  readonly month?       : "numeric" | "2-digit" | "narrow" | "short" | "long",
+  readonly day?         : "numeric" | "2-digit",
+  readonly hour?        : "numeric" | "2-digit",
+  readonly minute?      : "numeric" | "2-digit",
+  readonly second?      : "numeric" | "2-digit",
+  readonly hour12?      : boolean,
+  readonly hourCycle?   : "h11" | "h12" | "h23" | "h24",
   ...
 };
 
@@ -252,10 +252,10 @@ function millisIn(unit: string): number | null {
 
 /** The wall-clock fields a zone shows at one instant. */
 type Parts = {
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
+  year  : number,
+  month : number,
+  day   : number,
+  hour  : number,
   minute: number,
   second: number,
 };
@@ -272,12 +272,12 @@ const formatters: Map<string, DateTimeFormat> = new Map();
 
 /** `Date.UTC` without the two-digit-year rule, which is a silent 1900-year error. */
 function utcOf(
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
-  minute: number,
-  second: number,
+  year       : number,
+  month      : number,
+  day        : number,
+  hour       : number,
+  minute     : number,
+  second     : number,
   millisecond: number,
 ): number {
   const at = new Date(0);
@@ -295,10 +295,10 @@ function partsIn(epochMilliseconds: number, timeZone: string): Parts {
     // date rather than failing on the one zone that needs no data at all.
     const at = new Date(epochMilliseconds);
     return {
-      year: at.getUTCFullYear(),
-      month: at.getUTCMonth() + 1,
-      day: at.getUTCDate(),
-      hour: at.getUTCHours(),
+      year  : at.getUTCFullYear(),
+      month : at.getUTCMonth() + 1,
+      day   : at.getUTCDate(),
+      hour  : at.getUTCHours(),
       minute: at.getUTCMinutes(),
       second: at.getUTCSeconds(),
     };
@@ -315,11 +315,11 @@ function partsIn(epochMilliseconds: number, timeZone: string): Parts {
   if (formatter == null) {
     formatter = new Formatter("en-US", {
       timeZone,
-      era: "short",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
+      era   : "short",
+      year  : "numeric",
+      month : "2-digit",
+      day   : "2-digit",
+      hour  : "2-digit",
       minute: "2-digit",
       second: "2-digit",
       // `h23` rather than `hour12: false`, which some engines still answer with
@@ -338,10 +338,10 @@ function partsIn(epochMilliseconds: number, timeZone: string): Parts {
     // ISO 8601 has a year zero and the Gregorian calendar does not, so 1 BC is
     // ISO year 0 and 2 BC is ISO year -1. Without this a date before the common
     // era formats as its own mirror image.
-    year: found.era === "B" || found.era === "BC" ? 1 - year : year,
-    month: Number(found.month),
-    day: Number(found.day),
-    hour: Number(found.hour),
+    year  : found.era === "B" || found.era === "BC" ? 1 - year : year,
+    month : Number(found.month),
+    day   : Number(found.day),
+    hour  : Number(found.hour),
     minute: Number(found.minute),
     second: Number(found.second),
   };
@@ -404,13 +404,13 @@ function daysInMonth(year: number, month: number): number {
 
 /** How a `Duration` is carried: every field, exactly as it was written. */
 type DurationFields = {
-  years: number,
-  months: number,
-  weeks: number,
-  days: number,
-  hours: number,
-  minutes: number,
-  seconds: number,
+  years       : number,
+  months      : number,
+  weeks       : number,
+  days        : number,
+  hours       : number,
+  minutes     : number,
+  seconds     : number,
   milliseconds: number,
 };
 
@@ -480,13 +480,13 @@ class LiteDuration {
       );
     }
     return new LiteDuration({
-      years: value.years ?? 0,
-      months: value.months ?? 0,
-      weeks: value.weeks ?? 0,
-      days: value.days ?? 0,
-      hours: value.hours ?? 0,
-      minutes: value.minutes ?? 0,
-      seconds: value.seconds ?? 0,
+      years       : value.years ?? 0,
+      months      : value.months ?? 0,
+      weeks       : value.weeks ?? 0,
+      days        : value.days ?? 0,
+      hours       : value.hours ?? 0,
+      minutes     : value.minutes ?? 0,
+      seconds     : value.seconds ?? 0,
       milliseconds: value.milliseconds ?? 0,
     });
   }
@@ -505,13 +505,13 @@ class LiteDuration {
 
   negated(): LiteDuration {
     return new LiteDuration({
-      years: -this.years,
-      months: -this.months,
-      weeks: -this.weeks,
-      days: -this.days,
-      hours: -this.hours,
-      minutes: -this.minutes,
-      seconds: -this.seconds,
+      years       : -this.years,
+      months      : -this.months,
+      weeks       : -this.weeks,
+      days        : -this.days,
+      hours       : -this.hours,
+      minutes     : -this.minutes,
+      seconds     : -this.seconds,
       milliseconds: -this.milliseconds,
     });
   }
@@ -601,11 +601,11 @@ function parseDuration(value: string): LiteDuration {
   const seconds = Number(found[8] ?? 0);
   const whole = Math.trunc(seconds);
   const made = new LiteDuration({
-    years: Number(found[2] ?? 0),
-    months: Number(found[3] ?? 0),
-    weeks: Number(found[4] ?? 0),
-    days: Number(found[5] ?? 0),
-    hours: Number(found[6] ?? 0),
+    years  : Number(found[2] ?? 0),
+    months : Number(found[3] ?? 0),
+    weeks  : Number(found[4] ?? 0),
+    days   : Number(found[5] ?? 0),
+    hours  : Number(found[6] ?? 0),
     minutes: Number(found[7] ?? 0),
     seconds: whole,
     // Rounded rather than truncated: `PT0.3S` is 300ms, and the subtraction
@@ -745,13 +745,13 @@ class LiteInstant {
 function durationOfMillis(millis: number): LiteDuration {
   const whole = Math.trunc(millis / MILLIS_PER_SECOND);
   return new LiteDuration({
-    years: 0,
-    months: 0,
-    weeks: 0,
-    days: 0,
-    hours: 0,
-    minutes: 0,
-    seconds: whole,
+    years       : 0,
+    months      : 0,
+    weeks       : 0,
+    days        : 0,
+    hours       : 0,
+    minutes     : 0,
+    seconds     : whole,
     milliseconds: millis - whole * MILLIS_PER_SECOND,
   });
 }
@@ -1092,7 +1092,7 @@ export type TemporalTypes = {
     ...
   },
   readonly PlainTime: { from(value: PlainTime | string): PlainTime, ... },
-  readonly Duration: { from(value: Duration | DurationLike | string): Duration, ... },
+  readonly Duration : { from(value: Duration | DurationLike | string): Duration, ... },
   ...
 };
 
@@ -1110,9 +1110,9 @@ export type TemporalApi = { ...TemporalTypes, readonly Now: TemporalNow, ... };
  */
 type HostTemporal = {
   ...TemporalApi,
-  readonly PlainDateTime?: mixed,
+  readonly PlainDateTime? : mixed,
   readonly PlainYearMonth?: mixed,
-  readonly PlainMonthDay?: mixed,
+  readonly PlainMonthDay? : mixed,
   ...
 };
 
@@ -1165,11 +1165,11 @@ function nowFor(types: TemporalTypes): TemporalNow {
     return at.toZonedDateTimeISO(timeZone ?? clock.timeZone());
   };
   return {
-    instant: () => types.Instant.fromEpochMilliseconds(currentClock().now()),
-    timeZoneId: () => currentClock().timeZone(),
+    instant         : () => types.Instant.fromEpochMilliseconds(currentClock().now()),
+    timeZoneId      : () => currentClock().timeZone(),
     zonedDateTimeISO: zoned,
-    plainDateISO: (timeZone?: string) => zoned(timeZone).toPlainDate(),
-    plainTimeISO: (timeZone?: string) => zoned(timeZone).toPlainTime(),
+    plainDateISO    : (timeZone?: string) => zoned(timeZone).toPlainDate(),
+    plainTimeISO    : (timeZone?: string) => zoned(timeZone).toPlainTime(),
   };
 }
 
@@ -1195,15 +1195,15 @@ const lite: TemporalTypes = {
     compare: (a, b) => LiteInstant.compare(a, b),
   },
   ZonedDateTime: {
-    from: (value) => LiteZonedDateTime.from(value),
+    from   : (value) => LiteZonedDateTime.from(value),
     compare: (a, b) => LiteZonedDateTime.compare(a, b),
   },
   PlainDate: {
-    from: (value) => LitePlainDate.from(value),
+    from   : (value) => LitePlainDate.from(value),
     compare: (a, b) => LitePlainDate.compare(a, b),
   },
   PlainTime: { from: (value) => LitePlainTime.from(value) },
-  Duration: { from: (value) => LiteDuration.from(value) },
+  Duration : { from: (value) => LiteDuration.from(value) },
 };
 
 /**
@@ -1228,21 +1228,21 @@ const lite: TemporalTypes = {
 export const Temporal: TemporalApi = (() => {
   const types: TemporalTypes = host ?? lite;
   const named = {
-    Instant: types.Instant,
+    Instant      : types.Instant,
     ZonedDateTime: types.ZonedDateTime,
-    PlainDate: types.PlainDate,
-    PlainTime: types.PlainTime,
-    Duration: types.Duration,
-    Now: nowFor(types),
+    PlainDate    : types.PlainDate,
+    PlainTime    : types.PlainTime,
+    Duration     : types.Duration,
+    Now          : nowFor(types),
   };
   if (host == null) {
     return named;
   }
   return {
     ...named,
-    PlainDateTime: host.PlainDateTime,
+    PlainDateTime : host.PlainDateTime,
     PlainYearMonth: host.PlainYearMonth,
-    PlainMonthDay: host.PlainMonthDay,
+    PlainMonthDay : host.PlainMonthDay,
   };
 })();
 

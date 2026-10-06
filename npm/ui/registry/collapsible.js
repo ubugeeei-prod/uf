@@ -41,43 +41,43 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    display: "grid",
-    gap: ufTokens.space2,
+    display   : "grid",
+    gap       : ufTokens.space2,
     fontFamily: ufTokens.fontSans,
-    color: ufTokens.ink,
+    color     : ufTokens.ink,
   },
   trigger: {
     // Read by the chevron, which cannot see the button's state.
     "--uf-collapsible-turn": { default: "0deg", ":is([aria-expanded=true])": "180deg" },
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: ufTokens.space2,
-    boxSizing: "border-box",
-    minHeight: "36px",
-    margin: 0,
-    paddingInline: ufTokens.space3,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    fontWeight: ufTokens.weightMedium,
-    lineHeight: ufTokens.leadingTight,
-    textAlign: "start",
-    color: ufTokens.ink,
-    backgroundColor: { default: "transparent", ":hover": ufTokens.surfaceHover },
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusMd,
-    cursor: { default: "pointer", ":disabled": "not-allowed" },
-    opacity: { default: 1, ":disabled": 0.55 },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    display                : "inline-flex",
+    alignItems             : "center",
+    justifyContent         : "space-between",
+    gap                    : ufTokens.space2,
+    boxSizing              : "border-box",
+    minHeight              : "36px",
+    margin                 : 0,
+    paddingInline          : ufTokens.space3,
+    fontFamily             : ufTokens.fontSans,
+    fontSize               : ufTokens.textSm,
+    fontWeight             : ufTokens.weightMedium,
+    lineHeight             : ufTokens.leadingTight,
+    textAlign              : "start",
+    color                  : ufTokens.ink,
+    backgroundColor        : { default: "transparent", ":hover": ufTokens.surfaceHover },
+    borderWidth            : "1px",
+    borderStyle            : "solid",
+    borderColor            : ufTokens.border,
+    borderRadius           : ufTokens.radiusMd,
+    cursor                 : { default: "pointer", ":disabled": "not-allowed" },
+    opacity                : { default: 1, ":disabled": 0.55 },
+    outlineWidth           : { default: "0", ":focus-visible": "2px" },
+    outlineStyle           : "solid",
+    outlineColor           : ufTokens.focus,
+    outlineOffset          : "2px",
   },
   chevron: {
     flexShrink: 0,
-    transform: "rotate(var(--uf-collapsible-turn))",
+    transform : "rotate(var(--uf-collapsible-turn))",
     // A half turn is travel, so it takes `durationBase`; under reduced
     // motion the chevron is simply the other way up.
     transitionProperty: { default: "transform", "@media (prefers-reduced-motion: reduce)": "none" },
@@ -96,36 +96,36 @@ const styles = stylex.create({
     //
     // Clipped rather than hidden, so it is not a scroll container, and with
     // room at the edge for the focus ring of a link inside it.
-    boxSizing: "border-box",
-    overflow: "clip",
+    boxSizing         : "border-box",
+    overflow          : "clip",
     overflowClipMargin: "4px",
     height: {
-      default: "var(--uf-collapsible-height)",
-      "@starting-style": "0",
+      default                   : "var(--uf-collapsible-height)",
+      "@starting-style"         : "0",
       ":is([data-state=closed])": "0",
     },
     transitionProperty: { default: "height", "@media (prefers-reduced-motion: reduce)": "none" },
     transitionDuration: {
-      default: ufTokens.durationBase,
+      default                   : ufTokens.durationBase,
       ":is([data-state=closed])": ufTokens.durationFast,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
-    fontSize: ufTokens.textSm,
+    fontSize  : ufTokens.textSm,
     lineHeight: ufTokens.leadingBase,
   },
 });
 
 /** The trigger and its region, open or closed. Uncontrolled unless `open` is given. */
 component CollapsibleRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
-  xstyle?: StyleArgument,
-  className?: string,
+  xstyle?      : StyleArgument,
+  className?   : string,
   ...rest: Rest
 ) {
   return (
@@ -139,9 +139,9 @@ component CollapsibleRoot(
 
 /** The button that shows and hides the region. */
 component CollapsibleTrigger(
-  children: React.Node,
-  disabled?: boolean = false,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  disabled? : boolean = false,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -173,8 +173,8 @@ component CollapsibleTrigger(
 
 /** The region the trigger shows. */
 component CollapsibleContent(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

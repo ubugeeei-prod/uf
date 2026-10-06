@@ -124,41 +124,41 @@ export type Overflow = "visible" | "hidden" | "scroll";
  * caller who wrote `<Box>` meant.
  */
 export type LayoutStyle = {
-  readonly flexDirection?: FlexDirection,
-  readonly flexWrap?: FlexWrap,
+  readonly flexDirection? : FlexDirection,
+  readonly flexWrap?      : FlexWrap,
   readonly justifyContent?: JustifyContent,
-  readonly alignItems?: AlignItems,
-  readonly alignContent?: AlignContent,
-  readonly alignSelf?: AlignSelf,
-  readonly flexGrow?: number,
-  readonly flexShrink?: number,
-  readonly flexBasis?: Dimension,
-  readonly width?: Dimension,
-  readonly height?: Dimension,
-  readonly minWidth?: Dimension,
-  readonly minHeight?: Dimension,
-  readonly maxWidth?: Dimension,
-  readonly maxHeight?: Dimension,
-  readonly padding?: number,
-  readonly paddingTop?: number,
-  readonly paddingRight?: number,
-  readonly paddingBottom?: number,
-  readonly paddingLeft?: number,
-  readonly margin?: Margin,
-  readonly marginTop?: Margin,
-  readonly marginRight?: Margin,
-  readonly marginBottom?: Margin,
-  readonly marginLeft?: Margin,
-  readonly gap?: number,
-  readonly rowGap?: number,
-  readonly columnGap?: number,
-  readonly overflow?: Overflow,
-  readonly position?: Position,
+  readonly alignItems?    : AlignItems,
+  readonly alignContent?  : AlignContent,
+  readonly alignSelf?     : AlignSelf,
+  readonly flexGrow?      : number,
+  readonly flexShrink?    : number,
+  readonly flexBasis?     : Dimension,
+  readonly width?         : Dimension,
+  readonly height?        : Dimension,
+  readonly minWidth?      : Dimension,
+  readonly minHeight?     : Dimension,
+  readonly maxWidth?      : Dimension,
+  readonly maxHeight?     : Dimension,
+  readonly padding?       : number,
+  readonly paddingTop?    : number,
+  readonly paddingRight?  : number,
+  readonly paddingBottom? : number,
+  readonly paddingLeft?   : number,
+  readonly margin?        : Margin,
+  readonly marginTop?     : Margin,
+  readonly marginRight?   : Margin,
+  readonly marginBottom?  : Margin,
+  readonly marginLeft?    : Margin,
+  readonly gap?           : number,
+  readonly rowGap?        : number,
+  readonly columnGap?     : number,
+  readonly overflow?      : Overflow,
+  readonly position?      : Position,
   /** Offsets: cells, or a percentage of the parent's inside. Negative is allowed. */
-  readonly top?: Dimension,
-  readonly right?: Dimension,
+  readonly top?   : Dimension,
+  readonly right? : Dimension,
   readonly bottom?: Dimension,
-  readonly left?: Dimension,
+  readonly left?  : Dimension,
   /**
    * The first content row a scrolling box shows.
    *
@@ -190,11 +190,11 @@ export type LayoutNode = {
   readonly children: $ReadOnlyArray<LayoutNode>,
   /** Cells the node's own frame occupies on each edge; a border is 1. */
   borderWidth: number,
-  measure: ((availableWidth: number, availableHeight: number) => Size) | null,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
+  measure    : ((availableWidth: number, availableHeight: number) => Size) | null,
+  x          : number,
+  y          : number,
+  width      : number,
+  height     : number,
   /**
    * The index of this node's first child that is inside a scrolling window,
    * and how many of them are. Written by layout, read by the painter.
@@ -221,8 +221,8 @@ export type LayoutNode = {
    * box rather than the content box is a bar over the content on any box with
    * padding on it.
    */
-  scrollViewTop: number,
-  scrollViewRows: number,
+  scrollViewTop  : number,
+  scrollViewRows : number,
   scrollBarColumn: number,
   /**
    * The last intrinsic size this node reported, and what was offered for it.
@@ -232,10 +232,10 @@ export type LayoutNode = {
    * changes. Layout never invalidates this itself: a cache that layout could
    * clear would be cleared on the frame that most needs it.
    */
-  measuredForWidth: number,
+  measuredForWidth : number,
   measuredForHeight: number,
-  measuredWidth: number,
-  measuredHeight: number,
+  measuredWidth    : number,
+  measuredHeight   : number,
   /**
    * The first child index whose height may have changed since the last frame,
    * or `-1` when none has.
@@ -274,11 +274,11 @@ export type LayoutNode = {
 export type ScrollIndex = {
   /** The content width, viewport height and gap the stack was built for. */
   width: number,
-  view: number,
-  gap: number,
+  view : number,
+  gap  : number,
   /** The first index whose height is not known to be current. */
-  from: number,
-  tops: Array<number>,
+  from   : number,
+  tops   : Array<number>,
   heights: Array<number>,
   /** Rows of content the whole stack adds up to. */
   content: number,
@@ -345,9 +345,9 @@ const isPositioned = (node: LayoutNode): boolean => node.style.position !== "sta
  * box of its nearest positioned ancestor, in frame coordinates.
  */
 type ContainingBlock = {
-  readonly x: number,
-  readonly y: number,
-  readonly width: number,
+  readonly x     : number,
+  readonly y     : number,
+  readonly width : number,
   readonly height: number,
 };
 
@@ -355,9 +355,9 @@ type ContainingBlock = {
 function paddingBox(node: LayoutNode): ContainingBlock {
   const border = node.borderWidth;
   return {
-    x: node.x + border,
-    y: node.y + border,
-    width: Math.max(0, node.width - border * 2),
+    x     : node.x + border,
+    y     : node.y + border,
+    width : Math.max(0, node.width - border * 2),
     height: Math.max(0, node.height - border * 2),
   };
 }
@@ -466,8 +466,8 @@ function shrinkOf(style: LayoutStyle, row: boolean): number {
  * they get to be.
  */
 export function intrinsicSize(
-  node: LayoutNode,
-  availableWidth: number,
+  node           : LayoutNode,
+  availableWidth : number,
   availableHeight: number,
 ): Size {
   // The same offer twice is the same answer twice, and the answer is only
@@ -563,7 +563,7 @@ function measureIntrinsic(node: LayoutNode, availableWidth: number, availableHei
   const width = fixedWidth ?? contentWidth + insetLeft + insetRight;
   const height = fixedHeight ?? contentHeight + insetTop + insetBottom;
   return {
-    width: clampDimension(width, style.minWidth, style.maxWidth, availableWidth),
+    width : clampDimension(width, style.minWidth, style.maxWidth, availableWidth),
     height: clampDimension(height, style.minHeight, style.maxHeight, availableHeight),
   };
 }
@@ -620,8 +620,8 @@ function wrappedSize(node: LayoutNode, width: number, height: number): Size {
 /** Apply `min*`/`max*` to a resolved length. */
 function clampDimension(
   value: number,
-  min: Dimension | void,
-  max: Dimension | void,
+  min  : Dimension | void,
+  max  : Dimension | void,
   basis: number,
 ): number {
   const low = resolve(min, basis) ?? 0;
@@ -667,7 +667,7 @@ const wraps = (style: LayoutStyle): boolean =>
 function breakLines(
   sizes: $ReadOnlyArray<number>,
   space: number,
-  gap: number,
+  gap  : number,
 ): Array<Array<number>> {
   const lines: Array<Array<number>> = [];
   let line: Array<number> = [];
@@ -699,8 +699,8 @@ function breakLines(
  */
 function alignLines(
   alignment: AlignContent | void,
-  spare: number,
-  count: number,
+  spare    : number,
+  count    : number,
 ): [number, number, number] {
   const free = Math.max(0, spare);
   switch (alignment) {
@@ -737,11 +737,11 @@ function alignLines(
  * which is where a box with no positioned ancestor is placed in CSS as well.
  */
 export function layout(
-  node: LayoutNode,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
+  node      : LayoutNode,
+  x         : number,
+  y         : number,
+  width     : number,
+  height    : number,
   containing: ContainingBlock | null = null,
 ): void {
   node.x = x;
@@ -1099,13 +1099,13 @@ function layoutAbsolute(parent: LayoutNode, child: LayoutNode, block: Containing
   const row = isRow(flexDirection);
   const reverse = flexDirection === "row-reverse" || flexDirection === "column-reverse";
   const place = (
-    alignment: string,
-    flipped: boolean,
-    start: number,
-    space: number,
-    size: number,
+    alignment  : string,
+    flipped    : boolean,
+    start      : number,
+    space      : number,
+    size       : number,
     marginStart: number,
-    marginEnd: number,
+    marginEnd  : number,
   ): number => {
     const free = space - size - marginStart - marginEnd;
     const toEnd = alignment === "flex-end" ? !flipped : alignment !== "center" && flipped;
@@ -1171,12 +1171,12 @@ function layoutAbsolute(parent: LayoutNode, child: LayoutNode, block: Containing
  * the reason this is not `overflow: "hidden"` with a margin on top.
  */
 function layoutScroll(
-  node: LayoutNode,
-  x: number,
-  y: number,
-  width: number,
+  node  : LayoutNode,
+  x     : number,
+  y     : number,
+  width : number,
   height: number,
-  block: ContainingBlock,
+  block : ContainingBlock,
 ): void {
   const children = node.children;
   const stack = scrollStack(node, width, height);
@@ -1262,8 +1262,8 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
       width,
       view: height,
       gap,
-      from: 0,
-      tops: [],
+      from   : 0,
+      tops   : [],
       heights: [],
       content: 0,
     };

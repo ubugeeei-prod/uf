@@ -3,7 +3,7 @@
 // `@uniflowed/brand`.
 
 export type BrandColorToken = {
-  readonly name: string,
+  readonly name : string,
   readonly token: string,
   readonly value: string,
 };
@@ -14,22 +14,22 @@ export type BrandScaleToken = {
 };
 
 export const ufBrand = {
-  name: "uf",
+  name    : "uf",
   fullName: "uniflowed",
   headline: "Unified Toolchain for Flow",
-  tagline: "Build the strongest React development experience with Modern Flow.",
+  tagline : "Build the strongest React development experience with Modern Flow.",
 };
 
 export const ufBrandAssets = {
-  sourceMark: "brand/uf.png",
+  sourceMark : "brand/uf.png",
   primaryLogo: "brand/uniflowed-logo.png",
-  logo: "brand/uniflowed-logo.png",
-  logoSvg: "brand/uniflowed-logo.svg",
-  mark: "brand/uniflowed-mark.png",
-  markSvg: "brand/uniflowed-mark.svg",
-  wordmark: "brand/uniflowed-wordmark.png",
+  logo       : "brand/uniflowed-logo.png",
+  logoSvg    : "brand/uniflowed-logo.svg",
+  mark       : "brand/uniflowed-mark.png",
+  markSvg    : "brand/uniflowed-mark.svg",
+  wordmark   : "brand/uniflowed-wordmark.png",
   wordmarkSvg: "brand/uniflowed-wordmark.svg",
-  favicon: "brand/favicon.svg",
+  favicon    : "brand/favicon.svg",
 };
 
 export const ufPalette: $ReadOnlyArray<BrandColorToken> = [
@@ -71,8 +71,8 @@ export const ufRadiusScale: $ReadOnlyArray<BrandScaleToken> = [
 ];
 
 export const ufCommands = {
-  curl: "curl -fsSL https://setup.uniflowed.dev | sh",
-  nixRun: "nix run github:ubugeeei-prod/uf#uf -- --version",
+  curl      : "curl -fsSL https://setup.uniflowed.dev | sh",
+  nixRun    : "nix run github:ubugeeei-prod/uf#uf -- --version",
   nixProfile: "nix profile install github:ubugeeei-prod/uf#uf",
-  info: "uf info",
+  info      : "uf info",
 };

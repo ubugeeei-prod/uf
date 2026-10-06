@@ -41,8 +41,8 @@ export component Invalid() { return <Text {...stylex.props(invalid.bad)}>Bad wei
   ]) {
     fs.writeFileSync(path.join(root, file), source);
     const child = spawnSync(process.env.UF_BINARY, ["--cwd", root, "check", file, "--json"], {
-      encoding: "utf8",
-      timeout: 180000,
+      encoding : "utf8",
+      timeout  : 180000,
       maxBuffer: 8 * 1024 * 1024,
     });
     if (child.error) throw child.error;

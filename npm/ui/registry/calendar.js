@@ -57,17 +57,17 @@ const styles = stylex.create({
   // slides under (see `header`), and a grid's gap would open a space between
   // the two that pushed the caption off the buttons' line.
   root: {
-    display: "inline-block",
-    boxSizing: "border-box",
-    padding: ufTokens.space3,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
+    display        : "inline-block",
+    boxSizing      : "border-box",
+    padding        : ufTokens.space3,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    color          : ufTokens.ink,
     backgroundColor: ufTokens.surface,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusMd,
+    borderWidth    : "1px",
+    borderStyle    : "solid",
+    borderColor    : ufTokens.border,
+    borderRadius   : ufTokens.radiusMd,
   },
   // The month buttons sit on the caption's line, one at each end, with the
   // month's name between them. The caption belongs to the grid — it is the
@@ -75,96 +75,96 @@ const styles = stylex.create({
   // takes no height, and its buttons hang over the caption's ends. `inline`
   // ends, so a right-to-left page puts "previous" on the right.
   header: {
-    position: "relative",
-    zIndex: 1,
-    display: "flex",
-    alignItems: "flex-start",
+    position      : "relative",
+    zIndex        : 1,
+    display       : "flex",
+    alignItems    : "flex-start",
     justifyContent: "space-between",
-    height: 0,
+    height        : 0,
   },
   step: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    boxSizing: "border-box",
-    width: "32px",
-    height: "32px",
-    margin: 0,
-    padding: 0,
-    color: { default: ufTokens.muted, ":hover": ufTokens.ink },
+    display        : "inline-flex",
+    alignItems     : "center",
+    justifyContent : "center",
+    boxSizing      : "border-box",
+    width          : "32px",
+    height         : "32px",
+    margin         : 0,
+    padding        : 0,
+    color          : { default: ufTokens.muted, ":hover": ufTokens.ink },
     backgroundColor: { default: "transparent", ":hover": ufTokens.surfaceHover },
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: "transparent",
-    borderRadius: ufTokens.radiusSm,
-    cursor: { default: "pointer", ":disabled": "not-allowed" },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "-2px",
+    borderWidth    : "1px",
+    borderStyle    : "solid",
+    borderColor    : "transparent",
+    borderRadius   : ufTokens.radiusSm,
+    cursor         : { default: "pointer", ":disabled": "not-allowed" },
+    outlineWidth   : { default: "0", ":focus-visible": "2px" },
+    outlineStyle   : "solid",
+    outlineColor   : ufTokens.focus,
+    outlineOffset  : "-2px",
   },
   // Mirrored in a right-to-left page, where "previous" points right.
   chevron: {
-    display: "block",
+    display  : "block",
     transform: { default: "none", ":dir(rtl)": "scaleX(-1)" },
   },
   month: {
     // No space between columns, so a range reads as one band; a little
     // between weeks, so the rows stay rows.
     borderCollapse: "separate",
-    borderSpacing: "0 2px",
+    borderSpacing : "0 2px",
     // Columns a day wide whatever the headings say: some locales' short
     // weekday names are whole words, and an automatic layout widened their
     // columns and pulled the numerals out of line.
     tableLayout: "fixed",
-    margin: 0,
-    fontSize: ufTokens.textSm,
-    textAlign: "center",
+    margin     : 0,
+    fontSize   : ufTokens.textSm,
+    textAlign  : "center",
   },
   // The month and year, on the buttons' line and clear of them.
   caption: {
-    captionSide: "top",
-    boxSizing: "border-box",
-    height: "32px",
+    captionSide  : "top",
+    boxSizing    : "border-box",
+    height       : "32px",
     paddingInline: "36px",
-    marginBottom: ufTokens.space1,
-    overflow: "hidden",
-    fontSize: ufTokens.textSm,
-    fontWeight: ufTokens.weightMedium,
-    lineHeight: "32px",
-    whiteSpace: "nowrap",
-    textOverflow: "ellipsis",
-    color: ufTokens.ink,
+    marginBottom : ufTokens.space1,
+    overflow     : "hidden",
+    fontSize     : ufTokens.textSm,
+    fontWeight   : ufTokens.weightMedium,
+    lineHeight   : "32px",
+    whiteSpace   : "nowrap",
+    textOverflow : "ellipsis",
+    color        : ufTokens.ink,
   },
   // As wide as a day, so each initial stands over its column.
   weekday: {
-    boxSizing: "border-box",
-    width: "36px",
-    height: "28px",
-    padding: 0,
-    fontSize: ufTokens.textXs,
-    fontWeight: ufTokens.weightMedium,
-    lineHeight: 1,
-    color: ufTokens.muted,
-    textAlign: "center",
+    boxSizing    : "border-box",
+    width        : "36px",
+    height       : "28px",
+    padding      : 0,
+    fontSize     : ufTokens.textXs,
+    fontWeight   : ufTokens.weightMedium,
+    lineHeight   : 1,
+    color        : ufTokens.muted,
+    textAlign    : "center",
     verticalAlign: "middle",
     // A long short name is clipped rather than allowed to widen its column;
     // the heading's `aria-label` still gives the reader the whole name.
-    overflow: "hidden",
+    overflow  : "hidden",
     whiteSpace: "nowrap",
   },
   day: {
-    boxSizing: "border-box",
-    width: "36px",
-    height: "36px",
-    padding: 0,
-    fontSize: ufTokens.textSm,
+    boxSizing : "border-box",
+    width     : "36px",
+    height    : "36px",
+    padding   : 0,
+    fontSize  : ufTokens.textSm,
     lineHeight: 1,
     // Every numeral the same width, so 11 does not sit narrower than 18.
     fontVariantNumeric: "tabular-nums",
-    textAlign: "center",
-    verticalAlign: "middle",
-    cursor: { default: "pointer", ":is([aria-disabled=true])": "not-allowed" },
+    textAlign         : "center",
+    verticalAlign     : "middle",
+    cursor            : { default: "pointer", ":is([aria-disabled=true])": "not-allowed" },
     // Today is the accent's numeral in bold, not a ring or a fill: a mark you
     // find when you look for it. The chosen day is the one fill in the month,
     // and the days between a range's ends are a pale band.
@@ -173,8 +173,8 @@ const styles = stylex.create({
     // range — and a key with more conditions sorts later, so each overlap is
     // written as its own key rather than left to the order of two equal ones.
     color: {
-      default: ufTokens.ink,
-      ":is([aria-current=date])": ufTokens.accent,
+      default                                              : ufTokens.ink,
+      ":is([aria-current=date])"                           : ufTokens.accent,
       ":is([aria-disabled=true]):not([aria-selected=true])": ufTokens.muted,
       ":is([aria-selected=true]):not([aria-disabled=true])": ufTokens.accentInk,
       ":is([aria-selected=true]):not([data-selection-start]):not([data-selection-end])":
@@ -183,8 +183,8 @@ const styles = stylex.create({
         ufTokens.accent,
     },
     backgroundColor: {
-      default: "transparent",
-      ":hover": ufTokens.surfaceHover,
+      default                    : "transparent",
+      ":hover"                   : ufTokens.surfaceHover,
       ":is([aria-disabled=true])": "transparent",
       ":is([aria-selected=true])": ufTokens.accent,
       ":is([aria-selected=true]):not([data-selection-start]):not([data-selection-end])":
@@ -192,27 +192,27 @@ const styles = stylex.create({
     },
     textDecorationLine: { default: "none", ":is([aria-disabled=true])": "line-through" },
     fontWeight: {
-      default: ufTokens.weightRegular,
-      ":is([aria-selected=true])": ufTokens.weightMedium,
+      default                                             : ufTokens.weightRegular,
+      ":is([aria-selected=true])"                         : ufTokens.weightMedium,
       ":is([aria-current=date]):not([aria-disabled=true])": ufTokens.weightBold,
     },
     borderWidth: 0,
     // A range's ends are square where they meet the band, named by inline
     // side so the join is right in a right-to-left page too.
     borderStartStartRadius: {
-      default: ufTokens.radiusSm,
+      default                                                : ufTokens.radiusSm,
       ":is([aria-selected=true]):not([data-selection-start])": 0,
     },
     borderEndStartRadius: {
-      default: ufTokens.radiusSm,
+      default                                                : ufTokens.radiusSm,
       ":is([aria-selected=true]):not([data-selection-start])": 0,
     },
     borderStartEndRadius: {
-      default: ufTokens.radiusSm,
+      default                                              : ufTokens.radiusSm,
       ":is([aria-selected=true]):not([data-selection-end])": 0,
     },
     borderEndEndRadius: {
-      default: ufTokens.radiusSm,
+      default                                              : ufTokens.radiusSm,
       ":is([aria-selected=true]):not([data-selection-end])": 0,
     },
     // Inside the cell, so neighbours never cover it; light on the filled day,
@@ -220,7 +220,7 @@ const styles = stylex.create({
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",
     outlineColor: {
-      default: ufTokens.focus,
+      default                    : ufTokens.focus,
       ":is([aria-selected=true])": ufTokens.accentInk,
       ":is([aria-selected=true]):not([data-selection-start]):not([data-selection-end])":
         ufTokens.focus,
@@ -235,8 +235,8 @@ const styles = stylex.create({
  * rest.
  */
 component CalendarRoot(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -259,8 +259,8 @@ component CalendarHeader(children: React.Node, xstyle?: StyleArgument, className
 
 /** The button to the month before. */
 component CalendarPrevious(
-  label?: string = "Previous month",
-  xstyle?: StyleArgument,
+  label?    : string = "Previous month",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -277,8 +277,8 @@ component CalendarPrevious(
 
 /** The button to the month after. */
 component CalendarNext(
-  label?: string = "Next month",
-  xstyle?: StyleArgument,
+  label?    : string = "Next month",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

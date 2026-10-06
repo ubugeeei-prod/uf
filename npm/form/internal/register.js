@@ -118,10 +118,10 @@ import type { Control, FieldErrors } from "./form-store.js";
  * the application.
  */
 export type FieldProps = {|
-  readonly name: string,
-  readonly ref: (element: mixed) => (() => void) | void,
+  readonly name    : string,
+  readonly ref     : (element: mixed) => (() => void) | void,
   readonly onChange: (event: mixed) => void,
-  readonly onBlur: (event: mixed) => void,
+  readonly onBlur  : (event: mixed) => void,
   /** Present only while the field has an error. */
   readonly "aria-invalid": "true" | void,
   /** The id of the message element, and only while that element is rendered. */
@@ -140,12 +140,12 @@ export type FieldProps = {|
    */
   readonly "aria-required": "true" | void,
   /** The five constraint attributes, and only under `progressive`. */
-  readonly required: boolean | void,
-  readonly min: number | string | void,
-  readonly max: number | string | void,
+  readonly required : boolean | void,
+  readonly min      : number | string | void,
+  readonly max      : number | string | void,
   readonly minLength: number | void,
   readonly maxLength: number | void,
-  readonly pattern: string | void,
+  readonly pattern  : string | void,
   /** Present while the field, or the whole form, is switched off. */
   readonly disabled: boolean | void,
 |};
@@ -163,14 +163,14 @@ export type RegisterContext = {|
 
 /** What `errorProps` returns: spread it onto the element holding the message. */
 export type ErrorProps = {|
-  readonly id: string,
+  readonly id  : string,
   readonly role: "alert",
 |};
 
 type Handlers = {|
-  readonly ref: (element: mixed) => (() => void) | void,
+  readonly ref     : (element: mixed) => (() => void) | void,
   readonly onChange: (event: mixed) => void,
-  readonly onBlur: (event: mixed) => void,
+  readonly onBlur  : (event: mixed) => void,
 |};
 
 const NO_RULES: ValidationRules = Object.freeze({});
@@ -185,13 +185,13 @@ export type Registrar<TValues extends FieldValues, TOutput> = {|
    * same consistent set.
    */
   readonly registerWith: (
-    errors: FieldErrors,
+    errors : FieldErrors,
     context: RegisterContext,
-    name: FieldPath,
-    rules?: ValidationRules,
+    name   : FieldPath,
+    rules? : ValidationRules,
   ) => FieldProps,
   readonly errorProps: (name: FieldPath) => ErrorProps,
-  readonly errorId: (name: FieldPath) => string,
+  readonly errorId   : (name: FieldPath) => string,
 |};
 
 /**
@@ -204,7 +204,7 @@ export type Registrar<TValues extends FieldValues, TOutput> = {|
  */
 export function createRegistrar<TValues extends FieldValues, TOutput>(
   control: Control<TValues, TOutput>,
-  idBase: string,
+  idBase : string,
 ): Registrar<TValues, TOutput> {
   /**
    * One set of handlers per field name, for the life of the form.
@@ -255,10 +255,10 @@ export function createRegistrar<TValues extends FieldValues, TOutput>(
   }
 
   function registerWith(
-    errors: FieldErrors,
+    errors : FieldErrors,
     context: RegisterContext,
-    name: FieldPath,
-    rules?: ValidationRules,
+    name   : FieldPath,
+    rules? : ValidationRules,
   ): FieldProps {
     const held = rules ?? NO_RULES;
     control.rulesFor(name, held);
@@ -274,22 +274,22 @@ export function createRegistrar<TValues extends FieldValues, TOutput>(
     const constraints = context.progressive ? constraintsOf(held) : null;
     return {
       name,
-      ref: handlers.ref,
+      ref     : handlers.ref,
       onChange: handlers.onChange,
-      onBlur: handlers.onBlur,
+      onBlur  : handlers.onBlur,
       // Absent rather than `"false"` while the field is fine: the ui package's
       // `Field` makes the same choice, and a form that permanently announces
       // `aria-invalid="false"` on every control is noise.
-      "aria-invalid": invalid ? "true" : undefined,
+      "aria-invalid"    : invalid ? "true" : undefined,
       "aria-describedby": invalid ? errorId(name) : undefined,
-      "aria-required": required && constraints == null ? "true" : undefined,
-      required: constraints?.required,
-      min: constraints?.min,
-      max: constraints?.max,
-      minLength: constraints?.minLength,
-      maxLength: constraints?.maxLength,
-      pattern: constraints?.pattern,
-      disabled: off ? true : undefined,
+      "aria-required"   : required && constraints == null ? "true" : undefined,
+      required          : constraints?.required,
+      min               : constraints?.min,
+      max               : constraints?.max,
+      minLength         : constraints?.minLength,
+      maxLength         : constraints?.maxLength,
+      pattern           : constraints?.pattern,
+      disabled          : off ? true : undefined,
     };
   }
 

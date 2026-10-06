@@ -32,21 +32,21 @@ type Task = {
   due: number,
   /** How often it repeats, or `null` for a one-shot. */
   readonly every: number | null,
-  readonly body: (...args: $ReadOnlyArray<mixed>) => mixed,
-  readonly args: $ReadOnlyArray<mixed>,
+  readonly body : (...args: $ReadOnlyArray<mixed>) => mixed,
+  readonly args : $ReadOnlyArray<mixed>,
   /** Ordering among tasks due at the same instant: first scheduled, first run. */
   readonly sequence: number,
 };
 
 /** The globals a clock replaces, so they can be put back exactly. */
 type Saved = {
-  readonly setTimeout: mixed,
-  readonly clearTimeout: mixed,
-  readonly setInterval: mixed,
-  readonly clearInterval: mixed,
-  readonly setImmediate: mixed,
+  readonly setTimeout    : mixed,
+  readonly clearTimeout  : mixed,
+  readonly setInterval   : mixed,
+  readonly clearInterval : mixed,
+  readonly setImmediate  : mixed,
   readonly clearImmediate: mixed,
-  readonly Date: mixed,
+  readonly Date          : mixed,
 };
 
 /**
@@ -90,13 +90,13 @@ export function installFakeClock(): void {
   // Kept in a local as well as the module's `installed`: the calls below would
   // otherwise make Flow forget that `installed` was just set.
   const saved = {
-    setTimeout: global.setTimeout,
-    clearTimeout: global.clearTimeout,
-    setInterval: global.setInterval,
-    clearInterval: global.clearInterval,
-    setImmediate: global.setImmediate,
+    setTimeout    : global.setTimeout,
+    clearTimeout  : global.clearTimeout,
+    setInterval   : global.setInterval,
+    clearInterval : global.clearInterval,
+    setImmediate  : global.setImmediate,
     clearImmediate: global.clearImmediate,
-    Date: global.Date,
+    Date          : global.Date,
   };
   installed = saved;
 
@@ -193,10 +193,10 @@ function fakeNow(): number {
 
 /** Put a task on the queue and hand back its id. */
 function schedule(
-  body: $FlowFixMe,
+  body : $FlowFixMe,
   delay: number,
   every: number | null,
-  args: $ReadOnlyArray<mixed>,
+  args : $ReadOnlyArray<mixed>,
 ): number {
   const id = nextId;
   nextId += 1;

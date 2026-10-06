@@ -124,15 +124,15 @@ describe("the round trip through Vite", () => {
       root: process.cwd(),
       base,
       logLevel: "silent",
-      server: { middlewareMode: true },
+      server  : { middlewareMode: true },
       plugins: [
         {
           name: "test:preamble",
           transformIndexHtml() {
             return [
               {
-                tag: "script",
-                attrs: { "data-uf-dev-head-preamble": "react-devtools" },
+                tag     : "script",
+                attrs   : { "data-uf-dev-head-preamble": "react-devtools" },
                 children: "hook()",
                 injectTo: "head-prepend",
               },

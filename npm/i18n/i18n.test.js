@@ -48,8 +48,8 @@ one {{You have {$count} unread message.}}
 *   {{You have {$count} unread messages.}}`;
 
 const messages = {
-  greeting: message("Hello, {$name}!", { name: string }),
-  unread: message(UNREAD, { count: number }),
+  greeting : message("Hello, {$name}!", { name: string }),
+  unread   : message(UNREAD, { count: number }),
   cartEmpty: message("Your cart is empty.", {}),
 };
 
@@ -306,7 +306,7 @@ describe("formatting over Intl", () => {
   it("formats an unannotated placeholder by the type of its value", () => {
     const catalogue = defineCatalogue("en-US", {
       plain: message("{$n}", { n: number }),
-      when: message("{$at}", { at: date }),
+      when : message("{$at}", { at: date }),
     });
 
     expect(catalogue.t("plain", { n: 1234567 })).toBe("1,234,567");
@@ -726,9 +726,9 @@ describe("the five misuses a message's type has to refuse", () => {
 
   it("reports every misuse, and only the misuses", () => {
     everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "i18n.js"),
+      fixture  : path.join("tests", "type-tests", "i18n.js"),
       alongside: ["npm/i18n"],
-      atLeast: 4,
+      atLeast  : 4,
     });
   });
 });

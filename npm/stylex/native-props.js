@@ -4,7 +4,7 @@ export type NativeStyleProps = { readonly style: { readonly [string]: string | n
 
 /** Return null for web namespaces; mixing renderer outputs is an error. */
 export function nativeProps(
-  styles: $ReadOnlyArray<mixed>,
+  styles    : $ReadOnlyArray<mixed>,
   nativeOnly: boolean = false,
 ): NativeStyleProps | null {
   let native = false;

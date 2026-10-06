@@ -50,7 +50,7 @@ function readerFor(response: Response) {
  */
 async function hosted<T>(
   capabilities: ServerCapabilities | void,
-  body: () => T | Promise<T>,
+  body        : () => T | Promise<T>,
 ): Promise<T> {
   const lifecycle = beginRequest(request());
   if (capabilities !== undefined) {
@@ -278,7 +278,7 @@ describe("taking a socket", () => {
       seen.push(given);
       return {
         response: new Response(null, { headers: { "x-upgraded": "1" } }),
-        socket: { send: () => {}, close: () => {}, addEventListener: () => {} },
+        socket  : { send: () => {}, close: () => {}, addEventListener: () => {} },
       };
     };
 
@@ -337,7 +337,7 @@ describe("queueing work", () => {
       pushed,
       backend: {
         durable: true,
-        name: "collecting",
+        name   : "collecting",
         push: async (given: JobRecord) => {
           pushed.push(given);
         },
@@ -460,7 +460,7 @@ describe("the queue that runs in this process", () => {
     // rather than run again in the same pass.
     let attempts = 0;
     const job = defineJob<mixed>({
-      name: "flaky",
+      name : "flaky",
       retry: { attempts: 3, backoff: 1_000, maxBackoff: 10_000 },
       run: () => {
         attempts += 1;
@@ -497,7 +497,7 @@ describe("the queue that runs in this process", () => {
   it("reports a job that has run out of attempts, once", async () => {
     const failures: Array<[string, string]> = [];
     const job = defineJob<mixed>({
-      name: "doomed",
+      name : "doomed",
       retry: { attempts: 1, backoff: 1, maxBackoff: 1 },
       run: () => {
         throw new Error("no");
@@ -506,7 +506,7 @@ describe("the queue that runs in this process", () => {
     const queue = memoryQueue({
       jobs: [job],
       tick: 0,
-      now: () => 0,
+      now : () => 0,
       onFailure: (given: JobRecord, error: mixed) => {
         failures.push([given.job, String(error)]);
       },
@@ -528,7 +528,7 @@ describe("the queue that runs in this process", () => {
     const queue = memoryQueue({
       jobs: [],
       tick: 0,
-      now: () => 0,
+      now : () => 0,
       onFailure: (given: JobRecord, error: mixed) => {
         failures.push(String(error));
       },
@@ -571,8 +571,8 @@ describe("what a target will accept", () => {
     expect(nodeCapabilities()).toMatchObject({ target: "node", stream: true, persistent: true });
     expect(edgeCapabilities()).toMatchObject({ target: "edge", stream: true, persistent: false });
     expect(lambdaCapabilities()).toMatchObject({
-      target: "serverless",
-      stream: false,
+      target    : "serverless",
+      stream    : false,
       persistent: false,
     });
   });

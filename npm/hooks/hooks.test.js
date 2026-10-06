@@ -92,7 +92,7 @@ describe("useStableCallback", () => {
     const identities = new Set<mixed>();
     component Probe() {
       const [, setTick] = useState(0);
-      const callback = useStableCallback(() => {});
+      const callback    = useStableCallback(() => {});
       identities.add(callback);
       return (
         <button type="button" onClick={() => setTick((value) => value + 1)}>
@@ -113,7 +113,7 @@ describe("useStableCallback", () => {
     const seen = [];
     component Probe() {
       const [count, setCount] = useState(0);
-      const report = useStableCallback(() => seen.push(count));
+      const report            = useStableCallback(() => seen.push(count));
       return (
         <div>
           <button type="button" onClick={() => setCount(count + 1)}>
@@ -187,7 +187,7 @@ describe("useDebouncedValue", () => {
   it("reports the value only once it has settled", async () => {
     component Probe() {
       const [text, setText] = useState("");
-      const settled = useDebouncedValue(text, 25);
+      const settled         = useDebouncedValue(text, 25);
       return (
         <div>
           <input aria-label="query" onChange={(event) => setText(event.target.value)} />
@@ -238,7 +238,7 @@ describe("useAsync", () => {
     let call = 0;
     component Probe() {
       const [key, setKey] = useState("first");
-      const { value } = useAsync(async () => {
+      const { value }     = useAsync(async () => {
         call += 1;
         const mine = call;
         // The first call is slower than the second, which is the case that
@@ -433,7 +433,7 @@ describe("element hooks", () => {
 
   it("tracks hover and focus", async () => {
     component Probe() {
-      const ref = useElementRef<HTMLDivElement>();
+      const ref     = useElementRef<HTMLDivElement>();
       const hovered = useHover(ref);
       const focused = useFocusWithin(ref);
       return (
@@ -485,7 +485,7 @@ describe("usePrevious", () => {
   it("reports the value from the render before", async () => {
     component Probe() {
       const [count, setCount] = useState(0);
-      const before = usePrevious(count);
+      const before            = usePrevious(count);
       return (
         <div>
           <button type="button" onClick={() => setCount(count + 1)}>
@@ -952,7 +952,7 @@ describe("more element hooks", () => {
 
   it("reports an element's own scroll offset", () => {
     component Probe() {
-      const ref = useElementRef<HTMLDivElement>();
+      const ref      = useElementRef<HTMLDivElement>();
       const { x, y } = useScroll(ref);
       return (
         <div ref={ref} data-testid="pane">
@@ -987,7 +987,7 @@ describe("more element hooks", () => {
 
   it("does not report an element as intersecting until an observer says so", () => {
     component Probe() {
-      const ref = useElementRef<HTMLDivElement>();
+      const ref  = useElementRef<HTMLDivElement>();
       const seen = useIntersecting(ref, { rootMargin: "10px", threshold: 0.5 });
       return <div ref={ref}>{seen ? "seen" : "away"}</div>;
     }
@@ -1525,9 +1525,9 @@ describe("the browser hooks that need a real browser", () => {
       // This document is 1024 wide, so the first matches and the second does
       // not — and both were given the *opposite* server value, which is what
       // shows the browser is being asked rather than the argument echoed.
-      const wide = useMediaQuery("(min-width: 100px)", false);
+      const wide     = useMediaQuery("(min-width: 100px)", false);
       const enormous = useMediaQuery("(min-width: 5000px)", true);
-      const scheme = usePreferredColorScheme("dark");
+      const scheme   = usePreferredColorScheme("dark");
       return <output>{`${String(wide)} ${String(enormous)} ${scheme}`}</output>;
     }
     render(<Probe />);
@@ -1537,7 +1537,7 @@ describe("the browser hooks that need a real browser", () => {
   it("answers a capability question through a store, not during a render", () => {
     component Probe() {
       const yes = useSupported(() => true);
-      const no = useSupported(() => false);
+      const no  = useSupported(() => false);
       return <output>{`${String(yes)} ${String(no)}`}</output>;
     }
     render(<Probe />);
@@ -1710,7 +1710,7 @@ describe("useHash", () => {
   it("tells every component about a fragment one of them wrote", async () => {
     component Probe() {
       const [fragment, write] = useHash();
-      const [elsewhere] = useHash();
+      const [elsewhere]       = useHash();
       return (
         <div>
           <button type="button" onClick={() => write("billing")}>

@@ -52,7 +52,7 @@ export class InvalidCsvError extends Error {
 
 /** Parse RFC 4180-style CSV text into rows. */
 export function parse(
-  source: string,
+  source  : string,
   options?: ParseOptions,
 ): $ReadOnlyArray<$ReadOnlyArray<string>> {
   const comma = checkedComma(options?.comma ?? ",");
@@ -194,7 +194,7 @@ export function parse(
 
 /** Serialize rows as CSV text. */
 export function stringify(
-  records: $ReadOnlyArray<$ReadOnlyArray<string>>,
+  records : $ReadOnlyArray<$ReadOnlyArray<string>>,
   options?: StringifyOptions,
 ): string {
   const comma = checkedComma(options?.comma ?? ",");

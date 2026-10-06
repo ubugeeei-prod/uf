@@ -198,15 +198,15 @@ function embedded(): RenderEnvelope | null {
  * paired with somebody else's instant.
  */
 function envelope(
-  given: { at?: number, timeZone?: string, seed?: string },
+  given    : { at?: number, timeZone?: string, seed?: string },
   inherited: RenderEnvelope | null,
 ): RenderEnvelope {
   const found = inherited ?? embedded();
   const clock = currentClock();
   return {
-    at: given.at ?? found?.at ?? clock.now(),
+    at      : given.at ?? found?.at ?? clock.now(),
     timeZone: given.timeZone ?? found?.timeZone ?? clock.timeZone(),
-    seed: given.seed ?? found?.seed ?? hostSeed(),
+    seed    : given.seed ?? found?.seed ?? hostSeed(),
   };
 }
 
@@ -238,10 +238,10 @@ function envelope(
  * either way. The header of this file has the whole argument.
  */
 export component RenderProvider(
-  at?: number,
+  at?      : number,
   timeZone?: string,
-  seed?: string,
-  children: React.Node,
+  seed?    : string,
+  children : React.Node,
 ) {
   const enclosing = useContext(RenderContext);
   // The initializer runs once per mount, on both sides, which is what makes

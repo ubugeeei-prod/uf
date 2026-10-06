@@ -178,9 +178,9 @@ const DEFAULT_MAX_RETRY = 30_000;
  * loaded yet waits without a second hook.
  */
 export hook useEventSource(url: string | null, options?: EventSourceOptions): UseEventSourceReturn {
-  const supported = useSupported(() => streamConstructor() != null);
-  const [status, setStatus] = useState<EventStreamStatus>("idle");
-  const [last, setLast] = useState<ServerEvent | null>(null);
+  const supported                     = useSupported(() => streamConstructor() != null);
+  const [status,      setStatus]      = useState<EventStreamStatus>("idle");
+  const [last,        setLast]        = useState<ServerEvent | null>(null);
   const [lastEventId, setLastEventId] = useState<string | null>(null);
   // Bumped to ask for a new connection, which is the only thing that can
   // reopen one the browser has given up on: `EventSource` in `CLOSED` cannot

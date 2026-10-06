@@ -55,9 +55,9 @@ export component Checked() {
   // every read below is inferred from `TValues`.
   const { getValues, setValue, watch, getFieldState, control } = useForm({
     defaultValues: {
-      email: "",
+      email  : "",
       address: { city: "", zip: 0 },
-      items: [{ price: 0, tags: [""] }],
+      items  : [{ price: 0, tags: [""] }],
     },
   });
 

@@ -30,7 +30,7 @@ const MINIMUM = 3;
  */
 export component Outline(path: string) {
   const [headings, setHeadings] = useState<$ReadOnlyArray<Heading>>([]);
-  const [current, setCurrent] = useState<?string>(null);
+  const [current,  setCurrent]  = useState<?string>(null);
 
   useEffect(() => {
     const article = document.getElementById("content");

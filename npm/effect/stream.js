@@ -137,13 +137,13 @@ import type { Cause, Effect, EffectGenerator, Fiber, Queue } from "./index.js";
  * cleanup.
  */
 type StreamStep<out A, out E, out R> = {
-  readonly pull: Effect<?$ReadOnlyArray<A>, E, R>,
+  readonly pull : Effect<?$ReadOnlyArray<A>, E, R>,
   readonly close: Effect<mixed, mixed, empty>,
 };
 
 type StreamCarrier<out A, out E, out R> = {
   readonly __kind: "Stream",
-  readonly open: () => StreamStep<A, E, R>,
+  readonly open  : () => StreamStep<A, E, R>,
 };
 
 /**
@@ -183,7 +183,7 @@ function chunkSizeOf(options: ?{ readonly chunkSize?: number }): number {
  * transforms below truncate batches rather than assuming them.
  */
 export function streamFromArray<A>(
-  items: $ReadOnlyArray<A>,
+  items   : $ReadOnlyArray<A>,
   options?: { readonly chunkSize?: number },
 ): Stream<A> {
   const size = chunkSizeOf(options);
@@ -218,7 +218,7 @@ export function streamFromArray<A>(
  * the usual way an infinite or stateful source is written.
  */
 export function streamFromIterator<A>(
-  open: () => $IteratorProtocol<A, mixed, void>,
+  open    : () => $IteratorProtocol<A, mixed, void>,
   options?: { readonly chunkSize?: number },
 ): Stream<A> {
   const size = chunkSizeOf(options);
@@ -268,7 +268,7 @@ export function streamFromEffect<A, E, R>(self: Effect<A, E, R>): Stream<A, E, R
  */
 export function streamPaginate<A, S, E, R>(
   initial: S,
-  page: (cursor: S) => Effect<{ readonly items: $ReadOnlyArray<A>, readonly next: ?S }, E, R>,
+  page   : (cursor: S) => Effect<{ readonly items: $ReadOnlyArray<A>, readonly next: ?S }, E, R>,
 ): Stream<A, E, R> {
   return makeStream(() => {
     let cursor = initial;
@@ -301,7 +301,7 @@ export function streamPaginate<A, S, E, R>(
  * also accepts Node's `stream/web` reader and a test double.
  */
 type ChunkReader<A> = {
-  readonly read: () => Promise<{ readonly done?: boolean, readonly value?: A, ... }>,
+  readonly read  : () => Promise<{ readonly done?: boolean, readonly value?: A, ... }>,
   readonly cancel: () => mixed,
   ...
 };
@@ -378,13 +378,13 @@ function readValue<A>(step: { readonly value?: A, ... }): A {
  * built on.
  */
 export function streamMap<A, B, E, R>(
-  self: Stream<A, E, R>,
+  self     : Stream<A, E, R>,
   transform: (value: A) => B,
 ): Stream<B, E, R> {
   return makeStream(() => {
     const source = openStream(self);
     return {
-      pull: map(source.pull, (batch) => (batch == null ? null : batch.map(transform))),
+      pull : map(source.pull, (batch) => (batch == null ? null : batch.map(transform))),
       close: source.close,
     };
   });
@@ -398,7 +398,7 @@ export function streamFilter<A, E, R>(
   return makeStream(() => {
     const source = openStream(self);
     return {
-      pull: map(source.pull, (batch) => (batch == null ? null : batch.filter(keep))),
+      pull : map(source.pull, (batch) => (batch == null ? null : batch.filter(keep))),
       close: source.close,
     };
   });
@@ -471,8 +471,8 @@ export function streamTap<A, E1, E2, R1, R2>(
  * something else is worse than one that is not offered.
  */
 export function streamMapEffect<A, B, E1, E2, R1, R2>(
-  self: Stream<A, E1, R1>,
-  body: (value: A) => Effect<B, E2, R2>,
+  self    : Stream<A, E1, R1>,
+  body    : (value: A) => Effect<B, E2, R2>,
   options?: { readonly concurrency?: number },
 ): Stream<B, E1 | E2, R1 | R2> {
   const requested = options == null ? null : options.concurrency;
@@ -510,7 +510,7 @@ export function streamMapEffect<A, B, E1, E2, R1, R2>(
  * `ensuring` gives an effect, said again for a traversal.
  */
 export function streamEnsuring<A, E, R>(
-  self: Stream<A, E, R>,
+  self     : Stream<A, E, R>,
   finalizer: () => Effect<mixed, mixed, empty>,
 ): Stream<A, E, R> {
   return makeStream(() => {
@@ -532,9 +532,9 @@ export function streamEnsuring<A, E, R>(
  * draining a stream stops between pulls rather than in the middle of one.
  */
 export function streamRunFold<A, B, E, R>(
-  self: Stream<A, E, R>,
+  self   : Stream<A, E, R>,
   initial: B,
-  step: (state: B, value: A) => B,
+  step   : (state: B, value: A) => B,
 ): Effect<B, E, R> {
   return suspend(() => {
     const source = openStream(self);
@@ -608,7 +608,7 @@ export function streamRunHead<A, E, R>(self: Stream<A, E, R>): Effect<?A, E, R> 
  * make the traversal wait for a batch to fill.
  */
 export function streamFromQueue<A>(
-  source: Queue<A>,
+  source  : Queue<A>,
   options?: { readonly chunkSize?: number },
 ): Stream<A> {
   const size = chunkSizeOf(options);
@@ -701,8 +701,8 @@ export function streamBuffer<A, E, R>(self: Stream<A, E, R>, capacity: number): 
  * `streamZip` is the combinator with one.
  */
 export function streamMerge<A, E1, E2, R1, R2>(
-  left: Stream<A, E1, R1>,
-  right: Stream<A, E2, R2>,
+  left    : Stream<A, E1, R1>,
+  right   : Stream<A, E2, R2>,
   options?: { readonly capacity?: number },
 ): Stream<A, E1 | E2, R1 | R2> {
   const requested = options == null ? null : options.capacity;
@@ -729,7 +729,7 @@ export function streamMerge<A, E1, E2, R1, R2>(
       } else {
         const fresh = yield* queue<?$ReadOnlyArray<A>>(size);
         const pumped = {
-          left: yield* pumpingInto(leftSource, fresh),
+          left : yield* pumpingInto(leftSource, fresh),
           right: yield* pumpingInto(rightSource, fresh),
         };
         shared = fresh;
@@ -791,7 +791,7 @@ export function streamMerge<A, E1, E2, R1, R2>(
  * finite one terminate.
  */
 export function streamZip<A, B, E1, E2, R1, R2>(
-  left: Stream<A, E1, R1>,
+  left : Stream<A, E1, R1>,
   right: Stream<B, E2, R2>,
 ): Stream<[A, B], E1 | E2, R1 | R2> {
   return makeStream(() => {
@@ -848,12 +848,12 @@ const DEFAULT_MERGE_CAPACITY = 16;
 /** A traversal being drained into a queue by a fiber, and the queue. */
 type PumpedInto<A, E> = {
   readonly buffer: Queue<?$ReadOnlyArray<A>>,
-  readonly fiber: Fiber<void, E>,
+  readonly fiber : Fiber<void, E>,
 };
 
 /** A queue of the right shape, and a fiber filling it from `source`. */
 function pumping<A, E, R>(
-  source: StreamStep<A, E, R>,
+  source  : StreamStep<A, E, R>,
   capacity: number,
 ): Effect<PumpedInto<A, E>, empty, R> {
   return effect(function* (): EffectGenerator<PumpedInto<A, E>, empty, R> {
@@ -880,7 +880,7 @@ function pumping<A, E, R>(
  */
 function pumpingInto<A, E, R>(
   source: StreamStep<A, E, R>,
-  into: Queue<?$ReadOnlyArray<A>>,
+  into  : Queue<?$ReadOnlyArray<A>>,
 ): Effect<Fiber<void, E>, empty, R> {
   return suspend(() => {
     let reachedTheEnd = false;
@@ -947,7 +947,7 @@ interface ChunkSink<A> {
  * library definition.
  */
 type ChunkSource<A> = {
-  readonly pull: (controller: ChunkSink<A>) => Promise<void>,
+  readonly pull  : (controller: ChunkSink<A>) => Promise<void>,
   readonly cancel: (reason: mixed) => Promise<void>,
 };
 

@@ -28,18 +28,18 @@ export function nativeLinkHref(table: Table, to: string): string | null {
 export type NativeLinkSource = {|
   readonly getInitialURL: () => Promise<string | null>,
   readonly addEventListener: (
-    event: "url",
+    event   : "url",
     listener: (event: {| url: string |}) => void,
   ) => {| remove: () => void |},
 |};
 
 /** Pass React Native's Linking; rejected links stay with the OS/browser. */
 export function createNativeLinking(
-  table: Table,
+  table : Table,
   source: NativeLinkSource,
 ): {|
   getInitialURL: () => Promise<string | null>,
-  subscribe: (listener: (href: string) => void) => () => void,
+  subscribe    : (listener: (href: string) => void) => () => void,
 |} {
   let last: string | null = null;
   let deliveredAt = -Infinity;

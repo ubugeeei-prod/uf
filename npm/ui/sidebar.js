@@ -83,13 +83,13 @@ const NARROW = "(max-width: 48rem)";
 type SidebarState = {|
   readonly base: string,
   /** Expanded on a wide screen, and showing on a narrow one. */
-  readonly open: boolean,
+  readonly open   : boolean,
   readonly setOpen: (open: boolean) => void,
   /** In the page, showing icons only. Never true while it is a sheet. */
   readonly collapsed: boolean,
   /** Whether the viewport has made it a modal sheet. */
   readonly modal: boolean,
-  readonly side: SidebarSide,
+  readonly side : SidebarSide,
   /** Whether the navigation is in the document, so nothing names it when it is not. */
   readonly present: boolean,
 |};
@@ -121,14 +121,14 @@ hook useSidebar(part: string): SidebarState {
  * transition a wrapper around only the navigation could not do.
  */
 component SidebarRoot(
-  children: React.Node,
-  defaultOpen?: boolean = true,
-  narrowQuery?: string = NARROW,
+  children     : React.Node,
+  defaultOpen? : boolean = true,
+  narrowQuery? : string = NARROW,
   onOpenChange?: (open: boolean) => void,
-  open?: boolean,
-  side?: SidebarSide = "left",
+  open?        : boolean,
+  side?        : SidebarSide = "left",
 ) {
-  const base = useId();
+  const base              = useId();
   const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
   // `false` on the server: see the module header. The wide layout is the one
   // that is still usable when there is no viewport to ask.
@@ -153,7 +153,7 @@ component SidebarRoot(
     <SidebarContext.Provider value={state}>
       {
         match (modal) {
-          true =>
+          true  =>
             <SheetRoot onOpenChange={setOpen} open={isOpen} side={side}>
               {children}
             </SheetRoot>,
@@ -186,14 +186,14 @@ component SidebarTrigger(children: React.Node, ...rest: Rest) {
   // better `aria-controls` than the navigation inside it, so this part adds
   // nothing to it.
   return match (sidebar.modal) {
-    true => <SheetTrigger {...forwarded(rest)}>{children}</SheetTrigger>,
+    true  => <SheetTrigger {...forwarded(rest)}>{children}</SheetTrigger>,
     false =>
       <button
         {...passed}
         aria-controls={named}
         aria-expanded={
           match (sidebar.open) {
-            true => "true",
+            true  => "true",
             false => "false",
           }
         }
@@ -273,9 +273,9 @@ component SidebarFooter(children: React.Node, ...rest: Rest) {
  * menu.
  */
 component SidebarItem(
-  children: React.Node,
-  label: string,
-  render?: RenderProp,
+  children     : React.Node,
+  label        : string,
+  render?      : RenderProp,
   tooltipProps?: Rest,
   ...rest: Rest
 ) {
@@ -297,7 +297,7 @@ component SidebarItem(
     // `undefined` would blank the entry.
     const props = withProps(withProps(passed, extra), mine);
     return match (render) {
-      undefined => <button {...props} type="button" />,
+      undefined    => <button {...props} type="button" />,
       const custom => custom(props),
     };
   };

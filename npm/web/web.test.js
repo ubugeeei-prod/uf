@@ -104,14 +104,14 @@ describe("a remote Image, through the endpoint", () => {
     // comes back at 800 — the endpoint never upscales, so the descriptor says
     // 800 rather than promising pixels that do not exist.
     expect(remoteSources(endpoint, source, 800, 75)).toEqual({
-      src: at(828),
+      src   : at(828),
       srcSet: `${at(640)} 640w, ${at(828)} 800w`,
     });
   });
 
   it("asks for the widest width there is for an image wider than all of them", () => {
     expect(remoteSources(endpoint, source, 4000, 60)).toEqual({
-      src: at(1200, 60),
+      src   : at(1200, 60),
       srcSet: `${at(640, 60)} 640w, ${at(828, 60)} 828w, ${at(1200, 60)} 1200w`,
     });
   });

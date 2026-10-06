@@ -14,11 +14,11 @@ import { DateField } from "./date-field.js";
 import { Root as PopoverRoot, Body as PopoverBody, Trigger as PopoverTrigger } from "./popover.js";
 
 type Picker = {
-  range: DateRange | null,
-  set: (range: DateRange | null) => void,
-  close: () => void,
-  minValue: string | void,
-  maxValue: string | void,
+  range         : DateRange | null,
+  set           : (range: DateRange | null) => void,
+  close         : () => void,
+  minValue      : string | void,
+  maxValue      : string | void,
   isDateDisabled: ((date: PlainDate) => boolean) | void,
 };
 const PickerContext: React.Context<Picker | null> = createContext(null);
@@ -28,23 +28,23 @@ hook usePicker(): Picker {
   return picker;
 }
 component DateRangePickerRoot(
-  children: React.Node,
-  value?: DateRange | null,
-  defaultValue?: DateRange | null = null,
-  onValueChange?: (range: DateRange | null) => void,
-  open?: boolean,
-  defaultOpen?: boolean = false,
-  onOpenChange?: (open: boolean) => void,
-  minValue?: string,
-  maxValue?: string,
+  children       : React.Node,
+  value?         : DateRange | null,
+  defaultValue?  : DateRange | null = null,
+  onValueChange? : (range: DateRange | null) => void,
+  open?          : boolean,
+  defaultOpen?   : boolean = false,
+  onOpenChange?  : (open: boolean) => void,
+  minValue?      : string,
+  maxValue?      : string,
   isDateDisabled?: (date: PlainDate) => boolean,
 ) {
-  const [range, setRange] = useControlled(value, defaultValue, onValueChange);
-  const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
+  const [range,  setRange] = useControlled(value, defaultValue, onValueChange);
+  const [isOpen, setOpen]  = useControlled(open, defaultOpen, onOpenChange);
   validateRange(range);
   const state = {
     range,
-    set: setRange,
+    set  : setRange,
     close: () => setOpen(false),
     minValue,
     maxValue,

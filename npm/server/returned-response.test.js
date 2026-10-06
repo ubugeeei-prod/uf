@@ -14,7 +14,7 @@ import { settledAfterBody } from "./internal/returned-response.js";
 function heldBody(): {|
   body: ReadableStream<Uint8Array>,
   send: (text: string) => void,
-  end: () => void,
+  end : () => void,
 |} {
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
   const body = new ReadableStream({
@@ -25,7 +25,7 @@ function heldBody(): {|
   return {
     body,
     send: (text) => controller?.enqueue(new TextEncoder().encode(text)),
-    end: () => controller?.close(),
+    end : () => controller?.close(),
   };
 }
 

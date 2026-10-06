@@ -88,7 +88,7 @@ export type DateMovement =
 
 /** The part of a key event a grid reads. */
 export type DateKeyPress = {
-  readonly key: string,
+  readonly key      : string,
   readonly shiftKey?: boolean,
   ...
 };
@@ -117,19 +117,19 @@ export function movementForDateKey(event: DateKeyPress, direction: Direction): D
   const pages = event.shiftKey === true ? 12 : 1;
   return match (event.key) {
     "ArrowRight" => { kind: "days", by: forward },
-    "ArrowLeft" => { kind: "days", by: -forward },
-    "ArrowDown" => { kind: "days", by: DAYS_IN_WEEK },
-    "ArrowUp" => { kind: "days", by: -DAYS_IN_WEEK },
-    "Home" => { kind: "week-edge", to: "start" },
-    "End" => { kind: "week-edge", to: "end" },
+    "ArrowLeft"  => { kind: "days", by: -forward },
+    "ArrowDown"  => { kind: "days", by: DAYS_IN_WEEK },
+    "ArrowUp"    => { kind: "days", by: -DAYS_IN_WEEK },
+    "Home"       => { kind: "week-edge", to: "start" },
+    "End"        => { kind: "week-edge", to: "end" },
     // A year is twelve months rather than `{ years: 1 }`, so that the day is
     // clamped once by the same rule the month keys use: the 29th of February
     // plus a year is the 28th, and adding a year to a month-clamped date and
     // adding twelve months have to agree or `Shift+PageDown` twice would not
     // equal `PageDown` twenty-four times.
-    "PageUp" => { kind: "months", by: -pages },
-    "PageDown" => { kind: "months", by: pages },
-    _ => null,
+    "PageUp"     => { kind: "months", by: -pages },
+    "PageDown"   => { kind: "months", by: pages },
+    _            => null,
   };
 }
 
@@ -167,9 +167,9 @@ export function weekEdge(date: PlainDate, weekStartsOn: number, to: "start" | "e
  */
 export function moveDate(from: PlainDate, movement: DateMovement, weekStartsOn: number): PlainDate {
   return match (movement) {
-    {kind: "days", by: const by} => from.add({ days: by }),
-    {kind: "months", by: const by} => from.add({ months: by }),
-    {kind: "years", by: const by} => from.add({ years: by }),
+    {kind: "days", by: const by}      => from.add({ days: by }),
+    {kind: "months", by: const by}    => from.add({ months: by }),
+    {kind: "years", by: const by}     => from.add({ years: by }),
     {kind: "week-edge", to: const to} => weekEdge(from, weekStartsOn, to),
   };
 }
@@ -186,8 +186,8 @@ export function moveDate(from: PlainDate, movement: DateMovement, weekStartsOn: 
  * rows stay rectangular for a screen reader counting columns.
  */
 export function weeksOf(
-  year: number,
-  month: number,
+  year        : number,
+  month       : number,
   weekStartsOn: number,
 ): $ReadOnlyArray<$ReadOnlyArray<PlainDate | null>> {
   const first = Temporal.PlainDate.from({ day: 1, month, year });

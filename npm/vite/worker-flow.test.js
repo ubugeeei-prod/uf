@@ -56,11 +56,11 @@ describe("a worker written in Flow", () => {
       const output = await build({
         root,
         configFile: false,
-        logLevel: "silent",
-        worker: { format: "es", plugins: () => [flowTransform({ root })] },
+        logLevel  : "silent",
+        worker    : { format: "es", plugins: () => [flowTransform({ root })] },
         build: {
-          write: false,
-          minify: false,
+          write        : false,
+          minify       : false,
           rollupOptions: { input: path.join(root, "main.js") },
         },
       });

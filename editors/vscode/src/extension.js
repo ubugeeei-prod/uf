@@ -70,8 +70,8 @@ import type { ServerState } from "./status";
 import type { Inspection, Setting, Step } from "./workspace";
 
 type Session = {
-  client: LanguageClient,
-  folder: string,
+  client : LanguageClient,
+  folder : string,
   watcher: vscode.FileSystemWatcher,
 };
 */
@@ -174,8 +174,8 @@ async function start(folder /*: vscode.WorkspaceFolder */) /*: Promise<void> */ 
 
   const settings = settingsFor(folder.uri);
   const resolution = resolveServer(settings.serverPath, root, {
-    exists: isExecutable,
-    env: process.env,
+    exists  : isExecutable,
+    env     : process.env,
     platform: process.platform,
   });
 
@@ -202,15 +202,15 @@ async function start(folder /*: vscode.WorkspaceFolder */) /*: Promise<void> */ 
 
   const executable = serverExecutable(resolution, root);
   const serverOptions = {
-    run: executable,
+    run  : executable,
     debug: executable,
   };
   const clientOptions = {
     // Scoped to this folder: a multi-root window with two uf projects gets two
     // servers, and neither is sent the other's files.
     documentSelector: [{ scheme: "file", pattern: new vscode.RelativePattern(folder, FLOW_GLOB) }],
-    workspaceFolder: folder,
-    outputChannel: output ?? undefined,
+    workspaceFolder : folder,
+    outputChannel   : output ?? undefined,
     // The server has no `workspace/configuration` and no
     // `didChangeConfiguration` handling; its settings come from
     // `uf.config.js`, which the watcher below restarts it for.
@@ -549,8 +549,8 @@ async function showMenu() /*: Promise<void> */ {
     { label: "$(output) Show Language Server Log", command: "uf.showOutput" },
     { label: "$(settings-gear) Configure Workspace for Flow", command: "uf.configureWorkspace" },
     {
-      label: "$(gear) Open uf Settings",
-      command: "workbench.action.openSettings",
+      label   : "$(gear) Open uf Settings",
+      command : "workbench.action.openSettings",
       argument: "@ext:uniflowed.uf",
     },
   ];
@@ -652,7 +652,7 @@ async function formatOnSave(
       options: {
         // The server formats to `uf.config.js`, not to the editor's tab size.
         // These are sent because the protocol requires them.
-        tabSize: 2,
+        tabSize     : 2,
         insertSpaces: true,
       },
     });

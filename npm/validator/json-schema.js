@@ -84,7 +84,7 @@ export type Unrepresentable = {|
 
 /** A JSON Schema document, and everything JSON Schema could not say. */
 export type JsonSchemaExport = {|
-  readonly schema: JsonSchemaNode,
+  readonly schema         : JsonSchemaNode,
   readonly unrepresentable: $ReadOnlyArray<Unrepresentable>,
 |};
 
@@ -113,13 +113,13 @@ function merge(left: JsonSchemaNode, right: JsonSchemaNode): JsonSchemaNode {
  */
 function mayBeAbsent(description: Description): boolean {
   return match (description) {
-    {kind: "optional", inner: _} => true,
-    {kind: "nullish", inner: _} => true,
-    {kind: "default", inner: _} => true,
-    {kind: "fallback", inner: _} => true,
+    {kind: "optional", inner: _}                             => true,
+    {kind: "nullish", inner: _}                              => true,
+    {kind: "default", inner: _}                              => true,
+    {kind: "fallback", inner: _}                             => true,
     {kind: "constrained", inner: const inner, constraint: _} => mayBeAbsent(inner),
-    {kind: "transformed", inner: const inner} => mayBeAbsent(inner),
-    _ => false,
+    {kind: "transformed", inner: const inner}                => mayBeAbsent(inner),
+    _                                                        => false,
   };
 }
 
@@ -132,9 +132,9 @@ function mayBeAbsent(description: Description): boolean {
  */
 function describesTransformedValue(description: Description): boolean {
   return match (description) {
-    {kind: "transformed", inner: _} => true,
+    {kind: "transformed", inner: _}                          => true,
     {kind: "constrained", inner: const inner, constraint: _} => describesTransformedValue(inner),
-    _ => false,
+    _                                                        => false,
   };
 }
 
@@ -146,19 +146,19 @@ function labelFor(constraint: Constraint): string {
 /** The JSON Schema keywords one `pipe` step contributes, if any. */
 function keywordsFor(constraint: Constraint): JsonSchemaNode {
   return match (constraint) {
-    {kind: "minLength", value: const value} => { minLength: value },
-    {kind: "maxLength", value: const value} => { maxLength: value },
-    {kind: "length", value: const value} => { minLength: value, maxLength: value },
-    {kind: "minItems", value: const value} => { minItems: value },
-    {kind: "maxItems", value: const value} => { maxItems: value },
-    {kind: "min", value: const value} => { minimum: value },
-    {kind: "max", value: const value} => { maximum: value },
-    {kind: "integer"} => { type: "integer" },
+    {kind: "minLength", value: const value}  => { minLength: value },
+    {kind: "maxLength", value: const value}  => { maxLength: value },
+    {kind: "length", value: const value}     => { minLength: value, maxLength: value },
+    {kind: "minItems", value: const value}   => { minItems: value },
+    {kind: "maxItems", value: const value}   => { maxItems: value },
+    {kind: "min", value: const value}        => { minimum: value },
+    {kind: "max", value: const value}        => { maximum: value },
+    {kind: "integer"}                        => { type: "integer" },
     {kind: "multipleOf", value: const value} => { multipleOf: value },
-    {kind: "pattern", source: const source} => { pattern: source },
-    {kind: "format", name: const name} => { format: name },
-    {kind: "brand", name: const name} => { title: name },
-    {kind: "opaque", label: _} => {},
+    {kind: "pattern", source: const source}  => { pattern: source },
+    {kind: "format", name: const name}       => { format: name },
+    {kind: "brand", name: const name}        => { title: name },
+    {kind: "opaque", label: _}               => {},
   };
 }
 
@@ -181,9 +181,9 @@ export function toJsonSchema(schema: Schema<mixed, mixed>): JsonSchemaExport {
   }
 
   function object(
-    entries: $ReadOnlyArray<[string, Description]>,
+    entries    : $ReadOnlyArray<[string, Description]>,
     unknownKeys: "strip" | "reject" | "keep",
-    path: Path,
+    path       : Path,
   ): JsonSchemaNode {
     const properties: { [string]: JsonSchemaNode, ... } = {};
     const required: Array<string> = [];
@@ -210,66 +210,66 @@ export function toJsonSchema(schema: Schema<mixed, mixed>): JsonSchemaExport {
 
   function convert(description: Description, path: Path): JsonSchemaNode {
     return match (description) {
-      {kind: "unknown"} => {},
-      {kind: "never"} => { not: {} },
-      {kind: "string"} => { type: "string" },
-      {kind: "number"} => { type: "number" },
-      {kind: "boolean"} => { type: "boolean" },
-      {kind: "null"} => { type: "null" },
-      {kind: "bigint"} => unsupported("bigint", path),
-      {kind: "undefined"} => unsupported("undefined", path),
-      {kind: "date"} => unsupported("date", path),
-      {kind: "instance", name: const name} => unsupported(`instance ${name}`, path),
-      {kind: "custom", name: const name} => unsupported(`custom ${name}`, path),
-      {kind: "map", key: _, value: _} => unsupported("map", path),
-      {kind: "set", item: _} => unsupported("set", path),
-      {kind: "literal", value: const value} => { const: value },
-      {kind: "enum", values: const values} => { enum: values.slice() },
-      {kind: "array", item: const item} =>
+      {kind: "unknown"}                                                        => {},
+      {kind: "never"}                                                          => { not: {} },
+      {kind: "string"}                                                         => { type: "string" },
+      {kind: "number"}                                                         => { type: "number" },
+      {kind: "boolean"}                                                        => { type: "boolean" },
+      {kind: "null"}                                                           => { type: "null" },
+      {kind: "bigint"}                                                         => unsupported("bigint", path),
+      {kind: "undefined"}                                                      => unsupported("undefined", path),
+      {kind: "date"}                                                           => unsupported("date", path),
+      {kind: "instance", name: const name}                                     => unsupported(`instance ${name}`, path),
+      {kind: "custom", name: const name}                                       => unsupported(`custom ${name}`, path),
+      {kind: "map", key: _, value: _}                                          => unsupported("map", path),
+      {kind: "set", item: _}                                                   => unsupported("set", path),
+      {kind: "literal", value: const value}                                    => { const: value },
+      {kind: "enum", values: const values}                                     => { enum: values.slice() },
+      {kind: "array", item: const item}                                        =>
         {
-          type: "array",
+          type : "array",
           items: convert(item, path.concat("*")),
         },
-      {kind: "tuple", items: const items} =>
+      {kind: "tuple", items: const items}                                      =>
         {
-          type: "array",
+          type       : "array",
           prefixItems: items.map((item, index) => convert(item, path.concat(String(index)))),
-          minItems: items.length,
-          maxItems: items.length,
+          minItems   : items.length,
+          maxItems   : items.length,
         },
-      {kind: "record", value: const value} =>
+      {kind: "record", value: const value}                                     =>
         {
-          type: "object",
+          type                : "object",
           additionalProperties: convert(value, path.concat("*")),
         },
       {kind: "object", entries: const entries, unknownKeys: const unknownKeys} =>
         object(entries, unknownKeys, path),
-      {kind: "union", options: const options} =>
+      {kind: "union", options: const options}                                  =>
         {
           anyOf: options.map((option) => convert(option, path)),
         },
-      {kind: "variant", key: _, branches: const branches} =>
+      {kind: "variant", key: _, branches: const branches}                      =>
         {
           oneOf: branches.map(([, branch]) => convert(branch, path)),
         },
-      {kind: "intersect", parts: const parts} =>
+      {kind: "intersect", parts: const parts}                                  =>
         {
           allOf: parts.map((part) => convert(part, path)),
         },
-      {kind: "optional", inner: const inner} => convert(inner, path),
-      {kind: "default", inner: const inner} => convert(inner, path),
-      {kind: "nullable", inner: const inner} =>
+      {kind: "optional", inner: const inner}                                   => convert(inner, path),
+      {kind: "default", inner: const inner}                                    => convert(inner, path),
+      {kind: "nullable", inner: const inner}                                   =>
         {
           anyOf: [convert(inner, path), { type: "null" }],
         },
-      {kind: "nullish", inner: const inner} =>
+      {kind: "nullish", inner: const inner}                                    =>
         {
           anyOf: [convert(inner, path), { type: "null" }],
         },
-      {kind: "fallback", inner: _} => {},
-      {kind: "transformed", inner: const inner} => convert(inner, path),
-      {kind: "lazy", id: const id, inner: const inner} => recursive(id, inner, path),
-      {kind: "constrained", inner: const inner, constraint: const constraint} =>
+      {kind: "fallback", inner: _}                                             => {},
+      {kind: "transformed", inner: const inner}                                => convert(inner, path),
+      {kind: "lazy", id: const id, inner: const inner}                         => recursive(id, inner, path),
+      {kind: "constrained", inner: const inner, constraint: const constraint}  =>
         constrained(inner, constraint, path),
     };
   }

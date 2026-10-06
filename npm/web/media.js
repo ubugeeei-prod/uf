@@ -70,7 +70,7 @@ export type Loading = "eager" | "lazy";
 /** One alternative rendering of the same image. */
 export type Source = {
   readonly srcSet: string,
-  readonly type?: string,
+  readonly type? : string,
   readonly media?: string,
 };
 
@@ -236,19 +236,19 @@ function defaultSizes(width: number): string {
  * was written.
  */
 export component Image(
-  src: string | ImageAsset,
-  alt: string,
-  width?: number,
-  height?: number,
-  loading?: Loading,
-  priority?: boolean = false,
-  sizes?: string,
-  srcSet?: string,
+  src         : string | ImageAsset,
+  alt         : string,
+  width?      : number,
+  height?     : number,
+  loading?    : Loading,
+  priority?   : boolean = false,
+  sizes?      : string,
+  srcSet?     : string,
   placeholder?: boolean = true,
-  quality?: number,
+  quality?    : number,
   unoptimized?: boolean = false,
-  className?: string,
-  style?: { readonly [string]: string | number },
+  className?  : string,
+  style?      : { readonly [string]: string | number },
   ...rest: ReactTypes.ElementConfig<"img">
 ) {
   // Refined rather than cast: `src` is a union and `typeof` narrows it, so
@@ -316,8 +316,8 @@ export component Image(
               // reader, and the browser paints over it as the real image
               // decodes instead of swapping one node for another.
               ...style,
-              backgroundImage: style?.backgroundImage ?? `url("${blur}")`,
-              backgroundSize: style?.backgroundSize ?? "cover",
+              backgroundImage   : style?.backgroundImage ?? `url("${blur}")`,
+              backgroundSize    : style?.backgroundSize ?? "cover",
               backgroundPosition: style?.backgroundPosition ?? "center",
             }
       }
@@ -386,12 +386,12 @@ export component Image(
  * mistake that only shows up in the one browser that took none of the sources.
  */
 export component Picture(
-  src: string,
-  alt: string,
-  width: number,
-  height: number,
-  sources?: $ReadOnlyArray<Source> = [],
-  loading?: Loading = "lazy",
+  src       : string,
+  alt       : string,
+  width     : number,
+  height    : number,
+  sources?  : $ReadOnlyArray<Source> = [],
+  loading?  : Loading = "lazy",
   className?: string,
 ) {
   return (
@@ -473,10 +473,10 @@ export component Picture(
  * request.
  */
 export component Font(
-  src: string | FontAsset,
-  type?: string,
+  src         : string | FontAsset,
+  type?       : string,
   crossOrigin?: "anonymous" | "use-credentials" = "anonymous",
-  preload?: boolean,
+  preload?    : boolean,
 ) {
   const asset: FontAsset | null = typeof src === "string" ? null : src;
   const url: string = typeof src === "string" ? src : src.src;
@@ -599,11 +599,11 @@ export component IconSprite(sprite: SpriteAsset) {
  * when that is what you mean.
  */
 export component Icon(
-  icon: IconAsset,
-  label?: string,
-  size?: number = 24,
-  width?: number,
-  height?: number,
+  icon      : IconAsset,
+  label?    : string,
+  size?     : number = 24,
+  width?    : number,
+  height?   : number,
   className?: string,
   ...rest: ReactTypes.ElementConfig<"svg">
 ) {

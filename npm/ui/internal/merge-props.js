@@ -148,14 +148,14 @@ export type RenderProp = (props: Rest) => Node;
  */
 export type PartEvent = {
   readonly defaultPrevented: boolean,
-  readonly key: string,
-  readonly altKey: boolean,
-  readonly ctrlKey: boolean,
-  readonly metaKey: boolean,
-  readonly shiftKey: boolean,
-  readonly currentTarget: mixed,
-  readonly preventDefault: () => mixed,
-  readonly stopPropagation: () => mixed,
+  readonly key             : string,
+  readonly altKey          : boolean,
+  readonly ctrlKey         : boolean,
+  readonly metaKey         : boolean,
+  readonly shiftKey        : boolean,
+  readonly currentTarget   : mixed,
+  readonly preventDefault  : () => mixed,
+  readonly stopPropagation : () => mixed,
   ...
 };
 
@@ -202,7 +202,7 @@ export function forwarded(rest: Rest): $FlowFixMe {
  */
 export function composeHandlers<TEvent extends { readonly defaultPrevented?: boolean, ... }>(
   theirs: mixed,
-  ours: (event: TEvent) => mixed,
+  ours  : (event: TEvent) => mixed,
 ): (event: TEvent) => mixed {
   if (typeof theirs !== "function") {
     return ours;
@@ -218,7 +218,7 @@ export function composeHandlers<TEvent extends { readonly defaultPrevented?: boo
 /** Set both refs, whichever kinds they are. */
 export function composeRefs<T>(
   theirs: mixed,
-  ours: (value: T | null) => mixed,
+  ours  : (value: T | null) => mixed,
 ): (value: T | null) => void {
   return (value: T | null) => {
     ours(value);

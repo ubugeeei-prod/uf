@@ -27,14 +27,14 @@ export function startDevState(root, metadata) {
   const state = {
     schema: 1,
     session,
-    pid: process.pid,
-    startedAt: Date.now(),
-    updatedAt: 0,
+    pid       : process.pid,
+    startedAt : Date.now(),
+    updatedAt : 0,
     generation: 0,
-    errors: [],
-    logs: [],
-    routes: [],
-    actions: [],
+    errors    : [],
+    logs      : [],
+    routes    : [],
+    actions   : [],
   };
   let closed = false;
   const persist = (refresh = false) => {

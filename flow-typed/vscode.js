@@ -30,13 +30,13 @@ declare module "vscode" {
   declare export class Uri {
     readonly fsPath: string;
     readonly scheme: string;
-    readonly path: string;
+    readonly path  : string;
     toString(): string;
   }
 
   declare export interface WorkspaceFolder {
-    readonly uri: Uri;
-    readonly name: string;
+    readonly uri  : Uri;
+    readonly name : string;
     readonly index: number;
   }
 
@@ -51,7 +51,7 @@ declare module "vscode" {
   declare export class TextEdit {}
 
   declare export interface TextDocument {
-    readonly uri: Uri;
+    readonly uri       : Uri;
     readonly languageId: string;
   }
 
@@ -66,7 +66,7 @@ declare module "vscode" {
   }
 
   declare export interface WorkspaceFoldersChangeEvent {
-    readonly added: $ReadOnlyArray<WorkspaceFolder>;
+    readonly added  : $ReadOnlyArray<WorkspaceFolder>;
     readonly removed: $ReadOnlyArray<WorkspaceFolder>;
   }
 
@@ -76,21 +76,21 @@ declare module "vscode" {
 
   /** What `WorkspaceConfiguration.inspect` answers for one key. */
   declare export type ConfigurationInspection = {
-    readonly key: string,
-    readonly defaultValue?: mixed,
-    readonly globalValue?: mixed,
-    readonly workspaceValue?: mixed,
-    readonly workspaceFolderValue?: mixed,
-    readonly defaultLanguageValue?: mixed,
-    readonly globalLanguageValue?: mixed,
-    readonly workspaceLanguageValue?: mixed,
+    readonly key                          : string,
+    readonly defaultValue?                : mixed,
+    readonly globalValue?                 : mixed,
+    readonly workspaceValue?              : mixed,
+    readonly workspaceFolderValue?        : mixed,
+    readonly defaultLanguageValue?        : mixed,
+    readonly globalLanguageValue?         : mixed,
+    readonly workspaceLanguageValue?      : mixed,
     readonly workspaceFolderLanguageValue?: mixed,
-    readonly languageIds?: $ReadOnlyArray<string>,
+    readonly languageIds?                 : $ReadOnlyArray<string>,
   };
 
   declare export var ConfigurationTarget: {
-    readonly Global: 1,
-    readonly Workspace: 2,
+    readonly Global         : 1,
+    readonly Workspace      : 2,
     readonly WorkspaceFolder: 3,
   };
 
@@ -104,10 +104,10 @@ declare module "vscode" {
     get(section: string): mixed;
     inspect(section: string): ConfigurationInspection | void;
     update(
-      section: string,
-      value: mixed,
+      section             : string,
+      value               : mixed,
       configurationTarget?: 1 | 2 | 3 | boolean | null,
-      overrideInLanguage?: boolean,
+      overrideInLanguage? : boolean,
     ): Promise<void>;
   }
 
@@ -124,15 +124,15 @@ declare module "vscode" {
   }
 
   declare export var StatusBarAlignment: {
-    readonly Left: 1,
+    readonly Left : 1,
     readonly Right: 2,
   };
 
   declare export interface StatusBarItem extends Disposable {
-    name: string | void;
-    text: string;
-    tooltip: string | void;
-    command: string | void;
+    name           : string | void;
+    text           : string;
+    tooltip        : string | void;
+    command        : string | void;
     backgroundColor: ThemeColor | void;
     show(): void;
     hide(): void;
@@ -144,7 +144,7 @@ declare module "vscode" {
   }
 
   declare export interface ExtensionContext {
-    readonly subscriptions: Array<Disposable>;
+    readonly subscriptions : Array<Disposable>;
     readonly workspaceState: Memento;
   }
 
@@ -153,7 +153,7 @@ declare module "vscode" {
   };
 
   declare export type MessageOptions = {
-    readonly modal?: boolean,
+    readonly modal? : boolean,
     readonly detail?: string,
   };
 
@@ -161,7 +161,7 @@ declare module "vscode" {
     createOutputChannel(name: string): OutputChannel,
     createStatusBarItem(id: string, alignment?: 1 | 2, priority?: number): StatusBarItem,
     showQuickPick<T extends { readonly label: string, ... }>(
-      items: $ReadOnlyArray<T>,
+      items   : $ReadOnlyArray<T>,
       options?: QuickPickOptions,
     ): Promise<T | void>,
     // Two overloads, as an intersection: an object type cannot name a
@@ -181,14 +181,14 @@ declare module "vscode" {
 
   declare export var workspace: {
     readonly workspaceFolders: $ReadOnlyArray<WorkspaceFolder> | void,
-    readonly textDocuments: $ReadOnlyArray<TextDocument>,
+    readonly textDocuments   : $ReadOnlyArray<TextDocument>,
     getConfiguration(section?: string, scope?: ConfigurationScope | null): WorkspaceConfiguration,
     getWorkspaceFolder(uri: Uri): WorkspaceFolder | void,
     createFileSystemWatcher(globPattern: RelativePattern | string): FileSystemWatcher,
     onDidChangeWorkspaceFolders: Event<WorkspaceFoldersChangeEvent>,
-    onDidChangeConfiguration: Event<ConfigurationChangeEvent>,
-    onWillSaveTextDocument: Event<TextDocumentWillSaveEvent>,
-    onDidOpenTextDocument: Event<TextDocument>,
+    onDidChangeConfiguration   : Event<ConfigurationChangeEvent>,
+    onWillSaveTextDocument     : Event<TextDocumentWillSaveEvent>,
+    onDidOpenTextDocument      : Event<TextDocument>,
   };
 
   declare export var commands: {
@@ -201,9 +201,9 @@ declare module "vscode-languageclient/node" {
   import type { Event, OutputChannel, TextDocument, TextEdit, WorkspaceFolder } from "vscode";
 
   declare export var State: {
-    readonly Stopped: 1,
+    readonly Stopped : 1,
     readonly Starting: 3,
-    readonly Running: 2,
+    readonly Running : 2,
   };
 
   declare export type StateChangeEvent = {
@@ -214,9 +214,9 @@ declare module "vscode-languageclient/node" {
   /** How to start the server: a command and its arguments. */
   declare export type Executable = {
     readonly command: string,
-    readonly args?: $ReadOnlyArray<string>,
+    readonly args?  : $ReadOnlyArray<string>,
     readonly options?: {
-      readonly cwd?: string,
+      readonly cwd?  : string,
       readonly shell?: boolean,
       // `ExecutableOptions` is an interface upstream: more members are allowed.
       ...
@@ -227,11 +227,11 @@ declare module "vscode-languageclient/node" {
 
   declare export type LanguageClientOptions = {
     readonly documentSelector?: $ReadOnlyArray<{
-      readonly scheme?: string,
+      readonly scheme? : string,
       readonly pattern?: mixed,
     }>,
-    readonly workspaceFolder?: WorkspaceFolder,
-    readonly outputChannel?: OutputChannel,
+    readonly workspaceFolder?      : WorkspaceFolder,
+    readonly outputChannel?        : OutputChannel,
     readonly initializationOptions?: mixed,
   };
 
@@ -246,8 +246,8 @@ declare module "vscode-languageclient/node" {
 
   declare export class LanguageClient {
     constructor(
-      id: string,
-      name: string,
+      id           : string,
+      name         : string,
       serverOptions: ServerOptions,
       clientOptions: LanguageClientOptions,
     ): void;
@@ -267,7 +267,7 @@ declare module "vscode-languageclient/node" {
       type: { readonly method: "textDocument/formatting" },
       params: {
         readonly textDocument: TextDocumentIdentifier,
-        readonly options: { readonly tabSize: number, readonly insertSpaces: boolean },
+        readonly options     : { readonly tabSize: number, readonly insertSpaces: boolean },
       },
     ): Promise<$ReadOnlyArray<ProtocolTextEdit> | null>;
   }

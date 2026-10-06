@@ -36,7 +36,7 @@ function countingApp(): {| app: Application, ran: Array<string> |} {
       const html = `<!doctype html><p>${url}</p>`;
       return {
         status: 200,
-        pipe: () => {},
+        pipe  : () => {},
         stream: () =>
           new ReadableStream({
             start(controller: ReadableStreamDefaultController<Uint8Array>) {
@@ -66,9 +66,9 @@ const actionCall = (extra: { [string]: string }) => {
   // Key by key rather than spread after named keys, which Flow cannot type
   // for an indexer. `extra` still wins.
   const headers: { [string]: string } = {
-    origin: "http://localhost",
+    origin        : "http://localhost",
     "content-type": "application/json",
-    "uf-action": "a".repeat(64),
+    "uf-action"   : "a".repeat(64),
   };
   for (const name of Object.keys(extra)) {
     headers[name] = extra[name];

@@ -6,12 +6,12 @@ import { Progress } from "./progress.js";
 
 const styles = stylex.create({
   stack: {
-    display: "grid",
-    gap: ufTokens.space2,
-    maxWidth: "24rem",
+    display   : "grid",
+    gap       : ufTokens.space2,
+    maxWidth  : "24rem",
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
+    fontSize  : ufTokens.textSm,
+    color     : ufTokens.ink,
   },
 });
 

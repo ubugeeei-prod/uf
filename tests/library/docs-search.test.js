@@ -23,17 +23,17 @@ import type { SearchEntry } from "../../docs/app/_design/search.js";
 import { entriesFromHtml, text } from "../../tools/docs/search-index.js";
 
 function entry(fields: {|
-  href: string,
-  page: string,
+  href    : string,
+  page    : string,
   heading?: string | null,
-  text?: string,
+  text?   : string,
 |}): SearchEntry {
   return {
-    href: fields.href,
-    page: fields.page,
+    href   : fields.href,
+    page   : fields.page,
     section: "",
     heading: fields.heading ?? null,
-    text: fields.text ?? "",
+    text   : fields.text ?? "",
   };
 }
 
@@ -66,10 +66,10 @@ describe("search", () => {
       text: "The route cache, and a passing mention of middleware.",
     }),
     entry({
-      href: "/b#middleware",
-      page: "Answering requests",
+      href   : "/b#middleware",
+      page   : "Answering requests",
       heading: "Middleware",
-      text: "Runs first.",
+      text   : "Runs first.",
     }),
     entry({ href: "/c", page: "Middleware", text: "A page about it." }),
   ];
@@ -199,25 +199,25 @@ describe("the index a built page contributes", () => {
   it("is one entry per heading with an id, under the page's title", () => {
     expect(entriesFromHtml(page, "/guide/state", "Build an app")).toEqual([
       {
-        href: "/guide/state",
-        page: "State",
+        href   : "/guide/state",
+        page   : "State",
         section: "Build an app",
         heading: null,
-        text: "Atoms & stores.",
+        text   : "Atoms & stores.",
       },
       {
-        href: "/guide/state#in-react",
-        page: "State",
+        href   : "/guide/state#in-react",
+        page   : "State",
         section: "Build an app",
         heading: "In React",
-        text: "Read it with a hook.",
+        text   : "Read it with a hook.",
       },
       {
-        href: "/guide/state#deep",
-        page: "State",
+        href   : "/guide/state#deep",
+        page   : "State",
         section: "Build an app",
         heading: "Deeper",
-        text: "one two No id, so part of the section above",
+        text   : "one two No id, so part of the section above",
       },
     ]);
   });

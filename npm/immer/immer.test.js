@@ -21,7 +21,7 @@ import {
   setAutoFreeze,
 } from "@uniflowed/immer";
 
-type Row = { id: number, done: boolean };
+type Row   = { id: number, done: boolean };
 type Board = { rows: Array<Row>, meta: { title: string, seen: number } };
 
 /** A fresh board per test: `produce` freezes what a result shares with it. */
@@ -92,7 +92,7 @@ describe("produce", () => {
 
   it("copies only the path from the root to what changed", () => {
     const deep = {
-      a: { b: { c: { value: 1 } }, sibling: { value: 2 } },
+      a    : { b: { c: { value: 1 } }, sibling: { value: 2 } },
       other: { value: 3 },
     };
 

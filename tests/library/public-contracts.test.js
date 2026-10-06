@@ -7,8 +7,8 @@ import { everyMisuseIsReported } from "./type-tests.js";
 describe("the public query, StyleX and byte I/O type contracts", () => {
   it("infers correct uses and rejects each misuse", () => {
     everyMisuseIsReported({
-      fixture: "tests/type-tests/public-contracts.js",
-      atLeast: 5,
+      fixture  : "tests/type-tests/public-contracts.js",
+      atLeast  : 5,
       alongside: ["npm/query", "npm/stylex", "npm/std"],
     });
   });

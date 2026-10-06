@@ -55,7 +55,7 @@ export type { FieldArrayRow };
 
 export type UseFieldArrayOptions<TValues extends FieldValues, TOutput> = {|
   readonly control: Control<TValues, TOutput>,
-  readonly name: FieldPath,
+  readonly name   : FieldPath,
 |};
 
 export type UseFieldArrayReturn = {|
@@ -109,7 +109,7 @@ export hook useFieldArray<TValues extends FieldValues, TOutput>(
   // `useMemo` over a store read for ever, because it can see nothing that says
   // the store changed. `useSyncExternalStore` is what says so.
   const snapshot = useCallback(() => control.arrayRows(name), [control, name]);
-  const fields = useSyncExternalStore(subscribe, snapshot, snapshot);
+  const fields   = useSyncExternalStore(subscribe, snapshot, snapshot);
 
   const operations = useMemo(() => {
     const length = (): number => {
@@ -139,9 +139,9 @@ export hook useFieldArray<TValues extends FieldValues, TOutput>(
           control.spliceArray(name, target, 1, []);
         }
       },
-      swap: (left: number, right: number) => control.swapArray(name, left, right),
-      move: (from: number, to: number) => control.moveArray(name, from, to),
-      update: (index: number, value: mixed) => control.updateArray(name, index, value),
+      swap   : (left: number, right: number) => control.swapArray(name, left, right),
+      move   : (from: number, to: number) => control.moveArray(name, from, to),
+      update : (index: number, value: mixed) => control.updateArray(name, index, value),
       replace: (next: $ReadOnlyArray<mixed>) => control.replaceArray(name, next),
     };
   }, [control, name]);

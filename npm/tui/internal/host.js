@@ -92,10 +92,10 @@ export type KeyHandler = (key: KeyEvent) => mixed;
  * diffing an 80-column frame against a 120-column one.
  */
 export type Renderer = {
-  root: TuiNode,
+  root        : TuiNode,
   capabilities: Capabilities,
-  width: number,
-  height: number,
+  width       : number,
+  height      : number,
   /** The frame currently on the terminal, or `null` before the first draw. */
   previous: Frame | null,
   /** Global key handlers, in registration order, as OpenTUI orders them. */
@@ -183,8 +183,8 @@ export type Renderer = {
  * read runs code.
  */
 export function createRenderer(
-  width: number,
-  height: number,
+  width       : number,
+  height      : number,
   capabilities: Capabilities,
   mouseEnabled: boolean = false,
 ): Renderer {
@@ -193,17 +193,17 @@ export function createRenderer(
     capabilities,
     width,
     height,
-    previous: null,
-    keyHandlers: [],
-    onCommit: null,
-    size: { width, height },
+    previous     : null,
+    keyHandlers  : [],
+    onCommit     : null,
+    size         : { width, height },
     sizeListeners: new Set(),
     mouseEnabled,
-    hits: null,
-    hovered: null,
-    dragSource: null,
-    dragging: false,
-    selection: null,
+    hits           : null,
+    hovered        : null,
+    dragSource     : null,
+    dragging       : false,
+    selection      : null,
     selectionAnchor: null,
     getSelection() {
       return renderer.selection;
@@ -376,15 +376,15 @@ export function dispatchKey(renderer: Renderer, key: KeyEvent): void {
 const MOUSE_HANDLERS: {
   readonly [MouseEventType]: (props: TuiProps) => ?(event: MouseEvent) => mixed,
 } = {
-  down: (props) => props.onMouseDown,
-  up: (props) => props.onMouseUp,
-  move: (props) => props.onMouseMove,
-  drag: (props) => props.onMouseDrag,
+  down      : (props) => props.onMouseDown,
+  up        : (props) => props.onMouseUp,
+  move      : (props) => props.onMouseMove,
+  drag      : (props) => props.onMouseDrag,
   "drag-end": (props) => props.onMouseDragEnd,
-  drop: (props) => props.onMouseDrop,
-  over: (props) => props.onMouseOver,
-  out: (props) => props.onMouseOut,
-  scroll: (props) => props.onMouseScroll,
+  drop      : (props) => props.onMouseDrop,
+  over      : (props) => props.onMouseOver,
+  out       : (props) => props.onMouseOut,
+  scroll    : (props) => props.onMouseScroll,
 };
 
 /** The `id` a box was given, which is the only name an event can carry. */
@@ -430,8 +430,8 @@ function attached(renderer: Renderer, node: TuiNode): boolean {
  * the click was on the button inside it.
  */
 function bubble(
-  from: TuiNode,
-  event: MouseEvent,
+  from  : TuiNode,
+  event : MouseEvent,
   target: TuiNode | null,
   source: TuiNode | null,
 ): void {
@@ -623,9 +623,9 @@ const noop = () => {};
 
 /** The host elements `components.js` creates for the three self-drawn widgets. */
 const WIDGETS: { readonly [string]: Widget } = {
-  "uf-select": "select",
+  "uf-select"    : "select",
   "uf-tab-select": "tab-select",
-  "uf-textarea": "textarea",
+  "uf-textarea"  : "textarea",
 };
 
 /**
@@ -646,23 +646,23 @@ function insertBefore(parent: TuiNode, child: TuiNode, before: TuiNode): void {
 }
 
 const hostConfig = {
-  supportsMutation: true,
+  supportsMutation   : true,
   supportsPersistence: false,
-  supportsHydration: false,
-  supportsMicrotasks: true,
-  isPrimaryRenderer: true,
-  warnsIfNotActing: true,
-  noTimeout: -1,
-  scheduleTimeout: setTimeout,
-  cancelTimeout: clearTimeout,
-  scheduleMicrotask: queueMicrotask,
+  supportsHydration  : false,
+  supportsMicrotasks : true,
+  isPrimaryRenderer  : true,
+  warnsIfNotActing   : true,
+  noTimeout          : -1,
+  scheduleTimeout    : setTimeout,
+  cancelTimeout      : clearTimeout,
+  scheduleMicrotask  : queueMicrotask,
   rendererPackageName: "@uniflowed/tui",
-  rendererVersion: "0.0.0-alpha.5",
+  rendererVersion    : "0.0.0-alpha.5",
 
-  getRootHostContext: (): {} => ({}),
+  getRootHostContext : (): {} => ({}),
   getChildHostContext: (parent: {}): {} => parent,
-  getPublicInstance: (instance: TuiNode): TuiNode => instance,
-  prepareForCommit: (): null => null,
+  getPublicInstance  : (instance: TuiNode): TuiNode => instance,
+  prepareForCommit   : (): null => null,
   resetAfterCommit: (renderer: Renderer): void => {
     // The picture has changed, so what is under the pointer may have. The grid
     // is dropped rather than rebuilt: the next draw builds one anyway, and a
@@ -751,7 +751,7 @@ const hostConfig = {
     invalidate(node);
   },
   resetTextContent: noop,
-  commitMount: noop,
+  commitMount     : noop,
   // Hiding is how React implements a Suspense fallback and `<Activity>`. A
   // hidden node keeps its place in the tree and draws nothing, which layout
   // reads as a zero-size node rather than as an absent one.
@@ -778,23 +778,23 @@ const hostConfig = {
   resolveUpdatePriority: (): number =>
     currentPriority === 0 ? DefaultEventPriority : currentPriority,
   shouldAttemptEagerTransition: (): boolean => false,
-  requestPostPaintCallback: noop,
-  maySuspendCommit: (): boolean => false,
-  preloadInstance: (): boolean => true,
-  startSuspendingCommit: noop,
-  suspendInstance: noop,
-  waitForCommitToBeReady: (): null => null,
-  NotPendingTransition: null,
-  HostTransitionContext: React.createContext(null),
-  resetFormInstance: noop,
-  trackSchedulerEvent: noop,
-  resolveEventType: (): null => null,
-  resolveEventTimeStamp: (): number => -1.1,
-  beforeActiveInstanceBlur: noop,
-  afterActiveInstanceBlur: noop,
-  prepareScopeUpdate: noop,
-  getInstanceFromScope: (): null => null,
-  getInstanceFromNode: (): null => null,
+  requestPostPaintCallback    : noop,
+  maySuspendCommit            : (): boolean => false,
+  preloadInstance             : (): boolean => true,
+  startSuspendingCommit       : noop,
+  suspendInstance             : noop,
+  waitForCommitToBeReady      : (): null => null,
+  NotPendingTransition        : null,
+  HostTransitionContext       : React.createContext(null),
+  resetFormInstance           : noop,
+  trackSchedulerEvent         : noop,
+  resolveEventType            : (): null => null,
+  resolveEventTimeStamp       : (): number => -1.1,
+  beforeActiveInstanceBlur    : noop,
+  afterActiveInstanceBlur     : noop,
+  prepareScopeUpdate          : noop,
+  getInstanceFromScope        : (): null => null,
+  getInstanceFromNode         : (): null => null,
 };
 
 function remove(children: Array<TuiNode>, child: TuiNode): void {

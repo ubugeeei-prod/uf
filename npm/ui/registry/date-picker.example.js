@@ -6,19 +6,19 @@ import * as DatePicker from "./date-picker.js";
 
 const styles = stylex.create({
   field: {
-    display: "grid",
-    gap: ufTokens.space1,
+    display     : "grid",
+    gap         : ufTokens.space1,
     justifyItems: "start",
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
+    fontFamily  : ufTokens.fontSans,
+    fontSize    : ufTokens.textSm,
+    color       : ufTokens.ink,
   },
   label: {
     fontWeight: ufTokens.weightMedium,
   },
   hint: {
     margin: 0,
-    color: ufTokens.muted,
+    color : ufTokens.muted,
   },
 });
 

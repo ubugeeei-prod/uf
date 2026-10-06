@@ -120,7 +120,7 @@ describe("expect.not", () => {
 describe("depth", () => {
   it("works wherever a matcher is nested", () => {
     const payload = {
-      meta: { requestId: "r-1", at: new Date() },
+      meta : { requestId: "r-1", at: new Date() },
       items: [{ id: 1, tags: ["a"] }],
     };
 

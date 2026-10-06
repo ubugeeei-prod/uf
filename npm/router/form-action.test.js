@@ -74,17 +74,17 @@ function tableOf(Page: React.ComponentType<{}>) {
   return {
     routes: [
       {
-        path: "/notes",
-        params: [],
-        mdx: false,
-        file: "app/notes/$page.js",
-        page: () => Promise.resolve({ default: Page }),
+        path   : "/notes",
+        params : [],
+        mdx    : false,
+        file   : "app/notes/$page.js",
+        page   : () => Promise.resolve({ default: Page }),
         layouts: [],
         loading: [],
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   };
 }
 
@@ -303,14 +303,14 @@ describe("the form state a document carries to hydrateRoot", () => {
 
 /** A native post that passes every guard, with `fields` as its body. */
 function posted(
-  fields: $ReadOnlyArray<[string, string]>,
+  fields  : $ReadOnlyArray<[string, string]>,
   headers?: { readonly [string]: string | null },
-  at?: string = "https://app.example/notes?draft=1",
+  at?     : string = "https://app.example/notes?draft=1",
 ): Request {
   const given: { [string]: string } = {
-    origin: "https://app.example",
-    host: "app.example",
-    "content-type": FORM_ACTION_CONTENT_TYPE,
+    origin          : "https://app.example",
+    host            : "app.example",
+    "content-type"  : FORM_ACTION_CONTENT_TYPE,
     "sec-fetch-site": "same-origin",
   };
   for (const [name, value] of Object.entries(headers ?? {})) {
@@ -318,9 +318,9 @@ function posted(
     else given[name] = String(value);
   }
   return new Request(at, {
-    method: "POST",
+    method : "POST",
     headers: given,
-    body: new URLSearchParams(fields as $FlowFixMe).toString(),
+    body   : new URLSearchParams(fields as $FlowFixMe).toString(),
   });
 }
 
@@ -329,8 +329,8 @@ function formFor(
   typed: $ReadOnlyArray<[string, string]>,
   options?: {|
     readonly bound?: $ReadOnlyArray<mixed>,
-    readonly key?: string,
-    readonly id?: string,
+    readonly key?  : string,
+    readonly id?   : string,
   |},
 ): Array<[string, string]> {
   const fields: Array<[string, string]> = [
@@ -348,17 +348,17 @@ function formFor(
 
 /** Drive a dispatcher inside a request, as a host does. */
 async function hosted(
-  action: (...args: $FlowFixMe) => Promise<mixed>,
-  request: Request,
+  action   : (...args: $FlowFixMe) => Promise<mixed>,
+  request  : Request,
   postback?: (formState: FormState) => Promise<Response>,
 ): Promise<Response | null> {
   const callAction = createActionDispatcher({
     actions: [
       {
-        id: ID,
+        id    : ID,
         module: "app/notes/_actions.js",
         export: "save",
-        load: () => Promise.resolve({ save: action }),
+        load  : () => Promise.resolve({ save: action }),
       },
     ],
   });
@@ -542,7 +542,7 @@ describe("a form posted to a server action before its page hydrated", () => {
     expect(await plain.text()).toBe("note=hello");
 
     const multipart = new Request("https://app.example/notes", {
-      method: "POST",
+      method : "POST",
       headers: { origin: "https://app.example", host: "app.example" },
       body: (() => {
         const form = new FormData();

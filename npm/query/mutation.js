@@ -63,12 +63,12 @@ export type MutationStatus = "idle" | "pending" | "success" | "error";
 
 export type MutationState<out TVariables, out TData> = {|
   readonly status: MutationStatus,
-  readonly data: TData | void,
-  readonly error: Error | null,
+  readonly data  : TData | void,
+  readonly error : Error | null,
   /** What the last call was given, so a retry button can repeat it. */
-  readonly variables: TVariables | void,
+  readonly variables   : TVariables | void,
   readonly failureCount: number,
-  readonly submittedAt: number,
+  readonly submittedAt : number,
 |};
 
 /**
@@ -80,69 +80,69 @@ export type MutationState<out TVariables, out TData> = {|
  */
 export type MutationCallbacks<TVariables, TData, TContext> = {|
   readonly onSuccess?: (data: TData, variables: TVariables, context: TContext | void) => mixed,
-  readonly onError?: (error: Error, variables: TVariables, context: TContext | void) => mixed,
+  readonly onError?  : (error: Error, variables: TVariables, context: TContext | void) => mixed,
   readonly onSettled?: (
-    data: TData | void,
-    error: Error | null,
+    data     : TData | void,
+    error    : Error | null,
     variables: TVariables,
-    context: TContext | void,
+    context  : TContext | void,
   ) => mixed,
 |};
 
 export type MutationOptions<TVariables, TData, TContext> = {|
   readonly mutationFn: (variables: TVariables) => Promise<TData>,
   /** Runs first; what it returns is handed to the other three. */
-  readonly onMutate?: (variables: TVariables) => Promise<TContext | void> | TContext | void,
+  readonly onMutate? : (variables: TVariables) => Promise<TContext | void> | TContext | void,
   readonly onSuccess?: (data: TData, variables: TVariables, context: TContext | void) => mixed,
-  readonly onError?: (error: Error, variables: TVariables, context: TContext | void) => mixed,
+  readonly onError?  : (error: Error, variables: TVariables, context: TContext | void) => mixed,
   readonly onSettled?: (
-    data: TData | void,
-    error: Error | null,
+    data     : TData | void,
+    error    : Error | null,
     variables: TVariables,
-    context: TContext | void,
+    context  : TContext | void,
   ) => mixed,
-  readonly retry?: RetryPolicy,
+  readonly retry?     : RetryPolicy,
   readonly retryDelay?: RetryDelay,
 |};
 
 /** The same options with the client's defaults filled in. */
 export type ResolvedMutationOptions<TVariables, TData, TContext> = {|
   ...MutationOptions<TVariables, TData, TContext>,
-  readonly retry: RetryPolicy,
+  readonly retry     : RetryPolicy,
   readonly retryDelay: RetryDelay,
 |};
 
 /** What a mutation looks like to a component. */
 export type MutationResult<TVariables, TData, TContext> = {|
-  readonly data: TData | void,
-  readonly error: Error | null,
-  readonly status: MutationStatus,
-  readonly variables: TVariables | void,
+  readonly data        : TData | void,
+  readonly error       : Error | null,
+  readonly status      : MutationStatus,
+  readonly variables   : TVariables | void,
   readonly failureCount: number,
-  readonly isIdle: boolean,
-  readonly isPending: boolean,
-  readonly isSuccess: boolean,
-  readonly isError: boolean,
+  readonly isIdle      : boolean,
+  readonly isPending   : boolean,
+  readonly isSuccess   : boolean,
+  readonly isError     : boolean,
   /** Fire and forget. The failure is in `error`, not in a rejected promise. */
   readonly mutate: (
-    variables: TVariables,
+    variables : TVariables,
     callbacks?: MutationCallbacks<TVariables, TData, TContext>,
   ) => void,
   /** The same call, awaited. Rejects, so a caller can branch on the failure. */
   readonly mutateAsync: (
-    variables: TVariables,
+    variables : TVariables,
     callbacks?: MutationCallbacks<TVariables, TData, TContext>,
   ) => Promise<TData>,
   readonly reset: () => void,
 |};
 
 const IDLE: MutationState<empty, empty> = Object.freeze({
-  status: "idle",
-  data: undefined,
-  error: null,
-  variables: undefined,
+  status      : "idle",
+  data        : undefined,
+  error       : null,
+  variables   : undefined,
   failureCount: 0,
-  submittedAt: 0,
+  submittedAt : 0,
 });
 
 export class Mutation<TVariables, TData, TContext> {
@@ -173,19 +173,19 @@ export class Mutation<TVariables, TData, TContext> {
   }
 
   async execute(
-    variables: TVariables,
-    options: ResolvedMutationOptions<TVariables, TData, TContext>,
+    variables : TVariables,
+    options   : ResolvedMutationOptions<TVariables, TData, TContext>,
     callbacks?: MutationCallbacks<TVariables, TData, TContext>,
   ): Promise<TData> {
     const id = this.runId + 1;
     this.runId = id;
     this.setState({
       status: "pending",
-      data: undefined,
-      error: null,
+      data  : undefined,
+      error : null,
       variables,
       failureCount: 0,
-      submittedAt: Date.now(),
+      submittedAt : Date.now(),
     });
 
     // Declared outside the `try` so the rollback in `onError` can still be
@@ -194,8 +194,8 @@ export class Mutation<TVariables, TData, TContext> {
     try {
       context = await options.onMutate?.(variables);
       const data = await runWithRetry({
-        attempt: () => options.mutationFn(variables),
-        retry: options.retry,
+        attempt   : () => options.mutationFn(variables),
+        retry     : options.retry,
         retryDelay: options.retryDelay,
         // Never aborted: see the module docs on why a write is not cancelled.
         signal: new AbortController().signal,

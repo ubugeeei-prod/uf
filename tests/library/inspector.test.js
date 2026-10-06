@@ -546,17 +546,17 @@ function suspendingTable(waited: Promise<string>) {
   return {
     routes: [
       {
-        path: "/slow",
-        params: [],
-        mdx: false,
-        file: "app/slow/$page.js",
-        page: () => Promise.resolve({ default: SlowPage }),
+        path   : "/slow",
+        params : [],
+        mdx    : false,
+        file   : "app/slow/$page.js",
+        page   : () => Promise.resolve({ default: SlowPage }),
         layouts: [() => Promise.resolve({ default: SiteLayout })],
         loading: [{ above: 1, module: () => Promise.resolve({ default: Loading }) }],
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   };
 }
 

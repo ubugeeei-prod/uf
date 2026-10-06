@@ -65,10 +65,10 @@ export async function transformRelay(code, filename, map, options) {
   ]);
   return transformAsync(code, {
     filename,
-    babelrc: false,
-    configFile: false,
-    sourceMaps: true,
+    babelrc       : false,
+    configFile    : false,
+    sourceMaps    : true,
     inputSourceMap: map ?? undefined,
-    plugins: [[relay, options]],
+    plugins       : [[relay, options]],
   });
 }

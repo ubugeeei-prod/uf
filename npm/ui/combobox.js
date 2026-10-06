@@ -144,20 +144,20 @@ const OPTION_SELECTOR = '[role="option"]';
 const LISTBOX_SELECTOR = '[role="listbox"]';
 
 type ComboboxState = {|
-  readonly base: string,
-  readonly open: boolean,
+  readonly base   : string,
+  readonly open   : boolean,
   readonly setOpen: (open: boolean) => void,
   /** The chosen option's value, or null when nothing is chosen. */
   readonly value: string | null,
   /** The text in the field, which is not the value until something is chosen. */
-  readonly text: string,
+  readonly text   : string,
   readonly setText: (text: string) => void,
   /** Take an option: sets the value, puts its label in the field, closes. */
   readonly select: (value: string, label: string) => void,
   /** Empty the field and the selection, which is what a second Escape does. */
   readonly clear: () => void,
   /** The id of the option `aria-activedescendant` names, if any. */
-  readonly activeId: string | null,
+  readonly activeId   : string | null,
   readonly setActiveId: (id: string | null) => void,
   /**
    * Which end to activate once the list is in the document.
@@ -167,12 +167,12 @@ type ComboboxState = {|
    * rather than state because nothing renders it.
    */
   readonly pendingActiveRef: { current: "first" | "last" | null },
-  readonly inputRef: { current: HTMLElement | null },
-  readonly listRef: { current: HTMLElement | null },
+  readonly inputRef        : { current: HTMLElement | null },
+  readonly listRef         : { current: HTMLElement | null },
   /** How many options are in the list, for the live region. */
-  readonly count: number,
-  readonly setCount: (count: number) => void,
-  readonly labelled: boolean,
+  readonly count        : number,
+  readonly setCount     : (count: number) => void,
+  readonly labelled     : boolean,
   readonly registerLabel: (present: boolean) => void,
 |};
 
@@ -188,7 +188,7 @@ hook useCombobox(part: string): ComboboxState {
 
 /** The id of a group's label, so `Combobox.Group` only claims one that exists. */
 type ComboboxGroupState = {|
-  readonly labelId: string,
+  readonly labelId      : string,
   readonly registerLabel: (present: boolean) => void,
 |};
 
@@ -212,29 +212,29 @@ const ComboboxGroupContext: React.Context<ComboboxGroupState | null> = createCon
  * `@uniflowed/form` does not need it.
  */
 component ComboboxRoot(
-  children: React.Node,
-  value?: string | null,
-  defaultValue?: string | null = null,
-  onValueChange?: (value: string | null) => void,
-  inputValue?: string,
-  defaultInputValue?: string = "",
+  children           : React.Node,
+  value?             : string | null,
+  defaultValue?      : string | null = null,
+  onValueChange?     : (value: string | null) => void,
+  inputValue?        : string,
+  defaultInputValue? : string = "",
   onInputValueChange?: (text: string) => void,
-  open?: boolean,
-  defaultOpen?: boolean = false,
-  onOpenChange?: (open: boolean) => void,
-  name?: string,
+  open?              : boolean,
+  defaultOpen?       : boolean = false,
+  onOpenChange?      : (open: boolean) => void,
+  name?              : string,
   ...rest: Rest
 ) {
-  const base = useId();
-  const [chosen, setChosen] = useControlled(value, defaultValue, onValueChange);
-  const [text, setText] = useControlled(inputValue, defaultInputValue, onInputValueChange);
-  const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
+  const base                    = useId();
+  const [chosen,   setChosen]   = useControlled(value, defaultValue, onValueChange);
+  const [text,     setText]     = useControlled(inputValue, defaultInputValue, onInputValueChange);
+  const [isOpen,   setOpen]     = useControlled(open, defaultOpen, onOpenChange);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [count, setCount] = useState(0);
+  const [count,    setCount]    = useState(0);
   const [labelled, setLabelled] = useState(false);
-  const pendingActiveRef = useRef<"first" | "last" | null>(null);
-  const inputRef = useRef<HTMLElement | null>(null);
-  const listRef = useRef<HTMLElement | null>(null);
+  const pendingActiveRef        = useRef<"first" | "last" | null>(null);
+  const inputRef                = useRef<HTMLElement | null>(null);
+  const listRef                 = useRef<HTMLElement | null>(null);
 
   // Stable, so the parts below can hold on to them without re-subscribing every
   // time the caller re-renders with a fresh `onValueChange`.
@@ -444,13 +444,13 @@ component ComboboxInput(...rest: Rest) {
  * `aria-activedescendant` never names an option that has left the list.
  */
 component ComboboxList(
-  children: renders* (ComboboxOption | ComboboxGroup),
-  align?: Align = "start",
-  alignOffset?: number = 0,
-  avoidCollisions?: boolean = true,
+  children         : renders* (ComboboxOption | ComboboxGroup),
+  align?           : Align = "start",
+  alignOffset?     : number = 0,
+  avoidCollisions? : boolean = true,
   collisionPadding?: number = 0,
-  side?: LogicalSide = "bottom",
-  sideOffset?: number = 0,
+  side?            : LogicalSide = "bottom",
+  sideOffset?      : number = 0,
   ...rest: Rest
 ) {
   const combobox = useCombobox("Combobox.List");
@@ -473,7 +473,7 @@ component ComboboxList(
     anchorRef: inputRef,
     avoidCollisions,
     collisionPadding,
-    open: presence.present,
+    open      : presence.present,
     overlayRef: listRef,
     side,
     sideOffset,
@@ -520,9 +520,9 @@ component ComboboxList(
   // while the list is open, and the listener that was attached on the first
   // commit — when `listRef.current` was still null — closed nothing at all.
   useInteractOutside({
-    isDisabled: !combobox.open,
+    isDisabled       : !combobox.open,
     onInteractOutside: () => close(),
-    refs: [listRef, inputRef],
+    refs             : [listRef, inputRef],
   });
 
   if (!presence.present) {
@@ -559,14 +559,14 @@ component ComboboxList(
  * disagree with it.
  */
 component ComboboxOption(
-  value: string,
-  children: React.Node,
-  label?: string,
+  value    : string,
+  children : React.Node,
+  label?   : string,
   disabled?: boolean = false,
   ...rest: Rest
 ) {
   const combobox = useCombobox("Combobox.Option");
-  const id = useId();
+  const id       = useId();
   const active = combobox.activeId === id;
   const passed = withoutComposed(rest, ["onClick", "onPointerDown", "onPointerMove"]);
 
@@ -626,7 +626,7 @@ component ComboboxOption(
  * it is the same listbox, and it took a second breaking change to get there.
  */
 component ComboboxGroup(children: renders* (ComboboxOption | ComboboxGroupLabel), ...rest: Rest) {
-  const base = useId();
+  const base                    = useId();
   const [labelled, setLabelled] = useState(false);
 
   const group = useMemo(() => ({ labelId: `${base}-label`, registerLabel: setLabelled }), [base]);

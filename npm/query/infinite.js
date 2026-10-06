@@ -64,14 +64,14 @@ import { shallowEqual } from "./structural.js";
 
 /** The value a paged entry holds. */
 export type InfiniteData<TPage, TParam> = {|
-  readonly pages: $ReadOnlyArray<TPage>,
+  readonly pages     : $ReadOnlyArray<TPage>,
   readonly pageParams: $ReadOnlyArray<TParam>,
 |};
 
 /** What the query function is called with, once per page. */
 export type InfinitePageContext<TParam> = {|
-  readonly queryKey: QueryKey,
-  readonly signal: AbortSignal,
+  readonly queryKey : QueryKey,
+  readonly signal   : AbortSignal,
   readonly pageParam: TParam,
   readonly direction: FetchDirection,
 |};
@@ -84,42 +84,42 @@ export type InfinitePageContext<TParam> = {|
  * it gave for the last page.
  */
 export type PageParamFn<TPage, TParam> = (
-  lastPage: TPage,
-  allPages: $ReadOnlyArray<TPage>,
+  lastPage     : TPage,
+  allPages     : $ReadOnlyArray<TPage>,
   lastPageParam: TParam,
   allPageParams: $ReadOnlyArray<TParam>,
 ) => TParam | null | void;
 
 export type InfiniteQueryOptions<TPage, TParam, TSelected = InfiniteData<TPage, TParam>> = {|
   readonly queryKey: QueryKey,
-  readonly queryFn: (context: InfinitePageContext<TParam>) => Promise<TPage>,
+  readonly queryFn : (context: InfinitePageContext<TParam>) => Promise<TPage>,
   /** The parameter the first page is asked for with. */
-  readonly initialPageParam: TParam,
-  readonly getNextPageParam: PageParamFn<TPage, TParam>,
+  readonly initialPageParam     : TParam,
+  readonly getNextPageParam     : PageParamFn<TPage, TParam>,
   readonly getPreviousPageParam?: PageParamFn<TPage, TParam>,
   /** Keep at most this many pages, dropping from the far end. */
-  readonly maxPages?: number,
-  readonly enabled?: boolean,
-  readonly staleTime?: number,
-  readonly gcTime?: number,
-  readonly retry?: mixed,
-  readonly retryDelay?: mixed,
-  readonly select?: (data: InfiniteData<TPage, TParam>) => TSelected,
-  readonly placeholderData?: mixed,
-  readonly refetchInterval?: number | null,
+  readonly maxPages?            : number,
+  readonly enabled?             : boolean,
+  readonly staleTime?           : number,
+  readonly gcTime?              : number,
+  readonly retry?               : mixed,
+  readonly retryDelay?          : mixed,
+  readonly select?              : (data: InfiniteData<TPage, TParam>) => TSelected,
+  readonly placeholderData?     : mixed,
+  readonly refetchInterval?     : number | null,
   readonly refetchOnWindowFocus?: boolean,
-  readonly refetchOnReconnect?: boolean,
+  readonly refetchOnReconnect?  : boolean,
 |};
 
 /** An ordinary result, plus the two ends of the list. */
 export type InfiniteQueryResult<TSelected> = {|
   ...QueryResult<TSelected>,
-  readonly hasNextPage: boolean,
-  readonly hasPreviousPage: boolean,
-  readonly isFetchingNextPage: boolean,
+  readonly hasNextPage           : boolean,
+  readonly hasPreviousPage       : boolean,
+  readonly isFetchingNextPage    : boolean,
   readonly isFetchingPreviousPage: boolean,
-  readonly fetchNextPage: () => Promise<void>,
-  readonly fetchPreviousPage: () => Promise<void>,
+  readonly fetchNextPage         : () => Promise<void>,
+  readonly fetchPreviousPage     : () => Promise<void>,
 |};
 
 /**
@@ -131,7 +131,7 @@ export type InfiniteQueryResult<TSelected> = {|
  * asks for `initialPageParam` whatever the direction says.
  */
 export function infinitePages<TPage, TParam>(
-  options: InfiniteQueryOptions<TPage, TParam, mixed>,
+  options  : InfiniteQueryOptions<TPage, TParam, mixed>,
   direction: FetchDirection | null,
 ): Fetcher<InfiniteData<TPage, TParam>> {
   return async (context: FetchContext<InfiniteData<TPage, TParam>>) => {
@@ -194,7 +194,7 @@ export function infinitePages<TPage, TParam>(
 /** Whether the server said there is another page after the ones held. */
 export function hasMore<TPage, TParam>(
   options: InfiniteQueryOptions<TPage, TParam, mixed>,
-  data: InfiniteData<TPage, TParam> | void,
+  data   : InfiniteData<TPage, TParam> | void,
   towards: FetchDirection,
 ): boolean {
   if (data == null || data.pages.length === 0) {
@@ -220,7 +220,7 @@ export class InfiniteQueryObserver<TPage, TParam, TSelected> extends QueryObserv
   pagedResult: InfiniteQueryResult<TSelected> | null = null;
 
   constructor(
-    client: $FlowFixMe,
+    client    : $FlowFixMe,
     getOptions: () => InfiniteQueryOptions<TPage, TParam, TSelected>,
   ) {
     super(client, getOptions as $FlowFixMe);
@@ -241,7 +241,7 @@ export class InfiniteQueryObserver<TPage, TParam, TSelected> extends QueryObserv
   }
 
   buildFetcher(
-    _options: ResolvedQueryOptions<InfiniteData<TPage, TParam>, TSelected>,
+    _options : ResolvedQueryOptions<InfiniteData<TPage, TParam>, TSelected>,
     direction: FetchDirection | null,
   ): Fetcher<InfiniteData<TPage, TParam>> {
     return infinitePages(this.pageOptions(), direction);
@@ -258,7 +258,7 @@ export class InfiniteQueryObserver<TPage, TParam, TSelected> extends QueryObserv
    * changed nothing hands `useSyncExternalStore` the object it had.
    */
   readPagedResult(
-    client: QueryClient,
+    client : QueryClient,
     options: ResolvedQueryOptions<InfiniteData<TPage, TParam>, TSelected>,
   ): InfiniteQueryResult<TSelected> {
     const base = this.readResult(client, options);
@@ -270,12 +270,12 @@ export class InfiniteQueryObserver<TPage, TParam, TSelected> extends QueryObserv
     const isFetching = state?.fetchStatus === "fetching";
     const candidate = {
       ...base,
-      hasNextPage: hasMore(pages, data, "forward"),
-      hasPreviousPage: hasMore(pages, data, "backward"),
-      isFetchingNextPage: isFetching && state?.direction === "forward",
+      hasNextPage           : hasMore(pages, data, "forward"),
+      hasPreviousPage       : hasMore(pages, data, "backward"),
+      isFetchingNextPage    : isFetching && state?.direction === "forward",
       isFetchingPreviousPage: isFetching && state?.direction === "backward",
-      fetchNextPage: this.fetchNextPage,
-      fetchPreviousPage: this.fetchPreviousPage,
+      fetchNextPage         : this.fetchNextPage,
+      fetchPreviousPage     : this.fetchPreviousPage,
     };
     const previous = this.pagedResult;
     if (previous != null && shallowEqual(previous, candidate)) {
@@ -288,7 +288,7 @@ export class InfiniteQueryObserver<TPage, TParam, TSelected> extends QueryObserv
 
 function nextParam<TPage, TParam>(
   options: InfiniteQueryOptions<TPage, TParam, mixed>,
-  data: InfiniteData<TPage, TParam>,
+  data   : InfiniteData<TPage, TParam>,
 ): TParam | null | void {
   const index = data.pages.length - 1;
   return options.getNextPageParam(
@@ -301,7 +301,7 @@ function nextParam<TPage, TParam>(
 
 function previousParam<TPage, TParam>(
   options: InfiniteQueryOptions<TPage, TParam, mixed>,
-  data: InfiniteData<TPage, TParam>,
+  data   : InfiniteData<TPage, TParam>,
 ): TParam | null | void {
   const get = options.getPreviousPageParam;
   if (get == null) {
@@ -312,8 +312,8 @@ function previousParam<TPage, TParam>(
 
 /** Keep at most `maxPages`, dropping from the end the reader is moving away from. */
 function trim<TPage, TParam>(
-  data: InfiniteData<TPage, TParam>,
-  maxPages: number | void,
+  data     : InfiniteData<TPage, TParam>,
+  maxPages : number | void,
   direction: FetchDirection,
 ): InfiniteData<TPage, TParam> {
   if (maxPages == null || maxPages <= 0 || data.pages.length <= maxPages) {
@@ -321,7 +321,7 @@ function trim<TPage, TParam>(
   }
   const from = direction === "forward" ? data.pages.length - maxPages : 0;
   return {
-    pages: data.pages.slice(from, from + maxPages),
+    pages     : data.pages.slice(from, from + maxPages),
     pageParams: data.pageParams.slice(from, from + maxPages),
   };
 }

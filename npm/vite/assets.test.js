@@ -37,66 +37,66 @@ function documentHead(): HTMLHeadElement {
 
 /** A reply from `uf assets` for a photograph: three JPEG widths, no WebP. */
 const photograph = () => ({
-  width: 1600,
+  width : 1600,
   height: 1000,
   format: "jpeg",
   variants: [
     {
-      file: "hero.aa11bb22-640w.jpg",
-      width: 640,
+      file  : "hero.aa11bb22-640w.jpg",
+      width : 640,
       height: 400,
       format: "jpeg",
-      mime: "image/jpeg",
-      bytes: 41_000,
+      mime  : "image/jpeg",
+      bytes : 41_000,
     },
     {
-      file: "hero.cc33dd44-1600w.jpg",
-      width: 1600,
+      file  : "hero.cc33dd44-1600w.jpg",
+      width : 1600,
       height: 1000,
       format: "jpeg",
-      mime: "image/jpeg",
-      bytes: 210_000,
+      mime  : "image/jpeg",
+      bytes : 210_000,
     },
   ],
-  blur: "data:image/jpeg;base64,QUJD",
+  blur    : "data:image/jpeg;base64,QUJD",
   declined: [{ format: "webp", width: 640, bytes: 900_000, fallbackBytes: 41_000 }],
-  note: null,
+  note    : null,
 });
 
 /** A reply for a flat graphic, where the lossless WebP did come out smaller. */
 const graphic = () => ({
-  width: 512,
+  width : 512,
   height: 512,
   format: "png",
   variants: [
     {
-      file: "mark.ee55ff66-256w.png",
-      width: 256,
+      file  : "mark.ee55ff66-256w.png",
+      width : 256,
       height: 256,
       format: "png",
-      mime: "image/png",
-      bytes: 3_100,
+      mime  : "image/png",
+      bytes : 3_100,
     },
     {
-      file: "mark.11772288-256w.webp",
-      width: 256,
+      file  : "mark.11772288-256w.webp",
+      width : 256,
       height: 256,
       format: "webp",
-      mime: "image/webp",
-      bytes: 1_900,
+      mime  : "image/webp",
+      bytes : 1_900,
     },
     {
-      file: "mark.33994400-512w.png",
-      width: 512,
+      file  : "mark.33994400-512w.png",
+      width : 512,
       height: 512,
       format: "png",
-      mime: "image/png",
-      bytes: 8_800,
+      mime  : "image/png",
+      bytes : 8_800,
     },
   ],
-  blur: null,
+  blur    : null,
   declined: [],
-  note: null,
+  note    : null,
 });
 
 describe("what an import evaluates to", () => {
@@ -237,22 +237,22 @@ describe("Image, given an imported image", () => {
     // with no ratio moves every line below it when it lands.
     const svg = withUrls(
       {
-        width: null,
+        width : null,
         height: null,
         format: "original",
         variants: [
           {
-            file: "m.44556677.svg",
-            width: 0,
+            file  : "m.44556677.svg",
+            width : 0,
             height: 0,
             format: "original",
-            mime: "image/svg+xml",
-            bytes: 90,
+            mime  : "image/svg+xml",
+            bytes : 90,
           },
         ],
-        blur: null,
+        blur    : null,
         declined: [],
-        note: "an SVG is resolution independent",
+        note    : "an SVG is resolution independent",
       },
       "/assets/",
     );
@@ -269,22 +269,22 @@ describe("Image, given an imported image", () => {
   it("renders that image once the page supplies the size the file could not", () => {
     const svg = withUrls(
       {
-        width: null,
+        width : null,
         height: null,
         format: "original",
         variants: [
           {
-            file: "m.44556677.svg",
-            width: 0,
+            file  : "m.44556677.svg",
+            width : 0,
             height: 0,
             format: "original",
-            mime: "image/svg+xml",
-            bytes: 90,
+            mime  : "image/svg+xml",
+            bytes : 90,
           },
         ],
-        blur: null,
+        blur    : null,
         declined: [],
-        note: "an SVG is resolution independent",
+        note    : "an SVG is resolution independent",
       },
       "/assets/",
     );
@@ -351,11 +351,11 @@ describe("Font, given an imported font", () => {
   }
 
   const inter = () => ({
-    src: "/assets/Inter.99aabbcc.woff2",
-    family: "Inter",
+    src           : "/assets/Inter.99aabbcc.woff2",
+    family        : "Inter",
     fallbackFamily: "Inter Fallback",
-    fontFamily: '"Inter", "Inter Fallback", "Arial"',
-    type: "font/woff2",
+    fontFamily    : '"Inter", "Inter Fallback", "Arial"',
+    type          : "font/woff2",
     css:
       '@font-face{font-family:"Inter";font-style:normal;font-weight:400;font-display:swap;' +
       'src:url("/assets/Inter.99aabbcc.woff2") format("woff2");}' +
@@ -426,28 +426,28 @@ describe("Font, given a family split by unicode-range", () => {
     subsetDeclined: null,
     faces: [
       {
-        url: "/assets/Noto.11aa-latin.woff",
-        mime: "font/woff",
-        bytes: 9_000,
-        bucket: "latin",
+        url         : "/assets/Noto.11aa-latin.woff",
+        mime        : "font/woff",
+        bytes       : 9_000,
+        bucket      : "latin",
         unicodeRange: "U+20-7E",
-        preload: true,
+        preload     : true,
       },
       {
-        url: "/assets/Noto.22bb-cyrillic.woff",
-        mime: "font/woff",
-        bytes: 7_000,
-        bucket: "cyrillic",
+        url         : "/assets/Noto.22bb-cyrillic.woff",
+        mime        : "font/woff",
+        bytes       : 7_000,
+        bucket      : "cyrillic",
         unicodeRange: "U+400-45F",
-        preload: false,
+        preload     : false,
       },
       {
-        url: "/assets/Noto.33cc-greek.woff",
-        mime: "font/woff",
-        bytes: 6_000,
-        bucket: "greek",
+        url         : "/assets/Noto.33cc-greek.woff",
+        mime        : "font/woff",
+        bytes       : 6_000,
+        bucket      : "greek",
         unicodeRange: "U+370-3FF",
-        preload: false,
+        preload     : false,
       },
     ],
   });
@@ -498,11 +498,11 @@ describe("Font, given a family split by unicode-range", () => {
 
 describe("Icon and IconSprite", () => {
   const star = () => ({
-    id: "uf-icon-star-1a2b3c4d",
-    href: "#uf-icon-star-1a2b3c4d",
+    id     : "uf-icon-star-1a2b3c4d",
+    href   : "#uf-icon-star-1a2b3c4d",
     viewBox: "0 0 24 24",
-    width: 24,
-    height: 24,
+    width  : 24,
+    height : 24,
   });
 
   it("renders a use pointing into the sprite rather than another copy of the path", () => {
@@ -551,11 +551,11 @@ describe("Icon and IconSprite", () => {
 
 describe("OgImage", () => {
   const card = () => ({
-    url: "/assets/guide.og.1a2b3c4d.png",
-    width: 1200,
+    url   : "/assets/guide.og.1a2b3c4d.png",
+    width : 1200,
     height: 630,
-    type: "image/png",
-    alt: "Images and fonts",
+    type  : "image/png",
+    alt   : "Images and fonts",
   });
 
   function meta(property: string): string | null {

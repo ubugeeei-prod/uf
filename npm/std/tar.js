@@ -18,13 +18,13 @@ export type TarEntry = {
 };
 
 type TarRecord = {
-  readonly entry: TarEntry,
+  readonly entry     : TarEntry,
   readonly dataOffset: number,
 };
 
 type WriteRecord = {
   readonly entry: TarEntry,
-  readonly data: Uint8Array,
+  readonly data : Uint8Array,
 };
 
 export type TarEntryOptions = {

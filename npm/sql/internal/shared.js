@@ -161,9 +161,9 @@ export function bytesParam(expected: string, value: mixed): Uint8Array {
 
 /** One of an enum's labels. */
 export function label<T extends string>(
-  values: $ReadOnlyArray<T>,
+  values  : $ReadOnlyArray<T>,
   expected: string,
-  value: mixed,
+  value   : mixed,
 ): T {
   const index = typeof value === "string" ? values.findIndex((item) => item === value) : -1;
   if (index < 0) {
@@ -174,9 +174,9 @@ export function label<T extends string>(
 
 /** Encode one of an enum's labels, refusing a string that is not one. */
 export function labelParam<T extends string>(
-  values: $ReadOnlyArray<T>,
+  values  : $ReadOnlyArray<T>,
   expected: string,
-  value: mixed,
+  value   : mixed,
 ): T {
   const index = typeof value === "string" ? values.findIndex((item) => item === value) : -1;
   if (index < 0) {

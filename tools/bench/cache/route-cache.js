@@ -78,7 +78,7 @@ function slowApp(): {| app: Application, renders: Array<string> |} {
     // Part of the `Application` contract. It declines every request here: the
     // benchmark serves a page, and an action call never reaches a render.
     callAction: async (_request: Request) => null,
-    dispatch: async () => null,
+    dispatch  : async () => null,
     render: async (url: string) => {
       renders.push(url);
       // The loader. A page that waits on one is the only page a cache is
@@ -91,7 +91,7 @@ function slowApp(): {| app: Application, renders: Array<string> |} {
         status: 200,
         pipe: (destination: {
           readonly write: (chunk: string) => mixed,
-          readonly end: () => mixed,
+          readonly end  : () => mixed,
           ...
         }) => {
           destination.write(html);
@@ -113,8 +113,8 @@ function slowApp(): {| app: Application, renders: Array<string> |} {
 /** Answer one request the way a host does: begin, run, settle. */
 async function serve(
   handle: (request: Request) => Promise<Response>,
-  app: Application,
-  url: string,
+  app   : Application,
+  url   : string,
 ): Promise<Response> {
   const request = new Request(`http://localhost${url}`);
   const { run, settle } = app.beginRequest(request);
@@ -135,9 +135,9 @@ function median(values: Array<number>): number {
 }
 
 type Column = {|
-  firstMs: number,
-  secondMs: number,
-  rendersPerPair: number,
+  firstMs         : number,
+  secondMs        : number,
+  rendersPerPair  : number,
   coalescedRenders: number,
 |};
 
@@ -158,7 +158,7 @@ async function column(cached: boolean): Promise<Column> {
     const handle = createFetchHandler({
       app,
       document: assets,
-      cache: cached ? { store, route: true, fetch: false } : undefined,
+      cache   : cached ? { store, route: true, fetch: false } : undefined,
     });
     const url = `/posts/${String(run)}`;
 
@@ -179,7 +179,7 @@ async function column(cached: boolean): Promise<Column> {
   const handle = createFetchHandler({
     app,
     document: assets,
-    cache: cached ? { store, route: true, fetch: false } : undefined,
+    cache   : cached ? { store, route: true, fetch: false } : undefined,
   });
   const many = [];
   for (let at = 0; at < SIMULTANEOUS; at += 1) {
@@ -188,9 +188,9 @@ async function column(cached: boolean): Promise<Column> {
   await Promise.all(many);
 
   return {
-    firstMs: median(firsts),
-    secondMs: median(seconds),
-    rendersPerPair: renders / RUNS,
+    firstMs         : median(firsts),
+    secondMs        : median(seconds),
+    rendersPerPair  : renders / RUNS,
     coalescedRenders: stampede.length,
   };
 }
@@ -206,12 +206,12 @@ async function main(): Promise<void> {
   process.stdout.write(
     `${JSON.stringify(
       {
-        node: process.version,
-        platform: `${process.platform} ${process.arch}`,
-        loaderMs: LOADER_MS,
-        runs: RUNS,
+        node        : process.version,
+        platform    : `${process.platform} ${process.arch}`,
+        loaderMs    : LOADER_MS,
+        runs        : RUNS,
         simultaneous: SIMULTANEOUS,
-        results: { uncached, cached },
+        results     : { uncached, cached },
       },
       null,
       2,

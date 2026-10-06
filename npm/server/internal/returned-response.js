@@ -33,10 +33,10 @@ import { Temporal } from "@uniflowed/core/temporal";
  * its body has gone.
  */
 export async function answerReturned(
-  request: Request,
-  handle: (request: Request) => Promise<Response>,
+  request     : Request,
+  handle      : (request: Request) => Promise<Response>,
   beginRequest: (request: Request) => RequestLifecycle,
-  log: Logger,
+  log         : Logger,
 ): Promise<Response> {
   // uf's clock, not the host's: `@uniflowed/server/log`'s `elapsedMs` reads the
   // same one at the other end.
@@ -53,7 +53,7 @@ export async function answerReturned(
     // would produce a million distinct messages for one fault.
     log.error("request failed", { error, path: target });
     response = new Response("500 Internal Server Error\n", {
-      status: 500,
+      status : 500,
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
@@ -62,11 +62,11 @@ export async function answerReturned(
     // id rather than a fabricated one, because inventing an id for a request
     // that had none would put a value in the log that nothing else in the
     // system has ever seen.
-    requestId: lifecycle?.context.id ?? "",
-    method: request.method.toUpperCase(),
-    path: target,
-    route: lifecycle?.context.route ?? null,
-    status: response.status,
+    requestId : lifecycle?.context.id ?? "",
+    method    : request.method.toUpperCase(),
+    path      : target,
+    route     : lifecycle?.context.route ?? null,
+    status    : response.status,
     durationMs: elapsedMs(started),
   });
   if (lifecycle == null) return response;
@@ -121,8 +121,8 @@ export function settledAfterBody(response: Response, settle: () => Promise<void>
     },
   });
   return new Response(read, {
-    status: response.status,
+    status    : response.status,
     statusText: response.statusText,
-    headers: response.headers,
+    headers   : response.headers,
   });
 }

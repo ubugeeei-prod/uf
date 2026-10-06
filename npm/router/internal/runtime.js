@@ -273,7 +273,7 @@ type ViewTransition = { readonly finished: Promise<mixed>, ... };
  */
 interface ViewTransitionDocument {
   readonly startViewTransition?: (update: () => mixed) => ViewTransition;
-  readonly documentElement: HTMLElement | null;
+  readonly documentElement     : HTMLElement | null;
 }
 
 /**
@@ -347,7 +347,7 @@ function withViewTransition(name: ?string, update: () => void): void {
 /** How a navigation is performed. */
 export type NavigateOptions = {|
   readonly replace?: boolean,
-  readonly scroll?: boolean,
+  readonly scroll? : boolean,
   /**
    * Whether this navigation may animate. Defaults to `true`, which is what
    * every navigation does.
@@ -364,12 +364,12 @@ export type NavigateOptions = {|
 
 /** What `useRouter()` returns. */
 export type Router = {|
-  readonly push: (to: string, options?: NavigateOptions) => Promise<void>,
-  readonly replace: (to: string) => Promise<void>,
+  readonly push    : (to: string, options?: NavigateOptions) => Promise<void>,
+  readonly replace : (to: string) => Promise<void>,
   readonly prefetch: (to: string) => Promise<void>,
-  readonly refresh: () => Promise<void>,
-  readonly back: () => void,
-  readonly forward: () => void,
+  readonly refresh : () => Promise<void>,
+  readonly back    : () => void,
+  readonly forward : () => void,
 |};
 
 /**
@@ -570,12 +570,12 @@ export async function followActionRedirect(location: string, from: string): Prom
 
 /** What `useRoute()` returns. */
 export type RouteInfo = {|
-  readonly path: string,
-  readonly pathname: string,
-  readonly params: RouteParams,
+  readonly path        : string,
+  readonly pathname    : string,
+  readonly params      : RouteParams,
   readonly searchParams: SearchParams,
-  readonly data: mixed,
-  readonly pending: boolean,
+  readonly data        : mixed,
+  readonly pending     : boolean,
 |};
 
 /**
@@ -596,10 +596,10 @@ export type Navigation = "client" | "document";
  * from its modules, which the browser composes itself.
  */
 type RouterState = {|
-  readonly route: RouteState,
-  readonly view: RouteViewState,
-  readonly router: Router,
-  readonly pending: boolean,
+  readonly route     : RouteState,
+  readonly view      : RouteViewState,
+  readonly router    : Router,
+  readonly pending   : boolean,
   readonly navigation: Navigation,
 |};
 
@@ -708,9 +708,9 @@ export function routeTable(): RouteTable {
  * modules instead. See ubugeeei-prod/uf#519.
  */
 export type AppProps = {|
-  readonly url: string,
+  readonly url     : string,
   readonly initial?: ResolvedRoute,
-  readonly flight?: Promise<FlightRoot>,
+  readonly flight? : Promise<FlightRoot>,
 |};
 
 /**
@@ -760,9 +760,9 @@ function isBrowser(): boolean {
  * that actually differs.
  */
 export component RouterProvider(
-  url: string,
+  url     : string,
   initial?: ResolvedRoute,
-  flight?: Promise<FlightRoot>,
+  flight? : Promise<FlightRoot>,
   children: React.Node,
 ) {
   if (flight != null) {
@@ -868,7 +868,7 @@ function flightNavigationKey(pathname: string, search: string, from: ?string): s
  */
 component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node) {
   const [resolved, setResolved] = useState<ResolvedRoute>(initial);
-  const [pending, setPending] = useState<boolean>(false);
+  const [pending,  setPending]  = useState<boolean>(false);
   // Read once per render rather than per navigation: it is installed by the
   // entry before the first render and never changes after it, and a `Link`
   // that asked at click time would be asking a question whose answer decided
@@ -1087,7 +1087,7 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
   }, []);
 
   const router: Router = {
-    push: (to, options) => navigate(to, options),
+    push   : (to, options) => navigate(to, options),
     replace: (to) => navigate(to, { replace: true }),
     prefetch: async (to) => {
       // A prefetch loads the modules the *next render* will need, and under
@@ -1214,7 +1214,7 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
 
   const value: RouterState = {
     route: routeState(resolved),
-    view: { kind: "modules", resolved },
+    view : { kind: "modules", resolved },
     router,
     pending,
     navigation,
@@ -1411,7 +1411,7 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
   }, []);
 
   const router: Router = {
-    push: (to, options) => navigate(to, options),
+    push   : (to, options) => navigate(to, options),
     replace: (to) => navigate(to, { replace: true }),
     prefetch: async (to) => {
       // Under document navigation there is no next render in this page to
@@ -1518,7 +1518,7 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
 
   const value: RouterState = {
     route: root.route,
-    view: { kind: "flight", tree: root.tree },
+    view : { kind: "flight", tree: root.tree },
     router,
     pending,
     navigation,
@@ -1549,8 +1549,8 @@ const prefetchedFlights: Map<
  * a payload React could not read.
  */
 function keepFlight(
-  key: string,
-  fetched: Promise<FetchedFlight>,
+  key         : string,
+  fetched     : Promise<FetchedFlight>,
   ordinaryKey?: string,
 ): Promise<FetchedFlight> {
   if (!keepsNavigations()) {
@@ -1652,11 +1652,11 @@ export hook useRouterState(): RouterState {
 export hook useRoute(): RouteInfo {
   const { route, pending } = useRouterState();
   return {
-    path: route.path,
-    pathname: route.pathname,
-    params: route.params,
+    path        : route.path,
+    pathname    : route.pathname,
+    params      : route.params,
     searchParams: route.searchParams,
-    data: useResolvedData(route),
+    data        : useResolvedData(route),
     pending,
   };
 }
@@ -2065,14 +2065,14 @@ export hook useLinkStatus(): {| readonly pending: boolean |} {
  */
 export type LinkClickEvent = {
   readonly defaultPrevented: boolean,
-  readonly button: number,
-  readonly altKey: boolean,
-  readonly ctrlKey: boolean,
-  readonly metaKey: boolean,
-  readonly shiftKey: boolean,
-  readonly currentTarget: mixed,
-  readonly preventDefault: () => mixed,
-  readonly stopPropagation: () => mixed,
+  readonly button          : number,
+  readonly altKey          : boolean,
+  readonly ctrlKey         : boolean,
+  readonly metaKey         : boolean,
+  readonly shiftKey        : boolean,
+  readonly currentTarget   : mixed,
+  readonly preventDefault  : () => mixed,
+  readonly stopPropagation : () => mixed,
   ...
 };
 
@@ -2102,20 +2102,20 @@ export type LinkClickEvent = {
  * ordinary link.
  */
 export component Link(
-  to: string,
-  prefetch?: LinkPrefetch = "intent",
-  replace?: boolean = false,
+  to         : string,
+  prefetch?  : LinkPrefetch = "intent",
+  replace?   : boolean = false,
   transition?: boolean = true,
-  children?: React.Node,
-  className?: string,
-  onClick?: (event: LinkClickEvent) => mixed,
+  children?  : React.Node,
+  className? : string,
+  onClick?   : (event: LinkClickEvent) => mixed,
   // `key` named out of the indexer: React never hands a component its key, and
   // the rest is spread onto the anchor, where a `mixed` key would not do.
   ...rest: { readonly key?: empty, readonly [string]: mixed }
 ) {
-  const { router, navigation } = useRouterState();
+  const { router, navigation }             = useRouterState();
   const [linkPending, startLinkTransition] = useTransition();
-  const prefetched = useRef(false);
+  const prefetched                         = useRef(false);
   const drives = navigation === "client";
 
   const doPrefetch = () => {

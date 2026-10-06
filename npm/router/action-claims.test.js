@@ -31,13 +31,13 @@ const MODULE = "app/_actions/tally.js";
 /** A dispatcher with one action, and a record of whether it ran. */
 function endpoint(): {|
   readonly dispatch: (request: Request) => Promise<Response | null>,
-  readonly ran: () => number,
+  readonly ran     : () => number,
 |} {
   let calls = 0;
   const dispatch = createActionDispatcher({
     actions: [
       {
-        id: ID,
+        id    : ID,
         module: MODULE,
         export: "recordCount",
         load: async () => ({
@@ -64,13 +64,13 @@ function endpoint(): {|
 
 /** A call that passes every guard, with `headers` applied last. */
 function call(
-  body: string | Uint8Array,
+  body    : string | Uint8Array,
   headers?: { readonly [string]: string },
-  method?: string,
+  method? : string,
 ): Request {
   const given: { [string]: string } = {
-    origin: "https://app.example",
-    host: "app.example",
+    origin        : "https://app.example",
+    host          : "app.example",
     "content-type": ACTION_CONTENT_TYPE,
   };
   given[ACTION_HEADER] = ID;
@@ -78,9 +78,9 @@ function call(
   for (const name of Object.keys(extra)) given[name] = extra[name];
   const verb = method ?? "POST";
   return new Request("https://app.example/counter", {
-    method: verb,
+    method : verb,
     headers: given,
-    body: verb === "POST" ? body : undefined,
+    body   : verb === "POST" ? body : undefined,
   });
 }
 
@@ -160,7 +160,7 @@ describe("the three cross-site guards", () => {
     const server = endpoint();
     const forged = await server.dispatch(
       call('{"args":[]}', {
-        origin: "https://evil.example",
+        origin            : "https://evil.example",
         "x-forwarded-host": "evil.example",
       }),
     );
@@ -182,7 +182,7 @@ describe("what a failure says, and to whom", () => {
     const dispatch = createActionDispatcher({
       actions: [
         {
-          id: ID,
+          id    : ID,
           module: MODULE,
           export: "recordCount",
           load: async () => ({

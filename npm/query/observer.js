@@ -104,38 +104,38 @@ export type PlaceholderData<TData> =
 
 export type QueryOptions<TData, TSelected = TData> = {|
   readonly queryKey: QueryKey,
-  readonly queryFn: (context: FetchContext<TData>) => Promise<TData>,
+  readonly queryFn : (context: FetchContext<TData>) => Promise<TData>,
   /** `false` means "do not fetch this yet"; a manual refetch still works. */
   readonly enabled?: boolean,
   /** How long an answer counts as fresh. `Infinity` means "until I say so". */
   readonly staleTime?: number,
   /** How long an unwatched entry is kept before it is collected. */
-  readonly gcTime?: number,
-  readonly retry?: RetryPolicy,
+  readonly gcTime?    : number,
+  readonly retry?     : RetryPolicy,
   readonly retryDelay?: RetryDelay,
   /** Narrow the data. See the module docs for what it buys. */
   readonly select?: (data: TData) => TSelected,
   /** Shown while there is nothing yet; never written to the cache. */
-  readonly placeholderData?: PlaceholderData<TData>,
-  readonly refetchInterval?: number | null,
+  readonly placeholderData?     : PlaceholderData<TData>,
+  readonly refetchInterval?     : number | null,
   readonly refetchOnWindowFocus?: boolean,
-  readonly refetchOnReconnect?: boolean,
+  readonly refetchOnReconnect?  : boolean,
 |};
 
 /** The same options with the client's defaults filled in. */
 export type ResolvedQueryOptions<TData, TSelected = TData> = {|
-  readonly queryKey: QueryKey,
-  readonly queryFn: (context: FetchContext<TData>) => Promise<TData>,
-  readonly enabled: boolean,
-  readonly staleTime: number,
-  readonly gcTime: number,
-  readonly retry: RetryPolicy,
-  readonly retryDelay: RetryDelay,
-  readonly select?: (data: TData) => TSelected,
-  readonly placeholderData?: PlaceholderData<TData>,
-  readonly refetchInterval: number | null,
+  readonly queryKey            : QueryKey,
+  readonly queryFn             : (context: FetchContext<TData>) => Promise<TData>,
+  readonly enabled             : boolean,
+  readonly staleTime           : number,
+  readonly gcTime              : number,
+  readonly retry               : RetryPolicy,
+  readonly retryDelay          : RetryDelay,
+  readonly select?             : (data: TData) => TSelected,
+  readonly placeholderData?    : PlaceholderData<TData>,
+  readonly refetchInterval     : number | null,
   readonly refetchOnWindowFocus: boolean,
-  readonly refetchOnReconnect: boolean,
+  readonly refetchOnReconnect  : boolean,
 |};
 
 /**
@@ -154,21 +154,21 @@ export type ResolvedQueryOptions<TData, TSelected = TData> = {|
  * a devtool or a "last updated" label that wants them.
  */
 export type QueryResult<T> = {|
-  readonly data: T | void,
-  readonly error: Error | null,
-  readonly status: QueryStatus,
+  readonly data       : T | void,
+  readonly error      : Error | null,
+  readonly status     : QueryStatus,
   readonly fetchStatus: FetchStatus,
   /** There is no answer yet, not even a failed one. */
   readonly isPending: boolean,
   /** The first load: pending *and* a request is in flight. */
   readonly isLoading: boolean,
   readonly isSuccess: boolean,
-  readonly isError: boolean,
+  readonly isError  : boolean,
   /** A request is in flight, first load or refresh. */
   readonly isFetching: boolean,
   /** A request is in flight over data that is already on screen. */
-  readonly isRefetching: boolean,
-  readonly isStale: boolean,
+  readonly isRefetching     : boolean,
+  readonly isStale          : boolean,
   readonly isPlaceholderData: boolean,
   /** Failed attempts in the request in flight, for "retrying (2 of 3)". */
   readonly failureCount: number,
@@ -208,7 +208,7 @@ export class QueryObserver<TData, TSelected = TData> {
    * entry is built by [`subscribe`] one effect later.
    */
   readResult(
-    client: QueryClient,
+    client : QueryClient,
     options: ResolvedQueryOptions<TData, TSelected>,
   ): QueryResult<TSelected> {
     const query = this.entryFor(client, options);
@@ -229,7 +229,7 @@ export class QueryObserver<TData, TSelected = TData> {
    * what the query function answers.
    */
   entryFor(
-    client: QueryClient,
+    client : QueryClient,
     options: ResolvedQueryOptions<TData, TSelected>,
   ): Query<TData> | void {
     return client.cache.get(hashKey(options.queryKey)) as $FlowFixMe;
@@ -345,7 +345,7 @@ export class QueryObserver<TData, TSelected = TData> {
    */
   fetch(options: {|
     readonly cancelRefetch: boolean,
-    readonly direction?: FetchDirection | null,
+    readonly direction?   : FetchDirection | null,
   |}): Promise<void> {
     const resolved = this.resolved();
     const direction = options.direction ?? null;
@@ -354,8 +354,8 @@ export class QueryObserver<TData, TSelected = TData> {
     const query = this.attach(resolved);
     return query
       .fetch(this.buildFetcher(resolved, direction), {
-        retry: resolved.retry,
-        retryDelay: resolved.retryDelay,
+        retry        : resolved.retry,
+        retryDelay   : resolved.retryDelay,
         cancelRefetch: options.cancelRefetch,
         direction,
       })
@@ -371,15 +371,15 @@ export class QueryObserver<TData, TSelected = TData> {
    * ones that cannot honour it.
    */
   buildFetcher(
-    options: ResolvedQueryOptions<TData, TSelected>,
+    options   : ResolvedQueryOptions<TData, TSelected>,
     _direction: FetchDirection | null,
   ): Fetcher<TData> {
     return (context) => options.queryFn(context);
   }
 
   buildResult(
-    query: Query<TData> | void,
-    state: QueryState<TData>,
+    query  : Query<TData> | void,
+    state  : QueryState<TData>,
     options: ResolvedQueryOptions<TData, TSelected>,
   ): QueryResult<TSelected> {
     let raw: mixed = state.data;
@@ -408,20 +408,20 @@ export class QueryObserver<TData, TSelected = TData> {
     const isFetching = state.fetchStatus === "fetching";
     const isPending = status === "pending";
     return {
-      data: raw === undefined ? undefined : (this.narrow(raw, options.select) as $FlowFixMe),
+      data : raw === undefined ? undefined : (this.narrow(raw, options.select) as $FlowFixMe),
       error: state.error,
       status,
       fetchStatus: state.fetchStatus,
       isPending,
       isLoading: isPending && isFetching,
       isSuccess: status === "success",
-      isError: status === "error",
+      isError  : status === "error",
       isFetching,
       isRefetching: isFetching && !isPending,
-      isStale: query == null || query.isStale(options.staleTime),
+      isStale     : query == null || query.isStale(options.staleTime),
       isPlaceholderData,
       failureCount: state.failureCount,
-      refetch: this.refetch,
+      refetch     : this.refetch,
     };
   }
 

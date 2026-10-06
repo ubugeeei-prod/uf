@@ -58,13 +58,13 @@ import { withProps } from "./internal/merge-props.js";
  */
 component BreadcrumbRoot(
   children: React.Node,
-  label?: string = "Breadcrumb",
-  render?: RenderProp,
+  label?  : string = "Breadcrumb",
+  render? : RenderProp,
   ...rest: Rest
 ) {
   const props = withProps(rest, { "aria-label": label, children });
   return match (render) {
-    undefined => <nav {...props} />,
+    undefined    => <nav {...props} />,
     const custom => custom(withProps(props, { role: "navigation" })),
   };
 }
@@ -78,12 +78,12 @@ component BreadcrumbRoot(
  */
 component BreadcrumbList(
   children: renders* (BreadcrumbItem | BreadcrumbSeparator),
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) {
   const props = withProps(rest, { children });
   return match (render) {
-    undefined => <ol {...props} />,
+    undefined    => <ol {...props} />,
     const custom => custom(withProps(props, { role: "list" })),
   };
 }
@@ -92,7 +92,7 @@ component BreadcrumbList(
 component BreadcrumbItem(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   return match (render) {
-    undefined => <li {...props} />,
+    undefined    => <li {...props} />,
     const custom => custom(withProps(props, { role: "listitem" })),
   };
 }
@@ -101,7 +101,7 @@ component BreadcrumbItem(children: React.Node, render?: RenderProp, ...rest: Res
 component BreadcrumbLink(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   return match (render) {
-    undefined => <a {...props} />,
+    undefined    => <a {...props} />,
     const custom => custom(withProps(props, { role: "link" })),
   };
 }
@@ -117,7 +117,7 @@ component BreadcrumbLink(children: React.Node, render?: RenderProp, ...rest: Res
 component BreadcrumbPage(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-current": "page", children });
   return match (render) {
-    undefined => <span {...props} />,
+    undefined    => <span {...props} />,
     const custom => custom(props),
   };
 }
@@ -132,7 +132,7 @@ component BreadcrumbPage(children: React.Node, render?: RenderProp, ...rest: Res
 component BreadcrumbSeparator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-hidden": "true", children, role: "presentation" });
   return match (render) {
-    undefined => <li {...props} />,
+    undefined    => <li {...props} />,
     const custom => custom(props),
   };
 }

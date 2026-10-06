@@ -18,15 +18,15 @@ import { singleConnection } from "../index.js";
 /** The part of a `PGlite` instance this uses. */
 export interface PGliteDatabase {
   query(
-    text: string,
+    text  : string,
     params: $ReadOnlyArray<SqlParam>,
     options: {|
-      readonly rowMode: "array",
-      readonly parsers: { readonly [string]: (value: string) => mixed },
+      readonly rowMode    : "array",
+      readonly parsers    : { readonly [string]: (value: string) => mixed },
       readonly serializers: { readonly [string]: (value: mixed) => mixed },
     |},
   ): Promise<{ readonly rows: $ReadOnlyArray<mixed>, readonly affectedRows?: number, ... }>;
-  readonly parsers: { readonly [string]: mixed };
+  readonly parsers    : { readonly [string]: mixed };
   readonly serializers: { readonly [string]: mixed };
 }
 
@@ -50,7 +50,7 @@ export function fromPGlite(database: PGliteDatabase): Queryable {
   let parsers: { readonly [string]: (value: mixed) => mixed } = {};
   let serializers: { readonly [string]: (value: mixed) => mixed } = {};
   return singleConnection({
-    engine: "postgresql",
+    engine   : "postgresql",
     maxParams: 65535,
     run: async (text, params) => {
       const size = Object.keys(database.parsers).length + Object.keys(database.serializers).length;

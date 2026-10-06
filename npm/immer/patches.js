@@ -57,8 +57,8 @@ export type PatchOp = "add" | "remove" | "replace";
  * value instead of writing to the draft.
  */
 export type Patch = {|
-  readonly op: PatchOp,
-  readonly path: $ReadOnlyArray<mixed>,
+  readonly op    : PatchOp,
+  readonly path  : $ReadOnlyArray<mixed>,
   readonly value?: mixed,
 |};
 
@@ -81,8 +81,8 @@ function asSet(value: mixed): Set<mixed> {
  * holding a revoked proxy is worse than no patch at all.
  */
 export function recordPatches(
-  state: DraftState,
-  path: $ReadOnlyArray<mixed>,
+  state  : DraftState,
+  path   : $ReadOnlyArray<mixed>,
   patches: Array<Patch>,
   inverse: Array<Patch>,
 ): void {
@@ -90,10 +90,10 @@ export function recordPatches(
     "array" => {
       recordArrayPatches(state, path, patches, inverse);
     }
-    "set" => {
+    "set"   => {
       recordSetPatches(state, path, patches, inverse);
     }
-    _ => {
+    _       => {
       recordAssignedPatches(state, path, patches, inverse);
     }
   }
@@ -101,10 +101,10 @@ export function recordPatches(
 
 /** The patches for a recipe that returned a value instead of writing to one. */
 export function recordReplacement(
-  base: mixed,
+  base       : mixed,
   replacement: mixed,
-  patches: Array<Patch>,
-  inverse: Array<Patch>,
+  patches    : Array<Patch>,
+  inverse    : Array<Patch>,
 ): void {
   patches.push({ op: "replace", path: [], value: replacement });
   inverse.push({ op: "replace", path: [], value: base });
@@ -119,8 +119,8 @@ export function recordReplacement(
  * object rather than the size of the change.
  */
 function recordAssignedPatches(
-  state: DraftState,
-  path: $ReadOnlyArray<mixed>,
+  state  : DraftState,
+  path   : $ReadOnlyArray<mixed>,
   patches: Array<Patch>,
   inverse: Array<Patch>,
 ): void {
@@ -143,9 +143,9 @@ function recordAssignedPatches(
     patches.push(op === "remove" ? { op, path: at } : { op, path: at, value: after });
     inverse.push(
       match (op) {
-        "add" => { op: "remove", path: at },
+        "add"    => { op: "remove", path: at },
         "remove" => { op: "add", path: at, value: before },
-        _ => { op: "replace", path: at, value: before },
+        _        => { op: "replace", path: at, value: before },
       },
     );
   });
@@ -161,8 +161,8 @@ function recordAssignedPatches(
  * with the first.
  */
 function recordArrayPatches(
-  state: DraftState,
-  path: $ReadOnlyArray<mixed>,
+  state  : DraftState,
+  path   : $ReadOnlyArray<mixed>,
   patches: Array<Patch>,
   inverse: Array<Patch>,
 ): void {
@@ -204,8 +204,8 @@ function recordArrayPatches(
  * value and a set has no way to say otherwise.
  */
 function recordSetPatches(
-  state: DraftState,
-  path: $ReadOnlyArray<mixed>,
+  state  : DraftState,
+  path   : $ReadOnlyArray<mixed>,
   patches: Array<Patch>,
   inverse: Array<Patch>,
 ): void {

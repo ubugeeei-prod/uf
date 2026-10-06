@@ -64,7 +64,7 @@ export function installStaleTime(seconds: number): void {
   if (import.meta.hot != null) {
     Object.defineProperty(globalThis as $FlowFixMe, "__UF_NAVIGATION_CACHE__", {
       configurable: true,
-      value: inspectNavigationCache,
+      value       : inspectNavigationCache,
     });
   }
   if (staleTimeMs === 0) {
@@ -90,18 +90,18 @@ export type NavigationCache<T> = {|
   readonly store: (key: string, value: T) => void,
   /** Drop what `key` keeps, if it is still `value`. */
   readonly forget: (key: string, value: T) => void,
-  readonly clear: () => void,
+  readonly clear : () => void,
   /** How many routes are kept, fresh or not. */
-  readonly size: () => number,
+  readonly size   : () => number,
   readonly inspect: () => $ReadOnlyArray<NavigationCacheEntry>,
 |};
 
 /** Metadata only: inspecting the cache never exposes loader or Flight data. */
 export type NavigationCacheEntry = {|
-  readonly key: string,
+  readonly key     : string,
   readonly cachedAt: number,
-  readonly staleAt: number,
-  readonly fresh: boolean,
+  readonly staleAt : number,
+  readonly fresh   : boolean,
 |};
 
 function createNavigationCache<T>(): NavigationCache<T> {
@@ -148,8 +148,8 @@ function createNavigationCache<T>(): NavigationCache<T> {
       return Array.from(entries, ([key, entry]) => ({
         key,
         cachedAt: entry.at,
-        staleAt: entry.at + staleTimeMs,
-        fresh: now - entry.at < staleTimeMs,
+        staleAt : entry.at + staleTimeMs,
+        fresh   : now - entry.at < staleTimeMs,
       }));
     },
   };
@@ -164,13 +164,13 @@ export const routeNavigations: NavigationCache<Promise<ResolvedRoute>> = createN
 /** A fresh snapshot for the development console, without reading an entry. */
 export function inspectNavigationCache(): {|
   readonly staleTime: number,
-  readonly flight: $ReadOnlyArray<NavigationCacheEntry>,
-  readonly routes: $ReadOnlyArray<NavigationCacheEntry>,
+  readonly flight   : $ReadOnlyArray<NavigationCacheEntry>,
+  readonly routes   : $ReadOnlyArray<NavigationCacheEntry>,
 |} {
   return {
     staleTime: staleTimeMs / 1000,
-    flight: flightNavigations.inspect(),
-    routes: routeNavigations.inspect(),
+    flight   : flightNavigations.inspect(),
+    routes   : routeNavigations.inspect(),
   };
 }
 

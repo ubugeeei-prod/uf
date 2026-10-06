@@ -56,8 +56,8 @@ export type Loadable<T> =
  * subscription feeds values in exactly the way an event handler would.
  */
 export type AtomMount<T> = {
-  readonly get: () => T,
-  readonly set: (value: T) => void,
+  readonly get      : () => T,
+  readonly set      : (value: T) => void,
   readonly subscribe: (listener: () => void) => Unsubscribe,
 };
 
@@ -92,24 +92,24 @@ export type AtomRecord<T, in A> = {
   /** The value before anything is computed: a primitive's initial value, an
    * async atom's `loading`, a write-only atom's `null`. */
   readonly initial: T,
-  readonly read: null | ((get: AtomGetter) => T),
-  readonly load: null | ((get: AtomGetter, context: LoadContext) => Promise<T>),
-  readonly write: null | ((get: AtomGetter, set: AtomSetter, arg: A) => void),
-  readonly equals: null | ((previous: T, next: T) => boolean),
+  readonly read   : null | ((get: AtomGetter) => T),
+  readonly load   : null | ((get: AtomGetter, context: LoadContext) => Promise<T>),
+  readonly write  : null | ((get: AtomGetter, set: AtomSetter, arg: A) => void),
+  readonly equals : null | ((previous: T, next: T) => boolean),
   readonly onMount: null | ((mount: AtomMount<T>) => void | (() => void)),
 };
 
 /** What every constructor accepts. */
 export type AtomOptions<T> = {
   readonly debugLabel?: string,
-  readonly equals?: (previous: T, next: T) => boolean,
+  readonly equals?    : (previous: T, next: T) => boolean,
 };
 
 /** What a primitive atom accepts, which is a mount as well. */
 export type PrimitiveOptions<T> = {
   readonly debugLabel?: string,
-  readonly equals?: (previous: T, next: T) => boolean,
-  readonly onMount?: (mount: AtomMount<T>) => void | (() => void),
+  readonly equals?    : (previous: T, next: T) => boolean,
+  readonly onMount?   : (mount: AtomMount<T>) => void | (() => void),
 };
 
 /**
@@ -121,12 +121,12 @@ export type PrimitiveOptions<T> = {
  * them meet.
  */
 function baseRecord<T, A>(
-  kind: "primitive" | "derived" | "async",
-  label: string,
+  kind   : "primitive" | "derived" | "async",
+  label  : string,
   initial: T,
   options: void | {
     readonly debugLabel?: string,
-    readonly equals?: (previous: T, next: T) => boolean,
+    readonly equals?    : (previous: T, next: T) => boolean,
     ...
   },
 ): AtomRecord<T, A> {
@@ -134,17 +134,17 @@ function baseRecord<T, A>(
     kind,
     label: options?.debugLabel ?? label,
     initial,
-    read: null,
-    load: null,
-    write: null,
-    equals: options?.equals ?? null,
+    read   : null,
+    load   : null,
+    write  : null,
+    equals : options?.equals ?? null,
     onMount: null,
   };
 }
 
 /** A value a store holds directly. */
 export function definePrimitive<T>(
-  initial: T,
+  initial : T,
   options?: PrimitiveOptions<T>,
 ): AtomRecord<T, SetAction<T>> {
   return {
@@ -161,8 +161,8 @@ export function definePrimitive<T>(
  * one, so the placeholder is cast here, once, rather than at every call site.
  */
 export function defineSelector<T, A>(
-  read: (get: AtomGetter) => T,
-  write: null | ((get: AtomGetter, set: AtomSetter, argument: A) => void),
+  read    : (get: AtomGetter) => T,
+  write   : null | ((get: AtomGetter, set: AtomSetter, argument: A) => void),
   options?: AtomOptions<T>,
 ): AtomRecord<T, A> {
   const unevaluated: T = null as $FlowFixMe;
@@ -177,7 +177,7 @@ export function defineSelector<T, A>(
  * anything.
  */
 export function defineAction<A>(
-  write: (get: AtomGetter, set: AtomSetter, argument: A) => void,
+  write   : (get: AtomGetter, set: AtomSetter, argument: A) => void,
   options?: AtomOptions<null>,
 ): AtomRecord<null, A> {
   return { ...baseRecord("derived", "action", null, options), write };
@@ -199,7 +199,7 @@ export function defineAction<A>(
  * `internal/resource.js`.
  */
 export function defineAsync<T>(
-  load: (get: AtomGetter, context: LoadContext) => Promise<T>,
+  load    : (get: AtomGetter, context: LoadContext) => Promise<T>,
   options?: AtomOptions<Loadable<T>>,
 ): AtomRecord<Loadable<T>, empty> {
   const pending: Loadable<T> = { state: "loading" };

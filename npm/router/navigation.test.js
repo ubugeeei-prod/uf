@@ -117,7 +117,7 @@ const PREFETCHED = "/prefetched";
 /** The table these tests route through, and the route the prefetch borrows. */
 type Built = {|
   readonly routes: $ReadOnlyArray<RouteRecord>,
-  readonly other: { readonly page: () => Promise<PageModule>, ... },
+  readonly other : { readonly page: () => Promise<PageModule>, ... },
 |};
 
 let built: Built | null = null;
@@ -128,7 +128,7 @@ function tables(): Built {
   }
 
   component Home() {
-    const router = useRouter();
+    const router                = useRouter();
     const [clicked, setClicked] = useState<number>(0);
     return (
       <section>
@@ -166,10 +166,10 @@ function tables(): Built {
   }
 
   const home = {
-    path: "/",
+    path  : "/",
     params: [],
-    mdx: false,
-    file: "app/$page.js",
+    mdx   : false,
+    file  : "app/$page.js",
     page: () => {
       loaded["/"] = (loaded["/"] ?? 0) + 1;
       return Promise.resolve({ default: Home });
@@ -178,10 +178,10 @@ function tables(): Built {
     loading: [],
   };
   const other = {
-    path: "/other",
+    path  : "/other",
     params: [],
-    mdx: false,
-    file: "app/other/$page.js",
+    mdx   : false,
+    file  : "app/other/$page.js",
     page: () => {
       loaded["/other"] = (loaded["/other"] ?? 0) + 1;
       return Promise.resolve({ default: Other });
@@ -207,10 +207,10 @@ function tables(): Built {
 function prefetchRoute() {
   const { other } = tables();
   return {
-    path: PREFETCHED,
+    path  : PREFETCHED,
     params: [],
-    mdx: false,
-    file: "app/prefetched/$page.js",
+    mdx   : false,
+    file  : "app/prefetched/$page.js",
     page: () => {
       loaded[PREFETCHED] = (loaded[PREFETCHED] ?? 0) + 1;
       return other.page();
@@ -228,7 +228,7 @@ async function serve(url: string): Promise<void> {
     App: routerView("./app"),
     routes,
     notFound: [],
-    errors: [],
+    errors  : [],
   });
   const { html } = await renderer.prerender(url, { scripts: [], styles: [], preloads: [] });
 
@@ -250,10 +250,10 @@ async function hydrateHere(navigation: "client" | "document"): Promise<void> {
   const { routes } = tables();
   await act(async () => {
     await hydrate({
-      App: routerView("./app"),
-      routes: [...routes, prefetchRoute()],
+      App     : routerView("./app"),
+      routes  : [...routes, prefetchRoute()],
       notFound: [],
-      errors: [],
+      errors  : [],
       navigation,
     });
   });
@@ -332,26 +332,26 @@ async function watchingLocation(run: () => Promise<void>): Promise<{
   };
   Object.defineProperty(location, "assign", {
     configurable: true,
-    writable: true,
-    value: stub(assigned),
+    writable    : true,
+    value       : stub(assigned),
   });
   Object.defineProperty(location, "replace", {
     configurable: true,
-    writable: true,
-    value: stub(replaced),
+    writable    : true,
+    value       : stub(replaced),
   });
   try {
     await run();
   } finally {
     Object.defineProperty(location, "assign", {
       configurable: true,
-      writable: true,
-      value: originalAssign,
+      writable    : true,
+      value       : originalAssign,
     });
     Object.defineProperty(location, "replace", {
       configurable: true,
-      writable: true,
-      value: originalReplace,
+      writable    : true,
+      value       : originalReplace,
     });
   }
   return { assigned, replaced };

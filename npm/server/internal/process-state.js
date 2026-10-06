@@ -71,8 +71,8 @@ export function processWide<T>(name: string, create: () => T): T {
   const value = create();
   Object.defineProperty(globalThis, key, {
     value,
-    writable: false,
-    enumerable: false,
+    writable    : false,
+    enumerable  : false,
     configurable: false,
   });
   return value;

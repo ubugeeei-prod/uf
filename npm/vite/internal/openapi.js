@@ -35,7 +35,7 @@ export async function createOpenApiDocument(handlers, options = {}) {
   return {
     openapi: "3.1.0",
     info: {
-      title: options.title ?? "uf application",
+      title  : options.title ?? "uf application",
       version: options.version ?? "0.0.0",
     },
     paths,
@@ -75,7 +75,7 @@ function createOperation(record, method, schema, toJsonSchema) {
   const parameters = pathParameters(record);
   const operation = {
     operationId: operationId(record, method),
-    responses: untypedResponses(method),
+    responses  : untypedResponses(method),
   };
   if (record.file != null) operation["x-uf-source"] = record.file;
   if (parameters.length > 0) operation.parameters = parameters;
@@ -142,9 +142,9 @@ function addQuerySchema(operation, schema) {
   const required = new Set(Array.isArray(schema.required) ? schema.required : []);
   const parameters = Object.keys(schema.properties).map((name) => ({
     name,
-    in: "query",
+    in      : "query",
     required: required.has(name),
-    schema: schema.properties[name],
+    schema  : schema.properties[name],
   }));
   operation.parameters = [...(operation.parameters ?? []), ...parameters];
 }
@@ -174,10 +174,10 @@ function pathParameters(record) {
   const params = record.params ?? paramsFromPath(record.path);
   return params.map((param) => {
     const parameter = {
-      name: param.name,
-      in: "path",
+      name    : param.name,
+      in      : "path",
       required: true,
-      schema: { type: "string" },
+      schema  : { type: "string" },
     };
     if (param.catchAll) {
       parameter.description = "Catch-all route segment, slash-separated in the URL.";
@@ -191,7 +191,7 @@ function paramsFromPath(routePath) {
     .split("/")
     .filter((segment) => segment.startsWith(":"))
     .map((segment) => ({
-      name: paramName(segment),
+      name    : paramName(segment),
       catchAll: segment.endsWith("*") || segment.endsWith("*?"),
     }));
 }

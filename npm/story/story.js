@@ -180,8 +180,8 @@ export const STORY_SET: "uniflowed/story-set" = "uniflowed/story-set";
 
 /** A component's stories, resolved. */
 export type StorySet = {|
-  readonly kind: typeof STORY_SET,
-  readonly title: string,
+  readonly kind   : typeof STORY_SET,
+  readonly title  : string,
   readonly stories: $ReadOnlyArray<Story>,
 |};
 
@@ -219,9 +219,9 @@ export function defineStories<Props extends { ... }>(config: StorySetConfig<Prop
       key,
       name,
       props,
-      title: config.title,
+      title     : config.title,
       decorators: [...(config.decorators ?? []), ...(declaration.decorators ?? [])],
-      mocks: [...(declaration.mocks ?? []), ...(config.mocks ?? [])],
+      mocks     : [...(declaration.mocks ?? []), ...(config.mocks ?? [])],
       // The one place the type parameter crosses into the erased world, and it
       // crosses without a cast: `props` is still `Props` in this scope, so the
       // context handed to the caller's function is a real `PlayContext<Props>`

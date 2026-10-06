@@ -7,11 +7,11 @@ import { Kbd } from "./kbd.js";
 
 const styles = stylex.create({
   text: {
-    margin: 0,
+    margin    : 0,
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
+    fontSize  : ufTokens.textSm,
     lineHeight: ufTokens.leadingBase,
-    color: ufTokens.ink,
+    color     : ufTokens.ink,
   },
 });
 

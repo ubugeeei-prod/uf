@@ -6,8 +6,8 @@ import * as Alert from "./alert.js";
 
 const styles = stylex.create({
   stack: {
-    display: "grid",
-    gap: ufTokens.space3,
+    display : "grid",
+    gap     : ufTokens.space3,
     maxWidth: "32rem",
   },
 });

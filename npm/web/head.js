@@ -36,23 +36,23 @@ import * as React from "@uniflowed/react";
 
 /** One `<meta>`, by whichever attribute names it. */
 export type Meta = {
-  readonly name?: string,
+  readonly name?    : string,
   readonly property?: string,
-  readonly content: string,
+  readonly content  : string,
 };
 
 /** One `<link>`. */
 export type Link = {
-  readonly rel: string,
-  readonly href: string,
-  readonly type?: string,
+  readonly rel   : string,
+  readonly href  : string,
+  readonly type? : string,
   readonly sizes?: string,
 };
 
 /** What a component wants in the head. */
 export type Head = {
   readonly title?: string,
-  readonly meta?: $ReadOnlyArray<Meta>,
+  readonly meta? : $ReadOnlyArray<Meta>,
   readonly links?: $ReadOnlyArray<Link>,
 };
 

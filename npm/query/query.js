@@ -84,19 +84,19 @@ export type FetchDirection = "forward" | "backward";
  * quietly keeps itself fresh underneath.
  */
 export type QueryState<out T> = {|
-  readonly status: QueryStatus,
-  readonly fetchStatus: FetchStatus,
-  readonly data: T | void,
-  readonly dataUpdatedAt: number,
-  readonly checkedAt: number,
-  readonly error: Error | null,
+  readonly status        : QueryStatus,
+  readonly fetchStatus   : FetchStatus,
+  readonly data          : T | void,
+  readonly dataUpdatedAt : number,
+  readonly checkedAt     : number,
+  readonly error         : Error | null,
   readonly errorUpdatedAt: number,
   /** Failed attempts in the current request, reset when one is started. */
-  readonly failureCount: number,
+  readonly failureCount : number,
   readonly failureReason: Error | null,
   /** Set by invalidation: stale regardless of the clock. */
   readonly invalidated: boolean,
-  readonly direction: FetchDirection | null,
+  readonly direction  : FetchDirection | null,
 |};
 
 /**
@@ -107,8 +107,8 @@ export type QueryState<out T> = {|
  * and an ordinary one can use for a conditional request.
  */
 export type FetchContext<T> = {|
-  readonly queryKey: QueryKey,
-  readonly signal: AbortSignal,
+  readonly queryKey    : QueryKey,
+  readonly signal      : AbortSignal,
   readonly previousData: T | void,
   readonly failureCount: number,
 |};
@@ -145,17 +145,17 @@ export const DEFAULT_GC_TIME: number = 5 * 60_000;
  * reading a key that does not exist yet must not create it.
  */
 export const EMPTY_STATE: QueryState<empty> = Object.freeze({
-  status: "pending",
-  fetchStatus: "idle",
-  data: undefined,
-  dataUpdatedAt: 0,
-  checkedAt: 0,
-  error: null,
+  status        : "pending",
+  fetchStatus   : "idle",
+  data          : undefined,
+  dataUpdatedAt : 0,
+  checkedAt     : 0,
+  error         : null,
   errorUpdatedAt: 0,
-  failureCount: 0,
-  failureReason: null,
-  invalidated: false,
-  direction: null,
+  failureCount  : 0,
+  failureReason : null,
+  invalidated   : false,
+  direction     : null,
 });
 
 export class Query<T> {
@@ -205,10 +205,10 @@ export class Query<T> {
   fetch(
     fetcher: Fetcher<T>,
     options: {|
-      readonly retry: RetryPolicy,
-      readonly retryDelay: RetryDelay,
+      readonly retry         : RetryPolicy,
+      readonly retryDelay    : RetryDelay,
       readonly cancelRefetch?: boolean,
-      readonly direction?: FetchDirection | null,
+      readonly direction?    : FetchDirection | null,
     |},
   ): Promise<T | void> {
     if (this.pending != null) {
@@ -225,14 +225,14 @@ export class Query<T> {
     this.signalConsumed = false;
     this.restore = this.state;
     this.setState({
-      fetchStatus: "fetching",
-      direction: options.direction ?? null,
-      failureCount: 0,
+      fetchStatus  : "fetching",
+      direction    : options.direction ?? null,
+      failureCount : 0,
       failureReason: null,
     });
 
     const promise = this.run(id, controller, fetcher, {
-      retry: options.retry,
+      retry     : options.retry,
       retryDelay: options.retryDelay,
     });
     this.pending = promise;
@@ -248,17 +248,17 @@ export class Query<T> {
    * returned yet at the point that assignment has to happen.
    */
   async run(
-    id: number,
+    id        : number,
     controller: AbortController,
-    fetcher: Fetcher<T>,
-    options: {| readonly retry: RetryPolicy, readonly retryDelay: RetryDelay |},
+    fetcher   : Fetcher<T>,
+    options   : {| readonly retry: RetryPolicy, readonly retryDelay: RetryDelay |},
   ): Promise<T | void> {
     try {
       const value = await runWithRetry({
-        attempt: (failureCount) => fetcher(this.contextFor(controller, failureCount)),
-        retry: options.retry,
+        attempt   : (failureCount) => fetcher(this.contextFor(controller, failureCount)),
+        retry     : options.retry,
         retryDelay: options.retryDelay,
-        signal: controller.signal,
+        signal    : controller.signal,
         onFailure: (failureCount, error) => {
           if (this.fetchId === id) {
             this.setState({ failureCount, failureReason: error });
@@ -297,8 +297,8 @@ export class Query<T> {
           status: "error",
           error,
           errorUpdatedAt: Date.now(),
-          fetchStatus: "idle",
-          direction: null,
+          fetchStatus   : "idle",
+          direction     : null,
         });
       }
       throw error;
@@ -349,17 +349,17 @@ export class Query<T> {
     const shared = structuralShare(this.state.data, value);
     const changed = shared !== this.state.data || this.state.status !== "success";
     this.setState({
-      data: shared,
-      status: "success",
-      error: null,
+      data          : shared,
+      status        : "success",
+      error         : null,
       errorUpdatedAt: 0,
-      fetchStatus: "idle",
-      direction: null,
-      invalidated: false,
-      failureCount: 0,
-      failureReason: null,
-      dataUpdatedAt: changed ? at : this.state.dataUpdatedAt,
-      checkedAt: at,
+      fetchStatus   : "idle",
+      direction     : null,
+      invalidated   : false,
+      failureCount  : 0,
+      failureReason : null,
+      dataUpdatedAt : changed ? at : this.state.dataUpdatedAt,
+      checkedAt     : at,
     });
     return this.state.data;
   }
@@ -550,7 +550,7 @@ export class Query<T> {
   contextFor(controller: AbortController, failureCount: number): FetchContext<T> {
     const query = this;
     return {
-      queryKey: this.key,
+      queryKey    : this.key,
       previousData: this.state.data,
       failureCount,
       // The one getter in this package, and the effect it hides is the point:

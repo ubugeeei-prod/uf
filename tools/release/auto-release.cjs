@@ -34,13 +34,13 @@ import type { Env, IO as PolicyIO, PullRequest, WorkflowRun } from "./policy.cjs
 
 export type IO = {
   ...PolicyIO,
-  readonly post: (path: string, body: { ... }) => void,
+  readonly post : (path: string, body: { ... }) => void,
   readonly sleep: (ms: number) => Promise<void>,
-  readonly log: (line: string) => void,
+  readonly log  : (line: string) => void,
   ...
 };
 export type Release = { version: string, pr: number };
-type Inputs = { readonly [name: string]: string };
+type Inputs         = { readonly [name: string]: string };
 */
 
 const VERIFY_JOB = "Verify the npm release";
@@ -52,8 +52,8 @@ const RUN_DEADLINE_MS = 90 * 60 * 1000;
 function post(path /*: string */, body /*: { ... } */) /*: void */ {
   execFileSync("gh", ["api", "-X", "POST", path, "--input", "-"], {
     encoding: "utf8",
-    input: JSON.stringify(body),
-    stdio: ["pipe", "pipe", "inherit"],
+    input   : JSON.stringify(body),
+    stdio   : ["pipe", "pipe", "inherit"],
   });
 }
 const IO /*: IO */ = {

@@ -85,9 +85,9 @@ type Request = {|
    * for the next run; see [`invalidate`].
    */
   readonly invalidate?: $ReadOnlyArray<string>,
-  readonly filter?: string | null,
+  readonly filter?    : string | null,
   /** Run only this share of the file's cases; see `RunOptions.part`. */
-  readonly part?: {| readonly index: number, readonly count: number |} | null,
+  readonly part?     : {| readonly index: number, readonly count: number |} | null,
   readonly timeoutMs?: number,
   /**
    * Which request this is, counting from one within this worker.
@@ -133,10 +133,10 @@ const serving: AsyncLocalStorage<number> = new AsyncLocalStorage();
  */
 const emit: (chunk: string) => void = output.install((chunk) => {
   write({
-    event: "output",
+    event : "output",
     stream: chunk.stream,
-    test: chunk.test,
-    text: chunk.text,
+    test  : chunk.test,
+    text  : chunk.text,
   });
 });
 
@@ -231,10 +231,10 @@ async function runFile(request: FileRequest, generation: number): Promise<void> 
  * either of the two `return`s below escaping it.
  */
 async function runImportedFile(
-  request: FileRequest,
+  request   : FileRequest,
   generation: number,
-  url: string,
-  started: number,
+  url       : string,
+  started   : number,
 ): Promise<void> {
   let closeNative: (() => Promise<void>) | null = null;
   try {
@@ -250,10 +250,10 @@ async function runImportedFile(
   } catch (thrown) {
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
     write({
-      event: "file",
-      status: "load-failed",
-      message: `${error.name}: ${error.message}`,
-      stack: error.stack ?? null,
+      event         : "file",
+      status        : "load-failed",
+      message       : `${error.name}: ${error.message}`,
+      stack         : error.stack ?? null,
       durationMicros: Math.round((performance.now() - started) * 1000),
     });
     return;
@@ -263,19 +263,19 @@ async function runImportedFile(
     const absolute = fileURLToPath(pathToFileURL(request.file).href);
     await run(
       {
-        filter: request.filter ?? null,
-        part: request.part ?? null,
+        filter   : request.filter ?? null,
+        part     : request.part ?? null,
         timeoutMs: request.timeoutMs,
-        file: absolute,
-        bench: benching(),
+        file     : absolute,
+        bench    : benching(),
       },
       (result) => {
         write({
           event: "test",
           ...result.outcome,
-          name: result.name,
-          line: result.line,
-          column: result.column,
+          name          : result.name,
+          line          : result.line,
+          column        : result.column,
           durationMicros: result.durationMicros,
         });
       },
@@ -286,8 +286,8 @@ async function runImportedFile(
     writeChangedSnapshots();
     await closeNative?.();
     write({
-      event: "file",
-      status: "completed",
+      event         : "file",
+      status        : "completed",
       durationMicros: Math.round((performance.now() - started) * 1000),
     });
   } catch (thrown) {
@@ -298,10 +298,10 @@ async function runImportedFile(
     }
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
     write({
-      event: "file",
-      status: "run-failed",
-      message: `${error.name}: ${error.message}`,
-      stack: error.stack ?? null,
+      event         : "file",
+      status        : "run-failed",
+      message       : `${error.name}: ${error.message}`,
+      stack         : error.stack ?? null,
       durationMicros: Math.round((performance.now() - started) * 1000),
     });
   }
@@ -355,8 +355,8 @@ function serve(): void {
       // there is no request to attribute it to, and `uf` is waiting for an
       // answer to the line it just wrote.
       write({
-        event: "file",
-        status: "run-failed",
+        event  : "file",
+        status : "run-failed",
         message: `malformed request: ${String(error)}`,
       });
       return;
@@ -399,10 +399,10 @@ function serve(): void {
 process.on("unhandledRejection", (reason: mixed) => {
   const error = reason instanceof Error ? reason : new Error(String(reason));
   write({
-    event: "file",
-    status: "run-failed",
+    event  : "file",
+    status : "run-failed",
     message: `unhandled rejection: ${error.message}`,
-    stack: error.stack ?? null,
+    stack  : error.stack ?? null,
   });
   process.exit(1);
 });
@@ -416,10 +416,10 @@ process.on("unhandledRejection", (reason: mixed) => {
 process.on("uncaughtException", (thrown: mixed) => {
   const error = thrown instanceof Error ? thrown : new Error(String(thrown));
   write({
-    event: "file",
-    status: "run-failed",
+    event  : "file",
+    status : "run-failed",
     message: `uncaught exception: ${error.message}`,
-    stack: error.stack ?? null,
+    stack  : error.stack ?? null,
   });
   process.exit(1);
 });
@@ -460,10 +460,10 @@ function scopeModulesToFiles(): void {
       }
     });
   Object.defineProperty(globalThis, Symbol.for("@uniflowed/host/file-scope"), {
-    value: Object.freeze({ shared: Object.freeze(shared) }),
+    value       : Object.freeze({ shared: Object.freeze(shared) }),
     configurable: true,
-    enumerable: false,
-    writable: false,
+    enumerable  : false,
+    writable    : false,
   });
 }
 

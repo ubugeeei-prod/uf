@@ -19,7 +19,7 @@ afterEach(() => {
 describe("installing and removing", () => {
   it("does not look like a React hook to the checker", () => {
     noDiagnosticsAreReported({
-      fixture: path.join("tests", "type-tests", "timers.js"),
+      fixture  : path.join("tests", "type-tests", "timers.js"),
       alongside: ["npm/test"],
     });
   });

@@ -11,21 +11,21 @@ const RELEASES: $ReadOnlyArray<string> = Array.from(
 
 const styles = stylex.create({
   area: {
-    width: "12rem",
-    height: "14rem",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
+    width       : "12rem",
+    height      : "14rem",
+    borderWidth : "1px",
+    borderStyle : "solid",
+    borderColor : ufTokens.border,
     borderRadius: ufTokens.radiusMd,
   },
   list: {
-    margin: 0,
-    paddingBlock: ufTokens.space2,
+    margin       : 0,
+    paddingBlock : ufTokens.space2,
     paddingInline: ufTokens.space3,
-    listStyle: "none",
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
+    listStyle    : "none",
+    fontFamily   : ufTokens.fontSans,
+    fontSize     : ufTokens.textSm,
+    color        : ufTokens.ink,
   },
   item: {
     paddingBlock: ufTokens.space1,

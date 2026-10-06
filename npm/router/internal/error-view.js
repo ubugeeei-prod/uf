@@ -34,9 +34,9 @@ component DefaultRouteError(error: RouteError, reset: () => void) {
   const title = errorTitle(error);
   const detail = match (error) {
     {kind: "badRequest", ...} => "This page cannot answer the query in its address.",
-    {kind: "unauthorized"} => "This page needs you to be signed in.",
-    {kind: "forbidden"} => "You do not have access to this page.",
-    {kind: "thrown", ...} => "This page could not be rendered.",
+    {kind: "unauthorized"}    => "This page needs you to be signed in.",
+    {kind: "forbidden"}       => "You do not have access to this page.",
+    {kind: "thrown", ...}     => "This page could not be rendered.",
   };
   return (
     <main>
@@ -140,7 +140,7 @@ export component ErrorRoutePage(module: ?ErrorModule, error: RouteError) {
 }
 
 type RouteErrorBoundaryProps = {|
-  readonly module: ?ErrorModule,
+  readonly module  : ?ErrorModule,
   readonly resetKey: string,
   readonly children: React.Node,
 |};
@@ -209,8 +209,8 @@ export class RouteErrorBoundary extends React.Component<
     }
     const recover = () => {
       this.setState((state) => ({
-        error: null,
-        notFound: false,
+        error     : null,
+        notFound  : false,
         generation: state.generation + 1,
       }));
     };

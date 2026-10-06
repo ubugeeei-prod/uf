@@ -21,46 +21,46 @@ type BoundaryLike = {
 };
 
 type ModuleBoundaryLike = {
-  readonly above: number,
+  readonly above  : number,
   readonly module?: mixed,
   ...
 };
 
 type SlotLike = {
-  readonly name: string,
-  readonly above: number,
-  readonly page: mixed,
-  readonly params: RouteParams,
-  readonly layouts: $ReadOnlyArray<mixed>,
-  readonly loading: $ReadOnlyArray<BoundaryLike>,
-  readonly templates: $ReadOnlyArray<BoundaryLike>,
+  readonly name         : string,
+  readonly above        : number,
+  readonly page         : mixed,
+  readonly params       : RouteParams,
+  readonly layouts      : $ReadOnlyArray<mixed>,
+  readonly loading      : $ReadOnlyArray<BoundaryLike>,
+  readonly templates    : $ReadOnlyArray<BoundaryLike>,
   readonly errorBoundary: ?ModuleBoundaryLike,
-  readonly slots: $ReadOnlyArray<SlotLike>,
+  readonly slots        : $ReadOnlyArray<SlotLike>,
   ...
 };
 
 type RouteLike = {
-  readonly pathname: string,
-  readonly search: string,
-  readonly path: string,
-  readonly params: RouteParams,
-  readonly searchParams: SearchParams,
-  readonly layouts: $ReadOnlyArray<mixed>,
-  readonly data: mixed,
-  readonly deferred: mixed,
-  readonly metadata: RouteMetadata,
+  readonly pathname      : string,
+  readonly search        : string,
+  readonly path          : string,
+  readonly params        : RouteParams,
+  readonly searchParams  : SearchParams,
+  readonly layouts       : $ReadOnlyArray<mixed>,
+  readonly data          : mixed,
+  readonly deferred      : mixed,
+  readonly metadata      : RouteMetadata,
   readonly viewTransition: ?string,
-  readonly status: RouteStatus,
-  readonly error: ?RouteErrorLike,
-  readonly errorBoundary: ModuleBoundaryLike,
-  readonly loading: $ReadOnlyArray<BoundaryLike>,
-  readonly templates: $ReadOnlyArray<BoundaryLike>,
-  readonly slots: $ReadOnlyArray<SlotLike>,
+  readonly status        : RouteStatus,
+  readonly error         : ?RouteErrorLike,
+  readonly errorBoundary : ModuleBoundaryLike,
+  readonly loading       : $ReadOnlyArray<BoundaryLike>,
+  readonly templates     : $ReadOnlyArray<BoundaryLike>,
+  readonly slots         : $ReadOnlyArray<SlotLike>,
   ...
 };
 
 export type ResolvedBoundarySummary = {|
-  readonly id: string,
+  readonly id   : string,
   readonly above: number,
 |};
 
@@ -75,41 +75,41 @@ export type ResolvedRouteErrorSummary =
   | {| readonly kind: "badRequest" |};
 
 export type ResolvedErrorBoundarySummary = {|
-  readonly above: number,
-  readonly custom: boolean,
+  readonly above   : number,
+  readonly custom  : boolean,
   readonly rendered: boolean,
 |};
 
 export type ResolvedSlotSummary = {|
-  readonly name: string,
-  readonly above: number,
-  readonly active: boolean,
-  readonly params: RouteParams,
-  readonly layoutCount: number,
-  readonly loading: $ReadOnlyArray<ResolvedBoundarySummary>,
-  readonly templates: $ReadOnlyArray<ResolvedTemplateSummary>,
+  readonly name         : string,
+  readonly above        : number,
+  readonly active       : boolean,
+  readonly params       : RouteParams,
+  readonly layoutCount  : number,
+  readonly loading      : $ReadOnlyArray<ResolvedBoundarySummary>,
+  readonly templates    : $ReadOnlyArray<ResolvedTemplateSummary>,
   readonly errorBoundary: ?ResolvedErrorBoundarySummary,
-  readonly slots: $ReadOnlyArray<ResolvedSlotSummary>,
+  readonly slots        : $ReadOnlyArray<ResolvedSlotSummary>,
 |};
 
 export type ResolvedRouteSummary = {|
-  readonly pathname: string,
-  readonly search: string,
-  readonly path: string,
-  readonly params: RouteParams,
-  readonly searchParams: SearchParams,
-  readonly layoutCount: number,
-  readonly data: mixed,
-  readonly deferred: boolean,
-  readonly metadata: RouteMetadata,
+  readonly pathname      : string,
+  readonly search        : string,
+  readonly path          : string,
+  readonly params        : RouteParams,
+  readonly searchParams  : SearchParams,
+  readonly layoutCount   : number,
+  readonly data          : mixed,
+  readonly deferred      : boolean,
+  readonly metadata      : RouteMetadata,
   readonly viewTransition: ?string,
-  readonly status: RouteStatus,
-  readonly error: ?ResolvedRouteErrorSummary,
-  readonly errorBoundary: ResolvedErrorBoundarySummary,
-  readonly loading: $ReadOnlyArray<ResolvedBoundarySummary>,
-  readonly templates: $ReadOnlyArray<ResolvedTemplateSummary>,
-  readonly slots: $ReadOnlyArray<ResolvedSlotSummary>,
-  readonly boundaries: $ReadOnlyArray<RouteBoundary>,
+  readonly status        : RouteStatus,
+  readonly error         : ?ResolvedRouteErrorSummary,
+  readonly errorBoundary : ResolvedErrorBoundarySummary,
+  readonly loading       : $ReadOnlyArray<ResolvedBoundarySummary>,
+  readonly templates     : $ReadOnlyArray<ResolvedTemplateSummary>,
+  readonly slots         : $ReadOnlyArray<ResolvedSlotSummary>,
+  readonly boundaries    : $ReadOnlyArray<RouteBoundary>,
 |};
 
 /**
@@ -121,39 +121,39 @@ export type ResolvedRouteSummary = {|
  * fallback modules left behind in the renderer graph.
  */
 export function summarizeResolvedRoute(
-  route: RouteLike,
+  route       : RouteLike,
   errorSource?: ?string,
 ): ResolvedRouteSummary {
   return {
-    pathname: route.pathname,
-    search: route.search,
-    path: route.path,
-    params: route.params,
-    searchParams: route.searchParams,
-    layoutCount: route.layouts.length,
-    data: route.data,
-    deferred: route.deferred != null,
-    metadata: route.metadata,
+    pathname      : route.pathname,
+    search        : route.search,
+    path          : route.path,
+    params        : route.params,
+    searchParams  : route.searchParams,
+    layoutCount   : route.layouts.length,
+    data          : route.data,
+    deferred      : route.deferred != null,
+    metadata      : route.metadata,
     viewTransition: route.viewTransition,
-    status: route.status,
-    error: summarizeError(route.error),
-    errorBoundary: summarizeErrorBoundary(route.errorBoundary, route.error == null),
-    loading: summarizeLoading(route.loading),
-    templates: summarizeTemplates(route.templates),
-    slots: route.slots.map(summarizeSlot),
-    boundaries: [...routeBoundaries(route, errorSource).values()],
+    status        : route.status,
+    error         : summarizeError(route.error),
+    errorBoundary : summarizeErrorBoundary(route.errorBoundary, route.error == null),
+    loading       : summarizeLoading(route.loading),
+    templates     : summarizeTemplates(route.templates),
+    slots         : route.slots.map(summarizeSlot),
+    boundaries    : [...routeBoundaries(route, errorSource).values()],
   };
 }
 
 function summarizeSlot(slot: SlotLike): ResolvedSlotSummary {
   return {
-    name: slot.name,
-    above: slot.above,
-    active: slot.page != null,
-    params: slot.params,
+    name       : slot.name,
+    above      : slot.above,
+    active     : slot.page != null,
+    params     : slot.params,
     layoutCount: slot.layouts.length,
-    loading: summarizeLoading(slot.loading),
-    templates: summarizeTemplates(slot.templates),
+    loading    : summarizeLoading(slot.loading),
+    templates  : summarizeTemplates(slot.templates),
     errorBoundary:
       slot.errorBoundary == null ? null : summarizeErrorBoundary(slot.errorBoundary, true),
     slots: slot.slots.map(summarizeSlot),
@@ -164,7 +164,7 @@ function summarizeLoading(
   boundaries: $ReadOnlyArray<BoundaryLike>,
 ): $ReadOnlyArray<ResolvedBoundarySummary> {
   return boundaries.map((boundary, index) => ({
-    id: suspenseId(index),
+    id   : suspenseId(index),
     above: boundary.above,
   }));
 }
@@ -180,7 +180,7 @@ function summarizeErrorBoundary(
   rendered: boolean,
 ): ResolvedErrorBoundarySummary {
   return {
-    above: boundary.above,
+    above : boundary.above,
     custom: boundary.module != null,
     rendered,
   };

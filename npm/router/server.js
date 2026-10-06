@@ -55,8 +55,8 @@ import { redirectDocument, redirectResult, shellFor } from "./internal/shell.js"
 
 /** Asset URLs to reference from the document. */
 export type RenderAssets = {|
-  readonly scripts: $ReadOnlyArray<string>,
-  readonly styles: $ReadOnlyArray<string>,
+  readonly scripts : $ReadOnlyArray<string>,
+  readonly styles  : $ReadOnlyArray<string>,
   readonly preloads: $ReadOnlyArray<string>,
   /**
    * The build the document belongs to, written into its head as
@@ -76,7 +76,7 @@ export type RenderAssets = {|
  * copies of the document.
  */
 export type RenderResult = {|
-  readonly status: number,
+  readonly status  : number,
   readonly headers?: { readonly [string]: string },
   /** Write the document into a Node response. */
   readonly pipe: (destination: WritableLike) => Promise<void>,
@@ -107,8 +107,8 @@ export type RenderResult = {|
 
 /** A document that is finished: every boundary resolved, nothing left to wait for. */
 export type PrerenderResult = {|
-  readonly status: number,
-  readonly html: string,
+  readonly status  : number,
+  readonly html    : string,
   readonly headers?: { readonly [string]: string },
   /** The exception this render fell back to its error boundary for; see [`RenderResult`]. */
   readonly error?: mixed,
@@ -143,9 +143,9 @@ export type PrerenderResult = {|
  * on a payload.
  */
 export type FlightResponse = {|
-  readonly status: number,
+  readonly status : number,
   readonly headers: { readonly [string]: string },
-  readonly stream: ReadableStream<Uint8Array> | null,
+  readonly stream : ReadableStream<Uint8Array> | null,
   /** The exception the route resolved to its error boundary for; see [`RenderResult`]. */
   readonly error?: mixed,
 |};
@@ -314,13 +314,13 @@ type Resolution =
 /** The two ways one app answers for a URL. */
 export type Renderer = {|
   readonly render: (
-    url: string,
-    assets: RenderAssets,
+    url     : string,
+    assets  : RenderAssets,
     options?: RenderOptions,
   ) => Promise<RenderResult>,
   readonly prerender: (
-    url: string,
-    assets: RenderAssets,
+    url     : string,
+    assets  : RenderAssets,
     options?: RenderOptions,
   ) => Promise<PrerenderResult>,
   /**
@@ -330,7 +330,7 @@ export type Renderer = {|
   readonly flight?: (
     url: string,
     options?: {|
-      readonly onError?: (error: mixed) => void,
+      readonly onError?        : (error: mixed) => void,
       readonly interceptedFrom?: string,
     |},
   ) => Promise<FlightResponse>,
@@ -340,23 +340,23 @@ export type Renderer = {|
    * has one, because only it writes a shell.
    */
   readonly resume?: (
-    url: string,
-    assets: RenderAssets,
-    shell: PrerenderedShell,
+    url     : string,
+    assets  : RenderAssets,
+    shell   : PrerenderedShell,
     options?: RenderOptions,
   ) => Promise<RenderResult>,
 |};
 
 export function createRenderer(options: {|
-  readonly App: React.ComponentType<AppProps>,
-  readonly routes: RouteTable["routes"],
+  readonly App     : React.ComponentType<AppProps>,
+  readonly routes  : RouteTable["routes"],
   readonly notFound: RouteTable["notFound"],
-  readonly errors: RouteTable["errors"],
+  readonly errors  : RouteTable["errors"],
 |}): Renderer {
   const table: RouteTable = {
-    routes: options.routes,
+    routes  : options.routes,
     notFound: options.notFound,
-    errors: options.errors,
+    errors  : options.errors,
   };
   installRoutes(table);
   const { App } = options;
@@ -390,7 +390,7 @@ export function createRenderer(options: {|
         kind: "route",
         route: await resolveMatch(table, url, {
           defer,
-          onMatch: noteRoute,
+          onMatch  : noteRoute,
           runLoader: traceLoader,
         }),
       };
@@ -403,8 +403,8 @@ export function createRenderer(options: {|
   }
 
   async function render(
-    url: string,
-    assets: RenderAssets,
+    url      : string,
+    assets   : RenderAssets,
     settings?: RenderOptions,
   ): Promise<RenderResult> {
     const resolution = await resolve(url, true);
@@ -488,16 +488,16 @@ export function createRenderer(options: {|
 
     return {
       status: resolved.status,
-      pipe: body.pipe,
+      pipe  : body.pipe,
       stream: body.stream,
-      text: body.text,
-      error: renderFailure(resolved),
+      text  : body.text,
+      error : renderFailure(resolved),
     };
   }
 
   async function prerender(
-    url: string,
-    assets: RenderAssets,
+    url      : string,
+    assets   : RenderAssets,
     settings?: RenderOptions,
   ): Promise<PrerenderResult> {
     const resolution = await resolve(url, false);
@@ -510,7 +510,7 @@ export function createRenderer(options: {|
     let html: string;
     try {
       html = await prerenderDocument(<App url={url} initial={resolved} />, {
-        shell: shellFor(assets),
+        shell  : shellFor(assets),
         onError: report,
       });
     } catch (error) {
@@ -519,7 +519,7 @@ export function createRenderer(options: {|
       }
       resolved = await resolveFailure(table, url, error);
       html = await prerenderDocument(<App url={url} initial={resolved} />, {
-        shell: shellFor(assets),
+        shell  : shellFor(assets),
         onError: report,
       });
     }
@@ -537,9 +537,9 @@ function renderFailure(resolved: ResolvedRoute): mixed {
   }
   return match (resolved.error) {
     {kind: "thrown", error: const error} => error,
-    {kind: "badRequest", ...} => undefined,
-    {kind: "unauthorized"} => undefined,
-    {kind: "forbidden"} => undefined,
+    {kind: "badRequest", ...}            => undefined,
+    {kind: "unauthorized"}               => undefined,
+    {kind: "forbidden"}                  => undefined,
   };
 }
 

@@ -175,21 +175,21 @@ function hideDocument(hidden: boolean): void {
 function measure(
   element: HTMLElement,
   box: {|
-    readonly left: number,
-    readonly width: number,
-    readonly top: number,
+    readonly left  : number,
+    readonly width : number,
+    readonly top   : number,
     readonly height: number,
   |},
 ): void {
   const rect = {
-    left: box.left,
-    width: box.width,
-    top: box.top,
+    left  : box.left,
+    width : box.width,
+    top   : box.top,
     height: box.height,
-    right: box.left + box.width,
+    right : box.left + box.width,
     bottom: box.top + box.height,
-    x: box.left,
-    y: box.top,
+    x     : box.left,
+    y     : box.top,
   };
   (element as $FlowFixMe).getBoundingClientRect = () => rect;
 }
@@ -208,8 +208,8 @@ function answerMediaQueries(matches: boolean | null): void {
       ? undefined
       : (query: string) => ({
           matches,
-          media: query,
-          addEventListener: () => {},
+          media              : query,
+          addEventListener   : () => {},
           removeEventListener: () => {},
         });
 }
@@ -248,14 +248,14 @@ function replaceValue(field: HTMLElement, value: string): void {
  * reads: which button was used, and whether the gesture ended at all.
  */
 const MOUSE = {
-  button: 0,
-  buttons: 1,
-  height: 1,
-  isPrimary: true,
-  pointerId: 1,
+  button     : 0,
+  buttons    : 1,
+  height     : 1,
+  isPrimary  : true,
+  pointerId  : 1,
   pointerType: "mouse",
-  pressure: 0.5,
-  width: 1,
+  pressure   : 0.5,
+  width      : 1,
 };
 
 /** The same mouse, released. */
@@ -263,14 +263,14 @@ const MOUSE_UP = { ...MOUSE, buttons: 0, pressure: 0 };
 
 /** A finger on a touchscreen: a contact area, and its own pointer id. */
 const TOUCH = {
-  button: 0,
-  buttons: 1,
-  height: 22,
-  isPrimary: true,
-  pointerId: 7,
+  button     : 0,
+  buttons    : 1,
+  height     : 22,
+  isPrimary  : true,
+  pointerId  : 7,
   pointerType: "touch",
-  pressure: 0.5,
-  width: 22,
+  pressure   : 0.5,
+  width      : 22,
 };
 
 /** The same finger, lifted. */
@@ -450,7 +450,7 @@ describe("Field: bound to a form", () => {
   type Signup = {| readonly email: string |};
 
   component SignupForm(onServerError?: boolean = false) {
-    const form = useForm<Signup>({ defaultValues: { email: "" } });
+    const form  = useForm<Signup>({ defaultValues: { email: "" } });
     const email = useFieldSource(form, "email", { required: "We need an email address" });
     return (
       <form onSubmit={form.handleSubmit(() => {})}>
@@ -558,7 +558,7 @@ describe("Field: bound to a form", () => {
     let release: () => void = () => {};
 
     component SubmittingForm() {
-      const form = useForm<Signup>({ defaultValues: { email: "" } });
+      const form  = useForm<Signup>({ defaultValues: { email: "" } });
       const email = useFieldSource(form, "email", { required: "We need an email address" });
       return (
         <form
@@ -672,7 +672,7 @@ describe("Field: a group that a label cannot point at", () => {
 describe("Tabs", () => {
   component Example(
     activationMode?: "automatic" | "manual" = "automatic",
-    orientation?: "horizontal" | "vertical" = "horizontal",
+    orientation?   : "horizontal" | "vertical" = "horizontal",
   ) {
     return (
       <Tabs.Root activationMode={activationMode} defaultValue="one" orientation={orientation}>
@@ -2090,7 +2090,7 @@ describe("Context menu", () => {
     // event bubbles up to it from whatever the caller put inside.
     screen.getByRole("button", { name: "Invoice 2026-04" }).focus();
     fireEvent.keyDown(screen.getByRole("button", { name: "Invoice 2026-04" }), {
-      key: "F10",
+      key     : "F10",
       shiftKey: true,
     });
     expect(screen.getByRole("menuitem", { name: "Rename…" })).toHaveFocus();
@@ -3451,28 +3451,28 @@ describe("where an anchored overlay goes", () => {
    * A placement request with defaults, so each case names only what it is about.
    */
   function place(request: {
-    readonly anchor: Rect,
-    readonly overlay: Rect,
-    readonly align?: Align,
-    readonly alignOffset?: number,
-    readonly avoidCollisions?: boolean,
+    readonly anchor           : Rect,
+    readonly overlay          : Rect,
+    readonly align?           : Align,
+    readonly alignOffset?     : number,
+    readonly avoidCollisions? : boolean,
     readonly collisionPadding?: number,
-    readonly direction?: "ltr" | "rtl",
-    readonly side?: Side,
-    readonly sideOffset?: number,
-    readonly viewport?: Rect,
+    readonly direction?       : "ltr" | "rtl",
+    readonly side?            : Side,
+    readonly sideOffset?      : number,
+    readonly viewport?        : Rect,
   }): Placement {
     return placeOverlay({
-      align: request.align ?? "center",
-      alignOffset: request.alignOffset ?? 0,
-      anchor: request.anchor,
-      avoidCollisions: request.avoidCollisions ?? true,
+      align           : request.align ?? "center",
+      alignOffset     : request.alignOffset ?? 0,
+      anchor          : request.anchor,
+      avoidCollisions : request.avoidCollisions ?? true,
       collisionPadding: request.collisionPadding ?? 0,
-      direction: request.direction ?? "ltr",
-      overlay: request.overlay,
-      side: request.side ?? "bottom",
-      sideOffset: request.sideOffset ?? 0,
-      viewport: request.viewport ?? room,
+      direction       : request.direction ?? "ltr",
+      overlay         : request.overlay,
+      side            : request.side ?? "bottom",
+      sideOffset      : request.sideOffset ?? 0,
+      viewport        : request.viewport ?? room,
     });
   }
 
@@ -3548,7 +3548,7 @@ describe("where an anchored overlay goes", () => {
       align: "end",
       anchor,
       collisionPadding: 8,
-      overlay: { height: 60, width: 300, x: 0, y: 0 },
+      overlay         : { height: 60, width: 300, x: 0, y: 0 },
     });
     expect(placement.x).toBe(8);
     expect(placement.shift).toBe(208);
@@ -3560,7 +3560,7 @@ describe("where an anchored overlay goes", () => {
       align: "start",
       anchor,
       overlay: { height: 200, width: 150, x: 0, y: 0 },
-      side: "right",
+      side   : "right",
     });
     // Beside the trigger, so the cross axis is the vertical one: 800 − 200.
     expect(placement.y).toBe(600);
@@ -3575,8 +3575,8 @@ describe("where an anchored overlay goes", () => {
     const placement = place({
       anchor,
       collisionPadding: 8,
-      overlay: { height: 60, width: 1200, x: 0, y: 0 },
-      viewport: { height: 800, width: 400, x: 0, y: 0 },
+      overlay         : { height: 60, width: 1200, x: 0, y: 0 },
+      viewport        : { height: 800, width: 400, x: 0, y: 0 },
     });
     expect(placement.x).toBe(8);
     expect(placement.availableWidth).toBe(384);
@@ -3586,7 +3586,7 @@ describe("where an anchored overlay goes", () => {
     const anchor = { height: 40, width: 80, x: 100, y: 300 };
     const placement = place({
       anchor,
-      overlay: { height: 500, width: 150, x: 0, y: 0 },
+      overlay : { height: 500, width: 150, x: 0, y: 0 },
       viewport: { height: 400, width: 1000, x: 0, y: 0 },
     });
     // Above has 300 and below has 60, and neither fits 500. The reader sees as
@@ -3600,8 +3600,8 @@ describe("where an anchored overlay goes", () => {
     const placement = place({
       anchor,
       collisionPadding: 10,
-      overlay: { height: 60, width: 150, x: 0, y: 0 },
-      sideOffset: 4,
+      overlay         : { height: 60, width: 150, x: 0, y: 0 },
+      sideOffset      : 4,
     });
     // 800 − 10 − 700 − 4: the page, less the padding, less the trigger's
     // bottom edge, less the gap.
@@ -3637,7 +3637,7 @@ describe("where an anchored overlay goes", () => {
       align: "start",
       anchor,
       avoidCollisions: false,
-      overlay: { height: 200, width: 300, x: 0, y: 0 },
+      overlay        : { height: 200, width: 300, x: 0, y: 0 },
     });
     // Off the bottom and off the right, exactly as asked. A caller who has laid
     // the page out themselves is not second-guessed.
@@ -3751,14 +3751,14 @@ describe("an anchored overlay follows its trigger", () => {
       const anchorRef = React.useRef<HTMLElement | null>(null);
       const overlayRef = React.useRef<HTMLElement | null>(null);
       const anchored = useAnchor({
-        align: "center",
+        align      : "center",
         alignOffset: 0,
         anchorRef,
-        avoidCollisions: true,
+        avoidCollisions : true,
         collisionPadding: 0,
         open,
         overlayRef,
-        side: "bottom",
+        side      : "bottom",
         sideOffset: 0,
       });
       sides.push({ open, side: anchored.side });
@@ -5152,11 +5152,11 @@ describe("the month a calendar shows", () => {
   it("turns the page keys into a year when Shift is held", () => {
     expect(movementForDateKey({ key: "PageDown" }, "ltr")).toEqual({ by: 1, kind: "months" });
     expect(movementForDateKey({ key: "PageDown", shiftKey: true }, "ltr")).toEqual({
-      by: 12,
+      by  : 12,
       kind: "months",
     });
     expect(movementForDateKey({ key: "PageUp", shiftKey: true }, "ltr")).toEqual({
-      by: -12,
+      by  : -12,
       kind: "months",
     });
   });
@@ -5306,7 +5306,7 @@ describe("Calendar", () => {
     // `Shift` is the one convention here a reader cannot discover by trying,
     // and a year is otherwise twelve presses.
     fireEvent.keyDown(screen.getByRole("gridcell", { name: "14" }), {
-      key: "PageDown",
+      key     : "PageDown",
       shiftKey: true,
     });
     expect(accessibleName(screen.getByRole("grid"))).toBe("November 2027");
@@ -5985,9 +5985,9 @@ describe("Progress", () => {
 describe("Slider", () => {
   component Example(
     defaultValue?: $ReadOnlyArray<number> = [20],
-    disabled?: boolean = false,
-    step?: number = 1,
-    valueText?: (value: number, index: number) => string,
+    disabled?    : boolean = false,
+    step?        : number = 1,
+    valueText?   : (value: number, index: number) => string,
   ) {
     return (
       <Slider.Root
@@ -6267,9 +6267,9 @@ describe("Slider: a range is two sliders", () => {
 describe("Resizable", () => {
   component Example(
     defaultValue?: number = 50,
-    disabled?: boolean = false,
-    min?: number = 0,
-    withPrimary?: boolean = true,
+    disabled?    : boolean = false,
+    min?         : number = 0,
+    withPrimary? : boolean = true,
   ) {
     return (
       <Resizable.PanelGroup
@@ -6532,7 +6532,7 @@ describe("Table", () => {
   ];
 
   component Example(rowCount?: number | null = null, rowOffset?: number = 0) {
-    const [sort, setSort] = useState<Sort | null>(null);
+    const [sort,   setSort]   = useState<Sort | null>(null);
     const [chosen, setChosen] = useState<$ReadOnlyArray<string>>([]);
     const all = chosen.length === PEOPLE.length ? true : chosen.length === 0 ? false : "mixed";
 
@@ -8151,8 +8151,8 @@ describe("Collapsible", () => {
 describe("Accordion", () => {
   component Faq(
     collapsible?: boolean = true,
-    level?: number = 3,
-    type?: "single" | "multiple" = "single",
+    level?      : number = 3,
+    type?       : "single" | "multiple" = "single",
   ) {
     return (
       <Accordion.Root collapsible={collapsible} defaultValue={["shipping"]} type={type}>
@@ -8432,7 +8432,7 @@ describe("the height a closed disclosure would have", () => {
    */
   function wrapsAt(
     element: HTMLElement,
-    at: string,
+    at     : string,
     heights: { unwrapped: number, wrapped: number },
   ): void {
     (element as $FlowFixMe).getBoundingClientRect = () => {

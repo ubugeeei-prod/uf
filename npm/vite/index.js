@@ -346,10 +346,10 @@ export default function uniflowed(options = {}) {
     barrelImportsPlugin(),
     mdxPlugin(markdown),
     assetPlugin({
-      images: builtins.images ?? {},
-      fonts: builtins.fonts ?? {},
-      icons: builtins.icons ?? {},
-      og: builtins.og ?? {},
+      images : builtins.images ?? {},
+      fonts  : builtins.fonts ?? {},
+      icons  : builtins.icons ?? {},
+      og     : builtins.og ?? {},
       command: options.command,
     }),
     nativeWebPlugin(routeTarget),
@@ -379,7 +379,7 @@ export function flowTransform(options = {}) {
   /** @type {TransformService | null} */
   let service = null;
   return {
-    name: "uf:flow-transform",
+    name   : "uf:flow-transform",
     enforce: "pre",
     configResolved(config) {
       root = config.root;
@@ -392,8 +392,8 @@ export function flowTransform(options = {}) {
       }
       const out = await service.transform(cleanId(id), code, {
         development: !isProduction,
-        refresh: false,
-        sourceMap: true,
+        refresh    : false,
+        sourceMap  : true,
       });
       if (out == null) return null;
       return { code: out.code, map: out.map == null ? null : JSON.parse(out.map) };
@@ -510,7 +510,7 @@ function flowPlugin({
     return routesModuleSource(
       { ...table, handlers: [] },
       {
-        shipsPage: (route) => kept.has(route),
+        shipsPage : (route) => kept.has(route),
         relativeTo: root,
         // Loaders a hot update can reach; see `routesModuleSource`.
         hot: server != null && !isProduction,
@@ -547,14 +547,14 @@ function flowPlugin({
       actionMemo = {
         key,
         modules: serverActionModules(manifest, root),
-        table: serverActionTable(manifest, root),
+        table  : serverActionTable(manifest, root),
       };
     }
     return actionMemo;
   };
 
   return {
-    name: "uf:flow",
+    name   : "uf:flow",
     enforce: "pre",
     // What `driver.js` runs the three builds with; `null` for an application
     // rendered from its modules. See `./internal/flight.js`.
@@ -622,9 +622,9 @@ function flowPlugin({
           : {
               environments: {
                 [RSC_ENVIRONMENT]: rscEnvironment({
-                  root: projectRoot,
+                  root      : projectRoot,
                   production: env.command === "build",
-                  exclude: uniflowedPackages(projectRoot),
+                  exclude   : uniflowedPackages(projectRoot),
                 }),
               },
             }),
@@ -714,10 +714,10 @@ function flowPlugin({
         if (flightState != null && isSsr(this, loadOptions)) {
           return routesModuleSource({
             ...table,
-            routes: [],
-            notFound: [],
-            errors: [],
-            handlers: [],
+            routes    : [],
+            notFound  : [],
+            errors    : [],
+            handlers  : [],
             middleware: [],
           });
         }
@@ -738,8 +738,8 @@ function flowPlugin({
       if (id === resolved(VIRTUAL.client) && flightState != null) {
         return flightClientSource(entryPath, {
           instrumentation: instrumentationFile(appRoot, true),
-          strictMode: strictMode && !isProduction,
-          hot: server != null && !isProduction,
+          strictMode     : strictMode && !isProduction,
+          hot            : server != null && !isProduction,
           navigation,
           staleTime,
           routing,
@@ -748,8 +748,8 @@ function flowPlugin({
       if (id === resolved(VIRTUAL.client)) {
         return clientModuleSource(entryPath, {
           instrumentation: instrumentationFile(appRoot, true),
-          strictMode: strictMode && !isProduction,
-          hot: server != null && !isProduction,
+          strictMode     : strictMode && !isProduction,
+          hot            : server != null && !isProduction,
           navigation,
           staleTime,
           mount,
@@ -966,14 +966,14 @@ function flowPlugin({
       if (isProduction) return [];
       const tags = [
         {
-          tag: "script",
-          attrs: { "data-uf-dev-head-preamble": "react-devtools" },
+          tag     : "script",
+          attrs   : { "data-uf-dev-head-preamble": "react-devtools" },
           children: devtoolsPreamble(),
           injectTo: "head-prepend",
         },
         {
-          tag: "script",
-          attrs: { type: "module", "data-uf-dev-head-preamble": "react-refresh" },
+          tag     : "script",
+          attrs   : { type: "module", "data-uf-dev-head-preamble": "react-refresh" },
           children: preambleCode(base),
           injectTo: "head-prepend",
         },
@@ -1009,8 +1009,8 @@ function flowPlugin({
       server = devServer;
       const diagnostics = startDevState(root, () => ({
         routes: scanRoutes(appRoot, { target: routeTarget }).routes.map((route) => ({
-          path: route.path,
-          page: route.page,
+          path   : route.path,
+          page   : route.page,
           layouts: route.layouts,
         })),
         actions: actionTables().table,
@@ -1298,7 +1298,7 @@ function flowPlugin({
                   );
                   if (result.error != null) reportRenderError(devServer, url, result.error);
                   return new Response(result.stream(), {
-                    status: result.status ?? 200,
+                    status : result.status ?? 200,
                     headers: { ...result.headers, "content-type": "text/html; charset=utf-8" },
                   });
                 },
@@ -1341,7 +1341,7 @@ function flowPlugin({
                 await send(
                   response,
                   new Response(request.method === "HEAD" ? null : answered.stream, {
-                    status: answered.status,
+                    status : answered.status,
                     headers: answered.headers,
                   }),
                 );
@@ -1394,8 +1394,8 @@ function flowPlugin({
                 response.statusCode = 200;
                 response.setHeader("content-type", "text/html; charset=utf-8");
                 const shell = entry.shellDocument({
-                  scripts: [devUrlFor(VIRTUAL.client)],
-                  styles: [],
+                  scripts : [devUrlFor(VIRTUAL.client)],
+                  styles  : [],
                   preloads: [],
                 });
                 response.end(await transformDevHead(devServer, url, shell));
@@ -1441,9 +1441,9 @@ function flowPlugin({
                     onStream: (diagnostic) =>
                       emit("diagnostic", {
                         severity: "info",
-                        origin: url,
-                        message: diagnostic.message,
-                        detail: diagnostic.detail,
+                        origin  : url,
+                        message : diagnostic.message,
+                        detail  : diagnostic.detail,
                       }),
                   },
                 ),
@@ -1493,8 +1493,8 @@ function flowPlugin({
             if (error instanceof Error) devServer.ssrFixStacktrace(error);
             emit("diagnostic", {
               severity: "error",
-              kind: "runtime",
-              origin: url,
+              kind    : "runtime",
+              origin  : url,
               ...errorEvent(error),
             });
             next(error);
@@ -1523,7 +1523,7 @@ function mdxPlugin(markdown) {
       // key's old default, which has no runtime in it — where the config is
       // read, so it never arrives here.
       jsxImportSource: mdxConfig.jsxImportSource ?? "react",
-      remarkPlugins: [remarkGfm, remarkOxContent, remarkFrontmatterExport],
+      remarkPlugins  : [remarkGfm, remarkOxContent, remarkFrontmatterExport],
       rehypePlugins,
     }),
     name: "uf:mdx",

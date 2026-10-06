@@ -84,10 +84,10 @@ export type TuiProps = {
 
 /** One node of the tree. Mutable: React owns its shape, layout owns its geometry. */
 export type TuiNode = {
-  type: TuiNodeType,
-  props: TuiProps,
+  type    : TuiNodeType,
+  props   : TuiProps,
   children: Array<TuiNode>,
-  parent: TuiNode | null,
+  parent  : TuiNode | null,
   /** The literal text of a `"chars"` node; `""` for every other kind. */
   text: string,
   /** Derived from `props` whenever they are set. */
@@ -97,13 +97,13 @@ export type TuiNode = {
   /** How a leaf reports the size it wants. Only text nodes have one. */
   measure:
     | ((
-        availableWidth: number,
+        availableWidth : number,
         availableHeight: number,
       ) => { readonly width: number, readonly height: number })
     | null,
-  x: number,
-  y: number,
-  width: number,
+  x     : number,
+  y     : number,
+  width : number,
   height: number,
   /** Which of its children a scrolling box laid out, as a range. */
   scrollFirst: number,
@@ -113,14 +113,14 @@ export type TuiNode = {
   /** The first row it shows, after clamping, when it scrolls. */
   scrollOffset: number,
   /** Where its window is: first row, how many rows, and the bar's column. */
-  scrollViewTop: number,
-  scrollViewRows: number,
+  scrollViewTop  : number,
+  scrollViewRows : number,
   scrollBarColumn: number,
   /** The intrinsic size this node last reported, and what it was offered. */
-  measuredForWidth: number,
+  measuredForWidth : number,
   measuredForHeight: number,
-  measuredWidth: number,
-  measuredHeight: number,
+  measuredWidth    : number,
+  measuredHeight   : number,
   /** The first child of a scrolling box that changed, or `-1`. See {@link invalidate}. */
   scrollDirtyFrom: number,
   /** A scrolling box's stack of child heights; see `layout.js`. */
@@ -135,7 +135,7 @@ export type TuiNode = {
    * The first line and column a `Textarea` shows, kept between frames so the
    * window moves only as far as the cursor makes it. Written by the painter.
    */
-  viewTop: number,
+  viewTop : number,
   viewLeft: number,
 };
 
@@ -378,7 +378,7 @@ function colorProp(props: TuiProps, names: $ReadOnlyArray<string>, fallback: Col
 
 /** One stretch of text that shares a style. */
 export type TextRun = {
-  readonly text: string,
+  readonly text : string,
   readonly style: Style,
 };
 
@@ -416,32 +416,32 @@ export function createNode(type: TuiNodeType, props: TuiProps): TuiNode {
   const node: TuiNode = {
     type,
     props,
-    children: [],
-    parent: null,
-    text: "",
-    style: {},
-    borderWidth: 0,
-    measure: null,
-    x: 0,
-    y: 0,
-    width: 0,
-    height: 0,
-    scrollFirst: 0,
-    scrollCount: 0,
-    scrollHeight: 0,
-    scrollOffset: 0,
-    scrollViewTop: 0,
-    scrollViewRows: 0,
-    scrollBarColumn: 0,
-    measuredForWidth: -1,
+    children         : [],
+    parent           : null,
+    text             : "",
+    style            : {},
+    borderWidth      : 0,
+    measure          : null,
+    x                : 0,
+    y                : 0,
+    width            : 0,
+    height           : 0,
+    scrollFirst      : 0,
+    scrollCount      : 0,
+    scrollHeight     : 0,
+    scrollOffset     : 0,
+    scrollViewTop    : 0,
+    scrollViewRows   : 0,
+    scrollBarColumn  : 0,
+    measuredForWidth : -1,
     measuredForHeight: -1,
-    measuredWidth: 0,
-    measuredHeight: 0,
-    scrollDirtyFrom: 0,
-    scrollIndex: null,
-    widget: null,
-    viewTop: 0,
-    viewLeft: 0,
+    measuredWidth    : 0,
+    measuredHeight   : 0,
+    scrollDirtyFrom  : 0,
+    scrollIndex      : null,
+    widget           : null,
+    viewTop          : 0,
+    viewLeft         : 0,
   };
   applyProps(node, props);
   return node;

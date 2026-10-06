@@ -65,14 +65,14 @@ import { Body as PopoverBody, Root as PopoverRoot, Trigger as PopoverTrigger } f
 
 type DatePickerState = {|
   /** The text in the field, which is the draft while one is being typed. */
-  readonly text: string,
+  readonly text    : string,
   readonly setDraft: (text: string | null) => void,
   /** Whether the last thing typed could not be read as a date. */
-  readonly invalid: boolean,
-  readonly commit: (text: string) => void,
-  readonly choose: (date: PlainDate) => void,
-  readonly value: PlainDate | null,
-  readonly fieldRef: { current: HTMLElement | null },
+  readonly invalid   : boolean,
+  readonly commit    : (text: string) => void,
+  readonly choose    : (date: PlainDate) => void,
+  readonly value     : PlainDate | null,
+  readonly fieldRef  : { current: HTMLElement | null },
   readonly focusField: () => void,
 |};
 
@@ -119,35 +119,35 @@ function isoParse(text: string): PlainDate | null {
  * `<div>` between them that they then have to style around.
  */
 component DatePickerRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
   defaultValue?: DateValue | null = null,
   /** How a chosen date is written into the field. ISO 8601 unless told otherwise. */
-  format?: (date: PlainDate) => string = isoFormat,
+  format?        : (date: PlainDate) => string = isoFormat,
   isDateDisabled?: (date: PlainDate) => boolean,
-  locale?: string,
-  onOpenChange?: (open: boolean) => void,
-  onValueChange?: (value: PlainDate | null) => mixed,
-  open?: boolean,
+  locale?        : string,
+  onOpenChange?  : (open: boolean) => void,
+  onValueChange? : (value: PlainDate | null) => mixed,
+  open?          : boolean,
   /** How typed text becomes a date, or null when it is not one yet. */
-  parse?: (text: string) => PlainDate | null = isoParse,
-  today?: DateValue,
-  value?: DateValue | null,
+  parse?       : (text: string) => PlainDate | null = isoParse,
+  today?       : DateValue,
+  value?       : DateValue | null,
   weekStartsOn?: number,
 ) {
-  const fieldRef = useRef<HTMLElement | null>(null);
+  const fieldRef          = useRef<HTMLElement | null>(null);
   const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
 
-  const controlled = useMemo(
+  const controlled          = useMemo(
     () =>
       value === undefined ? undefined : value === null ? null : Temporal.PlainDate.from(value),
     [value],
   );
-  const initial = useMemo(
+  const initial             = useMemo(
     () => (defaultValue == null ? null : Temporal.PlainDate.from(defaultValue)),
     [defaultValue],
   );
-  const report = useStableCallback((next: PlainDate | null) => {
+  const report              = useStableCallback((next: PlainDate | null) => {
     onValueChange?.(next);
   });
   const [chosen, setChosen] = useControlled<PlainDate | null>(controlled, initial, report);
@@ -157,7 +157,7 @@ component DatePickerRoot(
   // this avoids: an effect that copies the value into the field overwrites what
   // the reader is halfway through typing, and one that does not runs stale the
   // moment the caller sets a value from outside.
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft,   setDraft]   = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
   const text = draft ?? (chosen == null ? "" : format(chosen));
 
@@ -229,16 +229,16 @@ component DatePickerRoot(
 /** What `DatePicker.Root` was told about dates, for the calendar it renders. */
 type CalendarSettingsValue = {|
   readonly isDateDisabled: ((date: PlainDate) => boolean) | void,
-  readonly locale: string | void,
-  readonly today: DateValue | void,
-  readonly weekStartsOn: number | void,
+  readonly locale        : string | void,
+  readonly today         : DateValue | void,
+  readonly weekStartsOn  : number | void,
 |};
 
 const CalendarSettings: React.Context<CalendarSettingsValue> = createContext({
   isDateDisabled: undefined,
-  locale: undefined,
-  today: undefined,
-  weekStartsOn: undefined,
+  locale        : undefined,
+  today         : undefined,
+  weekStartsOn  : undefined,
 });
 
 /**
@@ -319,15 +319,15 @@ component DatePickerTrigger(children: React.Node, ...rest: Rest) renders Popover
  * no arrangement of them this module could impose that would suit every one.
  */
 component DatePickerCalendar(
-  children: React.Node,
-  align?: Align = "start",
-  side?: LogicalSide = "bottom",
+  children   : React.Node,
+  align?     : Align = "start",
+  side?      : LogicalSide = "bottom",
   sideOffset?: number = 0,
   ...rest: Rest
 ) renders PopoverBody {
-  const picker = useDatePicker("DatePicker.Calendar");
+  const picker   = useDatePicker("DatePicker.Calendar");
   const settings = useContext(CalendarSettings);
-  const dayRef = useRef<HTMLElement | null>(null);
+  const dayRef   = useRef<HTMLElement | null>(null);
   const passed = withoutComposed(rest, ["onKeyDown"]);
 
   return (

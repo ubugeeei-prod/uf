@@ -204,7 +204,7 @@ export function createActionDispatcher(options: {|
   const table = options.actions;
 
   return async function callAction(
-    request: Request,
+    request  : Request,
     settings?: ActionDispatchOptions,
   ): Promise<Response | null> {
     // The host's half of the contract, checked rather than assumed, exactly as
@@ -331,8 +331,8 @@ export function createActionDispatcher(options: {|
  * reason.
  */
 async function nativeFormPost(
-  table: $ReadOnlyArray<ActionRecord>,
-  request: Request,
+  table   : $ReadOnlyArray<ActionRecord>,
+  request : Request,
   postback: ?(formState: FormState) => Promise<Response>,
 ): Promise<Response | null> {
   if (request.method.toUpperCase() !== "POST") {
@@ -404,7 +404,7 @@ async function nativeFormPost(
       const status = routingStatus(error);
       if (status != null) {
         return new Response(`${status.text}\n`, {
-          status: status.code,
+          status : status.code,
           headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
         });
       }
@@ -439,7 +439,7 @@ async function nativeFormPost(
  * forms that could drift from the first.
  */
 function formArguments(post: FormPost): {|
-  readonly args: Array<ActionArgument>,
+  readonly args : Array<ActionArgument>,
   readonly bound: number,
 |} {
   let bound: Array<ActionArgument> = [];
@@ -512,7 +512,7 @@ function routingOutcome(error: mixed): Response | null {
   if (error instanceof RedirectError) {
     const headers: { [string]: string } = {
       "cache-control": "no-store",
-      location: addressOf(error.to),
+      location       : addressOf(error.to),
     };
     headers[ACTION_OUTCOME_HEADER] = "redirect";
     return new Response(null, { status: 204, headers });
@@ -554,7 +554,7 @@ function withOneLeadingSlash(path: string): string {
 /** A `303 See Other`, which a browser follows with a `GET`. */
 function seeOther(location: string): Response {
   return new Response(null, {
-    status: 303,
+    status : 303,
     headers: { location, "cache-control": "no-store" },
   });
 }

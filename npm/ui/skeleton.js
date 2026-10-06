@@ -93,11 +93,11 @@ import { withProps } from "./internal/merge-props.js";
  * contract rather than markup the caller can safely recreate by sight.
  */
 component SkeletonRoot(
-  children: React.Node,
-  busy?: boolean = true,
-  label?: string = "Loading…",
+  children  : React.Node,
+  busy?     : boolean = true,
+  label?    : string = "Loading…",
   doneLabel?: string = "Loaded",
-  render?: RenderProp,
+  render?   : RenderProp,
   ...rest: Rest
 ) {
   const [message, setMessage] = useState("");
@@ -126,7 +126,7 @@ component SkeletonRoot(
     <>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -161,7 +161,7 @@ component SkeletonRoot(
 component SkeletonBox(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-hidden": "true", children });
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

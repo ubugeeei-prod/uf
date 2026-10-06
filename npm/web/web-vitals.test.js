@@ -76,8 +76,8 @@ function theWindow(): $FlowFixMe {
 
 /** One observer the code under test asked for. */
 type Live = {
-  readonly type: string,
-  readonly options: $FlowFixMe,
+  readonly type    : string,
+  readonly options : $FlowFixMe,
   readonly callback: ($FlowFixMe) => void,
 };
 
@@ -101,11 +101,11 @@ type FakeBrowser = {
 type FakeOptions = {
   readonly supports?: $ReadOnlyArray<string>,
   /** A type the browser lists and then refuses to observe. */
-  readonly refuses?: string,
+  readonly refuses?         : string,
   readonly interactionCount?: number,
-  readonly navigationType?: string,
-  readonly responseStart?: number,
-  readonly activationStart?: number,
+  readonly navigationType?  : string,
+  readonly responseStart?   : number,
+  readonly activationStart? : number,
 };
 
 /** Install a browser that serves exactly the entry types a case names. */
@@ -141,8 +141,8 @@ function fakeBrowser(options: FakeOptions): FakeBrowser {
   }
 
   const navigation: $FlowFixMe = {
-    type: options.navigationType ?? "navigate",
-    responseStart: options.responseStart ?? 0,
+    type           : options.navigationType ?? "navigate",
+    responseStart  : options.responseStart ?? 0,
     activationStart: options.activationStart ?? 0,
   };
 
@@ -205,7 +205,7 @@ function candidate(startTime: number): mixed {
 function shift(startTime: number, value: number, hadRecentInput?: boolean): mixed {
   return {
     entryType: "layout-shift",
-    name: "",
+    name     : "",
     startTime,
     duration: 0,
     value,
@@ -217,7 +217,7 @@ function shift(startTime: number, value: number, hadRecentInput?: boolean): mixe
 function interaction(interactionId: number, duration: number, name?: string): mixed {
   return {
     entryType: "event",
-    name: name ?? "pointerdown",
+    name     : name ?? "pointerdown",
     startTime: 0,
     duration,
     interactionId,
@@ -546,9 +546,9 @@ describe("what a number means", () => {
     // in, that time makes a page that was ready before the reader clicked
     // look like the slowest page on the site.
     const browser = fakeBrowser({
-      supports: ["paint", "largest-contentful-paint"],
-      navigationType: "prerender",
-      responseStart: 3050,
+      supports       : ["paint", "largest-contentful-paint"],
+      navigationType : "prerender",
+      responseStart  : 3050,
       activationStart: 3000,
     });
     const { seen, report } = recorder();
@@ -568,7 +568,7 @@ describe("what a number means", () => {
     // an entry can easily arrive before that. Correcting when the entry lands
     // would use the zero and report the prerender's clock.
     const browser = fakeBrowser({
-      supports: ["largest-contentful-paint"],
+      supports      : ["largest-contentful-paint"],
       navigationType: "prerender",
     });
     const { seen, report } = recorder();
@@ -879,13 +879,13 @@ describe("vitalsBeacon", () => {
     const previous = (globalThis as $FlowFixMe)[routingBase];
     Object.defineProperty(globalThis, routingBase, {
       value,
-      writable: true,
+      writable    : true,
       configurable: true,
     });
     undo.push(() => {
       Object.defineProperty(globalThis, routingBase, {
-        value: typeof previous === "string" ? previous : "",
-        writable: true,
+        value       : typeof previous === "string" ? previous : "",
+        writable    : true,
         configurable: true,
       });
     });

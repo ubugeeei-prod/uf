@@ -274,8 +274,8 @@ export function selector<T>(read: (get: Getter) => T, options?: AtomOptions<T>):
  * something would be very hard to explain.
  */
 export function writableSelector<T, A>(
-  read: (get: Getter) => T,
-  write: (get: Getter, set: Setter, argument: A) => void,
+  read    : (get: Getter) => T,
+  write   : (get: Getter, set: Setter, argument: A) => void,
   options?: AtomOptions<T>,
 ): WritableAtom<T, A> {
   return defineSelector(read, write, options);
@@ -291,7 +291,7 @@ export function writableSelector<T, A>(
  * and dispatching it costs the caller no subscription.
  */
 export function action<A>(
-  write: (get: Getter, set: Setter, argument: A) => void,
+  write   : (get: Getter, set: Setter, argument: A) => void,
   options?: AtomOptions<null>,
 ): WriteOnlyAtom<A> {
   return defineAction(write, options);
@@ -332,7 +332,7 @@ export function action<A>(
  * stopped asking.
  */
 export function asyncAtom<T>(
-  load: (get: Getter, context: LoadContext) => Promise<T>,
+  load    : (get: Getter, context: LoadContext) => Promise<T>,
   options?: AtomOptions<Loadable<T>>,
 ): AsyncAtom<T> {
   return defineAsync(load, options);
@@ -367,7 +367,7 @@ export function refresh<T>(target: AsyncAtom<T>, store?: Store): void {
  */
 export function atomWithDefault<T>(
   getDefault: (get: Getter) => T,
-  options?: AtomOptions<T>,
+  options?  : AtomOptions<T>,
 ): WritableAtom<T, SetAction<T> | Reset> {
   return composeWithDefault(getDefault, options);
 }
@@ -381,7 +381,7 @@ export function atomWithDefault<T>(
  * value instead of a read, which is what a caller who has one already has.
  */
 export function atomWithReset<T>(
-  initial: T,
+  initial : T,
   options?: AtomOptions<T>,
 ): WritableAtom<T, SetAction<T> | Reset> {
   return composeWithReset(initial, options);
@@ -402,8 +402,8 @@ export function atomWithReset<T>(
  * type error rather than a state machine with a hole in it.
  */
 export function atomWithReducer<State, Action>(
-  initial: State,
-  reduce: (state: State, action: Action) => State,
+  initial : State,
+  reduce  : (state: State, action: Action) => State,
   options?: AtomOptions<State>,
 ): WritableAtom<State, Action> {
   return composeWithReducer(initial, reduce, options);
@@ -428,8 +428,8 @@ export function atomWithReducer<State, Action>(
  * direct way to say the thing that parameter was used to say.
  */
 export function selectAtom<T, Slice>(
-  source: ReadonlyAtom<T>,
-  select: (value: T) => Slice,
+  source : ReadonlyAtom<T>,
+  select : (value: T) => Slice,
   equals?: (previous: Slice, next: Slice) => boolean,
 ): ReadonlyAtom<Slice> {
   return composeSelect(source, select, equals);
@@ -473,8 +473,8 @@ export function freezeAtom<T>(source: ReadonlyAtom<T>): ReadonlyAtom<T> {
  * default forever".
  */
 export function atomWithStorage<T>(
-  key: string,
-  initial: T,
+  key     : string,
+  initial : T,
   storage?: StorageAdapter<T>,
   options?: StorageOptions<T>,
 ): WritableAtom<T, SetAction<T> | Reset> {
@@ -519,9 +519,9 @@ export function atomWithStorage<T>(
  * reading again — a re-read would race the removal it has not waited for.
  */
 export function atomWithAsyncStorage<T>(
-  key: string,
-  initial: T,
-  storage: AsyncStorageAdapter<T>,
+  key     : string,
+  initial : T,
+  storage : AsyncStorageAdapter<T>,
   options?: AsyncStorageOptions<T>,
 ): WritableAtom<Loadable<T>, AsyncSetAction<T> | Reset> {
   return composeWithAsyncStorage(key, initial, storage, options);
@@ -570,9 +570,9 @@ export function write<T, A>(target: WritableAtom<T, A>, argument: A, store?: Sto
  * that subscriber is a component.
  */
 export function subscribe<T>(
-  target: ReadonlyAtom<T>,
+  target  : ReadonlyAtom<T>,
   listener: () => void,
-  store?: Store,
+  store?  : Store,
 ): Unsubscribe {
   return (store ?? defaultStore()).sub(target, listener);
 }
@@ -671,7 +671,7 @@ export hook useResetAtom<T>(
  */
 export hook useAtomCallback<Args extends $ReadOnlyArray<mixed>, Result>(
   callback: (get: Getter, set: Setter, ...args: Args) => Result,
-  store?: Store,
+  store?  : Store,
 ): (...args: Args) => Result {
   const instance = useStoreInstance(store);
   return (...args: Args) => callback(instance.get, instance.set, ...args);

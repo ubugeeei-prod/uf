@@ -270,7 +270,7 @@ describe("the cache", () => {
       .fetchQuery({
         queryKey: ["missing"],
         queryFn,
-        retry: (_count, error) => error.message !== "not found",
+        retry     : (_count, error) => error.message !== "not found",
         retryDelay: 1,
       })
       .catch(() => {});
@@ -362,8 +362,8 @@ describe("the cache", () => {
       .fetch(() => slow.promise, { retry: false, retryDelay: 0 })
       .catch((error) => error);
     await query.fetch(() => Promise.resolve("second"), {
-      retry: false,
-      retryDelay: 0,
+      retry        : false,
+      retryDelay   : 0,
       cancelRefetch: true,
     });
     slow.settle("first");
@@ -606,8 +606,8 @@ describe("useQuery", () => {
       const [count, setCount] = useState(0);
       // A fresh closure on every render, which is how everyone writes it.
       const { data } = useQuery({
-        queryKey: ["thing"],
-        queryFn: async () => `value ${count}`,
+        queryKey : ["thing"],
+        queryFn  : async () => `value ${count}`,
         staleTime: 60_000,
       });
       return (
@@ -639,8 +639,8 @@ describe("useQuery", () => {
     component Users() {
       userRenders += 1;
       const { data } = useQuery({
-        queryKey: ["users"],
-        queryFn: async () => ["ada"],
+        queryKey : ["users"],
+        queryFn  : async () => ["ada"],
         staleTime: Number.POSITIVE_INFINITY,
       });
       return <output>{(data ?? []).join(",")}</output>;
@@ -648,8 +648,8 @@ describe("useQuery", () => {
     component Posts() {
       postRenders += 1;
       const { data } = useQuery({
-        queryKey: ["posts"],
-        queryFn: async () => ["hello"],
+        queryKey : ["posts"],
+        queryFn  : async () => ["hello"],
         staleTime: Number.POSITIVE_INFINITY,
       });
       return <output>{(data ?? []).join(",")}</output>;
@@ -686,8 +686,8 @@ describe("useQuery", () => {
     component Rows() {
       renders += 1;
       const { data } = useQuery({
-        queryKey: ["rows"],
-        queryFn: async () => [{ id: 1 }, { id: 2 }],
+        queryKey : ["rows"],
+        queryFn  : async () => [{ id: 1 }, { id: 2 }],
         staleTime: Number.POSITIVE_INFINITY,
       });
       return <output>{(data ?? []).map((row) => row.id).join(",")}</output>;
@@ -712,8 +712,8 @@ describe("useQuery", () => {
     component Name() {
       renders += 1;
       const { data } = useQuery({
-        queryKey: ["user"],
-        queryFn: async () => ({ name: "Ada", visits: 1 }),
+        queryKey : ["user"],
+        queryFn  : async () => ({ name: "Ada", visits: 1 }),
         staleTime: Number.POSITIVE_INFINITY,
         // Written inline, so its identity changes every render — which must
         // not be enough to defeat the memo.
@@ -753,7 +753,7 @@ describe("useQuery", () => {
 
     component Switcher() {
       const [id, setId] = useState("a");
-      const { data } = useQuery({ queryKey: ["item", id], queryFn, retry: false });
+      const { data }    = useQuery({ queryKey: ["item", id], queryFn, retry: false });
       return (
         <button type="button" onClick={() => setId("b")}>
           {data ?? "nothing"}
@@ -858,8 +858,8 @@ describe("useQuery", () => {
 
     component Placeheld() {
       const { data, isPlaceholderData } = useQuery({
-        queryKey: ["thing"],
-        queryFn: () => held.promise,
+        queryKey       : ["thing"],
+        queryFn        : () => held.promise,
         placeholderData: "guess",
       });
       return <output>{`${String(data)} ${String(isPlaceholderData)}`}</output>;
@@ -881,8 +881,8 @@ describe("useQuery", () => {
     let answer = "first";
     component Refetchable() {
       const { data, refetch } = useQuery({
-        queryKey: ["thing"],
-        queryFn: async () => answer,
+        queryKey : ["thing"],
+        queryFn  : async () => answer,
         staleTime: 60_000,
       });
       return (
@@ -943,7 +943,7 @@ describe("useQuery", () => {
     const queryFn = fn(async () => "value");
 
     component Refresher() {
-      const inner = useQueryClient();
+      const inner    = useQueryClient();
       const { data } = useQuery({ queryKey: ["thing"], queryFn, staleTime: 60_000 });
       return (
         <button type="button" onClick={() => void inner.invalidateQueries({ queryKey: ["thing"] })}>
@@ -994,7 +994,7 @@ describe("useQuery", () => {
         queryKey: ["thing"],
         queryFn,
         refetchInterval: 20,
-        staleTime: 60_000,
+        staleTime      : 60_000,
       });
       return <output>{data ?? "nothing"}</output>;
     }
@@ -1064,11 +1064,11 @@ describe("useMutation", () => {
 
     component Users() {
       const { data } = useQuery({
-        queryKey: ["users"],
-        queryFn: async () => rows,
+        queryKey : ["users"],
+        queryFn  : async () => rows,
         staleTime: Number.POSITIVE_INFINITY,
       });
-      const create = useMutation({
+      const create   = useMutation({
         mutationFn: async (_name: string): Promise<void> => {
           throw new Error("rejected");
         },
@@ -1127,11 +1127,11 @@ describe("useMutation", () => {
 
     component Users() {
       const { data } = useQuery({
-        queryKey: ["users"],
-        queryFn: async () => ["ada"],
+        queryKey : ["users"],
+        queryFn  : async () => ["ada"],
         staleTime: Number.POSITIVE_INFINITY,
       });
-      const create = useMutation({
+      const create   = useMutation({
         mutationFn: () => held.promise,
         onMutate: (name: string) => {
           client.setQueryData(["users"], (users: $FlowFixMe) => [...users, name]);
@@ -1160,7 +1160,7 @@ describe("useMutation", () => {
 
     component Users() {
       const { data } = useQuery({ queryKey: ["users"], queryFn, staleTime: 60_000 });
-      const create = useMutation({
+      const create   = useMutation({
         mutationFn: async (name: string) => {
           listed = [...listed, name];
           return name;
@@ -1269,7 +1269,7 @@ describe("a mutation whose error callback throws", () => {
         onError: () => {
           throw new Error("the callback is broken too");
         },
-        retry: 0,
+        retry     : 0,
         retryDelay: () => 0,
       });
     } catch (error) {
@@ -1289,7 +1289,7 @@ describe("useInfiniteQuery", () => {
     const client = new QueryClient();
     const queryFn = fn(async ({ pageParam }: $FlowFixMe) => ({
       items: feed[pageParam],
-      next: pageParam + 1 < feed.length ? pageParam + 1 : null,
+      next : pageParam + 1 < feed.length ? pageParam + 1 : null,
     }));
 
     component Feed() {
@@ -1298,7 +1298,7 @@ describe("useInfiniteQuery", () => {
         queryFn,
         initialPageParam: 0,
         getNextPageParam: (last: $FlowFixMe) => last.next,
-        staleTime: 60_000,
+        staleTime       : 60_000,
       });
       const items = (data?.pages ?? []).flatMap((page) => page.items);
       return (
@@ -1350,12 +1350,12 @@ describe("useInfiniteQuery", () => {
           }
           return {
             items: feed[pageParam],
-            next: pageParam + 1 < feed.length ? pageParam + 1 : null,
+            next : pageParam + 1 < feed.length ? pageParam + 1 : null,
           };
         },
         initialPageParam: 0,
         getNextPageParam: (last: $FlowFixMe) => last.next,
-        staleTime: 60_000,
+        staleTime       : 60_000,
       });
       const items = (data?.pages ?? []).flatMap((page) => page.items);
       return (
@@ -1392,11 +1392,11 @@ describe("useInfiniteQuery", () => {
         queryKey: ["feed"],
         queryFn: async ({ pageParam }: $FlowFixMe) => ({
           items: feed[pageParam],
-          next: pageParam + 1 < feed.length ? pageParam + 1 : null,
+          next : pageParam + 1 < feed.length ? pageParam + 1 : null,
         }),
         initialPageParam: 0,
         getNextPageParam: (last: $FlowFixMe) => last.next,
-        staleTime: 60_000,
+        staleTime       : 60_000,
       });
       return (
         <button type="button" onClick={() => void fetchNextPage()}>

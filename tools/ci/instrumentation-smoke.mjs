@@ -15,7 +15,7 @@ fs.mkdirSync(logs, { recursive: true });
 
 function build(adapter) {
   execFileSync(uf, ["--cwd", fixture, "build", "--adapter", adapter], {
-    cwd: root,
+    cwd  : root,
     stdio: "inherit",
   });
 }
@@ -35,9 +35,9 @@ async function probe(label, command) {
   const log = fs.openSync(path.join(logs, `${label}.log`), "w");
   const child = spawn(binary, args, {
     cwd,
-    env: { ...process.env, HOST: "127.0.0.1", PORT: String(chosen) },
+    env     : { ...process.env, HOST: "127.0.0.1", PORT: String(chosen) },
     detached: true,
-    stdio: ["ignore", log, log],
+    stdio   : ["ignore", log, log],
   });
   fs.closeSync(log);
   let failure;
@@ -85,9 +85,9 @@ async function probe(label, command) {
     assert.equal(
       (
         await request("/action", {
-          method: "POST",
+          method : "POST",
           headers: { origin, "content-type": "application/json", "uf-action": action.id },
-          body: JSON.stringify({ args: [] }),
+          body   : JSON.stringify({ args: [] }),
         })
       ).status,
       500,
@@ -146,13 +146,13 @@ build("node");
 for (const mode of ["dev", "start", "preview"]) {
   await probe(mode, (port) => ({
     binary: uf,
-    args: [mode, "--host", "127.0.0.1", "--port", String(port)],
+    args  : [mode, "--host", "127.0.0.1", "--port", String(port)],
   }));
 }
 await probe("node", () => ({
   binary: process.execPath,
-  args: ["server.js"],
-  cwd: path.join(fixture, ".uf/deploy/node"),
+  args  : ["server.js"],
+  cwd   : path.join(fixture, ".uf/deploy/node"),
 }));
 if (process.env.UF_SKIP_EDGE !== "1") {
   build("edge");

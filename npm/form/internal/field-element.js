@@ -78,7 +78,7 @@ function isLive(element: AnyElement): boolean {
  * - anything else — `element.value`, a string.
  */
 export function readElements(
-  elements: $ReadOnlyArray<AnyElement>,
+  elements  : $ReadOnlyArray<AnyElement>,
   transform?: ValueTransform,
 ): mixed {
   const live = elements.filter(isLive);

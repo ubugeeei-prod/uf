@@ -30,22 +30,22 @@ function handle(message /*: { id?: number, method?: string, params?: { textDocum
     case "initialize":
       send({
         jsonrpc: "2.0",
-        id: message.id,
-        result: { capabilities: { textDocumentSync: 1 }, serverInfo: { name, version: "0.0.0" } },
+        id     : message.id,
+        result : { capabilities: { textDocumentSync: 1 }, serverInfo: { name, version: "0.0.0" } },
       });
       return;
     case "textDocument/didOpen":
       send({
         jsonrpc: "2.0",
-        method: "textDocument/publishDiagnostics",
+        method : "textDocument/publishDiagnostics",
         params: {
           uri: message.params?.textDocument?.uri,
           diagnostics: [
             {
-              range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+              range   : { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
               severity: 2,
-              source: name,
-              message: `cwd=${process.cwd()}`,
+              source  : name,
+              message : `cwd=${process.cwd()}`,
             },
           ],
         },

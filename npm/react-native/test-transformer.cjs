@@ -10,17 +10,17 @@ module.exports = {
     const root = options.config.rootDir;
     const load = createRequire(path.join(root, "package.json"));
     const babel = load("babel-jest").createTransformer({
-      babelrc: false,
+      babelrc   : false,
       configFile: false,
-      presets: [load.resolve("@react-native/babel-preset")],
-      plugins: [load.resolve("@babel/plugin-transform-dynamic-import")],
+      presets   : [load.resolve("@react-native/babel-preset")],
+      plugins   : [load.resolve("@babel/plugin-transform-dynamic-import")],
     });
     const transformed = isFlowModule(filename)
       ? transformFlowSync(source, filename, {
           root,
-          development: true,
+          development : true,
           nativeStyles: true,
-          sourceMap: true,
+          sourceMap   : true,
         })
       : null;
     return babel.process(transformed?.code ?? source, filename, options);

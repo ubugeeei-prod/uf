@@ -10,22 +10,22 @@ import { composeHandlers, withProps } from "./internal/merge-props.js";
 import { useLocale } from "./i18n-provider.js";
 
 type NumberFormatter = {
-  format: (value: number) => string,
-  formatToParts: (value: number) => Array<{ type: string, value: string }>,
+  format         : (value: number) => string,
+  formatToParts  : (value: number) => Array<{ type: string, value: string }>,
   resolvedOptions: () => { locale: string, style: string, ... },
 };
 export type NumberFormatOptions = {
-  style?: "decimal" | "percent" | "currency" | "unit",
-  currency?: string,
-  currencyDisplay?: "symbol" | "narrowSymbol" | "code" | "name",
-  currencySign?: "standard" | "accounting",
-  unit?: string,
-  unitDisplay?: "long" | "short" | "narrow",
-  useGrouping?: boolean,
+  style?                : "decimal" | "percent" | "currency" | "unit",
+  currency?             : string,
+  currencyDisplay?      : "symbol" | "narrowSymbol" | "code" | "name",
+  currencySign?         : "standard" | "accounting",
+  unit?                 : string,
+  unitDisplay?          : "long" | "short" | "narrow",
+  useGrouping?          : boolean,
   minimumFractionDigits?: number,
   maximumFractionDigits?: number,
-  minimumIntegerDigits?: number,
-  numberingSystem?: string,
+  minimumIntegerDigits? : number,
+  numberingSystem?      : string,
 };
 // Flow's bundled Intl declarations predate formatToParts and unit formatting.
 function numberFormatter(locale: string, options?: NumberFormatOptions): NumberFormatter {
@@ -62,18 +62,18 @@ export function parseNumber(text: string, formatter: NumberFormatter): number | 
 }
 
 type NumberState = {
-  value: number | null,
-  text: string,
-  invalid: boolean,
-  disabled: boolean,
-  readOnly: boolean,
-  min: number | void,
-  max: number | void,
+  value    : number | null,
+  text     : string,
+  invalid  : boolean,
+  disabled : boolean,
+  readOnly : boolean,
+  min      : number | void,
+  max      : number | void,
   formatter: NumberFormatter,
-  edit: (text: string) => void,
-  commit: () => void,
-  stepBy: (direction: number) => void,
-  boundary: (value: number | void) => void,
+  edit     : (text: string) => void,
+  commit   : () => void,
+  stepBy   : (direction: number) => void,
+  boundary : (value: number | void) => void,
 };
 const NumberContext: React.Context<NumberState | null> = createContext(null);
 hook useNumber(): NumberState {
@@ -83,18 +83,18 @@ hook useNumber(): NumberState {
 }
 
 component NumberFieldRoot(
-  children: React.Node,
-  value?: number | null,
-  defaultValue?: number | null = null,
-  onValueChange?: (value: number | null) => void,
+  children           : React.Node,
+  value?             : number | null,
+  defaultValue?      : number | null = null,
+  onValueChange?     : (value: number | null) => void,
   onValidationChange?: (invalid: boolean) => void,
-  min?: number,
-  max?: number,
-  step?: number,
-  formatOptions?: NumberFormatOptions,
-  disabled?: boolean = false,
-  readOnly?: boolean = false,
-  render?: RenderProp,
+  min?               : number,
+  max?               : number,
+  step?              : number,
+  formatOptions?     : NumberFormatOptions,
+  disabled?          : boolean = false,
+  readOnly?          : boolean = false,
+  render?            : RenderProp,
   ...rest: Rest
 ) {
   const increment = step ?? (formatOptions?.style === "percent" ? 0.01 : 1);
@@ -215,7 +215,7 @@ component NumberFieldRoot(
     <NumberContext.Provider value={state}>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -258,7 +258,7 @@ component NumberFieldInput(render?: RenderProp, ...rest: Rest) {
     }),
   });
   return match (render) {
-    undefined => <input {...props} />,
+    undefined    => <input {...props} />,
     const custom => custom(props),
   };
 }
@@ -267,7 +267,7 @@ component NumberFieldIncrement(children?: React.Node = "+", render?: RenderProp,
   const state = useNumber();
   const props = withProps(rest, {
     children,
-    type: "button",
+    type        : "button",
     "aria-label": rest["aria-label"] ?? "Increase",
     disabled:
       state.disabled ||
@@ -276,7 +276,7 @@ component NumberFieldIncrement(children?: React.Node = "+", render?: RenderProp,
     onClick: composeHandlers(rest.onClick, () => state.stepBy(1)),
   });
   return match (render) {
-    undefined => <button {...props} />,
+    undefined    => <button {...props} />,
     const custom => custom(props),
   };
 }
@@ -284,7 +284,7 @@ component NumberFieldDecrement(children?: React.Node = "−", render?: RenderPro
   const state = useNumber();
   const props = withProps(rest, {
     children,
-    type: "button",
+    type        : "button",
     "aria-label": rest["aria-label"] ?? "Decrease",
     disabled:
       state.disabled ||
@@ -293,7 +293,7 @@ component NumberFieldDecrement(children?: React.Node = "−", render?: RenderPro
     onClick: composeHandlers(rest.onClick, () => state.stepBy(-1)),
   });
   return match (render) {
-    undefined => <button {...props} />,
+    undefined    => <button {...props} />,
     const custom => custom(props),
   };
 }

@@ -24,10 +24,10 @@ import type { Span } from "@opentelemetry/api";
 
 export type FetchFailure =
   | {|
-      readonly kind: "http",
-      readonly status: number,
+      readonly kind      : "http",
+      readonly status    : number,
       readonly statusText: string,
-      readonly response: Response,
+      readonly response  : Response,
       /**
        * The method that was sent.
        *
@@ -65,13 +65,13 @@ export class FetchError extends Error {
     // Matched on the failure rather than its `kind`, so each arm sees the
     // fields its kind has.
     return match (this.failure) {
-      {kind: "network", ...} => true,
-      {kind: "timeout", ...} => true,
+      {kind: "network", ...}            => true,
+      {kind: "timeout", ...}            => true,
       // 408 is a timeout the server noticed, 429 is "slow down", and 5xx is
       // the server's problem rather than the request's. Nothing else is worth
       // sending again: a 400 will be a 400 next time too.
       {kind: "http", const status, ...} => status === 408 || status === 429 || status >= 500,
-      _ => false,
+      _                                 => false,
     };
   }
 }
@@ -98,11 +98,11 @@ function describe(url: string, failure: FetchFailure): string {
           "the request arrives. Check whether the origin saw it, and export POST beside QUERY " +
           "if it did not."
         : `${url} answered ${status} ${statusText}`,
-    {kind: "network", const cause} => `${url} could not be reached: ${String(cause)}`,
-    {kind: "timeout", const millis} => `${url} did not answer within ${millis}ms`,
-    {kind: "parse", const cause} =>
+    {kind: "network", const cause}                                    => `${url} could not be reached: ${String(cause)}`,
+    {kind: "timeout", const millis}                                   => `${url} did not answer within ${millis}ms`,
+    {kind: "parse", const cause}                                      =>
       `${url} did not return the body it said it would: ${String(cause)}`,
-    {kind: "invalid", const issues} =>
+    {kind: "invalid", const issues}                                   =>
       `${url} returned ${issues.length} value(s) the schema rejected`,
   };
 }
@@ -144,12 +144,12 @@ export type RequestOptions<T> = {|
    */
   readonly method?: "GET" | "HEAD" | "QUERY" | "POST" | "PUT" | "PATCH" | "DELETE",
   /** Sent as JSON unless it is already a `BodyInit`. */
-  readonly body?: mixed,
-  readonly headers?: { readonly [string]: string },
+  readonly body?        : mixed,
+  readonly headers?     : { readonly [string]: string },
   readonly searchParams?: { readonly [string]: string | number | boolean },
-  readonly signal?: AbortSignal,
-  readonly timeout?: number,
-  readonly retries?: number,
+  readonly signal?      : AbortSignal,
+  readonly timeout?     : number,
+  readonly retries?     : number,
   /** Checked against the parsed body; its failure is the request's failure. */
   readonly parse?: Parse<T>,
 |};
@@ -157,7 +157,7 @@ export type RequestOptions<T> = {|
 /** A configured client. */
 export type FetchClient = {|
   readonly request: <T>(path: string, options?: RequestOptions<T>) => Promise<T>,
-  readonly raw: (path: string, options?: RequestOptions<mixed>) => Promise<Response>,
+  readonly raw    : (path: string, options?: RequestOptions<mixed>) => Promise<Response>,
   /** A client with more defaults applied on top of this one's. */
   readonly extend: (config: FetchConfig) => FetchClient,
 |};
@@ -211,7 +211,7 @@ export function createFetch(config?: FetchConfig): FetchClient {
  * makes its side a union, and Flow refuses to reason about the spread of two.
  */
 function mergedHeaders(
-  base: ?{ readonly [string]: string },
+  base : ?{ readonly [string]: string },
   extra: ?{ readonly [string]: string },
 ): { [string]: string } {
   const merged: { [string]: string } = {};
@@ -227,8 +227,8 @@ function mergedHeaders(
 /** Send, with the timeout and the retry policy applied. */
 async function sendUntraced(
   settings: $FlowFixMe,
-  path: string,
-  options: RequestOptions<mixed>,
+  path    : string,
+  options : RequestOptions<mixed>,
 ): Promise<Response> {
   const url = resolveUrl(settings, path, options);
   const method = (options.method ?? "GET").toUpperCase();
@@ -252,8 +252,8 @@ async function sendUntraced(
         return response;
       }
       failure = new FetchError(url, {
-        kind: "http",
-        status: response.status,
+        kind      : "http",
+        status    : response.status,
         statusText: response.statusText,
         response,
         method,
@@ -277,9 +277,9 @@ async function sendUntraced(
 
 function requestInit(
   settings: $FlowFixMe,
-  options: RequestOptions<mixed>,
-  method: string,
-  signal: AbortSignal,
+  options : RequestOptions<mixed>,
+  method  : string,
+  signal  : AbortSignal,
 ): RequestOptions<mixed> {
   const headers: { [string]: string } = {
     ...(settings.headers ?? {}),
@@ -328,10 +328,10 @@ function isBodyInit(body: mixed): boolean {
  * after the caller has moved on.
  */
 async function withTimeout(
-  run: (signal: AbortSignal) => Promise<Response>,
-  millis: number,
+  run     : (signal: AbortSignal) => Promise<Response>,
+  millis  : number,
   external: AbortSignal | void,
-  url: string,
+  url     : string,
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), millis);
@@ -354,8 +354,8 @@ async function withTimeout(
 /** The body, parsed by content type, then checked against the schema. */
 async function parse<T>(
   response: Response,
-  options: RequestOptions<T>,
-  url: string,
+  options : RequestOptions<T>,
+  url     : string,
 ): Promise<mixed> {
   const type = response.headers.get("content-type") ?? "";
   let value: mixed;
@@ -414,8 +414,8 @@ function pause(millis: number): Promise<void> {
 
 async function send(
   settings: $FlowFixMe,
-  path: string,
-  options: RequestOptions<mixed>,
+  path    : string,
+  options : RequestOptions<mixed>,
 ): Promise<Response> {
   let url = null;
   try {

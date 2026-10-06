@@ -99,7 +99,7 @@ export function standaloneCapabilities(options?: CapabilityOptions): ServerCapab
  */
 type NodeRequest = {
   readonly method?: string,
-  readonly url?: string,
+  readonly url?   : string,
   readonly headers: { readonly [string]: string | Array<string> | void },
   ...
 };
@@ -110,7 +110,7 @@ type NodeResponse = {
   // module hands them its responses: a type without them described a response
   // those functions could not have been given.
   statusMessage: string,
-  headersSent: boolean,
+  headersSent  : boolean,
   setHeader(name: string, value: string | $ReadOnlyArray<string>): mixed,
   // A `boolean`, as `./node.js` needs it: `send` paces a body by it.
   write(chunk: Uint8Array | string): boolean,
@@ -144,8 +144,8 @@ export type EmbeddedAssets = { readonly [path: string]: EmbeddedAsset };
 
 /** The script, stylesheet and preload URLs a rendered document references. */
 export type DocumentAssets = {|
-  readonly scripts: $ReadOnlyArray<string>,
-  readonly styles: $ReadOnlyArray<string>,
+  readonly scripts : $ReadOnlyArray<string>,
+  readonly styles  : $ReadOnlyArray<string>,
   readonly preloads: $ReadOnlyArray<string>,
   /** The build these URLs belong to; see `./internal/application.js`. */
   readonly deployment?: string,
@@ -170,15 +170,15 @@ export type StandaloneApp = Application;
 
 /** Everything an application needs to answer a request, all of it built in. */
 export type HandlerOptions = {|
-  readonly app: StandaloneApp,
-  readonly assets: EmbeddedAssets,
+  readonly app     : StandaloneApp,
+  readonly assets  : EmbeddedAssets,
   readonly document: DocumentAssets,
 |};
 
 /** What [`serve`] needs: the above, and where to listen. */
 export type ServeOptions = {|
-  readonly app: StandaloneApp,
-  readonly assets: EmbeddedAssets,
+  readonly app     : StandaloneApp,
+  readonly assets  : EmbeddedAssets,
   readonly document: DocumentAssets,
   /** Overridden by `--port` and then by `PORT`; defaults to 3000. */
   readonly port?: number,
@@ -209,13 +209,13 @@ const DOCUMENT_CACHE_CONTROL = "no-cache";
  * test that drives a compiled binary needs exactly that.
  */
 export async function serve(options: ServeOptions): Promise<{|
-  readonly host: string,
-  readonly port: number,
+  readonly host : string,
+  readonly port : number,
   readonly close: () => Promise<void>,
 |}> {
   const handle = createHandler({
-    app: options.app,
-    assets: options.assets,
+    app     : options.app,
+    assets  : options.assets,
     document: options.document,
   });
 
@@ -492,7 +492,7 @@ export function createHandler(options: HandlerOptions): (
               status: rendered.status,
               headers: {
                 ...rendered.headers,
-                "content-type": "text/html; charset=utf-8",
+                "content-type" : "text/html; charset=utf-8",
                 "cache-control": DOCUMENT_CACHE_CONTROL,
               },
             });
@@ -671,8 +671,8 @@ function toRequest(incoming: NodeRequest, url: URL): Request {
 /** `send`, except that a `HEAD` gets the status and the headers and no body. */
 async function sendUnlessHead(
   outgoing: NodeResponse,
-  method: string,
-  result: Response,
+  method  : string,
+  result  : Response,
 ): Promise<void> {
   if (method === "HEAD") {
     outgoing.statusCode = result.status;
@@ -703,12 +703,12 @@ async function sendUnlessHead(
 
 /** Write one embedded file, with the length a client needs to reuse a socket. */
 function sendBytes(
-  outgoing: NodeResponse,
-  method: string,
-  status: number,
-  type: string,
+  outgoing    : NodeResponse,
+  method      : string,
+  status      : number,
+  type        : string,
   cacheControl: string,
-  bytes: Uint8Array,
+  bytes       : Uint8Array,
 ): void {
   outgoing.statusCode = status;
   outgoing.setHeader("content-type", type);

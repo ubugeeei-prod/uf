@@ -25,8 +25,8 @@ const injector = {
   name: "test:inject",
   transformIndexHtml() {
     return ["head-prepend", "head", "body-prepend", "body"].map((at) => ({
-      tag: "script",
-      attrs: { "data-at": at },
+      tag     : "script",
+      attrs   : { "data-at": at },
       injectTo: at,
     }));
   },
@@ -35,10 +35,10 @@ const injector = {
 async function transformed(html: string): Promise<string> {
   const { createServer } = await import("vite");
   const server = await createServer({
-    root: process.cwd(),
+    root    : process.cwd(),
     logLevel: "silent",
-    server: { middlewareMode: true },
-    plugins: [injector],
+    server  : { middlewareMode: true },
+    plugins : [injector],
   });
   try {
     return await server.transformIndexHtml("/", html);

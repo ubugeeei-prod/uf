@@ -53,8 +53,8 @@ export function createStaticHandler(options: {| readonly root: string |}): (
  */
 export function createServeHandler(options: {|
   readonly staticDir: string,
-  readonly handle: (request: Request) => Promise<Response>,
-  readonly routing?: RoutingRules,
+  readonly handle   : (request: Request) => Promise<Response>,
+  readonly routing? : RoutingRules,
 |}): (request: Request) => Promise<Response> {
   const serveStatic = createStaticHandler({ root: options.staticDir });
   return async function handle(request: Request): Promise<Response> {
@@ -77,8 +77,8 @@ type DenoFile = {
 
 type DenoServer = {
   readonly addr: {|
-    readonly hostname: string,
-    readonly port: number,
+    readonly hostname : string,
+    readonly port     : number,
     readonly transport: string,
   |},
   shutdown(): Promise<void>,
@@ -94,8 +94,8 @@ declare var Deno: {
   open(path: string, options: {| read: true |}): Promise<DenoFile>,
   serve(
     options: {
-      hostname: string,
-      port: number,
+      hostname : string,
+      port     : number,
       onListen?: () => mixed,
       ...
     },
@@ -109,24 +109,24 @@ declare var Deno: {
  * Serve the application until the process is stopped.
  */
 export async function serve(options: {|
-  readonly staticDir: string,
-  readonly handle: (request: Request) => Promise<Response>,
+  readonly staticDir   : string,
+  readonly handle      : (request: Request) => Promise<Response>,
   readonly beginRequest: (request: Request) => RequestLifecycle,
-  readonly host?: string,
-  readonly port?: number,
-  readonly log?: Logger,
-  readonly schedules?: $ReadOnlyArray<Schedule>,
-  readonly routing?: RoutingRules,
+  readonly host?       : string,
+  readonly port?       : number,
+  readonly log?        : Logger,
+  readonly schedules?  : $ReadOnlyArray<Schedule>,
+  readonly routing?    : RoutingRules,
 |}): Promise<{|
-  readonly host: string,
-  readonly port: number,
+  readonly host : string,
+  readonly port : number,
   readonly close: () => Promise<void>,
 |}> {
   const log = options.log ?? processLogger();
   const handle = createServeHandler({
     staticDir: options.staticDir,
-    handle: options.handle,
-    routing: options.routing,
+    handle   : options.handle,
+    routing  : options.routing,
   });
 
   const host = options.host ?? argument("--host") ?? Deno.env.get("HOST") ?? "0.0.0.0";

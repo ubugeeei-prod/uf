@@ -44,7 +44,7 @@ describe("createEnvironment", () => {
 
     const environment = createEnvironment({
       endpoint: "/graphql",
-      fetch: client,
+      fetch   : client,
     });
 
     expect(typeof (environment as $FlowFixMe).execute).toBe("function");
@@ -90,8 +90,8 @@ describe("the request it sends", () => {
     const { client, calls } = recording({ data: {} });
     const environment = createEnvironment({
       endpoint: "/graphql",
-      fetch: client,
-      headers: { authorization: "Bearer t" },
+      fetch   : client,
+      headers : { authorization: "Bearer t" },
     });
 
     await networkOf(environment).execute(operation, {}, {}).toPromise();
@@ -107,7 +107,7 @@ describe("errors", () => {
     // The failure mode this exists to prevent: a client that only checks the
     // status renders `null` and says nothing about why.
     const { client } = recording({
-      data: null,
+      data  : null,
       errors: [{ message: "not authorised" }],
     });
     const environment = createEnvironment({ endpoint: "/graphql", fetch: client });

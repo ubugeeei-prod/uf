@@ -98,8 +98,8 @@ export function put<Value>(out: { [string]: Value, ... }, key: string, value: Va
   }
   Object.defineProperty(out, key, {
     value,
-    writable: true,
-    enumerable: true,
+    writable    : true,
+    enumerable  : true,
     configurable: true,
   });
 }

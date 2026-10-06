@@ -42,36 +42,36 @@ import { prerenderedMayAnswer } from "./draft.js";
  */
 const CONTENT_TYPES: { readonly [string]: string } = Object.freeze({
   ".avif": "image/avif",
-  ".css": "text/css; charset=utf-8",
+  ".css" : "text/css; charset=utf-8",
   // A route's prerendered Flight payload, `<route>/__uf.flight`: what a browser
   // that is navigating fetches instead of the document. The type is React's,
   // and it is what the router checks before handing the bytes to React.
   ".flight": "text/x-component",
-  ".gif": "image/gif",
-  ".htm": "text/html; charset=utf-8",
-  ".html": "text/html; charset=utf-8",
-  ".ico": "image/x-icon",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".mp4": "video/mp4",
-  ".otf": "font/otf",
-  ".pdf": "application/pdf",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".ttf": "font/ttf",
-  ".txt": "text/plain; charset=utf-8",
+  ".gif"   : "image/gif",
+  ".htm"   : "text/html; charset=utf-8",
+  ".html"  : "text/html; charset=utf-8",
+  ".ico"   : "image/x-icon",
+  ".jpeg"  : "image/jpeg",
+  ".jpg"   : "image/jpeg",
+  ".js"    : "text/javascript; charset=utf-8",
+  ".json"  : "application/json; charset=utf-8",
+  ".map"   : "application/json; charset=utf-8",
+  ".mjs"   : "text/javascript; charset=utf-8",
+  ".mp4"   : "video/mp4",
+  ".otf"   : "font/otf",
+  ".pdf"   : "application/pdf",
+  ".png"   : "image/png",
+  ".svg"   : "image/svg+xml",
+  ".ttf"   : "font/ttf",
+  ".txt"   : "text/plain; charset=utf-8",
   // `WebAssembly.instantiateStreaming` refuses a module under any other type.
-  ".wasm": "application/wasm",
-  ".webm": "video/webm",
+  ".wasm"       : "application/wasm",
+  ".webm"       : "video/webm",
   ".webmanifest": "application/manifest+json; charset=utf-8",
-  ".webp": "image/webp",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".xml": "application/xml; charset=utf-8",
+  ".webp"       : "image/webp",
+  ".woff"       : "font/woff",
+  ".woff2"      : "font/woff2",
+  ".xml"        : "application/xml; charset=utf-8",
 });
 
 /**
@@ -83,7 +83,7 @@ const CONTENT_TYPES: { readonly [string]: string } = Object.freeze({
  */
 export type StaticRoot = {
   readonly root: string,
-  realRoot: string | null,
+  realRoot     : string | null,
 };
 
 /** The file to answer with, and the headers that describe it. */
@@ -128,7 +128,7 @@ export function staticRoot(root: string): StaticRoot {
  * takes its origin from the request's URL.
  */
 export function offerBuildFiles(
-  request: Request,
+  request    : Request,
   serveStatic: (request: Request) => Promise<Response | null>,
 ): void {
   const context = currentContext();
@@ -158,7 +158,7 @@ export function offerBuildFiles(
  * once, of the value that is actually opened.
  */
 export async function locateStatic(
-  state: StaticRoot,
+  state  : StaticRoot,
   request: Request,
 ): Promise<StaticFile | null> {
   const method = request.method.toUpperCase();

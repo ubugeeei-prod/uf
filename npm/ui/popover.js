@@ -77,8 +77,8 @@ import { presenceProps, usePresence } from "./internal/presence.js";
 export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
 type PopoverState = {|
-  readonly base: string,
-  readonly open: boolean,
+  readonly base   : string,
+  readonly open   : boolean,
   readonly setOpen: (open: boolean) => void,
   /** What opened it, where it is anchored, and where focus goes back to. */
   readonly triggerRef: { current: HTMLElement | null },
@@ -90,7 +90,7 @@ type PopoverState = {|
    * `aria-labelledby` naming the id that trigger *would* have had makes a
    * screen reader announce nothing at all.
    */
-  readonly triggered: boolean,
+  readonly triggered      : boolean,
   readonly registerTrigger: (present: boolean) => void,
 |};
 
@@ -119,20 +119,20 @@ hook usePopover(part: string): PopoverState {
  * them for the caller to style around.
  */
 component PopoverRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
-  const base = useId();
-  const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
-  const triggerRef = useRef<HTMLElement | null>(null);
+  const base                      = useId();
+  const [isOpen,    setOpen]      = useControlled(open, defaultOpen, onOpenChange);
+  const triggerRef                = useRef<HTMLElement | null>(null);
   const [triggered, setTriggered] = useState(false);
 
   const state = useMemo(
     () => ({
       base,
-      open: isOpen,
+      open           : isOpen,
       registerTrigger: setTriggered,
       setOpen,
       triggerRef,
@@ -165,7 +165,7 @@ component PopoverTrigger(children: React.Node, render?: RenderProp, ...rest: Res
     "aria-expanded": popover.open ? "true" : "false",
     "aria-haspopup": "dialog",
     children,
-    id: `${popover.base}-trigger`,
+    id     : `${popover.base}-trigger`,
     onClick: composeHandlers(rest.onClick, () => popover.setOpen(!popover.open)),
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       // React calls callback refs during commit; focus restoration reads it later.
@@ -175,7 +175,7 @@ component PopoverTrigger(children: React.Node, render?: RenderProp, ...rest: Res
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -192,10 +192,10 @@ component PopoverTrigger(children: React.Node, render?: RenderProp, ...rest: Res
  * `aria-modal` deleted would get wrong.
  */
 component PopoverBody(
-  children: React.Node,
-  align?: Align = "center",
-  alignOffset?: number = 0,
-  avoidCollisions?: boolean = true,
+  children         : React.Node,
+  align?           : Align = "center",
+  alignOffset?     : number = 0,
+  avoidCollisions? : boolean = true,
   collisionPadding?: number = 0,
   /**
    * Where focus lands when it opens, when the first focus stop is the wrong
@@ -205,9 +205,9 @@ component PopoverBody(
    * not for the button that steps back a month.
    */
   initialFocus?: { current: HTMLElement | null },
-  render?: RenderProp,
-  side?: LogicalSide = "bottom",
-  sideOffset?: number = 0,
+  render?      : RenderProp,
+  side?        : LogicalSide = "bottom",
+  sideOffset?  : number = 0,
   ...rest: Rest
 ) {
   const popover = usePopover("Popover.Body");
@@ -236,7 +236,7 @@ component PopoverBody(
     avoidCollisions,
     collisionPadding,
     // Placed for as long as it is on the page, so it leaves from where it was.
-    open: presence.present,
+    open      : presence.present,
     overlayRef: bodyRef,
     side,
     sideOffset,
@@ -332,7 +332,7 @@ component PopoverBody(
     "aria-labelledby": named || !popover.triggered ? undefined : `${popover.base}-trigger`,
     children,
     "data-align": anchored.align,
-    "data-side": anchored.side,
+    "data-side" : anchored.side,
     ...presenceProps(presence),
     // `base` is popover metadata, not a ref value.
     // uf-lint-disable-next-line react-compiler/refs
@@ -361,7 +361,7 @@ component PopoverBody(
   });
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

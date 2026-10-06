@@ -30,8 +30,8 @@ type Unsafe = { raw(): RawRows, ... };
 /** What postgres.js's `Sql` and its transaction handles have in common. */
 export interface PostgresQueries {
   unsafe(
-    text: string,
-    params: $ReadOnlyArray<mixed>,
+    text    : string,
+    params  : $ReadOnlyArray<mixed>,
     options?: {| readonly prepare?: boolean |},
   ): Unsafe;
   typed(value: SqlParam, oid: number): mixed;
@@ -83,7 +83,7 @@ async function scoped<T>(tx: PostgresTransaction, body: (tx: Queryable) => Promi
   let open = true;
   const query = run(tx);
   const queryable: Queryable = {
-    engine: "postgresql",
+    engine   : "postgresql",
     maxParams: 65535,
     query: (statement, params, mode) =>
       open ? query(statement, params, mode) : Promise.reject(new SqlError({ kind: "closed" })),
@@ -102,9 +102,9 @@ async function scoped<T>(tx: PostgresTransaction, body: (tx: Queryable) => Promi
 /** A [`Queryable`] over a postgres.js `Sql`. */
 export function fromPostgres(sql: PostgresSql): Queryable {
   return {
-    engine: "postgresql",
+    engine   : "postgresql",
     maxParams: 65535,
-    query: run(sql),
+    query    : run(sql),
     transaction: <T>(body: (tx: Queryable) => Promise<T>): Promise<T> =>
       sql.begin((tx) => scoped(tx, body)),
   };

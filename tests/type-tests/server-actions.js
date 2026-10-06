@@ -68,20 +68,20 @@ declare function userCount(): number;
 type Actions = {
   "app/_actions/users.js#createUser": typeof createUser,
   "app/_actions/users.js#clearUsers": typeof clearUsers,
-  "app/_actions/users.js#saveNote": typeof saveNote,
+  "app/_actions/users.js#saveNote"  : typeof saveNote,
 };
 type UnwireableActions = {
-  "app/_actions/users.js#watchUsers": typeof watchUsers,
+  "app/_actions/users.js#watchUsers" : typeof watchUsers,
   "app/_actions/users.js#usersByName": typeof usersByName,
 };
 type FormResultActions = { "app/_actions/users.js#draftNote": typeof draftNote };
 
 type SynchronousActions = { "app/_actions/users.js#userCount": typeof userCount };
 
-type Name = $Keys<Actions>;
-type UnwireableName = $Keys<UnwireableActions>;
+type Name            = $Keys<Actions>;
+type UnwireableName  = $Keys<UnwireableActions>;
 type SynchronousName = $Keys<SynchronousActions>;
-type FormResultName = $Keys<FormResultActions>;
+type FormResultName  = $Keys<FormResultActions>;
 
 // --- Calling an action wrongly, which is what a client component does ---
 
@@ -138,5 +138,5 @@ export type ArgsFitTheWire = ActionArguments<Parameters<Actions[Name]>>;
 // `encodeActionArguments`, which throws, and
 // `tests/library/server-actions.test.js` covers that.
 export type TwoFormsFitTheWire = ActionArguments<Parameters<typeof mergeNotes>>;
-export type ResultsFitTheWire = ActionResult<ReturnType<Actions[Name]>>;
+export type ResultsFitTheWire  = ActionResult<ReturnType<Actions[Name]>>;
 export const aValue: ActionValue = { rows: [1, "two", null, true], nested: { deep: [] } };

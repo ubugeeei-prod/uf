@@ -50,8 +50,8 @@ const FOLDER: string = path.join("/home", "dev", "app");
  * A fake machine: the files that exist, the environment, and the platform.
  */
 const machine = (
-  present: Array<string>,
-  env: { [string]: string } = {},
+  present : Array<string>,
+  env     : { [string]: string } = {},
   platform: string = "darwin",
 ) => ({
   exists: (candidate: string) => present.includes(candidate),
@@ -72,9 +72,9 @@ describe("finding the uf binary", () => {
     );
 
     expect(resolution).toEqual({
-      kind: "found",
+      kind   : "found",
       command: "/opt/uf/bin/uf",
-      source: "setting",
+      source : "setting",
     });
   });
 
@@ -102,9 +102,9 @@ describe("finding the uf binary", () => {
     );
 
     expect(resolution).toEqual({
-      kind: "found",
+      kind   : "found",
       command: path.join(FOLDER, "target", "debug", "uf"),
-      source: "setting",
+      source : "setting",
     });
   });
 
@@ -140,9 +140,9 @@ describe("finding the uf binary", () => {
     );
 
     expect(resolution).toEqual({
-      kind: "found",
+      kind   : "found",
       command: "/usr/local/bin/uf",
-      source: "path",
+      source : "path",
     });
   });
 
@@ -168,9 +168,9 @@ describe("finding the uf binary", () => {
     expect(binary.binaryNames("win32")).toEqual(["uf.exe", "uf.cmd", "uf.bat", "uf"]);
     expect(binary.pathDirectories(windows)).toEqual(["C:\\Windows", "C:\\tools"]);
     expect(binary.resolveServer("", FOLDER, windows)).toEqual({
-      kind: "found",
+      kind   : "found",
       command: shim,
-      source: "path",
+      source : "path",
     });
   });
 
@@ -287,7 +287,7 @@ describe("reading the settings", () => {
 
   it("falls back rather than trusting a settings file's types", () => {
     expect(from({ "server.path": 7, formatOnSave: "yes" })).toEqual({
-      serverPath: "",
+      serverPath  : "",
       formatOnSave: false,
     });
   });
@@ -462,7 +462,7 @@ describe("the settings a uf project gets", () => {
 
   it("never changes a value the project set, either way", () => {
     expect(workspace.planSetting(validation, { ...unset, workspaceValue: true })).toEqual({
-      kind: "kept",
+      kind   : "kept",
       setting: validation,
       current: true,
     });

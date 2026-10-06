@@ -42,21 +42,21 @@ type Route = { readonly name: string, readonly path: string, readonly marker: st
 
 /** One route's numbers for one server. */
 type Row = {
-  readonly route: string,
-  readonly requests: number,
-  readonly elapsedMs: number,
+  readonly route            : string,
+  readonly requests         : number,
+  readonly elapsedMs        : number,
   readonly requestsPerSecond: number,
-  readonly p50Ms: number,
-  readonly p99Ms: number,
-  readonly peakRssBytes: number | null,
+  readonly p50Ms            : number,
+  readonly p99Ms            : number,
+  readonly peakRssBytes     : number | null,
 };
 
 type ToolRow = { ...Row, readonly tool: string };
 
 /** A column of the comparison: which number, and which direction is a win. */
 type Metric = {
-  readonly label: string,
-  readonly value: (row: ToolRow) => number | null,
+  readonly label         : string,
+  readonly value         : (row: ToolRow) => number | null,
   readonly higherIsBetter: boolean,
 };
 
@@ -126,7 +126,7 @@ async function sample(server: DevServer, route: Route): Promise<number> {
   const started = performance.now();
   const response = await fetch(`http://127.0.0.1:${server.port}${route.path}`, {
     headers: { accept: "text/html" },
-    signal: AbortSignal.timeout(30_000),
+    signal : AbortSignal.timeout(30_000),
   });
   const html = await response.text();
   if (response.status !== 200 || !html.includes(route.marker)) {
@@ -178,36 +178,36 @@ async function load(server: DevServer): Promise<Array<Row>> {
       throw new Error(`${server.label} ${route.path}: no completed requests`);
     }
     return {
-      route: route.name,
+      route   : route.name,
       requests: samples.length,
       elapsedMs,
       requestsPerSecond: (samples.length * 1_000) / elapsedMs,
-      p50Ms: percentile(samples, 0.5),
-      p99Ms: percentile(samples, 0.99),
-      peakRssBytes: process.platform === "linux" ? peakRssBytes : null,
+      p50Ms            : percentile(samples, 0.5),
+      p99Ms            : percentile(samples, 0.99),
+      peakRssBytes     : process.platform === "linux" ? peakRssBytes : null,
     };
   });
   rows.unshift({
-    route: "mixed",
+    route   : "mixed",
     requests: all.length,
     elapsedMs,
     requestsPerSecond: (all.length * 1_000) / elapsedMs,
-    p50Ms: percentile(all, 0.5),
-    p99Ms: percentile(all, 0.99),
-    peakRssBytes: process.platform === "linux" ? peakRssBytes : null,
+    p50Ms            : percentile(all, 0.5),
+    p99Ms            : percentile(all, 0.99),
+    peakRssBytes     : process.platform === "linux" ? peakRssBytes : null,
   });
   return rows;
 }
 
 async function checkedBuild(
   program: string,
-  args: $ReadOnlyArray<string>,
-  dir: string,
-  label: string,
+  args   : $ReadOnlyArray<string>,
+  dir    : string,
+  label  : string,
 ): Promise<void> {
   const result = await run(program, args, {
-    cwd: dir,
-    env: process.env,
+    cwd      : dir,
+    env      : process.env,
     timeoutMs: 10 * 60_000,
   });
   if (result.code !== 0) {
@@ -216,10 +216,10 @@ async function checkedBuild(
 }
 
 async function measure(
-  tool: string,
+  tool   : string,
   program: string,
-  args: (port: number) => $ReadOnlyArray<string>,
-  dir: string,
+  args   : (port: number) => $ReadOnlyArray<string>,
+  dir    : string,
 ): Promise<Array<ToolRow>> {
   const port = await freePort();
   const server = startDevServer(program, args(port), {
@@ -276,13 +276,13 @@ async function main(): Promise<void> {
     )),
   ];
   const report = {
-    schema: 1,
+    schema : 1,
     fixture: preset,
-    commit: process.env.GITHUB_SHA ?? null,
+    commit : process.env.GITHUB_SHA ?? null,
     machine: {
       platform: process.platform,
-      arch: process.arch,
-      cpu: os.cpus()[0]?.model ?? "unknown",
+      arch    : process.arch,
+      cpu     : os.cpus()[0]?.model ?? "unknown",
     },
     settings: { durationMs, concurrency, warmupRequests: concurrency },
     rows,
@@ -312,8 +312,8 @@ async function main(): Promise<void> {
   ];
   // Memory is sampled per server rather than per route, so only the mix has it.
   const rss: Metric = {
-    label: "peak RSS MiB",
-    value: (row) => row.peakRssBytes,
+    label         : "peak RSS MiB",
+    value         : (row) => row.peakRssBytes,
     higherIsBetter: false,
   };
   const differences: Array<{ route: string, metric: string, improvement: number }> = [];

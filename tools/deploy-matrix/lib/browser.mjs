@@ -149,7 +149,7 @@ export async function hydration(base, options) {
       const result = await page("Runtime.evaluate", {
         expression,
         returnByValue: true,
-        awaitPromise: true,
+        awaitPromise : true,
       });
       if (result.exceptionDetails)
         throw new Error(`evaluating ${expression}: ${JSON.stringify(result.exceptionDetails)}`);

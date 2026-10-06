@@ -78,7 +78,7 @@ export const MENU_SELECTOR: string = '[role="menu"]';
  * worse than nothing happening, because it loses their place.
  */
 export function submenuKeys(direction: Direction): {|
-  readonly open: string,
+  readonly open : string,
   readonly close: string,
 |} {
   return direction === "rtl"
@@ -87,8 +87,8 @@ export function submenuKeys(direction: Direction): {|
 }
 
 export type MenuState = {|
-  readonly base: string,
-  readonly open: boolean,
+  readonly base   : string,
+  readonly open   : boolean,
   readonly setOpen: (open: boolean) => void,
   /** What opened this menu, and what focus goes back to when it closes. */
   readonly triggerRef: { current: HTMLElement | null },
@@ -113,7 +113,7 @@ export type MenuState = {|
    * menu's trigger is arbitrary content rather than a label, and registers
    * itself as a trigger without registering itself as a name.
    */
-  readonly triggered: boolean,
+  readonly triggered      : boolean,
   readonly registerTrigger: (present: boolean) => void,
 |};
 
@@ -127,7 +127,7 @@ export const MenuContext: React.Context<MenuState | null> = createContext(null);
  * the parent menu and the submenu from fighting over which item is `tabindex=0`.
  */
 export type MenuListState = {|
-  readonly activeId: string | null,
+  readonly activeId   : string | null,
   readonly setActiveId: (id: string | null) => void,
 |};
 
@@ -198,16 +198,16 @@ export function closeTree(menu: MenuState): void {
  * menubar's menu is opened and closed by the bar rather than by itself.
  */
 export component MenuLevel(
-  children: React.Node,
-  parent: MenuState | null,
-  defaultOpen: boolean,
-  open?: boolean,
+  children     : React.Node,
+  parent       : MenuState | null,
+  defaultOpen  : boolean,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
-  const base = useId();
-  const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
-  const triggerRef = useRef<HTMLElement | null>(null);
-  const pendingFocusRef = useRef<"first" | "last" | null>(null);
+  const base                      = useId();
+  const [isOpen,    setOpen]      = useControlled(open, defaultOpen, onOpenChange);
+  const triggerRef                = useRef<HTMLElement | null>(null);
+  const pendingFocusRef           = useRef<"first" | "last" | null>(null);
   const [triggered, setTriggered] = useState(false);
 
   const state = useMemo(

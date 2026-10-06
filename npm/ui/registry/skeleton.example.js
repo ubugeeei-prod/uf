@@ -6,14 +6,14 @@ import * as Skeleton from "./skeleton.js";
 
 const styles = stylex.create({
   row: {
-    display: "flex",
+    display   : "flex",
     alignItems: "center",
-    gap: ufTokens.space3,
+    gap       : ufTokens.space3,
   },
   lines: {
-    display: "grid",
+    display : "grid",
     flexGrow: 1,
-    gap: ufTokens.space2,
+    gap     : ufTokens.space2,
   },
   short: {
     width: "60%",

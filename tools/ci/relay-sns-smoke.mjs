@@ -16,7 +16,7 @@ const children = [];
 const env = {
   ...process.env,
   SNS_GRAPHQL_ENDPOINT: "http://127.0.0.1:4193",
-  SNS_GRAPHQL_LISTEN: "127.0.0.1:4193",
+  SNS_GRAPHQL_LISTEN  : "127.0.0.1:4193",
 };
 function run(binary, args, cwd = app) {
   execFileSync(binary, args, { cwd, env, stdio: "inherit" });
@@ -39,7 +39,7 @@ async function ready(url, child, method = "GET") {
       const response = await fetch(url, {
         method,
         headers: { "content-type": "application/json", accept: "text/html" },
-        signal: AbortSignal.timeout(10000),
+        signal : AbortSignal.timeout(10000),
       });
       await response.text();
       if (method === "GET" ? response.ok : response.status === 400) return;
@@ -67,15 +67,15 @@ try {
     const origin = `http://127.0.0.1:${port}`;
     await ready(origin, server);
     const csrf = await fetch(`${origin}/graphql`, {
-      method: "POST",
+      method : "POST",
       headers: { "content-type": "application/json", origin: "https://another.example" },
-      body: '{"query":"{viewer{id}}"}',
+      body   : '{"query":"{viewer{id}}"}',
     });
     assert.equal(csrf.status, 403);
     const oversized = await fetch(`${origin}/graphql`, {
-      method: "POST",
+      method : "POST",
       headers: { "content-type": "application/json", origin },
-      body: "x".repeat(65537),
+      body   : "x".repeat(65537),
     });
     assert.equal(oversized.status, 413);
     await checkBrowser(origin, label, output);

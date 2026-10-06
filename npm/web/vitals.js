@@ -95,8 +95,8 @@ export type NavigationType = "navigate" | "reload" | "back-forward" | "prerender
 export type Vital = {
   readonly name: VitalName,
   /** Milliseconds, except `CLS`, which is a unitless layout-shift score. */
-  readonly value: number,
-  readonly rating: Rating,
+  readonly value         : number,
+  readonly rating        : Rating,
   readonly navigationType: NavigationType,
 };
 
@@ -111,7 +111,7 @@ export type VitalsReporter = (vital: Vital) => void;
  * identifies the page rather than the report.
  */
 export type VitalsReport = {
-  readonly url: string,
+  readonly url   : string,
   readonly vitals: $ReadOnlyArray<Vital>,
 };
 
@@ -167,10 +167,10 @@ function defaultVitalsTarget(): string {
  */
 const THRESHOLDS: { readonly [VitalName]: { readonly good: number, readonly poor: number } } = {
   TTFB: { good: 800, poor: 1800 },
-  FCP: { good: 1800, poor: 3000 },
-  LCP: { good: 2500, poor: 4000 },
-  CLS: { good: 0.1, poor: 0.25 },
-  INP: { good: 200, poor: 500 },
+  FCP : { good: 1800, poor: 3000 },
+  LCP : { good: 2500, poor: 4000 },
+  CLS : { good: 0.1, poor: 0.25 },
+  INP : { good: 200, poor: 500 },
 };
 
 /**
@@ -210,9 +210,9 @@ const INTERACTIONS_PER_STEP: number = 50;
 /** The part of a performance entry this module reads. */
 type TimingEntry = {
   readonly entryType: string,
-  readonly name: string,
+  readonly name     : string,
   readonly startTime: number,
-  readonly duration: number,
+  readonly duration : number,
   /** `layout-shift`: how much moved. */
   readonly value?: number,
   /** `layout-shift`: whether a reader had just done something. */
@@ -237,7 +237,7 @@ type EntryList = { readonly getEntries: () => $ReadOnlyArray<TimingEntry>, ... }
 
 /** The part of a live observer this module uses. */
 type ObserverHandle = {
-  readonly observe: (options: { readonly [string]: mixed }) => mixed,
+  readonly observe   : (options: { readonly [string]: mixed }) => mixed,
   readonly disconnect: () => mixed,
   ...
 };
@@ -249,7 +249,7 @@ type ObserverHandle = {
  * page is over" are not dispatched on the same object.
  */
 type Listens = {
-  readonly addEventListener: (type: string, listener: () => mixed, options?: mixed) => mixed,
+  readonly addEventListener   : (type: string, listener: () => mixed, options?: mixed) => mixed,
   readonly removeEventListener: (type: string, listener: () => mixed, options?: mixed) => mixed,
   ...
 };
@@ -269,8 +269,8 @@ type Listens = {
  */
 type BrowserWindow = {
   readonly document: {
-    readonly visibilityState: string,
-    readonly addEventListener: (type: string, listener: () => mixed, options?: mixed) => mixed,
+    readonly visibilityState    : string,
+    readonly addEventListener   : (type: string, listener: () => mixed, options?: mixed) => mixed,
     readonly removeEventListener: (type: string, listener: () => mixed, options?: mixed) => mixed,
     ...
   },
@@ -290,7 +290,7 @@ type BrowserWindow = {
     readonly supportedEntryTypes?: $ReadOnlyArray<string>,
     ...
   },
-  readonly addEventListener: (type: string, listener: () => mixed, options?: mixed) => mixed,
+  readonly addEventListener   : (type: string, listener: () => mixed, options?: mixed) => mixed,
   readonly removeEventListener: (type: string, listener: () => mixed, options?: mixed) => mixed,
   ...
 };
@@ -335,10 +335,10 @@ function supports(win: BrowserWindow, type: string): boolean {
  * observers hand back checked.
  */
 function observeEntries(
-  win: BrowserWindow,
-  type: string,
+  win      : BrowserWindow,
+  type     : string,
   onEntries: (entries: $ReadOnlyArray<TimingEntry>) => void,
-  extra?: { readonly [string]: mixed },
+  extra?   : { readonly [string]: mixed },
 ): ObserverHandle | null {
   const Observer = win.PerformanceObserver;
   if (Observer == null || !supports(win, type)) {
@@ -730,7 +730,7 @@ export function vitalsBeacon(endpoint?: string): VitalsReporter {
         method: "POST",
         body,
         keepalive: true,
-        headers: { "content-type": "application/json" },
+        headers  : { "content-type": "application/json" },
       }).catch(noop);
     }
   };

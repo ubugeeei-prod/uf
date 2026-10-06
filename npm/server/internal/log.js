@@ -100,7 +100,7 @@ export type LogRecord = {|
   readonly time: Instant,
   /** A constant the author wrote. Never interpolated; see the module header. */
   readonly message: string,
-  readonly fields: LogFields,
+  readonly fields : LogFields,
 |};
 
 /** Where a record goes once it has been decided it is worth writing. */
@@ -119,8 +119,8 @@ export type LogFormat = "json" | "text";
  */
 export type Logger = {|
   readonly debug: (message: string, fields?: LogFields) => void,
-  readonly info: (message: string, fields?: LogFields) => void,
-  readonly warn: (message: string, fields?: LogFields) => void,
+  readonly info : (message: string, fields?: LogFields) => void,
+  readonly warn : (message: string, fields?: LogFields) => void,
   readonly error: (message: string, fields?: LogFields) => void,
   /** A logger that adds `fields` to everything written through it. */
   readonly child: (fields: LogFields) => Logger,
@@ -147,8 +147,8 @@ export type LoggerOptions = {|
  */
 const SEVERITY: { readonly [string]: number } = Object.freeze({
   debug: 10,
-  info: 20,
-  warn: 30,
+  info : 20,
+  warn : 30,
   error: 40,
 });
 
@@ -232,18 +232,18 @@ function loggerAt(level: LogLevel, sink: LogSink, bound: LogFields): Logger {
       return;
     }
     sink({
-      level: at,
-      time: Temporal.Now.instant(),
+      level  : at,
+      time   : Temporal.Now.instant(),
       message: safeString(message, MAX_MESSAGE),
-      fields: safeFields({ ...bound, ...fields }),
+      fields : safeFields({ ...bound, ...fields }),
     });
   };
 
   return {
     level,
     debug: (message, fields) => write("debug", message, fields),
-    info: (message, fields) => write("info", message, fields),
-    warn: (message, fields) => write("warn", message, fields),
+    info : (message, fields) => write("info", message, fields),
+    warn : (message, fields) => write("warn", message, fields),
     error: (message, fields) => write("error", message, fields),
     child: (fields) => loggerAt(level, sink, { ...bound, ...fields }),
   };
@@ -263,8 +263,8 @@ export function silentLogger(): Logger {
   const logger: Logger = {
     level: "error",
     debug: nothing,
-    info: nothing,
-    warn: nothing,
+    info : nothing,
+    warn : nothing,
     error: nothing,
     child: () => logger,
   };
@@ -337,8 +337,8 @@ export function formatJson(record: LogRecord): string {
   return JSON.stringify({
     ...record.fields,
     level: record.level,
-    time: isoUtc(record.time),
-    msg: record.message,
+    time : isoUtc(record.time),
+    msg  : record.message,
   });
 }
 
@@ -494,9 +494,9 @@ function safeValue(name: string, value: mixed, depth: number): mixed {
     // carries whatever properties were hung on it, and those have not been
     // through this function.
     return {
-      name: safeString(value.name, 128),
+      name   : safeString(value.name, 128),
       message: safeString(value.message, MAX_STRING),
-      stack: value.stack == null ? undefined : safeString(value.stack, MAX_STRING * 4),
+      stack  : value.stack == null ? undefined : safeString(value.stack, MAX_STRING * 4),
     };
   }
   // A value that knows how to spell itself is spelled that way rather than

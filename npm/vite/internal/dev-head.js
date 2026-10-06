@@ -52,19 +52,19 @@ export async function transformRenderedHead(server, url, html, entry) {
  * would be the same bug in the other direction.
  */
 const ASSET_SOURCES = {
-  audio: { src: ["src"] },
-  embed: { src: ["src"] },
-  img: { src: ["src"], srcset: ["srcset"] },
-  image: { src: ["href", "xlink:href"] },
-  input: { src: ["src"] },
-  link: { src: ["href"], srcset: ["imagesrcset"] },
+  audio : { src: ["src"] },
+  embed : { src: ["src"] },
+  img   : { src: ["src"], srcset: ["srcset"] },
+  image : { src: ["href", "xlink:href"] },
+  input : { src: ["src"] },
+  link  : { src: ["href"], srcset: ["imagesrcset"] },
   object: { src: ["data"] },
   script: { src: ["src"] },
   source: { src: ["src"], srcset: ["srcset"] },
-  track: { src: ["src"] },
-  use: { src: ["href", "xlink:href"] },
-  video: { src: ["src", "poster"] },
-  meta: { src: ["content"] },
+  track : { src: ["src"] },
+  use   : { src: ["href", "xlink:href"] },
+  video : { src: ["src", "poster"] },
+  meta  : { src: ["content"] },
 };
 
 /** The `<meta>` whose `content` Vite treats as a URL; the rest are text. */

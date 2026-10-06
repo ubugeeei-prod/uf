@@ -35,12 +35,12 @@ export type { NativeLinkSource } from "./internal/native-links.js";
 export type NativeNavigationKind = "push" | "replace" | "prefetch";
 
 export type NativeNavigationEvent = {|
-  readonly kind: NativeNavigationKind,
-  readonly href: string,
+  readonly kind    : NativeNavigationKind,
+  readonly href    : string,
   readonly pathname: string,
-  readonly search: string,
-  readonly route: string,
-  readonly params: RouteParams,
+  readonly search  : string,
+  readonly route   : string,
+  readonly params  : RouteParams,
 |};
 
 export type NativeScreenMap = {
@@ -49,8 +49,8 @@ export type NativeScreenMap = {
 
 export type NativeScreenEntry = {|
   readonly screen: string,
-  readonly route: string,
-  readonly file: string,
+  readonly route : string,
+  readonly file  : string,
 |};
 
 export type NativeScreenManifest = {|
@@ -68,42 +68,42 @@ export type NativeScreenManifestOptions = {|
 |};
 
 export type NativeScreenPayload = {|
-  readonly screen: string,
-  readonly href: string,
+  readonly screen  : string,
+  readonly href    : string,
   readonly pathname: string,
-  readonly search: string,
-  readonly route: string,
-  readonly params: RouteParams,
+  readonly search  : string,
+  readonly route   : string,
+  readonly params  : RouteParams,
 |};
 
 export type NativeScreenNavigationState = {|
-  readonly params: RouteParams,
-  readonly href: string,
+  readonly params  : RouteParams,
+  readonly href    : string,
   readonly pathname: string,
-  readonly search: string,
-  readonly route: string,
+  readonly search  : string,
+  readonly route   : string,
 |};
 
 export type NativeNavigator = {|
-  readonly push?: (event: NativeNavigationEvent) => mixed | Promise<mixed>,
-  readonly replace?: (event: NativeNavigationEvent) => mixed | Promise<mixed>,
+  readonly push?    : (event: NativeNavigationEvent) => mixed | Promise<mixed>,
+  readonly replace? : (event: NativeNavigationEvent) => mixed | Promise<mixed>,
   readonly prefetch?: (event: NativeNavigationEvent) => mixed | Promise<mixed>,
 |};
 
 export type NativeScreenNavigator = {|
-  readonly push?: (screen: string, state: NativeScreenNavigationState) => mixed | Promise<mixed>,
+  readonly push?   : (screen: string, state: NativeScreenNavigationState) => mixed | Promise<mixed>,
   readonly replace?: (screen: string, state: NativeScreenNavigationState) => mixed | Promise<mixed>,
   readonly prefetch?: (
     screen: string,
-    state: NativeScreenNavigationState,
+    state : NativeScreenNavigationState,
   ) => mixed | Promise<mixed>,
 |};
 
 export type NativeRouter = {|
-  readonly push: (to: string) => Promise<void>,
-  readonly replace: (to: string) => Promise<void>,
+  readonly push    : (to: string) => Promise<void>,
+  readonly replace : (to: string) => Promise<void>,
   readonly prefetch: (to: string) => Promise<void>,
-  readonly resolve: (to: string, kind?: NativeNavigationKind) => NativeNavigationEvent,
+  readonly resolve : (to: string, kind?: NativeNavigationKind) => NativeNavigationEvent,
 |};
 
 export type NativeNavigationErrorCode =
@@ -131,7 +131,7 @@ export class NativeNavigationError extends Error {
 }
 
 export function createNativeRouter(
-  table: RouteTable<mixed, mixed, mixed, mixed, mixed>,
+  table    : RouteTable<mixed, mixed, mixed, mixed, mixed>,
   navigator: NativeNavigator,
 ): NativeRouter {
   const resolve = (to: string, kind?: NativeNavigationKind = "push"): NativeNavigationEvent =>
@@ -158,12 +158,12 @@ export function createNativeRouter(
 }
 
 export function createNativeScreenRouter(
-  table: RouteTable<mixed, mixed, mixed, mixed, mixed>,
-  screens: NativeScreenMap,
+  table    : RouteTable<mixed, mixed, mixed, mixed, mixed>,
+  screens  : NativeScreenMap,
   navigator: NativeScreenNavigator,
 ): NativeRouter {
   return createNativeRouter(table, {
-    push: (event) => invokeScreenNavigator(navigator, screens, event),
+    push   : (event) => invokeScreenNavigator(navigator, screens, event),
     replace: (event) => invokeScreenNavigator(navigator, screens, event),
     prefetch: (event) => {
       if (typeof navigator.prefetch !== "function") return;
@@ -173,7 +173,7 @@ export function createNativeScreenRouter(
 }
 
 export function createNativeScreenManifest(
-  table: RouteTable<mixed, mixed, mixed, mixed, mixed>,
+  table   : RouteTable<mixed, mixed, mixed, mixed, mixed>,
   options?: NativeScreenManifestOptions,
 ): NativeScreenManifest {
   const screens: { [string]: string } = {};
@@ -224,7 +224,7 @@ export function nativeScreenName(routePath: string): string {
 
 export function resolveNativeNavigation(
   table: RouteTable<mixed, mixed, mixed, mixed, mixed>,
-  to: string,
+  to   : string,
   kind?: NativeNavigationKind = "push",
 ): NativeNavigationEvent {
   const href = normalizeNativeHref(to, table);
@@ -251,13 +251,13 @@ export function resolveNativeNavigation(
     href,
     pathname,
     search,
-    route: matched.route.path,
+    route : matched.route.path,
     params: matched.params,
   };
 }
 
 export function nativeScreenPayload(
-  event: NativeNavigationEvent,
+  event  : NativeNavigationEvent,
   screens: NativeScreenMap,
 ): NativeScreenPayload {
   const screen = screens[event.route];
@@ -271,11 +271,11 @@ export function nativeScreenPayload(
   }
   return {
     screen,
-    href: event.href,
+    href    : event.href,
     pathname: event.pathname,
-    search: event.search,
-    route: event.route,
-    params: event.params,
+    search  : event.search,
+    route   : event.route,
+    params  : event.params,
   };
 }
 
@@ -283,16 +283,16 @@ export function nativeScreenNavigationState(
   payload: NativeScreenPayload,
 ): NativeScreenNavigationState {
   return {
-    params: payload.params,
-    href: payload.href,
+    params  : payload.params,
+    href    : payload.href,
     pathname: payload.pathname,
-    search: payload.search,
-    route: payload.route,
+    search  : payload.search,
+    route   : payload.route,
   };
 }
 
 function normalizeNativeHref(
-  to: string,
+  to   : string,
   table: RouteTable<mixed, mixed, mixed, mixed, mixed>,
 ): string {
   if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(to) || to.startsWith("//")) {
@@ -322,7 +322,7 @@ function normalizeNativeHref(
 }
 
 function screenNameFor(
-  route: RouteRecord<mixed, mixed, mixed, mixed, mixed>,
+  route   : RouteRecord<mixed, mixed, mixed, mixed, mixed>,
   options?: NativeScreenManifestOptions,
 ): string {
   const screen =
@@ -354,7 +354,7 @@ function titlePart(segment: string): string {
 
 async function invokeNavigator(
   navigator: NativeNavigator,
-  event: NativeNavigationEvent,
+  event    : NativeNavigationEvent,
 ): Promise<void> {
   if (event.kind === "push") {
     if (typeof navigator.push !== "function") {
@@ -382,8 +382,8 @@ function missingMethod(event: NativeNavigationEvent): NativeNavigationError {
 
 async function invokeScreenNavigator(
   navigator: NativeScreenNavigator,
-  screens: NativeScreenMap,
-  event: NativeNavigationEvent,
+  screens  : NativeScreenMap,
+  event    : NativeNavigationEvent,
 ): Promise<void> {
   const payload = nativeScreenPayload(event, screens);
   const state = nativeScreenNavigationState(payload);
@@ -408,7 +408,7 @@ async function invokeScreenNavigator(
 }
 
 async function loadNativeRoute(
-  table: RouteTable<mixed, mixed, mixed, mixed, mixed>,
+  table   : RouteTable<mixed, mixed, mixed, mixed, mixed>,
   pathname: string,
 ): Promise<void> {
   const matched = matchRoute(table.routes, pathname);

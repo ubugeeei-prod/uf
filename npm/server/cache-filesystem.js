@@ -117,12 +117,12 @@ export type FilesystemCacheProvider = {
  */
 type Record = {|
   /** The durable key, for a person reading the directory. Never matched on. */
-  readonly key: string,
-  readonly storedAt: number,
+  readonly key         : string,
+  readonly storedAt    : number,
   readonly revalidateAt: number,
-  readonly expiresAt: number,
-  readonly tags: $ReadOnlyArray<string>,
-  readonly path: string | null,
+  readonly expiresAt   : number,
+  readonly tags        : $ReadOnlyArray<string>,
+  readonly path        : string | null,
 |};
 
 /**
@@ -189,22 +189,22 @@ export function createFilesystemCache(options: FilesystemCacheOptions): Filesyst
       }
       return {
         value,
-        storedAt: record.storedAt,
+        storedAt    : record.storedAt,
         revalidateAt: record.revalidateAt,
-        expiresAt: record.expiresAt,
-        tags: record.tags,
-        path: record.path,
+        expiresAt   : record.expiresAt,
+        tags        : record.tags,
+        path        : record.path,
       };
     },
 
     async write(key: string, entry: DurableCacheEntry): Promise<void> {
       const record: Record = {
         key,
-        storedAt: entry.storedAt,
+        storedAt    : entry.storedAt,
         revalidateAt: entry.revalidateAt,
-        expiresAt: entry.expiresAt,
-        tags: entry.tags,
-        path: entry.path,
+        expiresAt   : entry.expiresAt,
+        tags        : entry.tags,
+        path        : entry.path,
       };
       // Body first: a reader that arrives between the two finds no record and
       // renders, where the other order would find a record naming a body that
@@ -279,12 +279,12 @@ function readRecord(file: string): Record | null {
   if (typeof record.expiresAt !== "number" || typeof record.revalidateAt !== "number") return null;
   if (!Array.isArray(record.tags)) return null;
   return {
-    key: typeof record.key === "string" ? record.key : "",
-    storedAt: typeof record.storedAt === "number" ? record.storedAt : 0,
+    key         : typeof record.key === "string" ? record.key : "",
+    storedAt    : typeof record.storedAt === "number" ? record.storedAt : 0,
     revalidateAt: record.revalidateAt,
-    expiresAt: record.expiresAt,
-    tags: record.tags.filter((tag: mixed) => typeof tag === "string"),
-    path: typeof record.path === "string" ? record.path : null,
+    expiresAt   : record.expiresAt,
+    tags        : record.tags.filter((tag: mixed) => typeof tag === "string"),
+    path        : typeof record.path === "string" ? record.path : null,
   };
 }
 

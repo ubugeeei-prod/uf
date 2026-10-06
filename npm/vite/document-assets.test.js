@@ -34,10 +34,10 @@ function serverDir(): string {
 /** A client manifest whose entry carries one stylesheet. */
 const manifest = {
   "\0virtual:uf/client": {
-    file: "assets/client-1.js",
+    file   : "assets/client-1.js",
     isEntry: true,
-    name: "client",
-    css: ["assets/client-1.css"],
+    name   : "client",
+    css    : ["assets/client-1.css"],
   },
 };
 
@@ -45,8 +45,8 @@ describe("the tags a served document links", () => {
   it("are the ones the build recorded, including stylesheets the manifest cannot reach", async () => {
     const directory = serverDir();
     const recorded = {
-      scripts: ["/assets/client-1.js"],
-      styles: ["/assets/layout-2.css", "/assets/client-1.css"],
+      scripts : ["/assets/client-1.js"],
+      styles  : ["/assets/layout-2.css", "/assets/client-1.css"],
       preloads: [],
     };
     fs.writeFileSync(path.join(directory, DOCUMENT_ASSETS_FILE), JSON.stringify(recorded));
@@ -56,8 +56,8 @@ describe("the tags a served document links", () => {
 
   it("are the client manifest's, for a build that recorded none", async () => {
     expect(await documentAssetsFor(serverDir(), manifest)).toEqual({
-      scripts: ["/assets/client-1.js"],
-      styles: ["/assets/client-1.css"],
+      scripts : ["/assets/client-1.js"],
+      styles  : ["/assets/client-1.css"],
       preloads: [],
     });
   });

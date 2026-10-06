@@ -31,10 +31,10 @@ import * as React from "@uniflowed/react";
 /** How a cookie is written, in the browser. */
 export type CookieOptions = {
   /** Seconds until it expires. Absent means a session cookie. */
-  readonly maxAge?: number,
-  readonly path?: string,
+  readonly maxAge?  : number,
+  readonly path?    : string,
   readonly sameSite?: "lax" | "strict" | "none",
-  readonly secure?: boolean,
+  readonly secure?  : boolean,
 };
 
 /** Where a server-rendered page's cookies are handed to the client half. */

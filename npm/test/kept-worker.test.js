@@ -51,12 +51,12 @@ type Answer = { event: string, status?: string, ok?: boolean, text?: string };
  * `keep` is `UF_TEST_KEEP_WORKERS`, which `uf test --watch` sets.
  */
 function startWorker(keep: boolean): {
-  ask: (request: { ... }) => Promise<Array<Answer>>,
+  ask : (request: { ... }) => Promise<Array<Answer>>,
   stop: () => void,
 } {
   const worker = path.join(repository, "npm", "test", "worker.js");
   const child = spawn(process.execPath, [...loaderArguments(), worker], {
-    env: { ...process.env, UF_TEST_KEEP_WORKERS: keep ? "1" : "" },
+    env  : { ...process.env, UF_TEST_KEEP_WORKERS: keep ? "1" : "" },
     stdio: ["pipe", "pipe", "inherit"],
   });
   let buffer = "";

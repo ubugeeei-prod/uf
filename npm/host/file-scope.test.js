@@ -19,7 +19,7 @@ describe("a test file's own copy of the project's modules", () => {
   beforeEach(() => {
     running = Object.getOwnPropertyDescriptor(globalThis, FILE_SCOPE);
     Object.defineProperty(globalThis, FILE_SCOPE, {
-      value: { shared: ["/p/node_modules/@uniflowed/test", "/p/npm/test"] },
+      value       : { shared: ["/p/node_modules/@uniflowed/test", "/p/npm/test"] },
       configurable: true,
     });
   });

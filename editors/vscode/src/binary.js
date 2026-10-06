@@ -38,7 +38,7 @@ export type Probe = {
   // Whether a path exists and can be executed. Injected so this module can be
   // tested without a file system.
   readonly exists: (candidate: string) => boolean,
-  readonly env: { readonly [name: string]: string | void, ... },
+  readonly env   : { readonly [name: string]: string | void, ... },
   // `process.platform`.
   readonly platform: string,
 };

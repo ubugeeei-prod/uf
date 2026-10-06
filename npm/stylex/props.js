@@ -60,7 +60,7 @@ export type StyleArgument = mixed;
 /** What `props` hands to an element. */
 export type StyleProps = {
   readonly className?: string,
-  readonly style?: { readonly [string]: string | number },
+  readonly style?    : { readonly [string]: string | number },
 };
 
 /** What one property contributed, once the merge has picked a winner. */

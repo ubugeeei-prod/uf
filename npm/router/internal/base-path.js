@@ -29,7 +29,7 @@ export type TrailingSlash = "never" | "always" | "ignore";
 
 /** What an entry installs. */
 export type RoutingSettings = {|
-  readonly basePath?: string,
+  readonly basePath?     : string,
   readonly trailingSlash?: TrailingSlash,
 |};
 
@@ -47,8 +47,8 @@ function publishBase(base: string): void {
   // `globalThis[symbol]` is a computed property on a namespace, which Flow
   // rejects. `Object.defineProperty` is the write the rest of the repo uses.
   Object.defineProperty(globalThis, ROUTING_BASE, {
-    value: base,
-    writable: true,
+    value       : base,
+    writable    : true,
     configurable: true,
   });
 }

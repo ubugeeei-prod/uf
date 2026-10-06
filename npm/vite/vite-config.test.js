@@ -11,12 +11,12 @@ import { describe, expect, it } from "@uniflowed/test";
 import { mergeConfig, withProjectConfig } from "@uniflowed/vite/merge";
 
 const generated = () => ({
-  root: "/project",
+  root      : "/project",
   configFile: false,
-  mode: "development",
-  server: { host: "127.0.0.1", port: 5173, fs: { allow: ["."] } },
-  build: { outDir: "dist", manifest: true, sourcemap: true },
-  plugins: ["uf:flow"],
+  mode      : "development",
+  server    : { host: "127.0.0.1", port: 5173, fs: { allow: ["."] } },
+  build     : { outDir: "dist", manifest: true, sourcemap: true },
+  plugins   : ["uf:flow"],
 });
 
 describe("reaching Vite directly", () => {
@@ -39,10 +39,10 @@ describe("reaching Vite directly", () => {
   it("merges deeply rather than replacing a whole section", () => {
     const merged = withProjectConfig(generated(), { build: { target: "es2022" } });
     expect(merged.build).toEqual({
-      outDir: "dist",
-      manifest: true,
+      outDir   : "dist",
+      manifest : true,
       sourcemap: true,
-      target: "es2022",
+      target   : "es2022",
     });
   });
 
@@ -83,7 +83,7 @@ describe("reaching Vite directly", () => {
 
   it("keeps the project root and the config file uf resolved", () => {
     const merged = withProjectConfig(generated(), {
-      root: "/somewhere-else",
+      root      : "/somewhere-else",
       configFile: "./vite.config.ts",
     });
     // A `vite.config.ts` beside `uf.config.js` is two files disagreeing about

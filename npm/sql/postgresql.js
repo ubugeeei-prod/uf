@@ -39,8 +39,8 @@ export type ArrayNode = string | null | $ReadOnlyArray<ArrayNode>;
 export type Codec<T> = {|
   /** For messages: `int8`, `text[]`. */
   readonly sqlType: string,
-  readonly decode: (value: mixed) => T,
-  readonly encode: (value: T) => string,
+  readonly decode : (value: mixed) => T,
+  readonly encode : (value: T) => string,
   readonly element: (node: ArrayNode) => T,
   /** The value as it appears inside `{…}`: quoted, or a nested literal. */
   readonly literal: (value: T) => string,
@@ -54,9 +54,9 @@ function quote(text: string): string {
 
 /** A scalar codec from its two text conversions. */
 export function scalar<T>(
-  sqlType: string,
+  sqlType : string,
   fromText: (text: string) => T,
-  toText: (value: T) => string,
+  toText  : (value: T) => string,
 ): Codec<T> {
   const decode = (value: mixed): T => {
     if (typeof value !== "string") {
@@ -78,7 +78,7 @@ export function scalar<T>(
       return fromText(node);
     },
     literal: (value) => quote(toText(value)),
-    depth: 0,
+    depth  : 0,
   };
 }
 
@@ -381,7 +381,7 @@ export const timestamptz: Codec<Date> = scalar("timestamptz", instantFromText, i
 /** A value sqlc could not type (`any`, `anyelement`, …): whatever the server printed. */
 export const unknown: Codec<mixed> = {
   sqlType: "unknown",
-  decode: (value) => value,
+  decode : (value) => value,
   encode: (value) => {
     if (typeof value === "string") {
       return value;
@@ -396,7 +396,7 @@ export const unknown: Codec<mixed> = {
   },
   element: (node) => node,
   literal: (value) => (value === null ? "NULL" : quote(String(value))),
-  depth: 0,
+  depth  : 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -405,7 +405,7 @@ export const unknown: Codec<mixed> = {
 /** A codec for a `CREATE TYPE … AS ENUM`, from its labels in declaration order. */
 export function enumeration<T extends string>(
   sqlType: string,
-  values: $ReadOnlyArray<T>,
+  values : $ReadOnlyArray<T>,
 ): Codec<T> {
   const expected = `${sqlType} (${enumName(values)})`;
   return scalar(
@@ -550,10 +550,10 @@ export function array<T>(element: Codec<T>): Codec<$ReadOnlyArray<T>> {
       // An empty array has no dimensions at all, whatever the column says.
       return root.length === 0 ? [] : fromNode(root);
     },
-    encode: toLiteral,
+    encode : toLiteral,
     element: (node) => (Array.isArray(node) && node.length === 0 ? [] : fromNode(node)),
     literal: toLiteral,
-    depth: element.depth + 1,
+    depth  : element.depth + 1,
   };
 }
 
@@ -563,17 +563,17 @@ export function array<T>(element: Codec<T>): Codec<$ReadOnlyArray<T>> {
  * options, where `decode` is the application's own check.
  */
 export function map<T, U>(
-  codec: Codec<T>,
+  codec : Codec<T>,
   decode: (value: T) => U,
   encode: (value: U) => T,
 ): Codec<U> {
   return {
     sqlType: codec.sqlType,
-    decode: (value) => decode(codec.decode(value)),
-    encode: (value) => codec.encode(encode(value)),
+    decode : (value) => decode(codec.decode(value)),
+    encode : (value) => codec.encode(encode(value)),
     element: (node) => decode(codec.element(node)),
     literal: (value) => codec.literal(encode(value)),
-    depth: codec.depth,
+    depth  : codec.depth,
   };
 }
 

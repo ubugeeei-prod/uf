@@ -91,21 +91,21 @@ import { MenuLevel, useMenu, useTriggerRegistration } from "./internal/menu-tree
  * same role, so the owner selector names both and `closest` settles it.
  */
 const TRIGGERS: RovingSet = {
-  item: '[role="menuitem"]',
-  owner: '[role="menu"], [role="menubar"]',
-  orientation: "horizontal",
-  wrap: true,
+  item        : '[role="menuitem"]',
+  owner       : '[role="menu"], [role="menubar"]',
+  orientation : "horizontal",
+  wrap        : true,
   skipDisabled: true,
 };
 
 type MenubarState = {|
   /** Which menu is showing, by the `value` its `Menubar.Menu` was given. */
-  readonly open: string | null,
+  readonly open   : string | null,
   readonly setOpen: (value: string | null) => void,
   /** Which trigger holds the bar's single tab stop, or null for "the first". */
-  readonly active: string | null,
+  readonly active   : string | null,
   readonly setActive: (value: string) => void,
-  readonly firstId: string | null,
+  readonly firstId  : string | null,
 |};
 
 const MenubarContext: React.Context<MenubarState | null> = createContext(null);
@@ -129,9 +129,9 @@ hook useMenubar(part: string): MenubarState {
  * "menu bar" twice tells a reader nothing about which is which.
  */
 component MenubarRoot(children: renders* MenubarMenu, render?: RenderProp, ...rest: Rest) {
-  const barRef = useRef<HTMLElement | null>(null);
-  const [open, setOpenValue] = useState<string | null>(null);
-  const [active, setActive] = useState<string | null>(null);
+  const barRef                 = useRef<HTMLElement | null>(null);
+  const [open,   setOpenValue] = useState<string | null>(null);
+  const [active, setActive]    = useState<string | null>(null);
   // Only while nothing has been focused or opened. Once a trigger holds the tab
   // stop, asking the document which one comes first is work with no reader.
   const firstId = useFirstItem(barRef, TRIGGERS, active == null);
@@ -199,7 +199,7 @@ component MenubarRoot(children: renders* MenubarMenu, render?: RenderProp, ...re
     <MenubarContext.Provider value={state}>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -243,8 +243,8 @@ component MenubarMenu(children: React.Node, value: string) {
  * what makes the bar's arrow keys agree with what they were told is in it.
  */
 component MenubarTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
-  const bar = useMenubar("Menubar.Trigger");
-  const menu = useMenu("Menubar.Trigger");
+  const bar   = useMenubar("Menubar.Trigger");
+  const menu  = useMenu("Menubar.Trigger");
   const value = useContext(MenubarMenuContext);
   useTriggerRegistration(menu);
   if (value == null) {
@@ -271,8 +271,8 @@ component MenubarTrigger(children: React.Node, render?: RenderProp, ...rest: Res
     onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
       const end = match (event.key) {
         "ArrowDown" => "first",
-        "ArrowUp" => "last",
-        _ => null,
+        "ArrowUp"   => "last",
+        _           => null,
       };
       if (end == null) {
         return;
@@ -287,12 +287,12 @@ component MenubarTrigger(children: React.Node, render?: RenderProp, ...rest: Res
       // uf-lint-disable-next-line react-compiler/immutability
       menu.triggerRef.current = element;
     }),
-    role: "menuitem",
+    role    : "menuitem",
     tabIndex: stop ? 0 : -1,
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }

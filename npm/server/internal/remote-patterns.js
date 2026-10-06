@@ -38,17 +38,17 @@
 /** One entry in the allow-list, as `uf.config.js` writes it. */
 export type RemotePattern = {|
   readonly protocol?: "https" | "http",
-  readonly hostname: string,
-  readonly port?: string,
+  readonly hostname : string,
+  readonly port?    : string,
   readonly pathname?: string,
 |};
 
 /** A pattern, read once. */
 export type CompiledPattern = {|
   readonly protocol: "https:" | "http:",
-  readonly host: {| readonly kind: "exact" | "one" | "any", readonly name: string |},
-  readonly port: string,
-  readonly path: $ReadOnlyArray<string> | null,
+  readonly host    : {| readonly kind: "exact" | "one" | "any", readonly name: string |},
+  readonly port    : string,
+  readonly path    : $ReadOnlyArray<string> | null,
 |};
 
 /**
@@ -119,8 +119,8 @@ function compilePattern(pattern: mixed): CompiledPattern {
   }
   return {
     protocol: protocol === "http" ? "http:" : "https:",
-    host: { kind, name },
-    port: port ?? "",
+    host    : { kind, name },
+    port    : port ?? "",
     path,
   };
 }
@@ -158,7 +158,7 @@ function matches(pattern: CompiledPattern, url: URL): boolean {
 }
 
 function matchesHost(
-  host: {| readonly kind: "exact" | "one" | "any", readonly name: string |},
+  host    : {| readonly kind: "exact" | "one" | "any", readonly name: string |},
   hostname: string,
 ): boolean {
   if (host.kind === "exact") return hostname === host.name;

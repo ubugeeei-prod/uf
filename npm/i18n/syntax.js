@@ -82,13 +82,13 @@ export type MessageOperand = MessageLiteral | MessageVariable;
 
 /** One `name=value` inside a function annotation. */
 export type MessageOption = {
-  readonly name: string,
+  readonly name : string,
   readonly value: MessageOperand,
 };
 
 /** `:number`, and the options it was given. */
 export type MessageAnnotation = {
-  readonly name: string,
+  readonly name   : string,
   readonly options: $ReadOnlyArray<MessageOption>,
 };
 
@@ -102,8 +102,8 @@ export type MessageAnnotation = {
  * else and would be read at every use.
  */
 export type MessageExpression = {
-  readonly kind: "expression",
-  readonly operand: MessageOperand | null,
+  readonly kind      : "expression",
+  readonly operand   : MessageOperand | null,
   readonly annotation: MessageAnnotation | null,
   /** Offset in the source, so a formatting error can point at it too. */
   readonly at: number,
@@ -125,8 +125,8 @@ export type MessagePattern = $ReadOnlyArray<MessagePart>;
  * introduces a new one — and every consumer treats them the same way.
  */
 export type MessageDeclaration = {
-  readonly kind: "input" | "local",
-  readonly name: string,
+  readonly kind      : "input" | "local",
+  readonly name      : string,
   readonly expression: MessageExpression,
 };
 
@@ -137,22 +137,22 @@ export type MessageVariantKey =
 
 /** One line of a `.match`: its keys, and what to format if they win. */
 export type MessageVariant = {
-  readonly keys: $ReadOnlyArray<MessageVariantKey>,
+  readonly keys   : $ReadOnlyArray<MessageVariantKey>,
   readonly pattern: MessagePattern,
 };
 
 export type MessageBody =
   | { readonly kind: "pattern", readonly pattern: MessagePattern }
   | {
-      readonly kind: "select",
+      readonly kind     : "select",
       readonly selectors: $ReadOnlyArray<MessageVariable>,
-      readonly variants: $ReadOnlyArray<MessageVariant>,
+      readonly variants : $ReadOnlyArray<MessageVariant>,
     };
 
 /** A parsed message: its declarations, and the body they feed. */
 export type MessageNode = {
   readonly declarations: $ReadOnlyArray<MessageDeclaration>,
-  readonly body: MessageBody,
+  readonly body        : MessageBody,
 };
 
 /**
@@ -568,7 +568,7 @@ function readMatcher(source: string, cursor: Cursor): MessageBody {
  * intended whichever way it is read.
  */
 function assertDeclarationsAreDistinct(
-  source: string,
+  source      : string,
   declarations: $ReadOnlyArray<MessageDeclaration>,
 ): void {
   const seen: Set<string> = new Set();
@@ -601,7 +601,7 @@ export function parseMessage(source: string): MessageNode {
   if (source[0] !== ".") {
     return {
       declarations: [],
-      body: { kind: "pattern", pattern: readPattern(source, cursor, "") },
+      body        : { kind: "pattern", pattern: readPattern(source, cursor, "") },
     };
   }
 

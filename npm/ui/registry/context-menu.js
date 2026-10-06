@@ -37,18 +37,18 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   area: {
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "2px",
   },
 });
 
 /** The context menu, open or closed. Uncontrolled unless `open` is given. */
 component ContextMenuRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
@@ -60,8 +60,8 @@ component ContextMenuRoot(
 
 /** The area whose menu this is. */
 component ContextMenuTrigger(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

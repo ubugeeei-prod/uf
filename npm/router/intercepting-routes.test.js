@@ -92,30 +92,30 @@ const idParam = [{ name: "id", catchAll: false }];
  * until a navigation intercepts — which is the shape of every modal slot.
  */
 const modal = {
-  name: "modal",
-  above: 1,
+  name       : "modal",
+  above      : 1,
   defaultPage: null,
-  routes: [],
+  routes     : [],
   intercepts: [
     {
       // `(.)photo/[id]`: the segment's own level.
-      path: "/feed/photo/:id",
-      params: idParam,
-      mdx: false,
-      file: "app/feed/@modal/(.)photo/[id]/$page.js",
-      page: () => Promise.resolve({ default: PhotoModal }),
+      path   : "/feed/photo/:id",
+      params : idParam,
+      mdx    : false,
+      file   : "app/feed/@modal/(.)photo/[id]/$page.js",
+      page   : () => Promise.resolve({ default: PhotoModal }),
       layouts: [],
-      slots: [],
+      slots  : [],
     },
     {
       // `(..)photo/[id]`: one level above the segment that declares the slot.
-      path: "/photo/:id",
-      params: idParam,
-      mdx: false,
-      file: "app/feed/@modal/(..)photo/[id]/$page.js",
-      page: () => Promise.resolve({ default: PhotoModal }),
+      path   : "/photo/:id",
+      params : idParam,
+      mdx    : false,
+      file   : "app/feed/@modal/(..)photo/[id]/$page.js",
+      page   : () => Promise.resolve({ default: PhotoModal }),
       layouts: [],
-      slots: [],
+      slots  : [],
     },
   ],
 };
@@ -123,65 +123,65 @@ const modal = {
 const table: RouteTable = {
   routes: [
     {
-      path: "/feed",
-      params: [],
-      mdx: false,
-      file: "app/feed/$page.js",
-      page: () => Promise.resolve({ default: Feed }),
-      layouts: [loadFrame],
-      loading: [],
+      path     : "/feed",
+      params   : [],
+      mdx      : false,
+      file     : "app/feed/$page.js",
+      page     : () => Promise.resolve({ default: Feed }),
+      layouts  : [loadFrame],
+      loading  : [],
       templates: [],
-      slots: [modal],
+      slots    : [modal],
     },
     {
       // The page a hard load of `/feed/photo/1` renders. It is under the feed's
       // layout too, so it has the slot — empty, because nothing intercepted.
-      path: "/feed/photo/:id",
-      params: idParam,
-      mdx: false,
-      file: "app/feed/photo/[id]/$page.js",
-      page: () => Promise.resolve({ default: PhotoPage }),
-      layouts: [loadFrame],
-      loading: [],
+      path     : "/feed/photo/:id",
+      params   : idParam,
+      mdx      : false,
+      file     : "app/feed/photo/[id]/$page.js",
+      page     : () => Promise.resolve({ default: PhotoPage }),
+      layouts  : [loadFrame],
+      loading  : [],
       templates: [],
-      slots: [modal],
+      slots    : [modal],
     },
     {
-      path: "/feed/settings",
-      params: [],
-      mdx: false,
-      file: "app/feed/settings/$page.js",
-      page: () => Promise.resolve({ default: Settings }),
-      layouts: [loadFrame],
-      loading: [],
+      path     : "/feed/settings",
+      params   : [],
+      mdx      : false,
+      file     : "app/feed/settings/$page.js",
+      page     : () => Promise.resolve({ default: Settings }),
+      layouts  : [loadFrame],
+      loading  : [],
       templates: [],
-      slots: [modal],
+      slots    : [modal],
     },
     {
-      path: "/photo/:id",
-      params: idParam,
-      mdx: false,
-      file: "app/photo/[id]/$page.js",
-      page: () => Promise.resolve({ default: PhotoPage }),
-      layouts: [],
-      loading: [],
+      path     : "/photo/:id",
+      params   : idParam,
+      mdx      : false,
+      file     : "app/photo/[id]/$page.js",
+      page     : () => Promise.resolve({ default: PhotoPage }),
+      layouts  : [],
+      loading  : [],
       templates: [],
-      slots: [],
+      slots    : [],
     },
     {
-      path: "/about",
-      params: [],
-      mdx: false,
-      file: "app/about/$page.js",
-      page: () => Promise.resolve({ default: About }),
-      layouts: [],
-      loading: [],
+      path     : "/about",
+      params   : [],
+      mdx      : false,
+      file     : "app/about/$page.js",
+      page     : () => Promise.resolve({ default: About }),
+      layouts  : [],
+      loading  : [],
       templates: [],
-      slots: [],
+      slots    : [],
     },
   ],
   notFound: [],
-  errors: [],
+  errors  : [],
 };
 
 const assets = { scripts: [], styles: [], preloads: [] };
@@ -237,9 +237,9 @@ component Prefetch(to: string) {
  * nothing intercepted, and a history entry of its own.
  */
 async function arrive(
-  url: string,
+  url      : string,
   controls?: React.Node,
-  routes?: RouteTable = table,
+  routes?  : RouteTable = table,
 ): Promise<void> {
   installDom();
   installRoutes(routes);
@@ -286,10 +286,10 @@ describe("a document request for an intercepted URL", () => {
     // A reload, a shared link and a crawler: none of them was on the feed, so
     // none of them is intercepted. The server never reads `intercepts`.
     const { prerender } = createRenderer({
-      App: routerView("./app"),
-      routes: table.routes,
+      App     : routerView("./app"),
+      routes  : table.routes,
       notFound: table.notFound,
-      errors: table.errors,
+      errors  : table.errors,
     });
 
     const result = await prerender("/feed/photo/1", assets);

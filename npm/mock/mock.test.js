@@ -31,8 +31,8 @@ import type { MockHandler, MockOptions, MockRegistry } from "@uniflowed/mock";
 /** Run `body` with a listening registry, closed however it ends. */
 async function withMock(
   handlers: $ReadOnlyArray<MockHandler>,
-  options: MockOptions | void,
-  body: (api: MockRegistry) => mixed,
+  options : MockOptions | void,
+  body    : (api: MockRegistry) => mixed,
 ): Promise<void> {
   const api = mock(...handlers);
   api.listen(options);
@@ -50,7 +50,7 @@ async function withMock(
  * `fetch` it replaced, and that is the function a bypassed request reaches.
  */
 function withNetwork(answer: () => Response | Promise<Response>): {|
-  readonly urls: Array<string>,
+  readonly urls   : Array<string>,
   readonly restore: () => void,
 |} {
   const original = globalThis.fetch;
@@ -79,7 +79,7 @@ function replaceGlobal(target: interface {}, name: string, value: mixed): void {
   const existing = Object.getOwnPropertyDescriptor(target, name);
   Object.defineProperty(target, name, {
     configurable: true,
-    enumerable: existing?.enumerable ?? true,
+    enumerable  : existing?.enumerable ?? true,
     value,
     writable: true,
   });
@@ -133,7 +133,7 @@ describe("answering", () => {
           HttpResponse.json(
             { title: "nope" },
             {
-              status: 422,
+              status : 422,
               headers: { "content-type": "application/problem+json" },
             },
           ),
@@ -174,7 +174,7 @@ describe("answering", () => {
       async () => {
         const response = await fetch("https://api.test/users", {
           method: "POST",
-          body: JSON.stringify({ name: "ada" }),
+          body  : JSON.stringify({ name: "ada" }),
         });
         expect(response.status).toBe(201);
         expect(await response.json()).toEqual({ id: "1", name: "ada" });
@@ -220,13 +220,13 @@ describe("answering", () => {
       async () => {
         const known = await fetch("https://api.test/users", {
           method: "POST",
-          body: JSON.stringify({ name: "ada" }),
+          body  : JSON.stringify({ name: "ada" }),
         });
         expect(await known.json()).toEqual({ known: true });
 
         const other = await fetch("https://api.test/users", {
           method: "POST",
-          body: JSON.stringify({ name: "grace" }),
+          body  : JSON.stringify({ name: "grace" }),
         });
         expect(await other.json()).toEqual({ known: false });
       },
@@ -509,9 +509,9 @@ describe("the record", () => {
       undefined,
       async (api) => {
         await fetch("https://api.test/users", {
-          method: "POST",
+          method : "POST",
           headers: { "content-type": "application/json", "x-trace": "abc" },
-          body: JSON.stringify({ name: "ada" }),
+          body   : JSON.stringify({ name: "ada" }),
         });
 
         expect(api.requests.length).toBe(1);
@@ -538,7 +538,7 @@ describe("the record", () => {
       async (api) => {
         const response = await fetch("https://api.test/echo", {
           method: "POST",
-          body: JSON.stringify({ seen: "by both" }),
+          body  : JSON.stringify({ seen: "by both" }),
         });
 
         // The log drained a clone; the resolver still got the original.
@@ -738,7 +738,7 @@ describe("passthrough", () => {
         async () => {
           const answer = await fetch("https://api.test/echo", {
             method: "POST",
-            body: "the payload",
+            body  : "the payload",
           });
           expect(await answer.text()).toBe("from the network");
         },

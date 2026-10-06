@@ -80,8 +80,8 @@ const RESET = "\u001b[0m";
  * on it this renderer can claim to know.
  */
 export function diffFrames(
-  previous: Frame | null,
-  next: Frame,
+  previous    : Frame | null,
+  next        : Frame,
   capabilities: Capabilities,
 ): Update {
   const full = previous == null || !sameSize(previous, next);
@@ -127,8 +127,8 @@ export function diffFrames(
           continue;
         }
         const style: Style = {
-          fg: next.fg[index],
-          bg: next.bg[index],
+          fg        : next.fg[index],
+          bg        : next.bg[index],
           attributes: next.attributes[index],
         };
         if (!sameStyle(style, current)) {
@@ -156,11 +156,11 @@ export function diffFrames(
 }
 
 const changedOrFull = (
-  full: boolean,
+  full    : boolean,
   previous: Frame | null,
-  next: Frame,
-  y: number,
-  x: number,
+  next    : Frame,
+  y       : number,
+  x       : number,
 ): boolean => full || changed(previous, next, y * next.width + x);
 
 function changed(previous: Frame | null, next: Frame, index: number): boolean {

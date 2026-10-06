@@ -84,7 +84,7 @@ const OTHER = idOf("9f8e7d6c5b4a");
  */
 async function hosted(
   callAction: (request: Request) => Promise<Response | null>,
-  request: Request,
+  request   : Request,
 ): Promise<Response | null> {
   const { run, settle } = beginRequest(request);
   try {
@@ -96,13 +96,13 @@ async function hosted(
 
 /** A request that passes every guard, with `overrides` applied last. */
 function call(
-  body: string,
+  body      : string,
   overrides?: { readonly [string]: string | null },
-  method?: string,
+  method?   : string,
 ): Request {
   const given: { [string]: string } = {
-    origin: "https://app.example",
-    host: "app.example",
+    origin        : "https://app.example",
+    host          : "app.example",
     "content-type": ACTION_CONTENT_TYPE,
   };
   given[ACTION_HEADER] = RECORD;
@@ -115,9 +115,9 @@ function call(
   }
   const verb = method ?? "POST";
   return new Request("https://app.example/counter", {
-    method: verb,
+    method : verb,
     headers: given,
-    body: verb === "GET" || verb === "HEAD" ? undefined : body,
+    body   : verb === "GET" || verb === "HEAD" ? undefined : body,
   });
 }
 
@@ -125,16 +125,16 @@ function call(
 function tableFor(action: (...args: $FlowFixMe) => Promise<mixed>) {
   return [
     {
-      id: RECORD,
+      id    : RECORD,
       module: "app/_actions/tally.js",
       export: "recordCount",
-      load: () => Promise.resolve({ recordCount: action }),
+      load  : () => Promise.resolve({ recordCount: action }),
     },
     {
-      id: OTHER,
+      id    : OTHER,
       module: "app/_actions/tally.js",
       export: "clear",
-      load: () => Promise.resolve({ clear: async () => undefined }),
+      load  : () => Promise.resolve({ clear: async () => undefined }),
     },
   ];
 }
@@ -531,7 +531,7 @@ describe("the endpoint a server action is dialled at", () => {
     const callAction = createActionDispatcher({
       actions: tableFor(async () => ({
         visitor: cookies().get("visitor"),
-        agent: headers().get("user-agent"),
+        agent  : headers().get("user-agent"),
       })),
     });
 
@@ -736,24 +736,24 @@ describe("the two tables the manifest becomes", () => {
     version: 3,
     serverActions: [
       {
-        id: RECORD,
+        id    : RECORD,
         module: "app/_actions/tally.js",
         export: "recordCount",
-        kind: "module-export",
+        kind  : "module-export",
       },
       { id: OTHER, module: "app/_actions/tally.js", export: "default", kind: "module-export" },
       {
-        id: idOf("cccccccc"),
+        id    : idOf("cccccccc"),
         module: "app/_actions/tally.js",
         export: "onClick",
-        kind: "inline-closure",
+        kind  : "inline-closure",
       },
       { id: "not-an-id", module: "app/_actions/tally.js", export: "forged", kind: "module-export" },
       {
-        id: idOf("dddddddd"),
+        id    : idOf("dddddddd"),
         module: "../outside/tally.js",
         export: "escape",
-        kind: "module-export",
+        kind  : "module-export",
       },
     ],
   };
@@ -842,9 +842,9 @@ describe("an action misused, held to what the checker actually says", () => {
 
   it("reports every misuse, and only the misuses", () => {
     everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "server-actions.js"),
+      fixture  : path.join("tests", "type-tests", "server-actions.js"),
       alongside: ["npm/router"],
-      atLeast: 4,
+      atLeast  : 4,
     });
   });
 });
@@ -948,10 +948,10 @@ describe("the module the browser is given in place of a `use server` file", () =
     modules: [],
     serverActions: [
       {
-        id: RECORD,
+        id    : RECORD,
         module: "app/counter/_actions/tally.js",
         export: "recordCount",
-        kind: "module-export",
+        kind  : "module-export",
       },
     ],
   };
@@ -1076,7 +1076,7 @@ describe("the module the browser is given in place of a `use server` file", () =
           id,
           module: "app/counter/_actions/tally.js",
           export: "recordCount",
-          kind: "module-export",
+          kind  : "module-export",
         },
       ],
     });
@@ -1112,7 +1112,7 @@ describe("the module the browser is given in place of a `use server` file", () =
             invalidated.push(module.id);
           },
         },
-        ws: { send: () => {} },
+        ws         : { send: () => {} },
         middlewares: { use: () => {} },
       };
 

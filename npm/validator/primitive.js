@@ -172,7 +172,7 @@ export function instance<TValue>(ClassValue: Class<TValue>): Schema<TValue, TVal
 export function custom<TValue>(
   accepts: (value: mixed) => boolean,
   message: string,
-  name: string = "custom",
+  name   : string = "custom",
 ): Schema<TValue, TValue> {
   return makeSchema(
     (value, path) =>

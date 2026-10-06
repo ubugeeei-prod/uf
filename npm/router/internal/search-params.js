@@ -68,7 +68,7 @@ export async function parseSearchParams(
  */
 export function searchParamsInput(
   description: Description,
-  query: SearchParamsAll,
+  query      : SearchParamsAll,
 ): { readonly [string]: mixed } {
   const fields = objectFields(description);
   // Built as a `Map` and turned into an object once, by `Object.fromEntries`,

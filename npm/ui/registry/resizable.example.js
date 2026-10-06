@@ -6,22 +6,22 @@ import * as Resizable from "./resizable.js";
 
 const styles = stylex.create({
   frame: {
-    width: "100%",
-    maxWidth: "32rem",
-    height: "12rem",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
+    width       : "100%",
+    maxWidth    : "32rem",
+    height      : "12rem",
+    borderWidth : "1px",
+    borderStyle : "solid",
+    borderColor : ufTokens.border,
     borderRadius: ufTokens.radiusMd,
-    overflow: "hidden",
+    overflow    : "hidden",
   },
   pane: {
-    boxSizing: "border-box",
-    height: "100%",
-    padding: ufTokens.space4,
+    boxSizing : "border-box",
+    height    : "100%",
+    padding   : ufTokens.space4,
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
+    fontSize  : ufTokens.textSm,
+    color     : ufTokens.ink,
   },
 });
 

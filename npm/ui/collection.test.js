@@ -510,7 +510,7 @@ describe("tags and trees", () => {
         aria-label="Files"
         items={[
           {
-            key: "src",
+            key      : "src",
             textValue: "src",
             children: [
               { key: "lib", textValue: "lib", children: [{ key: "x", textValue: "x.js" }] },

@@ -49,7 +49,7 @@ function onNotePage(): void {
   uft.spyOn(globals, "fetch").mockImplementation(
     async () =>
       new Response(JSON.stringify({ outcome: "not-found" }), {
-        status: 404,
+        status : 404,
         headers: { [ACTION_OUTCOME_HEADER]: "not-found" },
       }),
   );
@@ -103,11 +103,11 @@ describe("notFound() in a hydrated action, on a page rendered from its modules",
     const table: $FlowFixMe = {
       routes: [
         {
-          path: "/notes/7",
-          params: [],
-          mdx: false,
-          file: "app/notes/7/$page.js",
-          page: () => Promise.resolve({ default: Note }),
+          path   : "/notes/7",
+          params : [],
+          mdx    : false,
+          file   : "app/notes/7/$page.js",
+          page   : () => Promise.resolve({ default: Note }),
           layouts: [],
           loading: [],
         },
@@ -115,9 +115,9 @@ describe("notFound() in a hydrated action, on a page rendered from its modules",
       notFound,
       errors: [
         {
-          path: "/notes",
-          file: "app/notes/$error.js",
-          module: () => Promise.resolve({ default: NotesError }),
+          path   : "/notes",
+          file   : "app/notes/$error.js",
+          module : () => Promise.resolve({ default: NotesError }),
           layouts: [],
         },
       ],
@@ -133,10 +133,10 @@ describe("notFound() in a hydrated action, on a page rendered from its modules",
   it("shows the nearest not-found page for the URL, not the error view", async () => {
     await mount([
       {
-        path: "/notes",
-        mdx: false,
-        file: "app/notes/$not-found.js",
-        page: () => Promise.resolve({ default: NoteMissing }),
+        path   : "/notes",
+        mdx    : false,
+        file   : "app/notes/$not-found.js",
+        page   : () => Promise.resolve({ default: NoteMissing }),
         layouts: [],
       },
     ]);
@@ -163,17 +163,17 @@ describe("notFound() in a hydrated action, on a page rendered from its modules",
 /** The payload root for `/notes/7`: its tree inside a route boundary, as the server composes it. */
 function rootOf(tree: React.Node, status: 200 | 404): FlightRoot {
   const route: $FlowFixMe = {
-    pathname: "/notes/7",
-    search: "",
-    path: status === 404 ? "*" : "/notes/7",
-    params: {},
-    searchParams: {},
-    data: undefined,
-    deferred: null,
-    metadata: {},
+    pathname      : "/notes/7",
+    search        : "",
+    path          : status === 404 ? "*" : "/notes/7",
+    params        : {},
+    searchParams  : {},
+    data          : undefined,
+    deferred      : null,
+    metadata      : {},
     viewTransition: null,
     status,
-    error: null,
+    error       : null,
     interception: null,
   };
   return {

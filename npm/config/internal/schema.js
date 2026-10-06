@@ -69,10 +69,10 @@ export type TaskArgument = {
 export type TaskDefinition =
   | string
   | {
-      readonly command: string,
-      readonly cwd?: string,
+      readonly command   : string,
+      readonly cwd?      : string,
       readonly dependsOn?: $ReadOnlyArray<string>,
-      readonly env?: { readonly [string]: string },
+      readonly env?      : { readonly [string]: string },
       // Everything the task reads, as paths or globs from the project root; a
       // pattern beginning `!` excludes. This is the whole of the cache key, so
       // a task that lists nothing is never cached and always runs.
@@ -217,7 +217,7 @@ export type BuilderSpec = string;
 export type PluginEntry =
   | string
   | {
-      readonly name: string,
+      readonly name  : string,
       readonly order?: "pre" | "normal" | "post",
       readonly apply?: "build" | "serve" | "always",
     };
@@ -240,9 +240,9 @@ export type PluginEntry =
  * `307`; both keep the method.
  */
 export type RouteRedirect = {
-  readonly source: string,
+  readonly source     : string,
   readonly destination: string,
-  readonly permanent: boolean,
+  readonly permanent  : boolean,
 };
 
 /**
@@ -255,7 +255,7 @@ export type RouteRedirect = {
  * runs is the destination's.
  */
 export type RouteRewrite = {
-  readonly source: string,
+  readonly source     : string,
   readonly destination: string,
 };
 
@@ -265,7 +265,7 @@ export type RouteRewrite = {
  * same name wins — over the response's own header of that name, too.
  */
 export type RouteHeaders = {
-  readonly source: string,
+  readonly source : string,
   readonly headers: { readonly [name: string]: string },
 };
 
@@ -287,7 +287,7 @@ export type RouterTrailingSlash = "never" | "always" | "ignore";
  * because a budget is written by hand and read back by a report.
  */
 export type SizeBudget = {
-  readonly max: number | string,
+  readonly max    : number | string,
   readonly metric?: "raw" | "gzip" | "brotli",
 };
 
@@ -315,11 +315,11 @@ export type SizeBudget = {
  * environment — and not the project's own files.
  */
 export type Permissions = {
-  readonly read?: $ReadOnlyArray<string>,
+  readonly read? : $ReadOnlyArray<string>,
   readonly write?: $ReadOnlyArray<string>,
-  readonly net?: $ReadOnlyArray<string>,
-  readonly env?: $ReadOnlyArray<string>,
-  readonly run?: $ReadOnlyArray<string>,
+  readonly net?  : $ReadOnlyArray<string>,
+  readonly env?  : $ReadOnlyArray<string>,
+  readonly run?  : $ReadOnlyArray<string>,
 };
 
 /**
@@ -330,9 +330,9 @@ export type Permissions = {
  * wrong, so the absent case is the one that means nothing is required.
  */
 export type CoverageThresholds = {
-  readonly lines?: number,
+  readonly lines?    : number,
   readonly functions?: number,
-  readonly branches?: number,
+  readonly branches? : number,
 };
 
 export type UniflowedConfig = {
@@ -361,9 +361,9 @@ export type UniflowedConfig = {
     readonly devAudit?: boolean,
     readonly axe?: {
       // Run only rules carrying one of these axe tags; every rule when absent.
-      readonly tags?: $ReadOnlyArray<string>,
+      readonly tags?         : $ReadOnlyArray<string>,
       readonly disabledRules?: $ReadOnlyArray<string>,
-      readonly minImpact?: "minor" | "moderate" | "serious" | "critical",
+      readonly minImpact?    : "minor" | "moderate" | "serious" | "critical",
     },
   },
   readonly app?: {
@@ -376,7 +376,7 @@ export type UniflowedConfig = {
     },
     // Whether the project builds React Server Components at all, and whether
     // a `"use server"` export is wired to an endpoint.
-    readonly rsc?: boolean,
+    readonly rsc?          : boolean,
     readonly serverActions?: boolean,
     // The runtimes the build must satisfy.
     readonly targets?: $ReadOnlyArray<"web" | "react-native" | "server" | "hermes">,
@@ -385,7 +385,7 @@ export type UniflowedConfig = {
       readonly style?: "style-x",
       readonly reactCompiler?: {
         readonly enabled?: boolean,
-        readonly mode?: "syntax",
+        readonly mode?   : "syntax",
       },
       readonly markdown?: {
         readonly mdx?: {
@@ -402,7 +402,7 @@ export type UniflowedConfig = {
             readonly enabled?: boolean,
             readonly themes?: {
               readonly light?: string,
-              readonly dark?: string,
+              readonly dark? : string,
             },
             // Grammars beyond the ones a uf project uses by default.
             readonly langs?: $ReadOnlyArray<string>,
@@ -413,8 +413,8 @@ export type UniflowedConfig = {
         readonly enabled?: boolean,
         // The widths a layout asks for. uf emits one variant per width that is
         // not wider than the source, plus one at the source's own width.
-        readonly widths?: $ReadOnlyArray<number>,
-        readonly quality?: number,
+        readonly widths?     : $ReadOnlyArray<number>,
+        readonly quality?    : number,
         readonly placeholder?: boolean,
         // The remote images `/__uf/image` may fetch, resize and re-encode —
         // Next.js's `images.remotePatterns`, with its four keys and its
@@ -476,27 +476,27 @@ export type UniflowedConfig = {
       },
     },
     readonly runtime?: {
-      readonly default?: RuntimeEngine,
+      readonly default?      : RuntimeEngine,
       readonly compatibility?: $ReadOnlyArray<RuntimeEngine>,
       readonly capabilityJsHost?: {
-        readonly default?: CapabilityJsHost,
-        readonly hosts?: $ReadOnlyArray<CapabilityJsHost>,
+        readonly default?   : CapabilityJsHost,
+        readonly hosts?     : $ReadOnlyArray<CapabilityJsHost>,
         readonly autoDetect?: boolean,
       },
       readonly deploy?: {
         readonly enabled?: boolean,
         // The target `uf build` writes an artefact for when none is named on
         // the command line; `--adapter` beats it.
-        readonly adapter?: DeployAdapter,
+        readonly adapter? : DeployAdapter,
         readonly adapters?: $ReadOnlyArray<DeployAdapter>,
       },
     },
     readonly router?: {
       // `false` says this project is not a uf application, and is the only way
       // to say it: a library has no routes to scan for.
-      readonly enabled?: boolean,
-      readonly entry?: string,
-      readonly root?: string,
+      readonly enabled? : boolean,
+      readonly entry?   : string,
+      readonly root?    : string,
       readonly manifest?: string,
       // Turning the file-system router off is what makes a project a
       // **library** rather than an application, and `uf build` reads it: see
@@ -535,11 +535,11 @@ export type UniflowedConfig = {
       readonly trailingSlash?: RouterTrailingSlash,
       /** HTTPS links explicitly claimed by the iOS and Android applications. */
       readonly nativeLinks?: {|
-        readonly origins: $ReadOnlyArray<string>,
-        readonly routes: $ReadOnlyArray<string>,
-        readonly iosAppIds: $ReadOnlyArray<string>,
+        readonly origins       : $ReadOnlyArray<string>,
+        readonly routes        : $ReadOnlyArray<string>,
+        readonly iosAppIds     : $ReadOnlyArray<string>,
         readonly androidPackage: string,
-        readonly androidSha256: $ReadOnlyArray<string>,
+        readonly androidSha256 : $ReadOnlyArray<string>,
       |},
     },
     readonly rendering?: {
@@ -562,7 +562,7 @@ export type UniflowedConfig = {
       // clear it. See docs/app/guide/routing and docs/app/guide/cache.
       readonly staleTime?: number,
       readonly cache?: {
-        readonly data?: boolean,
+        readonly data? : boolean,
         readonly fetch?: boolean,
         readonly route?: boolean,
         // Where cache entries live, and the only thing here that is a *name*
@@ -583,17 +583,17 @@ export type UniflowedConfig = {
     // Size ceilings that fail the build. Unset by default: failing a build
     // nobody asked uf to police is worse than reporting the size.
     readonly budgets?: {
-      readonly total?: SizeBudget,
+      readonly total?    : SizeBudget,
       readonly initialJs?: SizeBudget,
-      readonly perRoute?: SizeBudget,
-      readonly perAsset?: SizeBudget,
+      readonly perRoute? : SizeBudget,
+      readonly perAsset? : SizeBudget,
     },
     readonly entries?: $ReadOnlyArray<string>,
-    readonly outDir?: string,
+    readonly outDir? : string,
     // Prerender every route and leave no server bundle behind. Read together
     // with `app.rendering.modes`; see docs/app/reference/config.
     readonly staticBuild?: boolean,
-    readonly sourcemap?: boolean,
+    readonly sourcemap?  : boolean,
     /**
      * What a **library** build writes, for a project whose
      * `app.router.enabled` is false.
@@ -660,14 +660,14 @@ export type UniflowedConfig = {
     readonly module?: string,
   },
   readonly dev?: {
-    readonly host?: string,
-    readonly port?: number,
+    readonly host?      : string,
+    readonly port?      : number,
     readonly strictPort?: boolean,
     // Which files the dev server may serve. `deny` is evaluated on the
     // canonical path and beats `allow`; see docs/security.md.
     readonly fs?: {
       readonly allow?: $ReadOnlyArray<string>,
-      readonly deny?: $ReadOnlyArray<string>,
+      readonly deny? : $ReadOnlyArray<string>,
     },
     // `--host` refuses to bind a routable address while this is empty: a dev
     // server reachable from the network with no host allow-list is a file
@@ -687,7 +687,7 @@ export type UniflowedConfig = {
    */
   readonly env?: {
     readonly active?: string,
-    readonly files?: $ReadOnlyArray<string>,
+    readonly files? : $ReadOnlyArray<string>,
     /**
      * Runtimes and package managers by exact version — `{ node: "24.14.0" }`.
      *
@@ -702,7 +702,7 @@ export type UniflowedConfig = {
   },
   readonly fmt?: {
     readonly indentWidth?: number,
-    readonly lineWidth?: number,
+    readonly lineWidth?  : number,
     /** Align related match arms, component hook bindings, and object entries. */
     readonly align?: boolean,
     readonly nonFlow?: {
@@ -718,7 +718,7 @@ export type UniflowedConfig = {
        */
       readonly arguments?: $ReadOnlyArray<string>,
     },
-    readonly quotes?: "single" | "double",
+    readonly quotes?    : "single" | "double",
     readonly semicolons?: boolean,
     /**
      * Paths `uf fmt` leaves alone, on top of the top-level `ignore`.
@@ -769,14 +769,14 @@ export type UniflowedConfig = {
    * `package.json#packageManager` and the lockfile. See `PackageManagerSpec`.
    */
   readonly packageManager?: PackageManagerSpec,
-  readonly permissions?: Permissions,
+  readonly permissions?   : Permissions,
   // Plugins the project adds, appended to uf's own and resolved in the order
   // they are written. A name that names a file is code to run, so `uf_plugin`
   // refuses any that reaches outside the project root.
   readonly plugins?: $ReadOnlyArray<PluginEntry>,
   readonly pm?: {
-    readonly lockfile?: "uf.lock",
-    readonly storeDir?: string,
+    readonly lockfile?             : "uf.lock",
+    readonly storeDir?             : string,
     readonly allowLifecycleScripts?: false,
     /**
      * The package manager uf drives, in the spelling that came before the
@@ -843,11 +843,11 @@ export type UniflowedConfig = {
   // no `robots.txt` are written at all, because a build cannot guess the host
   // it will be deployed to and a wrong `<loc>` is worse than a missing one.
   readonly site?: {
-    readonly url?: string,
+    readonly url?    : string,
     readonly sitemap?: boolean,
     readonly robots?: {
-      readonly enabled?: boolean,
-      readonly allow?: $ReadOnlyArray<string>,
+      readonly enabled? : boolean,
+      readonly allow?   : $ReadOnlyArray<string>,
       readonly disallow?: $ReadOnlyArray<string>,
     },
   },
@@ -914,12 +914,12 @@ export type UniflowedConfig = {
      * collected, so `enabled: false` plus `--coverage` still gates.
      */
     readonly coverage?: {
-      readonly enabled?: boolean,
-      readonly directory?: string,
-      readonly reporters?: $ReadOnlyArray<"text" | "lcov" | "cobertura">,
-      readonly include?: $ReadOnlyArray<string>,
-      readonly exclude?: $ReadOnlyArray<string>,
-      readonly thresholds?: CoverageThresholds,
+      readonly enabled?          : boolean,
+      readonly directory?        : string,
+      readonly reporters?        : $ReadOnlyArray<"text" | "lcov" | "cobertura">,
+      readonly include?          : $ReadOnlyArray<string>,
+      readonly exclude?          : $ReadOnlyArray<string>,
+      readonly thresholds?       : CoverageThresholds,
       readonly perFileThresholds?: CoverageThresholds,
     },
   },

@@ -329,8 +329,8 @@ function boundLogger(context: RequestContext, extra: LogFields): Logger {
     // them would make that check meaningless.
     level: processLogger().level,
     debug: (message, more) => processLogger().debug(message, { ...fields(), ...more }),
-    info: (message, more) => processLogger().info(message, { ...fields(), ...more }),
-    warn: (message, more) => processLogger().warn(message, { ...fields(), ...more }),
+    info : (message, more) => processLogger().info(message, { ...fields(), ...more }),
+    warn : (message, more) => processLogger().warn(message, { ...fields(), ...more }),
     error: (message, more) => processLogger().error(message, { ...fields(), ...more }),
     child: (more) => boundLogger(context, { ...extra, ...more }),
   };

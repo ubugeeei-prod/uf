@@ -22,17 +22,17 @@ export type PullRequest = {
   ...
 };
 export type WorkflowRun = {
-  readonly id: number,
-  readonly path: string,
-  readonly event: string,
-  readonly head_sha: string,
-  readonly head_branch?: ?string,
+  readonly id              : number,
+  readonly path            : string,
+  readonly event           : string,
+  readonly head_sha        : string,
+  readonly head_branch?    : ?string,
   readonly head_repository?: ?Repository,
-  readonly status: string,
-  readonly conclusion: ?string,
-  readonly display_title: string,
-  readonly html_url: string,
-  readonly run_attempt: number,
+  readonly status          : string,
+  readonly conclusion      : ?string,
+  readonly display_title   : string,
+  readonly html_url        : string,
+  readonly run_attempt     : number,
   ...
 };
 export type Artifact = { readonly name: string, readonly expired: boolean, readonly size_in_bytes: number, ... };
@@ -41,7 +41,7 @@ export type GitObject = { readonly type: string, readonly sha: string, ... };
 // caller names the shape it reads.
 export type Api = (path: string) => any;
 export type Git = (...args: Array<string>) => string;
-export type IO = { readonly api: Api, readonly git: Git, ... };
+export type IO  = { readonly api: Api, readonly git: Git, ... };
 export type Env = { readonly [name: string]: ?string, ... };
 */
 
@@ -111,7 +111,7 @@ function requireEnv(env /*: Env */, name /*: string */) /*: string */ {
 }
 function gh(...args /*: Array<string> */) /*: string */ {
   return execFileSync("gh", args, {
-    encoding: "utf8",
+    encoding : "utf8",
     maxBuffer: 16 * 1024 * 1024,
   }).trim();
 }
@@ -120,7 +120,7 @@ function api(path /*: string */) /*: any */ {
 }
 function git(...args /*: Array<string> */) /*: string */ {
   return execFileSync("git", args, {
-    encoding: "utf8",
+    encoding : "utf8",
     maxBuffer: 16 * 1024 * 1024,
   }).trim();
 }

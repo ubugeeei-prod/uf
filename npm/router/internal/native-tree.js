@@ -3,13 +3,13 @@ import type { RouteModule, RouteTable } from "./routing.js";
 
 export type NativeLayout = {
   readonly segment: string,
-  readonly file: string,
-  readonly module: RouteModule<>,
+  readonly file   : string,
+  readonly module : RouteModule<>,
 };
 export type NativeNode = {
-  name: string,
-  module: ?RouteModule<>,
-  layout: boolean,
+  name    : string,
+  module  : ?RouteModule<>,
+  layout  : boolean,
   children: Array<NativeNode>,
 };
 export type NativeTree = { root: NativeNode, paths: Map<string, $ReadOnlyArray<string>> };
@@ -46,22 +46,22 @@ export function nativeTree(table: RouteTable<>, layouts: $ReadOnlyArray<NativeLa
 }
 
 export type NavigationPayload = {
-  readonly ufHref: string,
+  readonly ufHref  : string,
   readonly ufParams: { readonly [string]: string | $ReadOnlyArray<string> },
 };
 export type NavigationState = {
-  readonly key?: string,
-  readonly type?: string,
+  readonly key?  : string,
+  readonly type? : string,
   readonly index?: number,
   readonly routes: $ReadOnlyArray<{
-    readonly name: string,
+    readonly name   : string,
     readonly params?: NavigationPayload,
-    readonly state?: NavigationState,
+    readonly state? : NavigationState,
   }>,
 };
 
 export function stateForPath(
-  names: $ReadOnlyArray<string>,
+  names  : $ReadOnlyArray<string>,
   payload: NavigationPayload,
 ): NavigationState {
   const [name, ...rest] = names;

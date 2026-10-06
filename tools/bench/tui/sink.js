@@ -18,9 +18,9 @@ import { performance } from "node:perf_hooks";
 
 /** A stream that counts what was written to it and when. */
 export type Sink = {
-  readonly isTTY: boolean,
+  readonly isTTY  : boolean,
   readonly columns: number,
-  readonly rows: number,
+  readonly rows   : number,
   write(chunk: string): boolean,
   on(event: string, listener: () => mixed): mixed,
   off(event: string, listener: () => mixed): mixed,

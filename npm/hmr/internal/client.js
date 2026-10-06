@@ -46,19 +46,19 @@ export type UpdateRole = "boundary" | "dependency";
 /** One module to re-fetch. */
 export type UpdateModule = {
   readonly path: string,
-  readonly url: string,
+  readonly url : string,
   readonly role: UpdateRole,
 };
 
 /** One update, exactly as `uf_devserver::hmr::HmrUpdate` serializes it. */
 export type HmrUpdate = {
-  readonly id: number,
-  readonly path: string,
-  readonly change: ChangeKind,
-  readonly kind: UpdateKind,
-  readonly reason?: ReloadReason,
-  readonly modules: $ReadOnlyArray<UpdateModule>,
-  readonly routes: $ReadOnlyArray<string>,
+  readonly id           : number,
+  readonly path         : string,
+  readonly change       : ChangeKind,
+  readonly kind         : UpdateKind,
+  readonly reason?      : ReloadReason,
+  readonly modules      : $ReadOnlyArray<UpdateModule>,
+  readonly routes       : $ReadOnlyArray<string>,
   readonly elapsedMicros: number,
 };
 
@@ -73,9 +73,9 @@ export type RefreshHandler = (next: mixed) => void;
 
 /** What `connect` hands back. */
 export type HmrClient = {
-  readonly accept: (modulePath: string, handler: RefreshHandler) => void,
-  readonly apply: (update: HmrUpdate) => Promise<UpdateKind>,
-  readonly close: () => void,
+  readonly accept : (modulePath: string, handler: RefreshHandler) => void,
+  readonly apply  : (update: HmrUpdate) => Promise<UpdateKind>,
+  readonly close  : () => void,
   readonly applied: () => number,
 };
 
@@ -203,9 +203,9 @@ export function connect(options?: ConnectOptions): HmrClient {
  * re-renders.
  */
 function applyModules(
-  update: HmrUpdate,
+  update  : HmrUpdate,
   handlers: Map<string, RefreshHandler>,
-  global: $FlowFixMe,
+  global  : $FlowFixMe,
 ): Promise<boolean> {
   let chain: Promise<boolean> = Promise.resolve(true);
   for (const module of update.modules) {

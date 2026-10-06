@@ -239,31 +239,31 @@ export type PhysicalPointer = "mouse" | "pen" | "touch";
  * its reading of a key or a pointer with a handler on the element.
  */
 export type InteractionEvent = {
-  readonly type: string,
-  readonly target: mixed,
-  readonly currentTarget: mixed,
+  readonly type            : string,
+  readonly target          : mixed,
+  readonly currentTarget   : mixed,
   readonly defaultPrevented: boolean,
-  readonly nativeEvent?: mixed,
-  readonly preventDefault: () => mixed,
-  readonly stopPropagation: () => mixed,
-  readonly key?: string,
-  readonly code?: string,
-  readonly repeat?: boolean,
-  readonly button?: number,
-  readonly buttons?: number,
-  readonly detail?: number,
-  readonly pointerId?: number,
-  readonly pointerType?: string,
-  readonly clientX?: number,
-  readonly clientY?: number,
-  readonly width?: number,
-  readonly height?: number,
-  readonly pressure?: number,
-  readonly relatedTarget?: mixed,
-  readonly altKey?: boolean,
-  readonly ctrlKey?: boolean,
-  readonly metaKey?: boolean,
-  readonly shiftKey?: boolean,
+  readonly nativeEvent?    : mixed,
+  readonly preventDefault  : () => mixed,
+  readonly stopPropagation : () => mixed,
+  readonly key?            : string,
+  readonly code?           : string,
+  readonly repeat?         : boolean,
+  readonly button?         : number,
+  readonly buttons?        : number,
+  readonly detail?         : number,
+  readonly pointerId?      : number,
+  readonly pointerType?    : string,
+  readonly clientX?        : number,
+  readonly clientY?        : number,
+  readonly width?          : number,
+  readonly height?         : number,
+  readonly pressure?       : number,
+  readonly relatedTarget?  : mixed,
+  readonly altKey?         : boolean,
+  readonly ctrlKey?        : boolean,
+  readonly metaKey?        : boolean,
+  readonly shiftKey?       : boolean,
   ...
 };
 
@@ -279,9 +279,9 @@ export type InteractionProps = { readonly key?: empty, readonly [string]: mixed 
 
 /** The modifier keys held while something happened. */
 type Modifiers = {|
-  readonly altKey: boolean,
-  readonly ctrlKey: boolean,
-  readonly metaKey: boolean,
+  readonly altKey  : boolean,
+  readonly ctrlKey : boolean,
+  readonly metaKey : boolean,
   readonly shiftKey: boolean,
 |};
 
@@ -331,9 +331,9 @@ const FOCUSABLE_BY_POINTER =
 function modifiersOf(source: mixed): Modifiers {
   const event: $FlowFixMe = source;
   return {
-    altKey: event?.altKey === true,
-    ctrlKey: event?.ctrlKey === true,
-    metaKey: event?.metaKey === true,
+    altKey  : event?.altKey === true,
+    ctrlKey : event?.ctrlKey === true,
+    metaKey : event?.metaKey === true,
     shiftKey: event?.shiftKey === true,
   };
 }
@@ -549,10 +549,10 @@ export type PressEvent = {|
   /** The input that made it. */
   readonly pointerType: PointerType,
   /** The element the press belongs to. */
-  readonly target: HTMLElement,
-  readonly altKey: boolean,
-  readonly ctrlKey: boolean,
-  readonly metaKey: boolean,
+  readonly target  : HTMLElement,
+  readonly altKey  : boolean,
+  readonly ctrlKey : boolean,
+  readonly metaKey : boolean,
   readonly shiftKey: boolean,
   /** Where the pointer was, from the element's left edge; nought for a key or a screen reader. */
   readonly x: number,
@@ -594,14 +594,14 @@ export type PressOptions = {|
 
 /** The handlers `usePress` needs on the element. */
 export type PressProps = {|
-  readonly onClick: (event: InteractionEvent) => void,
-  readonly onDragStart: (event: InteractionEvent) => void,
-  readonly onKeyDown: (event: InteractionEvent) => void,
-  readonly onMouseDown: (event: InteractionEvent) => void,
-  readonly onPointerDown: (event: InteractionEvent) => void,
+  readonly onClick       : (event: InteractionEvent) => void,
+  readonly onDragStart   : (event: InteractionEvent) => void,
+  readonly onKeyDown     : (event: InteractionEvent) => void,
+  readonly onMouseDown   : (event: InteractionEvent) => void,
+  readonly onPointerDown : (event: InteractionEvent) => void,
   readonly onPointerEnter: (event: InteractionEvent) => void,
   readonly onPointerLeave: (event: InteractionEvent) => void,
-  readonly onPointerUp: (event: InteractionEvent) => void,
+  readonly onPointerUp   : (event: InteractionEvent) => void,
 |};
 
 /** What `usePress` hands back. */
@@ -614,36 +614,36 @@ export type PressResult = {|
 
 /** A pointer that is down on the element. */
 type PointerPress = {|
-  cancelled: boolean,
-  over: boolean,
-  readonly pointerId: number,
+  cancelled           : boolean,
+  over                : boolean,
+  readonly pointerId  : number,
   readonly pointerType: PhysicalPointer,
-  readonly stop: () => void,
-  readonly target: HTMLElement,
+  readonly stop       : () => void,
+  readonly target     : HTMLElement,
 |};
 
 /** `Space` held down on the element. */
 type KeyPress = {|
   readonly native: boolean,
-  readonly stop: () => void,
+  readonly stop  : () => void,
   readonly target: HTMLElement,
 |};
 
 /** A pointer press that ended over the element and is owed the click that follows. */
 type OwedPress = {|
   ...Modifiers,
-  readonly point: Point,
+  readonly point      : Point,
   readonly pointerType: PhysicalPointer,
 |};
 
 /** Everything a press in progress is made of. Written by handlers, never read by a render. */
 type PressState = {|
-  key: KeyPress | null,
+  key     : KeyPress | null,
   keyClick: HTMLElement | null,
-  owed: OwedPress | null,
-  pointer: PointerPress | null,
-  pressed: boolean,
-  refuse: boolean,
+  owed    : OwedPress | null,
+  pointer : PointerPress | null,
+  pressed : boolean,
+  refuse  : boolean,
 |};
 
 /** Which keys press an element, and whether the browser clicks it for them. */
@@ -717,22 +717,22 @@ function keyRuleFor(element: HTMLElement): KeyRule | null {
  */
 export hook usePress(options?: PressOptions): PressResult {
   const [isPressed, setPressed] = useState(false);
-  const state = useRef<PressState>({
-    key: null,
+  const state                   = useRef<PressState>({
+    key     : null,
     keyClick: null,
-    owed: null,
-    pointer: null,
-    pressed: false,
-    refuse: false,
+    owed    : null,
+    pointer : null,
+    pressed : false,
+    refuse  : false,
   });
 
   const emit = useStableCallback(
     (
-      type: "pressstart" | "pressend" | "pressup" | "press",
+      type       : "pressstart" | "pressend" | "pressup" | "press",
       pointerType: PointerType,
-      target: HTMLElement,
-      source: mixed,
-      point: Point | null,
+      target     : HTMLElement,
+      source     : mixed,
+      point      : Point | null,
     ): boolean => {
       let continued = false;
       const event: PressEvent = {
@@ -858,7 +858,7 @@ export hook usePress(options?: PressOptions): PressResult {
     document.addEventListener("pointercancel", onDocumentPointerCancel, false);
     current.pointer = {
       cancelled: false,
-      over: true,
+      over     : true,
       pointerId,
       pointerType,
       stop: () => {
@@ -1449,7 +1449,7 @@ export type FocusRingOptions = {|
 
 /** The handlers `useFocusRing` needs on the element. */
 export type FocusRingProps = {|
-  readonly onBlur: (event: InteractionEvent) => void,
+  readonly onBlur : (event: InteractionEvent) => void,
   readonly onFocus: (event: InteractionEvent) => void,
 |};
 
@@ -1476,8 +1476,8 @@ export type FocusRingResult = {|
 export hook useFocusRing(options?: FocusRingOptions): FocusRingResult {
   const within = options?.within === true;
   const [isFocused, setFocused] = useState(false);
-  const { isFocusVisible } = useFocusVisible();
-  const watching = useRef<(() => void) | null>(null);
+  const { isFocusVisible }      = useFocusVisible();
+  const watching                = useRef<(() => void) | null>(null);
 
   const stopWatching = useStableCallback(() => {
     watching.current?.();
@@ -1581,16 +1581,16 @@ export type HoverEvent = {|
   readonly type: "hoverstart" | "hoverend",
   /** A mouse or a pen: a finger has no hover. */
   readonly pointerType: "mouse" | "pen",
-  readonly target: HTMLElement,
+  readonly target     : HTMLElement,
 |};
 
 /** What `useHover` is told. */
 export type HoverOptions = {|
   /** No hover; a hover in progress ends. */
-  readonly isDisabled?: boolean,
+  readonly isDisabled?   : boolean,
   readonly onHoverChange?: (isHovering: boolean) => mixed,
-  readonly onHoverEnd?: (event: HoverEvent) => mixed,
-  readonly onHoverStart?: (event: HoverEvent) => mixed,
+  readonly onHoverEnd?   : (event: HoverEvent) => mixed,
+  readonly onHoverStart? : (event: HoverEvent) => mixed,
 |};
 
 /** The handlers `useHover` needs on the element. */
@@ -1602,14 +1602,14 @@ export type HoverProps = {|
 /** What `useHover` hands back. */
 export type HoverResult = {|
   readonly hoverProps: HoverProps,
-  readonly isHovered: boolean,
+  readonly isHovered : boolean,
 |};
 
 /** A hover in progress. */
 type Hovering = {|
   readonly pointerType: "mouse" | "pen",
-  readonly stop: () => void,
-  readonly target: HTMLElement,
+  readonly stop       : () => void,
+  readonly target     : HTMLElement,
 |};
 
 /**
@@ -1623,7 +1623,7 @@ type Hovering = {|
  */
 export hook useHover(options?: HoverOptions): HoverResult {
   const [isHovered, setHovered] = useState(false);
-  const hovering = useRef<Hovering | null>(null);
+  const hovering                = useRef<Hovering | null>(null);
 
   useEffect(() => watchTouches(), []);
 
@@ -1637,8 +1637,8 @@ export hook useHover(options?: HoverOptions): HoverResult {
     setHovered(false);
     options?.onHoverEnd?.({
       pointerType: current.pointerType,
-      target: current.target,
-      type: "hoverend",
+      target     : current.target,
+      type       : "hoverend",
     });
     options?.onHoverChange?.(false);
   });
@@ -1663,7 +1663,7 @@ export hook useHover(options?: HoverOptions): HoverResult {
     document.addEventListener("pointerover", onPointerElsewhere, true);
     hovering.current = {
       pointerType: pointer,
-      stop: () => document.removeEventListener("pointerover", onPointerElsewhere, true),
+      stop       : () => document.removeEventListener("pointerover", onPointerElsewhere, true),
       target,
     };
     setHovered(true);
@@ -1703,15 +1703,15 @@ export hook useHover(options?: HoverOptions): HoverResult {
 
 /** A moment in a long press. */
 export type LongPressEvent = {|
-  readonly type: "longpressstart" | "longpressend" | "longpress",
+  readonly type       : "longpressstart" | "longpressend" | "longpress",
   readonly pointerType: PhysicalPointer,
-  readonly target: HTMLElement,
-  readonly altKey: boolean,
-  readonly ctrlKey: boolean,
-  readonly metaKey: boolean,
-  readonly shiftKey: boolean,
-  readonly x: number,
-  readonly y: number,
+  readonly target     : HTMLElement,
+  readonly altKey     : boolean,
+  readonly ctrlKey    : boolean,
+  readonly metaKey    : boolean,
+  readonly shiftKey   : boolean,
+  readonly x          : number,
+  readonly y          : number,
 |};
 
 /** What `useLongPress` is told. */
@@ -1724,7 +1724,7 @@ export type LongPressOptions = {|
    * or press Shift+F10 for more actions".
    */
   readonly accessibilityDescription?: string,
-  readonly isDisabled?: boolean,
+  readonly isDisabled?              : boolean,
   /** The press lasted long enough. The press underneath is cancelled, and its click refused. */
   readonly onLongPress?: (event: LongPressEvent) => mixed,
   /** The press that might have been a long one ended, whichever it turned out to be. */
@@ -1819,8 +1819,8 @@ hook useDescription(text: string | void): string | void {
  * others; every one of them already ends on this event.
  */
 function cancelGesturesOn(
-  target: HTMLElement,
-  pointerId: number,
+  target     : HTMLElement,
+  pointerId  : number,
   pointerType: PhysicalPointer,
 ): void {
   const view: $FlowFixMe = target.ownerDocument.defaultView;
@@ -1877,11 +1877,11 @@ function refuseNextClick(target: HTMLElement): void {
  */
 export hook useLongPress(options?: LongPressOptions): LongPressResult {
   const threshold = options?.threshold ?? LONG_PRESS_THRESHOLD;
-  const timer = useRef<TimeoutID | null>(null);
-  const pointerId = useRef(0);
-  const holding = useRef<PressEvent | null>(null);
+  const timer            = useRef<TimeoutID | null>(null);
+  const pointerId        = useRef(0);
+  const holding          = useRef<PressEvent | null>(null);
   const stopRefusingMenu = useRef<(() => void) | null>(null);
-  const describedBy = useDescription(
+  const describedBy      = useDescription(
     options?.isDisabled === true || options?.onLongPress == null
       ? undefined
       : options?.accessibilityDescription,
@@ -1897,16 +1897,16 @@ export hook useLongPress(options?: LongPressOptions): LongPressResult {
   });
 
   const describe = (
-    type: "longpressstart" | "longpressend" | "longpress",
+    type       : "longpressstart" | "longpressend" | "longpress",
     pointerType: PhysicalPointer,
-    event: PressEvent,
+    event      : PressEvent,
   ): LongPressEvent => ({
-    altKey: event.altKey,
+    altKey : event.altKey,
     ctrlKey: event.ctrlKey,
     metaKey: event.metaKey,
     pointerType,
     shiftKey: event.shiftKey,
-    target: event.target,
+    target  : event.target,
     type,
     x: event.x,
     y: event.y,
@@ -1982,14 +1982,14 @@ export type MovePointerType = PhysicalPointer | "keyboard";
 
 /** A move beginning: the first movement after a pointer went down, or an arrow key. */
 export type MoveStartEvent = {|
-  readonly type: "movestart",
+  readonly type       : "movestart",
   readonly pointerType: MovePointerType,
   ...Modifiers,
 |};
 
 /** A movement, in pixels for a pointer and in steps of one for a key. */
 export type MoveMoveEvent = {|
-  readonly type: "move",
+  readonly type       : "move",
   readonly pointerType: MovePointerType,
   /** How far right since the last event; negative is left. */
   readonly deltaX: number,
@@ -2000,21 +2000,21 @@ export type MoveMoveEvent = {|
 
 /** A move ending. */
 export type MoveEndEvent = {|
-  readonly type: "moveend",
+  readonly type       : "moveend",
   readonly pointerType: MovePointerType,
   ...Modifiers,
 |};
 
 /** What `useMove` is told. */
 export type MoveOptions = {|
-  readonly onMove?: (event: MoveMoveEvent) => mixed,
-  readonly onMoveEnd?: (event: MoveEndEvent) => mixed,
+  readonly onMove?     : (event: MoveMoveEvent) => mixed,
+  readonly onMoveEnd?  : (event: MoveEndEvent) => mixed,
   readonly onMoveStart?: (event: MoveStartEvent) => mixed,
 |};
 
 /** The handlers `useMove` needs on the element. */
 export type MoveProps = {|
-  readonly onKeyDown: (event: InteractionEvent) => void,
+  readonly onKeyDown    : (event: InteractionEvent) => void,
   readonly onPointerDown: (event: InteractionEvent) => void,
 |};
 
@@ -2025,13 +2025,13 @@ export type MoveResult = {|
 
 /** A drag in progress. */
 type Dragging = {|
-  lastX: number,
-  lastY: number,
-  moved: boolean,
-  readonly pointerId: number,
+  lastX               : number,
+  lastY               : number,
+  moved               : boolean,
+  readonly pointerId  : number,
   readonly pointerType: PhysicalPointer,
-  restoreSelection: (() => void) | null,
-  readonly stop: () => void,
+  restoreSelection    : (() => void) | null,
+  readonly stop       : () => void,
 |};
 
 /**
@@ -2050,12 +2050,12 @@ export hook useMove(options?: MoveOptions): MoveResult {
   const emitStart = useStableCallback((pointerType: MovePointerType, source: mixed) => {
     options?.onMoveStart?.({ ...modifiersOf(source), pointerType, type: "movestart" });
   });
-  const emitMove = useStableCallback(
+  const emitMove  = useStableCallback(
     (pointerType: MovePointerType, deltaX: number, deltaY: number, source: mixed) => {
       options?.onMove?.({ ...modifiersOf(source), deltaX, deltaY, pointerType, type: "move" });
     },
   );
-  const emitEnd = useStableCallback((pointerType: MovePointerType, source: mixed) => {
+  const emitEnd   = useStableCallback((pointerType: MovePointerType, source: mixed) => {
     options?.onMoveEnd?.({ ...modifiersOf(source), pointerType, type: "moveend" });
   });
 
@@ -2117,11 +2117,11 @@ export hook useMove(options?: MoveOptions): MoveResult {
     document.addEventListener("pointerup", finish, false);
     document.addEventListener("pointercancel", finish, false);
     const drag: Dragging = {
-      lastX: event.clientX ?? 0,
-      lastY: event.clientY ?? 0,
-      moved: false,
-      pointerId: event.pointerId ?? 0,
-      pointerType: physicalPointerOf(event.pointerType),
+      lastX           : event.clientX ?? 0,
+      lastY           : event.clientY ?? 0,
+      moved           : false,
+      pointerId       : event.pointerId ?? 0,
+      pointerType     : physicalPointerOf(event.pointerType),
       restoreSelection: null,
       stop: () => {
         document.removeEventListener("pointermove", onDocumentPointerMove, false);
@@ -2173,20 +2173,20 @@ export hook useMove(options?: MoveOptions): MoveResult {
 
 /** A key, as `useKeyboard` hands it to a handler. */
 export type KeyboardInteraction = {|
-  readonly type: "keydown" | "keyup",
-  readonly key: string,
-  readonly code: string,
-  readonly repeat: boolean,
-  readonly altKey: boolean,
-  readonly ctrlKey: boolean,
-  readonly metaKey: boolean,
+  readonly type    : "keydown" | "keyup",
+  readonly key     : string,
+  readonly code    : string,
+  readonly repeat  : boolean,
+  readonly altKey  : boolean,
+  readonly ctrlKey : boolean,
+  readonly metaKey : boolean,
   readonly shiftKey: boolean,
   /** The element the key went to, which may be inside the one listening. */
   readonly target: mixed,
   /** The element listening. */
-  readonly currentTarget: HTMLElement,
+  readonly currentTarget     : HTMLElement,
   readonly isDefaultPrevented: () => boolean,
-  readonly preventDefault: () => void,
+  readonly preventDefault    : () => void,
   /**
    * Let the key reach the elements around this one.
    *
@@ -2200,14 +2200,14 @@ export type KeyboardInteraction = {|
 export type KeyboardOptions = {|
   /** Hear nothing and stop nothing. */
   readonly isDisabled?: boolean,
-  readonly onKeyDown?: (event: KeyboardInteraction) => mixed,
-  readonly onKeyUp?: (event: KeyboardInteraction) => mixed,
+  readonly onKeyDown? : (event: KeyboardInteraction) => mixed,
+  readonly onKeyUp?   : (event: KeyboardInteraction) => mixed,
 |};
 
 /** The handlers `useKeyboard` needs on the element — only the ones it was given. */
 export type KeyboardProps = {|
   readonly onKeyDown?: (event: InteractionEvent) => void,
-  readonly onKeyUp?: (event: InteractionEvent) => void,
+  readonly onKeyUp?  : (event: InteractionEvent) => void,
 |};
 
 /** What `useKeyboard` hands back. */
@@ -2241,15 +2241,15 @@ export hook useKeyboard(options?: KeyboardOptions): KeyboardResult {
       continuePropagation: () => {
         continued = true;
       },
-      currentTarget: elementOf(event.currentTarget),
+      currentTarget     : elementOf(event.currentTarget),
       isDefaultPrevented: () => event.defaultPrevented,
-      key: event.key ?? "",
+      key               : event.key ?? "",
       preventDefault: () => {
         event.preventDefault();
       },
       repeat: event.repeat === true,
       target: event.target,
-      type: up ? "keyup" : "keydown",
+      type  : up ? "keyup" : "keydown",
     });
     if (!continued) {
       event.stopPropagation();
@@ -2257,7 +2257,7 @@ export hook useKeyboard(options?: KeyboardOptions): KeyboardResult {
   });
 
   const onKeyDown = useStableCallback((event: InteractionEvent) => route(event, false));
-  const onKeyUp = useStableCallback((event: InteractionEvent) => route(event, true));
+  const onKeyUp   = useStableCallback((event: InteractionEvent) => route(event, true));
 
   const disabled = options?.isDisabled === true;
   const hearsDown = options?.onKeyDown != null;
@@ -2268,7 +2268,7 @@ export hook useKeyboard(options?: KeyboardOptions): KeyboardResult {
         ? {}
         : {
             onKeyDown: hearsDown ? onKeyDown : undefined,
-            onKeyUp: hearsUp ? onKeyUp : undefined,
+            onKeyUp  : hearsUp ? onKeyUp : undefined,
           },
     [disabled, hearsDown, hearsUp, onKeyDown, onKeyUp],
   );

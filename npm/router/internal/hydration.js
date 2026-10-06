@@ -135,7 +135,7 @@ export type HydrationDifference = {|
 export type HydrationReport = {|
   /** React's own message, kept because it is the thing people search for. */
   readonly message: string,
-  readonly cause: HydrationCause,
+  readonly cause  : HydrationCause,
   /** One sentence saying what that cause means, in the reader's own page. */
   readonly explanation: string,
   /** What to do about it. Empty for `unknown`, which has no advice worth giving. */
@@ -178,7 +178,7 @@ const COMMENT_NODE = 8;
 
 type DetachedHeadStyle = {|
   readonly anchor: Comment,
-  readonly style: HTMLStyleElement,
+  readonly style : HTMLStyleElement,
 |};
 
 /**
@@ -291,9 +291,9 @@ function serialize(container: Node): string | null {
  * has ever been about it.
  */
 function parseServerMarkup(
-  markup: string,
+  markup   : string,
   container: Node,
-  document: Document,
+  document : Document,
 ): {| server: $ReadOnlyArray<Node>, client: $ReadOnlyArray<Node> |} | null {
   const asDocument = container as $FlowFixMe as { documentElement?: ?Element, ... };
   const live = asDocument.documentElement;
@@ -399,11 +399,11 @@ function firstDifference(
     }
     if (frame.kind === "unmatched") {
       return {
-        kind: frame.server == null ? "extra" : "missing",
-        path: frame.path,
+        kind     : frame.server == null ? "extra" : "missing",
+        path     : frame.path,
         attribute: null,
-        server: frame.server == null ? null : show(frame.server),
-        client: frame.client == null ? null : show(frame.client),
+        server   : frame.server == null ? null : show(frame.server),
+        client   : frame.client == null ? null : show(frame.client),
       };
     }
 
@@ -413,8 +413,8 @@ function firstDifference(
         kind: "node-type",
         path,
         attribute: null,
-        server: show(server),
-        client: show(client),
+        server   : show(server),
+        client   : show(client),
       };
     }
     if (server.nodeType === TEXT_NODE || server.nodeType === COMMENT_NODE) {
@@ -423,8 +423,8 @@ function firstDifference(
           kind: "text",
           path,
           attribute: null,
-          server: show(server),
-          client: show(client),
+          server   : show(server),
+          client   : show(client),
         };
       }
       continue;
@@ -460,11 +460,11 @@ function firstDifference(
  * document order, with a marker where one side runs out before the other.
  */
 function pushChildren(
-  stack: Array<Frame>,
+  stack : Array<Frame>,
   server: $ReadOnlyArray<Node>,
   client: $ReadOnlyArray<Node>,
-  path: string,
-  depth: number,
+  path  : string,
+  depth : number,
 ): void {
   const most = Math.max(server.length, client.length);
   for (let index = most - 1; index >= 0; index -= 1) {
@@ -473,18 +473,18 @@ function pushChildren(
     if (onServer == null || onClient == null) {
       const present = onServer ?? onClient;
       stack.push({
-        kind: "unmatched",
+        kind  : "unmatched",
         server: onServer,
         client: onClient,
-        path: present == null ? path : join(path, present, index),
+        path  : present == null ? path : join(path, present, index),
       });
       continue;
     }
     stack.push({
-      kind: "pair",
+      kind  : "pair",
       server: onServer,
       client: onClient,
-      path: join(path, onServer, index),
+      path  : join(path, onServer, index),
       depth,
     });
   }
@@ -615,15 +615,15 @@ function classify(message: string, difference: HydrationDifference | null): Hydr
   // Every kind is named, so a kind added to `DifferenceKind` stops this file
   // compiling rather than arriving in somebody's overlay as "unknown".
   return match (difference.kind) {
-    "extra" | "missing" => "browser-only",
+    "extra" | "missing"                                      => "browser-only",
     // Text on one side and whitespace on the other is a node that only one
     // render produced, not two renders that disagreed about a value.
     "text" if (server.trim() === "" || client.trim() === "") => "browser-only",
-    "text" => sameShape(server, client) ? "variable-input" : "unknown",
-    "attribute" if (oneSided) => "browser-only",
-    "attribute" => sameShape(server, client) ? "variable-input" : "unknown",
+    "text"                                                   => sameShape(server, client) ? "variable-input" : "unknown",
+    "attribute" if (oneSided)                                => "browser-only",
+    "attribute"                                              => sameShape(server, client) ? "variable-input" : "unknown",
     // The two trees hold different nodes here, which says nothing about why.
-    "node-type" | "tag" => "unknown",
+    "node-type" | "tag"                                      => "unknown",
   };
 }
 
@@ -655,10 +655,10 @@ const REMEDIES: { readonly [HydrationCause]: string } = {
  * global.
  */
 export function hydrationReport(input: {|
-  readonly message: string,
-  readonly serverMarkup: string | null,
-  readonly container: Node | null,
-  readonly document: Document,
+  readonly message       : string,
+  readonly serverMarkup  : string | null,
+  readonly container     : Node | null,
+  readonly document      : Document,
   readonly componentStack: string | null,
 |}): HydrationReport {
   const components = componentsOf(input.componentStack);
@@ -668,7 +668,7 @@ export function hydrationReport(input: {|
     message: input.message,
     cause,
     explanation: EXPLANATIONS[cause],
-    remedy: REMEDIES[cause],
+    remedy     : REMEDIES[cause],
     difference,
     components,
     note,
@@ -676,10 +676,10 @@ export function hydrationReport(input: {|
 }
 
 function compare(input: {|
-  readonly message: string,
-  readonly serverMarkup: string | null,
-  readonly container: Node | null,
-  readonly document: Document,
+  readonly message       : string,
+  readonly serverMarkup  : string | null,
+  readonly container     : Node | null,
+  readonly document      : Document,
   readonly componentStack: string | null,
 |}): {| difference: HydrationDifference | null, note: string | null |} {
   if (input.serverMarkup == null || input.container == null) {
@@ -1031,9 +1031,9 @@ function paragraph(document: Document, text: string, className: string | null): 
  * all. See ubugeeei-prod/uf#583.
  */
 export function hydrationErrorHandler(
-  container: Node,
+  container   : Node,
   serverMarkup: string | null,
-  document: Document,
+  document    : Document,
 ): (error: mixed, info: { componentStack?: ?string, ... }) => void {
   return (error, info) => {
     const message = error instanceof Error ? error.message : String(error);
@@ -1074,8 +1074,8 @@ export function hydrationErrorHandler(
     const [headlineLine, ...rest] = text.split("\n");
     reportDiagnostic({
       severity: "error",
-      message: headlineLine,
-      detail: rest,
+      message : headlineLine,
+      detail  : rest,
     });
   };
 }

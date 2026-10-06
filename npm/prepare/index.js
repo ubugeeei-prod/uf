@@ -27,10 +27,10 @@ export type PrepareStep =
 
 export type PreparePlan = {
   readonly lintStagedCompatible: boolean,
-  readonly codeGenerator: boolean,
-  readonly writeGeneratedFiles: boolean,
-  readonly cache: "opt-in",
-  readonly steps: $ReadOnlyArray<PrepareStep>,
+  readonly codeGenerator       : boolean,
+  readonly writeGeneratedFiles : boolean,
+  readonly cache               : "opt-in",
+  readonly steps               : $ReadOnlyArray<PrepareStep>,
 };
 
 export function prepare(): PreparePlan {

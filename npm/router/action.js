@@ -294,7 +294,7 @@ export function registerServerAction<T>(fn: T, id: string): T {
  */
 export function callServerReference(
   reference: string,
-  args: $ReadOnlyArray<mixed>,
+  args     : $ReadOnlyArray<mixed>,
 ): Promise<ActionValue | void> {
   const hash = reference.indexOf("#");
   const id = hash === -1 ? reference : reference.slice(0, hash);
@@ -311,7 +311,7 @@ function callServerActionFor(id: string, name: string): ServerActionFunction {
 
 /** Call action `id`, named `name` in an error, with `args`. */
 async function sendServerAction(
-  id: string,
+  id  : string,
   name: string,
   args: $ReadOnlyArray<mixed>,
 ): Promise<ActionValue | void> {
@@ -392,10 +392,10 @@ async function sendServerAction(
  * the router's runtime is client-rendering code that has no place there.
  */
 async function followOutcome(
-  name: string,
-  outcome: string,
+  name    : string,
+  outcome : string,
   response: Response,
-  from: string,
+  from    : string,
 ): Promise<ActionValue | void> {
   switch (outcome) {
     case "redirect": {

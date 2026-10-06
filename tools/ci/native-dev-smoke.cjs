@@ -21,7 +21,7 @@ async function main() {
     cwd: app,
     env,
     detached: true,
-    stdio: ["pipe", "pipe", "pipe"],
+    stdio   : ["pipe", "pipe", "pipe"],
   });
   let log = "";
   for (const stream of [child.stdout, child.stderr])

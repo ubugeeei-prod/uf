@@ -16,25 +16,25 @@ const MODULE = "@uniflowed/core/rm";
 // docs/hosts.md.
 export type RuntimeEngine = "node" | "deno" | "bun";
 
-export type RuntimeHost = RuntimeEngine;
+export type RuntimeHost        = RuntimeEngine;
 export type RuntimeAcquisition = "auto";
 export type RuntimeApplication = "config-and-host";
-export type RuntimeReference = { readonly name: "uf" | string, readonly version: string };
+export type RuntimeReference   = { readonly name: "uf" | string, readonly version: string };
 
 export type XdgLayout = {
-  readonly configDir: string,
-  readonly dataDir: string,
-  readonly cacheDir: string,
-  readonly stateDir: string,
+  readonly configDir  : string,
+  readonly dataDir    : string,
+  readonly cacheDir   : string,
+  readonly stateDir   : string,
   readonly runtimeDir?: string,
-  readonly binDir: string,
-  readonly shimPath: string,
+  readonly binDir     : string,
+  readonly shimPath   : string,
   readonly versionsDir: string,
 };
 
 export type RuntimeManagerPlan = {
-  readonly engine: RuntimeEngine,
-  readonly hosts: $ReadOnlyArray<RuntimeHost>,
+  readonly engine     : RuntimeEngine,
+  readonly hosts      : $ReadOnlyArray<RuntimeHost>,
   readonly acquisition: RuntimeAcquisition,
   readonly application: RuntimeApplication,
   readonly steps: $ReadOnlyArray<
@@ -49,7 +49,7 @@ export type RuntimeManagerPlan = {
 
 export type RuntimeUsePlan = {
   readonly requested: RuntimeReference,
-  readonly layout: XdgLayout,
+  readonly layout   : XdgLayout,
   readonly steps: $ReadOnlyArray<
     | "resolve-version"
     | "download-runtime"

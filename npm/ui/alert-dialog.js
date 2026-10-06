@@ -99,14 +99,14 @@ hook useAlertDialog(part: string): AlertDialogState {
 
 /** The alert dialog, open or closed. Uncontrolled unless `open` is given. */
 component AlertDialogRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
-  const cancelRef = useRef<HTMLElement | null>(null);
+  const cancelRef   = useRef<HTMLElement | null>(null);
   const describedBy = useRef(0);
-  const state = useMemo(() => ({ cancelRef, describedBy }), []);
+  const state       = useMemo(() => ({ cancelRef, describedBy }), []);
 
   return (
     <AlertDialogContext.Provider value={state}>
@@ -120,7 +120,7 @@ component AlertDialogRoot(
 /** What opens it, and what focus comes back to when it closes. */
 component AlertDialogTrigger(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders DialogTrigger {
   return (
@@ -146,7 +146,7 @@ component AlertDialogOverlay(render?: RenderProp, ...rest: Rest) renders DialogO
  */
 component AlertDialogBody(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders DialogBody {
   const alert = useAlertDialog("AlertDialog.Body");
@@ -199,7 +199,7 @@ component RequireDescription() {
 /** The top of the alert dialog. See `Dialog.Header` for why it is a `div`. */
 component AlertDialogHeader(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders DialogHeader {
   return (
@@ -212,7 +212,7 @@ component AlertDialogHeader(
 /** The bottom, where `Action` and `Cancel` go. */
 component AlertDialogFooter(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders DialogFooter {
   return (
@@ -225,7 +225,7 @@ component AlertDialogFooter(
 /** The question, which is the alert dialog's accessible name. */
 component AlertDialogTitle(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders DialogTitle {
   return (
@@ -244,7 +244,7 @@ component AlertDialogTitle(
  */
 component AlertDialogDescription(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders DialogDescription {
   const alert = useAlertDialog("AlertDialog.Description");
@@ -276,7 +276,7 @@ component AlertDialogDescription(
  */
 component AlertDialogAction(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders DialogClose {
   return (
@@ -295,7 +295,7 @@ component AlertDialogAction(
  */
 component AlertDialogCancel(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders DialogClose {
   const alert = useAlertDialog("AlertDialog.Cancel");

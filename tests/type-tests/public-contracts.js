@@ -16,16 +16,16 @@ export hook useInferredQueryContracts(): void {
 
   const selected = useQuery({
     queryKey: ["selected"],
-    queryFn: async () => ["ada"],
-    select: (value: Array<string>) => value.length,
+    queryFn : async () => ["ada"],
+    select  : (value: Array<string>) => value.length,
   });
   const count: number | void = selected.data;
   // $FlowExpectedError[incompatible-type] select decides the result type
   const wrongSelected: string | void = selected.data;
 
   const paged = useInfiniteQuery({
-    queryKey: ["paged"],
-    queryFn: async ({ pageParam }) => ({ items: ["ada"], page: pageParam }),
+    queryKey        : ["paged"],
+    queryFn         : async ({ pageParam }) => ({ items: ["ada"], page: pageParam }),
     initialPageParam: 0,
     getNextPageParam: () => null,
   });

@@ -196,9 +196,9 @@ export function framed(out) {
 export function compileOptions(root) {
   return {
     root,
-    development: true,
-    sourceMap: true,
-    inSourceTests: inSourceTests(),
+    development    : true,
+    sourceMap      : true,
+    inSourceTests  : inSourceTests(),
     configBootstrap: isConfigBootstrap(),
   };
 }

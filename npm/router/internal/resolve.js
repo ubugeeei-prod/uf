@@ -93,7 +93,7 @@ export type PageRenderProps = {|
   readonly params: RouteParams,
   /** The string map, or the output of the page's `searchParams` schema. */
   readonly searchParams: mixed,
-  readonly data: mixed,
+  readonly data        : mixed,
 |};
 
 /**
@@ -110,7 +110,7 @@ export type PageRenderProps = {|
  * where a typo in a slot name shows up.
  */
 export type LayoutRenderProps = {
-  readonly params: RouteParams,
+  readonly params  : RouteParams,
   readonly children: React.Node,
   ...
 };
@@ -118,16 +118,16 @@ export type LayoutRenderProps = {
 /** What a page module may export. The component is `default` or `Page`. */
 export type PageModule = {
   readonly default?: RouteComponent,
-  readonly Page?: RouteComponent,
-  readonly loader?: (args: LoaderArgs) => mixed | Promise<mixed>,
+  readonly Page?   : RouteComponent,
+  readonly loader? : (args: LoaderArgs) => mixed | Promise<mixed>,
   /**
    * A `@uniflowed/validator` schema for the query string. The page is then
    * given its output as `searchParams` rather than the string map, and a
    * query that does not fit it is the error boundary with a `400`. See
    * `./search-params.js`.
    */
-  readonly searchParams?: Schema<mixed, mixed>,
-  readonly metadata?: Metadata,
+  readonly searchParams?    : Schema<mixed, mixed>,
+  readonly metadata?        : Metadata,
   readonly generateMetadata?: (args: MetadataArgs) => Metadata | Promise<Metadata>,
   readonly generateStaticParams?: () =>
     | $ReadOnlyArray<RouteParams>
@@ -154,8 +154,8 @@ export type PageModule = {
 
 /** What a layout module may export. The component is `default` or `Layout`. */
 export type LayoutModule = {
-  readonly default?: RouteComponent,
-  readonly Layout?: RouteComponent,
+  readonly default? : RouteComponent,
+  readonly Layout?  : RouteComponent,
   readonly metadata?: Metadata,
   /** A transition name for every route under this layout; see [`PageModule`]. */
   readonly viewTransition?: string,
@@ -172,7 +172,7 @@ export type LayoutModule = {
  * about nothing. Titles come from the page and the layouts above it.
  */
 export type TemplateModule = {
-  readonly default?: RouteComponent,
+  readonly default? : RouteComponent,
   readonly Template?: RouteComponent,
   ...
 };
@@ -187,8 +187,8 @@ export type TemplateModule = {
  * whose whole job is already in its name.
  */
 export type ErrorModule = {
-  readonly default?: RouteComponent,
-  readonly Error?: RouteComponent,
+  readonly default? : RouteComponent,
+  readonly Error?   : RouteComponent,
   readonly metadata?: Metadata,
   ...
 };
@@ -233,10 +233,10 @@ export type TwitterCard = "summary" | "summary_large_image" | "app" | "player";
  * says — the tag exists to say something else.
  */
 export type Robots = {
-  readonly index?: boolean,
+  readonly index? : boolean,
   readonly follow?: boolean,
   /** The longest snippet a result may quote; `0` is none, `-1` is no limit. */
-  readonly maxSnippet?: number,
+  readonly maxSnippet?     : number,
   readonly maxImagePreview?: "none" | "standard" | "large",
 };
 
@@ -254,7 +254,7 @@ export type JsonLd = { readonly [string]: mixed };
 
 /** Document metadata a page or layout declares. */
 export type Metadata = {
-  readonly title?: string,
+  readonly title?      : string,
   readonly description?: string,
   /**
    * The absolute URL every other URL here is resolved against.
@@ -366,7 +366,7 @@ export type Metadata = {
      * title. Declared once on the root layout.
      */
     readonly siteName?: string,
-    readonly images?: $ReadOnlyArray<string>,
+    readonly images?  : $ReadOnlyArray<string>,
     /**
      * What the card's image shows, for a reader who cannot see it.
      *
@@ -377,14 +377,14 @@ export type Metadata = {
     readonly imageAlt?: string,
   },
   readonly twitter?: {
-    readonly card?: TwitterCard,
-    readonly site?: string,
+    readonly card?   : TwitterCard,
+    readonly site?   : string,
     readonly creator?: string,
     /** Falls back to `openGraph.title`, and then to `title`. */
     readonly title?: string,
     /** Falls back to `openGraph.description`, and then to `description`. */
     readonly description?: string,
-    readonly images?: $ReadOnlyArray<string>,
+    readonly images?     : $ReadOnlyArray<string>,
     /** Falls back to `openGraph.imageAlt`. */
     readonly imageAlt?: string,
   },
@@ -392,16 +392,16 @@ export type Metadata = {
 
 /** Arguments a loader receives. */
 export type LoaderArgs = {|
-  readonly params: RouteParams,
+  readonly params      : RouteParams,
   readonly searchParams: SearchParams,
-  readonly pathname: string,
+  readonly pathname    : string,
 |};
 
 /** Arguments `generateMetadata` receives. */
 export type MetadataArgs = {|
-  readonly params: RouteParams,
+  readonly params      : RouteParams,
   readonly searchParams: SearchParams,
-  readonly data: mixed,
+  readonly data        : mixed,
 |};
 
 export type RouteRecord = RoutingRouteRecord<
@@ -447,17 +447,17 @@ export type RouteTable = RoutingRouteTable<
 export type RouteMatch = RoutingRouteMatch<RouteRecord>;
 
 export type ResolvedTemplate = {|
-  readonly above: number,
+  readonly above : number,
   readonly module: TemplateModule,
 |};
 
 type ResolvedSlotErrorBoundary = {|
-  readonly above: number,
+  readonly above : number,
   readonly module: ?ErrorModule,
 |};
 
 type SlotErrorBoundaryLoader = {|
-  readonly above: number,
+  readonly above : number,
   readonly module: () => Promise<ErrorModule>,
 |};
 
@@ -466,18 +466,18 @@ type SlotErrorBoundaryLoader = {|
  * when `error` is set, the error page that stands in for it.
  */
 export type ResolvedRoute = {|
-  readonly pathname: string,
-  readonly search: string,
-  readonly path: string,
-  readonly params: RouteParams,
+  readonly pathname    : string,
+  readonly search      : string,
+  readonly path        : string,
+  readonly params      : RouteParams,
   readonly searchParams: SearchParams,
   /**
    * What the page's `searchParams` schema made of the query, when it exports
    * one; absent otherwise. [`pageSearchParams`] is what the page is given.
    */
   readonly parsedSearchParams?: mixed,
-  readonly page: PageModule,
-  readonly layouts: $ReadOnlyArray<LayoutModule>,
+  readonly page               : PageModule,
+  readonly layouts            : $ReadOnlyArray<LayoutModule>,
   /** What the loader returned, once it has. `undefined` while `deferred` is set. */
   readonly data: mixed,
   /**
@@ -506,7 +506,7 @@ export type ResolvedRoute = {|
    * carries it and never reads it; see "View transitions".
    */
   readonly viewTransition: ?string,
-  readonly status: 200 | 400 | 401 | 403 | 404 | 500,
+  readonly status        : 200 | 400 | 401 | 403 | 404 | 500,
   /**
    * Set when this resolution *is* the error page: the loader threw, or the
    * server render did and the renderer resolved again. `null` on the ordinary
@@ -524,7 +524,7 @@ export type ResolvedRoute = {|
    */
   readonly errorBoundary: {|
     readonly module: ?ErrorModule,
-    readonly above: number,
+    readonly above : number,
   |},
   /**
    * The loading boundaries around this route, root first, already imported.
@@ -588,7 +588,7 @@ export type ResolvedRoute = {|
 export type Interception = {|
   /** The URL the navigation went to: the one in the address bar. */
   readonly pathname: string,
-  readonly search: string,
+  readonly search  : string,
   /** The route the navigation came from, as it was before it was intercepted. */
   readonly base: ResolvedRoute,
 |};
@@ -639,7 +639,7 @@ export type ResolvedSlot = {|
 
 /** The URL an intercepting route was matched against. */
 type InterceptedUrl = {|
-  readonly pathname: string,
+  readonly pathname    : string,
   readonly searchParams: SearchParams,
 |};
 
@@ -739,8 +739,8 @@ export function loadOnce<T>(load: () => Promise<T>): Promise<T> {
  * them needs it *early*. The browser passes nothing and pays nothing.
  */
 export async function resolveMatch(
-  table: RouteTable,
-  url: string,
+  table   : RouteTable,
+  url     : string,
   options?: ResolveOptions,
 ): Promise<ResolvedRoute> {
   try {
@@ -789,8 +789,8 @@ export type ResolveOptions = {|
 |};
 
 async function resolveRoute(
-  table: RouteTable,
-  url: string,
+  table   : RouteTable,
+  url     : string,
   options?: ResolveOptions,
 ): Promise<ResolvedRoute> {
   const { pathname, search } = splitUrl(url);
@@ -897,7 +897,7 @@ async function resolveRoute(
   return {
     pathname,
     search,
-    path: matched.route.path,
+    path  : matched.route.path,
     params: matched.params,
     searchParams,
     ...(parsed == null ? {} : { parsedSearchParams: parsed.value }),
@@ -907,12 +907,12 @@ async function resolveRoute(
     deferred,
     metadata,
     viewTransition: resolveViewTransition(page, layouts),
-    status: 200,
-    error: null,
-    errorBoundary: await boundary,
-    loading: await loading,
-    templates: await templates,
-    slots: await slots,
+    status        : 200,
+    error         : null,
+    errorBoundary : await boundary,
+    loading       : await loading,
+    templates     : await templates,
+    slots         : await slots,
   };
 }
 
@@ -931,11 +931,11 @@ async function resolveRoute(
  * null`, so the layout still receives the prop it declares.
  */
 async function resolveSlots(
-  records: $ReadOnlyArray<SlotRecord>,
-  pathname: string,
-  layoutCount: number,
+  records       : $ReadOnlyArray<SlotRecord>,
+  pathname      : string,
+  layoutCount   : number,
   fallbackParams: RouteParams,
-  intercepted?: ?InterceptedUrl,
+  intercepted?  : ?InterceptedUrl,
 ): Promise<$ReadOnlyArray<ResolvedSlot>> {
   if (records.length === 0) {
     return [];
@@ -948,11 +948,11 @@ async function resolveSlots(
 }
 
 async function resolveSlot(
-  record: SlotRecord,
-  pathname: string,
-  layoutCount: number,
+  record        : SlotRecord,
+  pathname      : string,
+  layoutCount   : number,
   fallbackParams: RouteParams,
-  intercepted?: ?InterceptedUrl,
+  intercepted?  : ?InterceptedUrl,
 ): Promise<ResolvedSlot> {
   // Clamped exactly as a template's `above` is, and for the same reason: a
   // hand-written table, or a `(group)` between the layout and the route, can
@@ -961,13 +961,13 @@ async function resolveSlot(
   const empty: ResolvedSlot = {
     name: record.name,
     above,
-    page: null,
-    params: fallbackParams,
-    layouts: [],
-    loading: [],
-    templates: [],
+    page         : null,
+    params       : fallbackParams,
+    layouts      : [],
+    loading      : [],
+    templates    : [],
     errorBoundary: null,
-    slots: [],
+    slots        : [],
     record,
     intercepted,
   };
@@ -986,7 +986,7 @@ async function resolveSlot(
     }
     return {
       ...empty,
-      page: withoutLoader(module, record.defaultFile ?? record.name),
+      page         : withoutLoader(module, record.defaultFile ?? record.name),
       errorBoundary: await resolveSlotErrorBoundary(record.defaultErrorBoundary ?? null, 0),
     };
   }
@@ -1010,10 +1010,10 @@ async function resolveSlot(
  * navigation goes where the URL says instead.
  */
 async function resolveSlotRoute(
-  record: SlotRecord,
-  matched: RoutingRouteMatch<SlotRouteRecord>,
-  above: number,
-  pathname: string,
+  record     : SlotRecord,
+  matched    : RoutingRouteMatch<SlotRouteRecord>,
+  above      : number,
+  pathname   : string,
   intercepted: ?InterceptedUrl,
 ): Promise<?ResolvedSlot> {
   const route = matched.route;
@@ -1036,8 +1036,8 @@ async function resolveSlotRoute(
   return {
     name: record.name,
     above,
-    page: withoutLoader(page, route.file),
-    params: matched.params,
+    page   : withoutLoader(page, route.file),
+    params : matched.params,
     layouts: loaded,
     loading,
     templates,
@@ -1083,7 +1083,7 @@ export function beneath(resolved: ResolvedRoute): ResolvedRoute {
  * about to be replaced, nested slots and all.
  */
 export function interceptingRoutes(
-  slots: $ReadOnlyArray<ResolvedSlot>,
+  slots   : $ReadOnlyArray<ResolvedSlot>,
   pathname: string,
 ): $ReadOnlyArray<SlotRouteRecord> {
   const found: Array<SlotRouteRecord> = [];
@@ -1138,8 +1138,8 @@ export function interceptingRoutes(
  */
 export async function resolveInterception(
   table: RouteTable,
-  base: ResolvedRoute,
-  url: string,
+  base : ResolvedRoute,
+  url  : string,
 ): Promise<?ResolvedRoute> {
   const { pathname, search } = splitUrl(url);
   const intercepted: InterceptedUrl = { pathname, searchParams: parseSearch(search) };
@@ -1179,12 +1179,12 @@ export async function resolveInterception(
     // arriving. The page underneath has not moved, so its name would say
     // nothing about this arrival.
     viewTransition: resolveViewTransition(first.page ?? {}, first.layouts),
-    interception: { pathname, search, base },
+    interception  : { pathname, search, base },
   };
 }
 
 async function resolveSlotErrorBoundary(
-  boundary: ?SlotErrorBoundaryLoader,
+  boundary   : ?SlotErrorBoundaryLoader,
   layoutCount: number,
 ): Promise<?ResolvedSlotErrorBoundary> {
   if (boundary == null) {
@@ -1258,14 +1258,14 @@ function withoutLoader(module: PageModule, file: string): PageModule {
  * belongs, when the module is next asked for.
  */
 async function resolveTemplates(
-  route: RouteRecord,
+  route      : RouteRecord,
   layoutCount: number,
 ): Promise<$ReadOnlyArray<ResolvedTemplate>> {
   return resolveTemplateRecords(route.templates ?? [], layoutCount);
 }
 
 async function resolveTemplateRecords(
-  records: $ReadOnlyArray<TemplateRecord>,
+  records    : $ReadOnlyArray<TemplateRecord>,
   layoutCount: number,
 ): Promise<$ReadOnlyArray<ResolvedTemplate>> {
   if (records.length === 0) {
@@ -1278,7 +1278,7 @@ async function resolveTemplateRecords(
           // Clamped exactly as the error and loading boundaries' are: a
           // `(group)` directory can leave a route with fewer layouts than the
           // template declared above it.
-          above: Math.min(record.above, layoutCount),
+          above : Math.min(record.above, layoutCount),
           module: await loadOnce(record.module),
         };
       } catch {
@@ -1300,14 +1300,14 @@ async function resolveTemplateRecords(
  * import error surfaces where it belongs, when the module is next asked for.
  */
 async function resolveLoading(
-  route: RouteRecord,
+  route      : RouteRecord,
   layoutCount: number,
 ): Promise<$ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>> {
   return resolveLoadingRecords(route.loading ?? [], layoutCount);
 }
 
 async function resolveLoadingRecords(
-  records: $ReadOnlyArray<LoadingRecord>,
+  records    : $ReadOnlyArray<LoadingRecord>,
   layoutCount: number,
 ): Promise<$ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>> {
   if (records.length === 0) {
@@ -1320,7 +1320,7 @@ async function resolveLoadingRecords(
           // Clamped exactly as the error boundary's is, and for the same
           // reason: a `(group)` directory can leave a route with fewer layouts
           // than the boundary that covers it.
-          above: Math.min(record.above, layoutCount),
+          above : Math.min(record.above, layoutCount),
           module: await loadOnce(record.module),
         };
       } catch {
@@ -1341,7 +1341,7 @@ async function resolveLoadingRecords(
  */
 export async function resolveFailure(
   table: RouteTable,
-  url: string,
+  url  : string,
   error: mixed,
 ): Promise<ResolvedRoute> {
   const { pathname, search } = splitUrl(url);
@@ -1404,8 +1404,8 @@ export function pageSearchParams(resolved: ResolvedRoute): mixed {
  * inferred.
  */
 async function resolveErrorBoundary(
-  table: RouteTable,
-  pathname: string,
+  table      : RouteTable,
+  pathname   : string,
   layoutCount: number,
 ): Promise<{| readonly module: ?ErrorModule, readonly above: number |}> {
   const boundary = nearestBoundary(table.errors, pathname);
@@ -1444,11 +1444,11 @@ async function resolveErrorBoundary(
  * the boundary belong to the subtree that just stopped.
  */
 async function resolveError(
-  table: RouteTable,
-  pathname: string,
-  search: string,
+  table       : RouteTable,
+  pathname    : string,
+  search      : string,
   searchParams: SearchParams,
-  routeError: RouteError,
+  routeError  : RouteError,
 ): Promise<ResolvedRoute> {
   const boundary = nearestBoundary(table.errors, pathname);
   let module: ?ErrorModule = null;
@@ -1478,27 +1478,27 @@ async function resolveError(
   return {
     pathname,
     search,
-    path: "*",
+    path  : "*",
     params: {},
     searchParams,
     page: { default: ResolvedErrorPage },
     layouts,
-    data: undefined,
+    data    : undefined,
     deferred: null,
     metadata: declared.title != null ? declared : { ...declared, title: errorTitle(routeError) },
     // The boundary's own layouts may name one; the page cannot, because the
     // page here is this module's. An error arriving under the section's
     // transition is the same answer as a page arriving under it.
     viewTransition: resolveViewTransition({}, layouts),
-    status: routeErrorStatus(routeError),
-    error: routeError,
+    status        : routeErrorStatus(routeError),
+    error         : routeError,
     // All of the boundary's layouts are above it, and no inner boundary is
     // inserted around a page that already is one; see `RouteView`.
     errorBoundary: { module, above: layouts.length },
     // An error page has nothing left to wait for: it renders the value it was
     // resolved with. A fallback around it would be a boundary that can never
     // show, which is worse than none.
-    loading: [],
+    loading  : [],
     templates: [],
     // And slots for the third time: a slot belongs to the segment the walk went
     // through, and an error page is matched rather than walked to. A layout
@@ -1536,9 +1536,9 @@ async function resolveError(
  * layout still applies to the 404.
  */
 async function resolveNotFound(
-  table: RouteTable,
-  pathname: string,
-  search: string,
+  table       : RouteTable,
+  pathname    : string,
+  search      : string,
   searchParams: SearchParams,
 ): Promise<ResolvedRoute> {
   const record = nearestBoundary(table.notFound, pathname);
@@ -1557,17 +1557,17 @@ async function resolveNotFound(
   return {
     pathname,
     search,
-    path: "*",
+    path  : "*",
     params: {},
     searchParams,
     page,
     layouts,
-    data: undefined,
+    data    : undefined,
     deferred: null,
     metadata,
     viewTransition: resolveViewTransition(page, layouts),
-    status: 404,
-    error: null,
+    status        : 404,
+    error         : null,
     // A not-found page is a page: one that throws is contained like any other.
     errorBoundary: await resolveErrorBoundary(table, pathname, layouts.length),
     // A not-found boundary is matched, not nested: `nearestBoundary` picked one
@@ -1590,9 +1590,9 @@ async function resolveNotFound(
  * rather than a correction; [`Metadata`] has the argument.
  */
 async function resolveMetadata(
-  page: PageModule,
+  page   : PageModule,
   layouts: $ReadOnlyArray<LayoutModule>,
-  args: MetadataArgs,
+  args   : MetadataArgs,
 ): Promise<Metadata> {
   let merged: Metadata = {};
   let structured: $ReadOnlyArray<JsonLd> = [];
@@ -1646,7 +1646,7 @@ type Transitioning = { readonly viewTransition?: string, ... };
  * type would be a claim it does not need and cannot use.
  */
 function resolveViewTransition(
-  page: Transitioning,
+  page   : Transitioning,
   layouts: $ReadOnlyArray<Transitioning>,
 ): ?string {
   let name: ?string = null;
@@ -1672,9 +1672,9 @@ component DefaultNotFound() {
 export function errorTitle(error: RouteError): string {
   return match (error) {
     {kind: "badRequest", ...} => "Bad request",
-    {kind: "unauthorized"} => "Sign in required",
-    {kind: "forbidden"} => "Not allowed",
-    {kind: "thrown", ...} => "Something went wrong",
+    {kind: "unauthorized"}    => "Sign in required",
+    {kind: "forbidden"}       => "Not allowed",
+    {kind: "thrown", ...}     => "Something went wrong",
   };
 }
 

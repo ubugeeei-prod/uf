@@ -53,9 +53,9 @@ export function servesRemoteImages(images) {
 export function endpointSettings(images, defaults) {
   return {
     remotePatterns: images.remotePatterns,
-    widths: images.widths ?? defaults.DEFAULT_WIDTHS,
-    quality: images.quality ?? defaults.DEFAULT_QUALITY,
-    qualities: images.qualities ?? [],
+    widths        : images.widths ?? defaults.DEFAULT_WIDTHS,
+    quality       : images.quality ?? defaults.DEFAULT_QUALITY,
+    qualities     : images.qualities ?? [],
   };
 }
 
@@ -82,7 +82,7 @@ export function ufImageTransform({ root, command }) {
       const encoded = await readFile(path.join(out, variant.file));
       return {
         bytes: new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength),
-        type: variant.mime,
+        type : variant.mime,
       };
     } finally {
       await rm(source, { force: true });

@@ -31,8 +31,8 @@ import {
 /** How one declared type becomes a Flow value and back. */
 export type Codec<T> = {|
   readonly sqlType: string,
-  readonly decode: (value: mixed) => T,
-  readonly encode: (value: T) => SqlParam,
+  readonly decode : (value: mixed) => T,
+  readonly encode : (value: T) => SqlParam,
 |};
 
 /** `INTEGER` as a `number`, which throws past 2^53 instead of rounding. */
@@ -50,8 +50,8 @@ export const integer: Codec<number> = {
 /** `INTEGER` as a `bigint`, for `sqliteInteger: "bigint"`. */
 export const integerAsBigint: Codec<bigint> = {
   sqlType: "INTEGER",
-  decode: (value) => bigintFrom("INTEGER", value),
-  encode: (value) => bigintParam("INTEGER (a bigint)", value),
+  decode : (value) => bigintFrom("INTEGER", value),
+  encode : (value) => bigintParam("INTEGER (a bigint)", value),
 };
 
 /** `REAL`, `DOUBLE`, `FLOAT`, and `NUMERIC`/`DECIMAL`, which SQLite stores as one or an INTEGER. */
@@ -106,21 +106,21 @@ export const string: Codec<string> = text("TEXT");
 /** `BLOB`. */
 export const blob: Codec<Uint8Array> = {
   sqlType: "BLOB",
-  decode: (value) => bytesFrom("BLOB", value),
-  encode: (value) => bytesParam("BLOB (a Uint8Array)", value),
+  decode : (value) => bytesFrom("BLOB", value),
+  encode : (value) => bytesParam("BLOB (a Uint8Array)", value),
 };
 
 /** `JSON` and `JSONB` (sqlc reads the latter through `json()`), stored as text. */
 export const json: Codec<JsonValue> = {
   sqlType: "JSON",
-  decode: (value) => jsonFromText(value),
-  encode: (value) => jsonParam(value),
+  decode : (value) => jsonFromText(value),
+  encode : (value) => jsonParam(value),
 };
 
 /** A declared type with no affinity uf can type, or a result sqlc could not. */
 export const unknown: Codec<mixed> = {
   sqlType: "unknown",
-  decode: (value) => value,
+  decode : (value) => value,
   encode: (value) => {
     if (
       value === null ||
@@ -141,7 +141,7 @@ export const unknown: Codec<mixed> = {
 /** A `CHECK (x IN (…))`-style enum sqlc was told about through an override. */
 export function enumeration<T extends string>(
   sqlType: string,
-  values: $ReadOnlyArray<T>,
+  values : $ReadOnlyArray<T>,
 ): Codec<T> {
   const expected = `${sqlType} (${enumName(values)})`;
   return {
@@ -156,14 +156,14 @@ export function enumeration<T extends string>(
  * value back to what `codec` writes.
  */
 export function map<T, U>(
-  codec: Codec<T>,
+  codec : Codec<T>,
   decode: (value: T) => U,
   encode: (value: U) => T,
 ): Codec<U> {
   return {
     sqlType: codec.sqlType,
-    decode: (value) => decode(codec.decode(value)),
-    encode: (value) => codec.encode(encode(value)),
+    decode : (value) => decode(codec.decode(value)),
+    encode : (value) => codec.encode(encode(value)),
   };
 }
 

@@ -391,40 +391,40 @@ component TeamTemplate(children: React.Node) {
 const loadTeamTemplate = () => Promise.resolve({ default: TeamTemplate });
 
 const slot = {
-  name: "team",
-  above: 1,
+  name       : "team",
+  above      : 1,
   defaultPage: pageOf("the team default"),
-  defaultMdx: false,
+  defaultMdx : false,
   routes: [
     {
-      path: "/dashboard/members",
-      params: [],
-      mdx: false,
-      file: "app/dashboard/@team/members/$page.js",
-      page: pageOf("the team members"),
-      layouts: [],
+      path     : "/dashboard/members",
+      params   : [],
+      mdx      : false,
+      file     : "app/dashboard/@team/members/$page.js",
+      page     : pageOf("the team members"),
+      layouts  : [],
       templates: [{ above: 0, module: loadTeamTemplate }],
-      slots: [],
+      slots    : [],
     },
   ],
 };
 
 const page = (routePath: string, text: string) => ({
-  path: routePath,
-  params: [],
-  mdx: false,
-  file: `app${routePath}/$page.js`,
-  page: pageOf(text),
-  layouts: [loadFrame],
-  loading: [],
+  path     : routePath,
+  params   : [],
+  mdx      : false,
+  file     : `app${routePath}/$page.js`,
+  page     : pageOf(text),
+  layouts  : [loadFrame],
+  loading  : [],
   templates: [],
-  slots: [slot],
+  slots    : [slot],
 });
 
 const table = {
-  routes: [page("/dashboard", "the dashboard"), page("/dashboard/members", "the members page")],
+  routes  : [page("/dashboard", "the dashboard"), page("/dashboard/members", "the members page")],
   notFound: [],
-  errors: [],
+  errors  : [],
 };
 
 const assets = { scripts: [], styles: [], preloads: [] };
@@ -483,7 +483,7 @@ describe("rendering a route that has one", () => {
     const dynamicSlot = {
       ...slot,
       defaultPage: () => Promise.resolve({ default: TeamDefault }),
-      routes: [],
+      routes     : [],
     };
     const { prerender } = createRenderer({
       App: routerView("./app"),
@@ -491,11 +491,11 @@ describe("rendering a route that has one", () => {
         {
           ...page("/dashboard/:org", "the org dashboard"),
           params: [{ name: "org", catchAll: false }],
-          slots: [dynamicSlot],
+          slots : [dynamicSlot],
         },
       ],
       notFound: [],
-      errors: [],
+      errors  : [],
     });
 
     const result = await prerender("/dashboard/acme", assets);
@@ -526,10 +526,10 @@ describe("rendering a route that has one", () => {
 
   it("renders the same tree as before for a route with no slot", async () => {
     const { prerender } = createRenderer({
-      App: routerView("./app"),
-      routes: [{ ...page("/dashboard", "the dashboard"), slots: [] }],
+      App     : routerView("./app"),
+      routes  : [{ ...page("/dashboard", "the dashboard"), slots: [] }],
       notFound: [],
-      errors: [],
+      errors  : [],
     });
 
     const result = await prerender("/dashboard", assets);
@@ -585,15 +585,15 @@ describe("rendering a route that has one", () => {
       routes: [
         {
           ...slot.routes[0],
-          page: () => Promise.resolve({ default: SlowTeam }),
+          page   : () => Promise.resolve({ default: SlowTeam }),
           loading: [{ above: 0, module: () => Promise.resolve({ default: TeamLoading }) }],
         },
       ],
     };
     const tableWithSlowSlot = {
-      routes: [{ ...page("/dashboard/members", "the members page"), slots: [slowSlot] }],
+      routes  : [{ ...page("/dashboard/members", "the members page"), slots: [slowSlot] }],
       notFound: [],
-      errors: [],
+      errors  : [],
     };
     const resolved = await resolveMatch(tableWithSlowSlot, "/dashboard/members");
     expect(resolved.slots[0].loading.length).toBe(1);
@@ -637,15 +637,15 @@ describe("rendering a route that has one", () => {
       routes: [
         {
           ...slot.routes[0],
-          page: () => Promise.resolve({ default: BrokenTeam }),
+          page         : () => Promise.resolve({ default: BrokenTeam }),
           errorBoundary: { above: 0, module: () => Promise.resolve({ default: TeamError }) },
         },
       ],
     };
     const tableWithSlotError = {
-      routes: [{ ...page("/dashboard/members", "the members page"), slots: [brokenSlot] }],
+      routes  : [{ ...page("/dashboard/members", "the members page"), slots: [brokenSlot] }],
       notFound: [],
-      errors: [],
+      errors  : [],
     };
     const resolved = await resolveMatch(tableWithSlotError, "/dashboard/members");
 

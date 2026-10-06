@@ -67,11 +67,11 @@ import type { Getter, SetAction } from "@uniflowed/state";
  * every value and disagree about the only thing that matters.
  */
 function memoryStorage(seed?: { [string]: string }): {
-  getItem: (key: string) => null | string,
-  setItem: (key: string, value: string) => void,
+  getItem   : (key: string) => null | string,
+  setItem   : (key: string, value: string) => void,
   removeItem: (key: string) => void,
-  entries: Map<string, string>,
-  reads: () => number,
+  entries   : Map<string, string>,
+  reads     : () => number,
 } {
   const initial: { readonly [string]: string } = seed ?? {};
   const entries: Map<string, string> = new Map(
@@ -104,7 +104,7 @@ function memoryStorage(seed?: { [string]: string }): {
  */
 function controlled(): {
   settle: (key: string, value: string) => void,
-  load: (key: string) => Promise<string>,
+  load  : (key: string) => Promise<string>,
 } {
   const waiting: Map<string, (value: string) => void> = new Map();
   return {
@@ -138,18 +138,18 @@ function controlled(): {
 function controlledStorage(seed?: { [string]: string }): {
   adapter: {
     getItem: (
-      key: string,
+      key    : string,
       initial: string,
       context: { readonly signal: AbortSignal, ... },
     ) => Promise<string>,
-    setItem: (key: string, value: string) => Promise<void>,
+    setItem   : (key: string, value: string) => Promise<void>,
     removeItem: (key: string) => Promise<void>,
   },
   entries: Map<string, string>,
-  reads: () => number,
+  reads  : () => number,
   signals: Array<AbortSignal>,
-  settle: () => void,
-  fail: (error: mixed) => void,
+  settle : () => void,
+  fail   : (error: mixed) => void,
 } {
   const initial: { readonly [string]: string } = seed ?? {};
   const entries: Map<string, string> = new Map(
@@ -157,10 +157,10 @@ function controlledStorage(seed?: { [string]: string }): {
   );
   const signals: Array<AbortSignal> = [];
   let waiting: Array<{
-    key: string,
+    key    : string,
     initial: string,
     deliver: (value: string) => void,
-    reject: (error: mixed) => void,
+    reject : (error: mixed) => void,
   }> = [];
   let reads = 0;
 
@@ -1125,8 +1125,8 @@ describe("atomWithStorage", () => {
     const outside: Set<(value: string) => void> = new Set();
     const json = createJSONStorage<string>(() => storage);
     const theme = atomWithStorage("theme", "light", {
-      getItem: json.getItem,
-      setItem: json.setItem,
+      getItem   : json.getItem,
+      setItem   : json.setItem,
       removeItem: json.removeItem,
       subscribe: (key, onChange) => {
         outside.add(onChange);
@@ -1355,8 +1355,8 @@ describe("atomWithAsyncStorage", () => {
     const storage = controlledStorage({ theme: "dark" });
     const outside: Set<(value: string) => void> = new Set();
     const theme = atomWithAsyncStorage("theme", "light", {
-      getItem: storage.adapter.getItem,
-      setItem: storage.adapter.setItem,
+      getItem   : storage.adapter.getItem,
+      setItem   : storage.adapter.setItem,
       removeItem: storage.adapter.removeItem,
       subscribe: (key, onChange) => {
         outside.add(onChange);
@@ -1411,8 +1411,8 @@ describe("atomWithAsyncStorage", () => {
     process.on("unhandledRejection", onUnhandled);
     try {
       const theme = atomWithAsyncStorage("theme", "light", {
-        getItem: () => Promise.resolve("dark"),
-        setItem: () => Promise.reject(Error("quota exceeded")),
+        getItem   : () => Promise.resolve("dark"),
+        setItem   : () => Promise.reject(Error("quota exceeded")),
         removeItem: () => Promise.resolve(),
       });
       subscribe(theme, () => {});
@@ -1906,8 +1906,8 @@ describe("the React binding, in a DOM", () => {
           {
             match (settled) {
               {state: "hasData", data: const data} => data,
-              {state: "hasError", ...} => "failed",
-              _ => "loading",
+              {state: "hasError", ...}             => "failed",
+              _                                    => "loading",
             }
           }
         </output>
@@ -1930,7 +1930,7 @@ describe("useResetAtom", () => {
 
     component Switcher() {
       const [value, set] = useAtom(theme);
-      const reset = useResetAtom(theme);
+      const reset        = useResetAtom(theme);
       return (
         <div>
           <output>{value}</output>
@@ -2089,9 +2089,9 @@ describe("the utilities' types, held to what the checker actually says", () => {
 
   it("reports every misuse, and only the misuses", () => {
     everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "state-utils.js"),
+      fixture  : path.join("tests", "type-tests", "state-utils.js"),
       alongside: ["npm/state"],
-      atLeast: 8,
+      atLeast  : 8,
     });
   });
 });

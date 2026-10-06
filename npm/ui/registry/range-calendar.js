@@ -17,22 +17,22 @@ const styles = stylex.create({
   // The same frame as `Calendar`'s. A block, because the month buttons hang
   // on the caption's line from a zero-height row; `calendar.js` says why.
   root: {
-    display: "inline-block",
-    boxSizing: "border-box",
-    padding: ufTokens.space3,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
+    display        : "inline-block",
+    boxSizing      : "border-box",
+    padding        : ufTokens.space3,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    color          : ufTokens.ink,
     backgroundColor: ufTokens.surface,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusMd,
+    borderWidth    : "1px",
+    borderStyle    : "solid",
+    borderColor    : ufTokens.border,
+    borderRadius   : ufTokens.radiusMd,
   },
 });
 export component RangeCalendar(
-  children?: React.Node,
-  xstyle?: StyleArgument,
+  children? : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

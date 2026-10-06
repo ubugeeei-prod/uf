@@ -11,17 +11,17 @@ const ID = "a".repeat(64);
 const dispatcher = createActionDispatcher({
   actions: [
     {
-      id: ID,
+      id    : ID,
       module: "app/actions.js",
       export: "increment",
-      load: async () => ({ increment: async (value: number) => value + 1 }),
+      load  : async () => ({ increment: async (value: number) => value + 1 }),
     },
   ],
 });
 
 /** `base`, with `extra`'s headers over it. */
 function withExtra(
-  base: { readonly [string]: string },
+  base : { readonly [string]: string },
   extra: { readonly [string]: string },
 ): { [string]: string } {
   const headers: { [string]: string } = {};
@@ -39,10 +39,10 @@ function request(extra: { readonly [string]: string } = {}) {
     method: "POST",
     headers: withExtra(
       {
-        "uf-action": ID,
+        "uf-action"       : ID,
         "uf-native-action": "bearer-v1",
-        authorization: "Bearer valid-token",
-        "content-type": "application/json",
+        authorization     : "Bearer valid-token",
+        "content-type"    : "application/json",
       },
       extra,
     ),
@@ -71,7 +71,7 @@ async function hosted(input: Request, authorize: boolean = true) {
 describe("native bearer actions", () => {
   it("calls the action through the client and the application's verifier", async () => {
     const call = createNativeActionClient({
-      origin: "https://app.test",
+      origin  : "https://app.test",
       getToken: async () => "valid-token",
       fetch: async (url, options) => {
         expect(options.credentials).toBe("omit");
@@ -136,13 +136,13 @@ describe("native route transport", () => {
     const dispatch = createDispatcher({
       handlers: [
         {
-          path: "/api/users/:id",
+          path  : "/api/users/:id",
           params: [{ name: "id", catchAll: false }],
-          file: "app/api/users/[id]/$route.js",
+          file  : "app/api/users/[id]/$route.js",
           load: async () => ({
             GET: (request: Request, { params }: HandlerContext) =>
               Response.json({
-                id: params.id,
+                id   : params.id,
                 token: request.headers.get("authorization"),
               }),
           }),
@@ -150,7 +150,7 @@ describe("native route transport", () => {
       ],
     });
     const client = createRouteClient({
-      origin: "https://app.test",
+      origin  : "https://app.test",
       getToken: async () => "app-token",
       fetch: async (url, options) => {
         const input = new Request(url, { ...options, headers: { ...options.headers } });
@@ -160,7 +160,7 @@ describe("native route transport", () => {
       },
     });
     expect(await (await client("/api/users/a%20b")).json()).toEqual({
-      id: "a b",
+      id   : "a b",
       token: "Bearer app-token",
     });
   });
@@ -184,7 +184,7 @@ describe("native route transport", () => {
     let token = "first";
     const seen = [];
     const client = createRouteClient({
-      origin: "https://app.test",
+      origin  : "https://app.test",
       getToken: async () => token,
       fetch: async (url, options) => {
         seen.push([url, options.headers?.authorization]);

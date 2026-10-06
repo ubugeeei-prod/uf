@@ -26,7 +26,7 @@ export type { Environment } from "relay-runtime";
 /** A GraphQL error as a server reports it. */
 export type GraphQlError = {
   readonly message: string,
-  readonly path?: $ReadOnlyArray<string | number>,
+  readonly path?  : $ReadOnlyArray<string | number>,
 };
 
 /** Raised when a response carries `errors`. */
@@ -68,7 +68,7 @@ export type EnvironmentOptions = {
 export function createEnvironment(options: EnvironmentOptions): Environment {
   return new Environment({
     network: Network.create(fetchOperation(options)),
-    store: new Store(new RecordSource()),
+    store  : new Store(new RecordSource()),
   });
 }
 
@@ -82,14 +82,14 @@ export function createEnvironment(options: EnvironmentOptions): Environment {
  */
 function fetchOperation(options: EnvironmentOptions) {
   return async function run(
-    request: RequestParameters,
+    request  : RequestParameters,
     variables: Variables,
   ): Promise<GraphQLResponse> {
     // `raw` rather than `request`: a GraphQL endpoint answers 200 with an
     // `errors` array, so the status is not the outcome and the body has to be
     // read either way.
     const response = await options.fetch.raw(options.endpoint, {
-      method: "POST",
+      method : "POST",
       headers: requestHeaders(options.headers),
       body: {
         query: request.text,

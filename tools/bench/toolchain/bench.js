@@ -202,15 +202,15 @@ const DEV_TIMEOUT_MS = 2 * 60_000;
 const HMR_TIMEOUT_MS = 15_000;
 
 type Options = {
-  readonly presets: $ReadOnlyArray<Preset>,
-  readonly tools: $ReadOnlyArray<string>,
-  readonly runs: number,
-  readonly warmup: number,
-  readonly hmrEdits: number,
-  readonly stages: $ReadOnlyArray<string> | null,
-  readonly workDir: string,
-  readonly out: string | null,
-  readonly requireQuiet: boolean,
+  readonly presets       : $ReadOnlyArray<Preset>,
+  readonly tools         : $ReadOnlyArray<string>,
+  readonly runs          : number,
+  readonly warmup        : number,
+  readonly hmrEdits      : number,
+  readonly stages        : $ReadOnlyArray<string> | null,
+  readonly workDir       : string,
+  readonly out           : string | null,
+  readonly requireQuiet  : boolean,
   readonly quietTimeoutMs: number,
 };
 
@@ -383,8 +383,8 @@ function packageVersion(directory: string): string {
 
 async function printed(
   program: string,
-  args: $ReadOnlyArray<string>,
-  env: Environment,
+  args   : $ReadOnlyArray<string>,
+  env    : Environment,
 ): Promise<string> {
   try {
     const finished = await run(program, args, { cwd: REPO, env, timeoutMs: 60_000 });
@@ -398,16 +398,16 @@ async function collectVersions(uf: string, env: Environment): Promise<{ [string]
   const relative = path.relative(REPO, uf);
   return {
     // `uf --version` prints `uf 0.0.0-alpha.32`, and the key is already the name.
-    uf: (await printed(uf, ["--version"], env)).replace(/^uf\s+/, ""),
+    uf    : (await printed(uf, ["--version"], env)).replace(/^uf\s+/, ""),
     commit: await printed("git", ["rev-parse", "HEAD"], env),
     // Where the binary came from: `target/release/uf` is a release build, and a
     // path outside the checkout is reported by name rather than leaking a home
     // directory into a file somebody may publish.
     binary: relative.startsWith("..") || path.isAbsolute(relative) ? path.basename(uf) : relative,
-    node: process.version,
-    npm: await printed(path.join(path.dirname(process.execPath), "npm"), ["--version"], env),
-    vite: packageVersion(path.join(REPO, "node_modules", "vite")),
-    react: packageVersion(path.join(REPO, "node_modules", "react")),
+    node  : process.version,
+    npm   : await printed(path.join(path.dirname(process.execPath), "npm"), ["--version"], env),
+    vite  : packageVersion(path.join(REPO, "node_modules", "vite")),
+    react : packageVersion(path.join(REPO, "node_modules", "react")),
   };
 }
 
@@ -420,10 +420,10 @@ function machine(before: Quietness, after: Quietness): Machine {
         `${process.env.ImageOS ?? "?"} ${process.env.ImageVersion ?? "?"})`
       : null;
   return {
-    platform: `${os.platform()} ${os.release()}`,
-    arch: os.arch(),
-    cpu: cpus.length > 0 ? cpus[0].model.trim() : "unknown",
-    cores: cpus.length,
+    platform   : `${os.platform()} ${os.release()}`,
+    arch       : os.arch(),
+    cpu        : cpus.length > 0 ? cpus[0].model.trim() : "unknown",
+    cores      : cpus.length,
     memoryBytes: os.totalmem(),
     ci,
     before,
@@ -492,23 +492,23 @@ function numberIn(command: string, object: { readonly [string]: mixed }, key: st
 }
 
 type Context = {
-  readonly env: Environment,
+  readonly env    : Environment,
   readonly options: Options,
 };
 
 type RowFields = {
-  readonly tool: string,
-  readonly stage: string,
+  readonly tool   : string,
+  readonly stage  : string,
   readonly fixture: string,
-  readonly title: string,
+  readonly title  : string,
   readonly command: string,
-  readonly cache: string,
-  readonly warmup: number,
+  readonly cache  : string,
+  readonly warmup : number,
 };
 
 function makeRow(
-  fields: RowFields,
-  samples: $ReadOnlyArray<number>,
+  fields    : RowFields,
+  samples   : $ReadOnlyArray<number>,
   cpuSamples: $ReadOnlyArray<number | null> | null,
 ): Row {
   const summary = summarise(samples);
@@ -523,30 +523,30 @@ function makeRow(
       ? summarise(cpu)
       : null;
   return {
-    id: `${fields.tool}/${fields.stage}/${fields.fixture}`,
-    tool: fields.tool,
-    stage: fields.stage,
+    id     : `${fields.tool}/${fields.stage}/${fields.fixture}`,
+    tool   : fields.tool,
+    stage  : fields.stage,
     fixture: fields.fixture,
-    title: fields.title,
+    title  : fields.title,
     command: fields.command,
-    cache: fields.cache,
-    unit: "ms",
-    warmup: fields.warmup,
-    runs: samples.length,
+    cache  : fields.cache,
+    unit   : "ms",
+    warmup : fields.warmup,
+    runs   : samples.length,
     samples: samples.map((sample) => Number(sample.toFixed(1))),
-    median: summary.median,
-    min: summary.min,
-    max: summary.max,
-    mean: summary.mean,
-    stddev: summary.stddev,
+    median : summary.median,
+    min    : summary.min,
+    max    : summary.max,
+    mean   : summary.mean,
+    stddev : summary.stddev,
     cpu:
       cpuSummary == null
         ? null
         : {
             samples: cpu.map((sample) => Number(sample.toFixed(1))),
-            median: cpuSummary.median,
-            min: cpuSummary.min,
-            max: cpuSummary.max,
+            median : cpuSummary.median,
+            min    : cpuSummary.min,
+            max    : cpuSummary.max,
           },
   };
 }
@@ -564,9 +564,9 @@ function progress(line: string): void {
  * written. Returns the host `uf test` ran the suite on.
  */
 async function prepare(
-  uf: string,
-  env: Environment,
-  dir: string,
+  uf     : string,
+  env    : Environment,
+  dir    : string,
   summary: FixtureSummary,
 ): Promise<string> {
   const options = { cwd: dir, env, timeoutMs: COMMAND_TIMEOUT_MS };
@@ -597,9 +597,9 @@ async function prepare(
 
 /** Run `uf test --json` in `dir`, require exactly `tests` passes, and return the host. */
 async function expectUfTests(
-  uf: string,
-  env: Environment,
-  dir: string,
+  uf   : string,
+  env  : Environment,
+  dir  : string,
   tests: number,
 ): Promise<string> {
   const tested = await run(uf, ["test", "--json"], {
@@ -625,15 +625,15 @@ async function expectUfTests(
 
 /** A command that runs to completion, and everything needed to time it. */
 type Timed = {
-  readonly tool: string,
-  readonly stage: string,
+  readonly tool   : string,
+  readonly stage  : string,
   readonly fixture: string,
-  readonly title: string,
+  readonly title  : string,
   readonly program: string,
-  readonly args: $ReadOnlyArray<string>,
+  readonly args   : $ReadOnlyArray<string>,
   readonly command: string,
-  readonly dir: string,
-  readonly caches: $ReadOnlyArray<string>,
+  readonly dir    : string,
+  readonly caches : $ReadOnlyArray<string>,
 };
 
 async function oneShot(context: Context, timed: Timed, cold: boolean): Promise<Row> {
@@ -645,10 +645,10 @@ async function oneShot(context: Context, timed: Timed, cold: boolean): Promise<R
       clearCaches(timed.dir, timed.caches);
     }
     const finished = await run(timed.program, timed.args, {
-      cwd: timed.dir,
-      env: context.env,
+      cwd      : timed.dir,
+      env      : context.env,
       timeoutMs: COMMAND_TIMEOUT_MS,
-      cpu: true,
+      cpu      : true,
     });
     expectSuccess(timed.command, timed.dir, finished);
     if (at >= options.warmup) {
@@ -659,13 +659,13 @@ async function oneShot(context: Context, timed: Timed, cold: boolean): Promise<R
   const temperature = cold ? "cold" : "warm";
   return makeRow(
     {
-      tool: timed.tool,
-      stage: `${timed.stage}.${temperature}`,
+      tool   : timed.tool,
+      stage  : `${timed.stage}.${temperature}`,
       fixture: timed.fixture,
-      title: `${timed.title}, ${temperature}`,
+      title  : `${timed.title}, ${temperature}`,
       command: timed.command,
-      cache: describeCache(timed.caches, cold),
-      warmup: options.warmup,
+      cache  : describeCache(timed.caches, cold),
+      warmup : options.warmup,
     },
     samples,
     cpu,
@@ -674,13 +674,13 @@ async function oneShot(context: Context, timed: Timed, cold: boolean): Promise<R
 
 /** A dev server, and everything needed to start it. */
 type Served = {
-  readonly tool: string,
+  readonly tool   : string,
   readonly fixture: string,
   readonly program: string,
-  readonly args: (port: number) => $ReadOnlyArray<string>,
+  readonly args   : (port: number) => $ReadOnlyArray<string>,
   readonly command: string,
-  readonly dir: string,
-  readonly caches: $ReadOnlyArray<string>,
+  readonly dir    : string,
+  readonly caches : $ReadOnlyArray<string>,
 };
 
 async function devStart(context: Context, served: Served, cold: boolean): Promise<Row> {
@@ -709,13 +709,13 @@ async function devStart(context: Context, served: Served, cold: boolean): Promis
   const temperature = cold ? "cold" : "warm";
   return makeRow(
     {
-      tool: served.tool,
-      stage: `dev.${temperature}`,
+      tool   : served.tool,
+      stage  : `dev.${temperature}`,
       fixture: served.fixture,
-      title: `dev server start to first document, ${temperature}`,
+      title  : `dev server start to first document, ${temperature}`,
       command: served.command,
-      cache: describeCache(served.caches, cold),
-      warmup: options.warmup,
+      cache  : describeCache(served.caches, cold),
+      warmup : options.warmup,
     },
     samples,
     null,
@@ -724,8 +724,8 @@ async function devStart(context: Context, served: Served, cold: boolean): Promis
 
 async function hotUpdate(
   context: Context,
-  served: Served,
-  hot: { readonly file: string, readonly urlPath: string },
+  served : Served,
+  hot    : { readonly file: string, readonly urlPath: string },
 ): Promise<$ReadOnlyArray<Row>> {
   const { options } = context;
   // At least one edit is thrown away whatever `--warmup` says, for the reason
@@ -742,13 +742,13 @@ async function hotUpdate(
     const first = await waitForDocument(server, DEV_TIMEOUT_MS);
     const samples = await measureHmr({
       port,
-      document: first.body,
-      file: path.join(served.dir, hot.file),
-      urlPath: hot.urlPath,
-      marker: HOT_MARKER,
-      edits: warmup + options.hmrEdits,
+      document : first.body,
+      file     : path.join(served.dir, hot.file),
+      urlPath  : hot.urlPath,
+      marker   : HOT_MARKER,
+      edits    : warmup + options.hmrEdits,
       timeoutMs: HMR_TIMEOUT_MS,
-      settleMs: 250,
+      settleMs : 250,
     });
     const kept = samples.slice(warmup);
     const command = `${served.command}; edit ${hot.file}`;
@@ -801,10 +801,10 @@ const LOCKFILES = [
 function isolatedHome(env: Environment, home: string): Environment {
   return {
     ...env,
-    HOME: home,
-    XDG_CACHE_HOME: path.join(home, ".cache"),
-    XDG_CONFIG_HOME: path.join(home, ".config"),
-    XDG_DATA_HOME: path.join(home, ".local", "share"),
+    HOME                      : home,
+    XDG_CACHE_HOME            : path.join(home, ".cache"),
+    XDG_CONFIG_HOME           : path.join(home, ".config"),
+    XDG_DATA_HOME             : path.join(home, ".local", "share"),
     npm_config_update_notifier: "false",
   };
 }
@@ -834,9 +834,9 @@ function managerOf(project: string): string {
  * from another's cache.
  */
 async function install(
-  context: Context,
-  tool: string,
-  program: string,
+  context : Context,
+  tool    : string,
+  program : string,
   manifest: string,
 ): Promise<{ readonly rows: $ReadOnlyArray<Row>, readonly manager: string }> {
   const { options } = context;
@@ -857,10 +857,10 @@ async function install(
     for (let at = 0; at < options.warmup + options.runs; at += 1) {
       reset();
       const finished = await run(program, ["install"], {
-        cwd: project,
-        env: installEnv,
+        cwd      : project,
+        env      : installEnv,
         timeoutMs: COMMAND_TIMEOUT_MS,
-        cpu: true,
+        cpu      : true,
       });
       expectSuccess(command, project, finished);
       if (!fs.existsSync(path.join(project, "node_modules", "react", "package.json"))) {
@@ -920,8 +920,8 @@ async function install(
 }
 
 type OneShot = {
-  readonly name: string,
-  readonly args: $ReadOnlyArray<string>,
+  readonly name : string,
+  readonly args : $ReadOnlyArray<string>,
   readonly title: string,
 };
 
@@ -949,7 +949,7 @@ const STAGES: $ReadOnlyArray<string> = [
 type Found = {
   readonly programs: Map<string, string>,
   readonly versions: { [string]: string },
-  readonly skipped: Array<Skipped>,
+  readonly skipped : Array<Skipped>,
 };
 
 async function findTools(options: Options, env: Environment): Promise<Found> {
@@ -1023,10 +1023,10 @@ function copies(workDir: string, preset: Preset, versions: Versions): (copy: Cop
  */
 async function prepareRival(
   context: Context,
-  spec: OneShotSpec,
+  spec   : OneShotSpec,
   program: string,
-  dir: string,
-  tests: number,
+  dir    : string,
+  tests  : number,
 ): Promise<void> {
   const options = { cwd: dir, env: context.env, timeoutMs: COMMAND_TIMEOUT_MS };
   const setup = spec.setup;
@@ -1053,13 +1053,13 @@ function programIn(tool: string, program: string, dir: string): string {
 }
 
 async function measurePreset(
-  context: Context,
-  preset: Preset,
-  uf: string,
-  found: Found,
+  context        : Context,
+  preset         : Preset,
+  uf             : string,
+  found          : Found,
   fixtureVersions: Versions,
-  selected: (stage: string) => boolean,
-  results: Array<Row>,
+  selected       : (stage: string) => boolean,
+  results        : Array<Row>,
 ): Promise<{ readonly summary: FixtureSummary, readonly host: string | null }> {
   const { options, env } = context;
   const measuring = (tool: string): boolean =>
@@ -1083,12 +1083,12 @@ async function measurePreset(
             await oneShot(
               context,
               {
-                tool: "uf",
-                stage: stage.name,
+                tool   : "uf",
+                stage  : stage.name,
                 fixture: preset.name,
-                title: stage.title,
+                title  : stage.title,
                 program: uf,
-                args: stage.args,
+                args   : stage.args,
                 command: `uf ${stage.args.join(" ")}`,
                 dir,
                 caches: CACHES,
@@ -1100,10 +1100,10 @@ async function measurePreset(
       }
     }
     const served = {
-      tool: "uf",
+      tool   : "uf",
       fixture: preset.name,
       program: uf,
-      args: (port: number) => ["dev", "--port", String(port)],
+      args   : (port: number) => ["dev", "--port", String(port)],
       command: "uf dev",
       dir,
       caches: CACHES,
@@ -1118,7 +1118,7 @@ async function measurePreset(
     if (selected("hmr.message") || selected("hmr.applied")) {
       progress(`${preset.name}: uf hmr`);
       for (const row of await hotUpdate(context, served, {
-        file: HOT_FILE,
+        file   : HOT_FILE,
         urlPath: `/${HOT_FILE}`,
       })) {
         if (selected(row.stage)) {
@@ -1146,15 +1146,15 @@ async function measurePreset(
           await oneShot(
             context,
             {
-              tool: spec.tool,
-              stage: spec.stage,
+              tool   : spec.tool,
+              stage  : spec.stage,
               fixture: preset.name,
-              title: spec.title,
+              title  : spec.title,
               program: local,
-              args: spec.args,
+              args   : spec.args,
               command: `${spec.tool} ${spec.args.join(" ")}`,
-              dir: copyDir,
-              caches: spec.caches,
+              dir    : copyDir,
+              caches : spec.caches,
             },
             cold,
           ),
@@ -1204,7 +1204,7 @@ function servedRival(spec: DevSpec, program: string, dir: string, fixture: strin
     tool: spec.tool,
     fixture,
     program: programIn(spec.tool, program, dir),
-    args: spec.args,
+    args   : spec.args,
     command: `${spec.tool} dev`,
     dir,
     caches: spec.caches,
@@ -1227,17 +1227,17 @@ function suiteCaches(tool: string): $ReadOnlyArray<string> {
  * linked into the pinned install here, and Bun's needs nothing.
  */
 async function measureSuite(
-  context: Context,
-  uf: string,
-  found: Found,
+  context : Context,
+  uf      : string,
+  found   : Found,
   selected: (stage: string) => boolean,
-  results: Array<Row>,
+  results : Array<Row>,
 ): Promise<boolean> {
   const { options, env } = context;
   const runners: Array<{
-    readonly tool: string,
+    readonly tool   : string,
     readonly program: string,
-    readonly args: $ReadOnlyArray<string>,
+    readonly args   : $ReadOnlyArray<string>,
   }> = [];
   if (options.tools.includes("uf")) {
     runners.push({ tool: "uf", program: uf, args: ["test"] });
@@ -1274,14 +1274,14 @@ async function measureSuite(
       await prepareRival(
         context,
         {
-          tool: runner.tool,
-          stage: "test",
-          title: "test suite",
-          copy: "vite",
-          args: runner.args,
+          tool  : runner.tool,
+          stage : "test",
+          title : "test suite",
+          copy  : "vite",
+          args  : runner.args,
           caches: [],
-          setup: null,
-          tests: true,
+          setup : null,
+          tests : true,
         },
         runner.program,
         dir,
@@ -1296,12 +1296,12 @@ async function measureSuite(
           await oneShot(
             context,
             {
-              tool: runner.tool,
-              stage: "test",
+              tool   : runner.tool,
+              stage  : "test",
               fixture: "suite",
-              title: "many small test files",
+              title  : "many small test files",
               program: runner.program,
-              args: runner.args,
+              args   : runner.args,
               command: `${runner.tool} ${runner.args.join(" ")}`,
               dir,
               caches: suiteCaches(runner.tool),
@@ -1343,7 +1343,7 @@ async function main(): Promise<void> {
   const context = { env, options };
   const fixtureVersions: Versions = {
     uniflowed: packageVersion(path.join(REPO, "npm", "react")),
-    react: versions.react,
+    react    : versions.react,
   };
 
   const fixtures: { [string]: FixtureSummary } = {};
@@ -1368,9 +1368,9 @@ async function main(): Promise<void> {
   }
   const suite = (await measureSuite(context, uf, found, selected, results))
     ? {
-        files: GUIDE_PRESET.files,
-        cases: GUIDE_PRESET.cases,
-        tests: GUIDE_PRESET.files * GUIDE_PRESET.cases,
+        files     : GUIDE_PRESET.files,
+        cases     : GUIDE_PRESET.cases,
+        tests     : GUIDE_PRESET.files * GUIDE_PRESET.cases,
         assertions: GUIDE_PRESET.files * GUIDE_PRESET.cases * 2,
       }
     : null;
@@ -1402,25 +1402,25 @@ async function main(): Promise<void> {
     }
     installed = {
       dependencies: manifest.dependencies,
-      manager: manager ?? "not measured",
+      manager     : manager ?? "not measured",
     };
   }
 
   const report: Report = {
-    schema: 1,
+    schema   : 1,
     arguments: argv,
     startedAt,
-    finishedAt: new Date().toISOString(),
+    finishedAt : new Date().toISOString(),
     provisional: !before.quiet,
-    machine: machine(before, quietness()),
+    machine    : machine(before, quietness()),
     versions: Object.fromEntries([
       ...Object.entries(versions),
       ["host", host],
       ...Object.entries(found.versions),
     ]),
     settings: { runs: options.runs, warmup: options.warmup, hmrEdits: options.hmrEdits },
-    tools: options.tools,
-    skipped: found.skipped,
+    tools   : options.tools,
+    skipped : found.skipped,
     fixtures,
     suite,
     install: installed,

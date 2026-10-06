@@ -170,8 +170,8 @@ export hook useUntilFound(ref: { current: HTMLElement | null }, shown: boolean):
  * `presenceProps(presence)`.
  */
 export hook useDisclosurePanel(
-  ref: { current: HTMLElement | null },
-  open: boolean,
+  ref    : { current: HTMLElement | null },
+  open   : boolean,
   measure: boolean,
 ): Presence {
   const presence = usePresence(open, ref);
@@ -249,13 +249,13 @@ function heightOf(element: HTMLElement): number {
     return measured;
   }
   const before = {
-    boxSizing: style.boxSizing,
+    boxSizing        : style.boxSizing,
     contentVisibility: style.getPropertyValue("content-visibility"),
-    display: style.display,
-    height: style.height,
-    position: style.position,
-    visibility: style.visibility,
-    width: style.width,
+    display          : style.display,
+    height           : style.height,
+    position         : style.position,
+    visibility       : style.visibility,
+    width            : style.width,
   };
   // Out of flow and unpainted, so nothing below the panel moves and no frame
   // shows it. The order is not significant; this is all one style

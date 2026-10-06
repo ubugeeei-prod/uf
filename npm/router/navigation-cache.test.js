@@ -85,8 +85,8 @@ describe("the cache a navigation reads first", () => {
     flightNavigations.store("/guide", answer("/guide"));
     expect(inspectNavigationCache()).toEqual({
       staleTime: 30,
-      flight: [{ key: "/guide", cachedAt: now, staleAt: now + 30_000, fresh: true }],
-      routes: [],
+      flight   : [{ key: "/guide", cachedAt: now, staleAt: now + 30_000, fresh: true }],
+      routes   : [],
     });
     now += 30_000;
     expect(inspectNavigationCache().flight[0].fresh).toBe(false);
@@ -161,7 +161,7 @@ component LinkProgress() {
 
 component Screen() {
   const router = useRouter();
-  const route = useRoute();
+  const route  = useRoute();
   return (
     <main>
       <h1>{`page ${route.pathname}`}</h1>
@@ -196,13 +196,13 @@ function rootFor(url: string, status: number = 200, interceptedFrom?: ?string): 
   const pathname = question === -1 ? url : url.slice(0, question);
   const route: $FlowFixMe = {
     pathname,
-    search: question === -1 ? "" : url.slice(question),
-    path: pathname,
-    params: {},
-    searchParams: {},
-    data: undefined,
-    deferred: null,
-    metadata: {},
+    search        : question === -1 ? "" : url.slice(question),
+    path          : pathname,
+    params        : {},
+    searchParams  : {},
+    data          : undefined,
+    deferred      : null,
+    metadata      : {},
     viewTransition: null,
     status,
     error: null,
@@ -212,7 +212,7 @@ function rootFor(url: string, status: number = 200, interceptedFrom?: ?string): 
         : {
             pathname,
             search: question === -1 ? "" : url.slice(question),
-            from: interceptedFrom,
+            from  : interceptedFrom,
           },
   };
   return { route, tree: <Screen /> };
@@ -511,19 +511,19 @@ function moduleTable(): RouteTable {
   // New page loaders per table, so no module a previous test loaded is reused.
   const routes: $FlowFixMe = [
     {
-      path: "/",
-      params: [],
-      mdx: false,
-      file: "app/$page.js",
-      page: () => Promise.resolve({ default: Home }),
+      path   : "/",
+      params : [],
+      mdx    : false,
+      file   : "app/$page.js",
+      page   : () => Promise.resolve({ default: Home }),
       layouts: [],
       loading: [],
     },
     {
-      path: "/slow",
+      path  : "/slow",
       params: [],
-      mdx: false,
-      file: "app/slow/$page.js",
+      mdx   : false,
+      file  : "app/slow/$page.js",
       page: () =>
         Promise.resolve({
           default: Slow,

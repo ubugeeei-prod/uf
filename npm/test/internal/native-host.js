@@ -31,7 +31,7 @@ export async function loadNativeFile(file: string): Promise<() => Promise<void>>
     {
       config: JSON.stringify({
         rootDir,
-        preset: "@react-native/jest-preset",
+        preset        : "@react-native/jest-preset",
         cacheDirectory: path.join(rootDir, ".uf", "native-test-cache"),
         moduleNameMapper: {
           "^@uniflowed/test$": fileURLToPath(new URL("./native-globals.js", import.meta.url).href),
@@ -49,8 +49,8 @@ export async function loadNativeFile(file: string): Promise<() => Promise<void>>
   const context = await Runtime.createContext(config, {
     console,
     maxWorkers: 1,
-    watch: false,
-    watchman: false,
+    watch     : false,
+    watchman  : false,
   });
   const Environment = load(config.testEnvironment);
   const environment = new (Environment.TestEnvironment ?? Environment)(

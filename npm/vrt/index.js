@@ -1,29 +1,29 @@
 // @flow
 import type { TestPage, ScreenshotResult } from "@uniflowed/test/browser";
 export type VisualSnapshot = {|
-  readonly storyId: string,
+  readonly storyId : string,
   readonly viewport: string,
   readonly baseline: string,
 |};
-export type VrtEngine = "chromium-cdp";
-export type DiffAlgorithm = "pixelmatch";
+export type VrtEngine      = "chromium-cdp";
+export type DiffAlgorithm  = "pixelmatch";
 export type BaselinePolicy = "explicit-update-only";
 export type VisualRegressionPlan = {|
-  readonly engine: VrtEngine,
-  readonly baselines: string,
-  readonly threshold: number,
-  readonly diff: DiffAlgorithm,
+  readonly engine        : VrtEngine,
+  readonly baselines     : string,
+  readonly threshold     : number,
+  readonly diff          : DiffAlgorithm,
   readonly baselinePolicy: BaselinePolicy,
-  readonly snapshots: $ReadOnlyArray<VisualSnapshot>,
+  readonly snapshots     : $ReadOnlyArray<VisualSnapshot>,
 |};
 export function plan(snapshots?: $ReadOnlyArray<VisualSnapshot>): VisualRegressionPlan {
   return {
-    engine: "chromium-cdp",
-    baselines: "__uf_vrt__",
-    threshold: 0,
-    diff: "pixelmatch",
+    engine        : "chromium-cdp",
+    baselines     : "__uf_vrt__",
+    threshold     : 0,
+    diff          : "pixelmatch",
     baselinePolicy: "explicit-update-only",
-    snapshots: snapshots ?? [],
+    snapshots     : snapshots ?? [],
   };
 }
 export function snapshot(storyId: string, viewport: string): VisualSnapshot {
@@ -35,7 +35,7 @@ export function snapshot(storyId: string, viewport: string): VisualSnapshot {
 }
 /** The application resolves each story and viewport to a ready, isolated page. */
 export async function diff(
-  value: VisualRegressionPlan,
+  value : VisualRegressionPlan,
   render: (snapshot: VisualSnapshot) => Promise<TestPage>,
 ): Promise<$ReadOnlyArray<ScreenshotResult>> {
   const results = [];

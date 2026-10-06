@@ -76,9 +76,9 @@ const rows = (frame: Frame): Array<string> => {
 const cell = (frame: Frame, x: number, y: number) => {
   const index = y * frame.width + x;
   return {
-    char: frame.chars[index],
-    fg: frame.fg[index],
-    bg: frame.bg[index],
+    char      : frame.chars[index],
+    fg        : frame.fg[index],
+    bg        : frame.bg[index],
     attributes: frame.attributes[index],
   };
 };
@@ -130,17 +130,17 @@ describe("a tree, as cells", () => {
     );
     const frame = handle.frame();
     expect(cell(frame, 0, 0)).toEqual({
-      char: "a",
-      fg: 0xff0000,
-      bg: INHERIT,
+      char      : "a",
+      fg        : 0xff0000,
+      bg        : INHERIT,
       attributes: Attributes.NONE,
     });
     // The nested node inherited the colour and added the weight, rather than
     // replacing the style wholesale.
     expect(cell(frame, 1, 0)).toEqual({
-      char: "b",
-      fg: 0xff0000,
-      bg: INHERIT,
+      char      : "b",
+      fg        : 0xff0000,
+      bg        : INHERIT,
       attributes: Attributes.BOLD,
     });
     handle.stop();
@@ -180,7 +180,7 @@ describe("a tree, as cells", () => {
 
   it("fills a background over what was under it", () => {
     const handle = testRender(<Box backgroundColor="#0000ff" width={3} height={1} />, {
-      width: 4,
+      width : 4,
       height: 1,
     });
     const frame = handle.frame();
@@ -420,7 +420,7 @@ describe("a line that wraps", () => {
 
   it("stacks the lines from the far side with wrap-reverse", () => {
     const handle = testRender(<Words size={7} height={3} flexWrap="wrap-reverse" />, {
-      width: 7,
+      width : 7,
       height: 3,
     });
     expect(rows(handle.frame())).toEqual(["       ", "ccc    ", "aaa bbb"]);
@@ -429,14 +429,14 @@ describe("a line that wraps", () => {
 
   it("places the lines with alignContent", () => {
     const centred = testRender(<Words size={7} height={4} alignContent="center" />, {
-      width: 7,
+      width : 7,
       height: 4,
     });
     expect(rows(centred.frame())).toEqual(["       ", "aaa bbb", "ccc    ", "       "]);
     centred.stop();
 
     const apart = testRender(<Words size={7} height={4} alignContent="space-between" />, {
-      width: 7,
+      width : 7,
       height: 4,
     });
     expect(rows(apart.frame())).toEqual(["aaa bbb", "       ", "       ", "ccc    "]);
@@ -933,8 +933,8 @@ describe("a window onto more than fits", () => {
         {log(8)}
       </ScrollBox>,
       {
-        width: 8,
-        height: 2,
+        width       : 8,
+        height      : 2,
         capabilities: { color: "none", glyphs: "ascii", tty: "interactive" },
       },
     );
@@ -1115,31 +1115,31 @@ describe("a window costs the window", () => {
    * child layout reached from one it skipped.
    */
   const node = (
-    style: LayoutStyle,
+    style   : LayoutStyle,
     children: Array<LayoutNode>,
-    height: number | null = null,
+    height  : number | null = null,
   ): LayoutNode => ({
     style,
     children,
-    borderWidth: 0,
-    measure: height == null ? null : leaf(height),
-    x: 0,
-    y: -1,
-    width: 0,
-    height: 0,
-    scrollFirst: 0,
-    scrollCount: 0,
-    scrollHeight: 0,
-    scrollOffset: 0,
-    scrollViewTop: 0,
-    scrollViewRows: 0,
-    scrollBarColumn: 0,
-    measuredForWidth: -1,
+    borderWidth      : 0,
+    measure          : height == null ? null : leaf(height),
+    x                : 0,
+    y                : -1,
+    width            : 0,
+    height           : 0,
+    scrollFirst      : 0,
+    scrollCount      : 0,
+    scrollHeight     : 0,
+    scrollOffset     : 0,
+    scrollViewTop    : 0,
+    scrollViewRows   : 0,
+    scrollBarColumn  : 0,
+    measuredForWidth : -1,
     measuredForHeight: -1,
-    measuredWidth: 0,
-    measuredHeight: 0,
-    scrollDirtyFrom: 0,
-    scrollIndex: null,
+    measuredWidth    : 0,
+    measuredHeight   : 0,
+    scrollDirtyFrom  : 0,
+    scrollIndex      : null,
   });
 
   /** A scrolling box of `count` one-row children, showing from `offset`. */
@@ -1339,7 +1339,7 @@ describe("the diff writes only what changed", () => {
 
   it("emits a colour once for a run rather than once per cell", () => {
     const handle = testRender(<Text fg="#ff0000">aaaa</Text>, {
-      width: 4,
+      width : 4,
       height: 1,
     });
     const update = handle.update();
@@ -1350,8 +1350,8 @@ describe("the diff writes only what changed", () => {
 
   it("writes no escape sequences at all on a terminal that takes none", () => {
     const handle = testRender(<Text fg="#ff0000">hi</Text>, {
-      width: 2,
-      height: 1,
+      width       : 2,
+      height      : 1,
       capabilities: { color: "none", glyphs: "ascii", tty: "interactive" },
     });
     const update = handle.update();
@@ -1531,7 +1531,7 @@ describe("input reaches what has focus", () => {
 
   it("puts one line of a paste into an input, and no control characters", () => {
     const handle = testRender(<Input focused={true} defaultValue="" />, {
-      width: 12,
+      width : 12,
       height: 1,
     });
     handle.press("\u001b[200~one\u0007two\nthree\u001b[201~");
@@ -1700,7 +1700,7 @@ describe("input reaches what has focus", () => {
 
   it("shows a placeholder until something is typed", () => {
     const handle = testRender(<Input placeholder="name" focused={false} width={8} height={1} />, {
-      width: 8,
+      width : 8,
       height: 1,
     });
     expect(frameRow(handle.frame(), 0)).toBe("name    ");
@@ -1709,7 +1709,7 @@ describe("input reaches what has focus", () => {
 
   it("draws the cursor as an inverse cell where the caret is", () => {
     const handle = testRender(<Input defaultValue="ab" focused={true} width={6} height={1} />, {
-      width: 6,
+      width : 6,
       height: 1,
     });
     handle.press("\u001b[D");
@@ -1721,7 +1721,7 @@ describe("input reaches what has focus", () => {
 
   it("does not insert a character for a key that carries none", () => {
     const handle = testRender(<Input defaultValue="" focused={true} width={6} height={1} />, {
-      width: 6,
+      width : 6,
       height: 1,
     });
     handle.press("\u001b[A");
@@ -1732,7 +1732,7 @@ describe("input reaches what has focus", () => {
 
   it("does not edit an input for a key release event", () => {
     const handle = testRender(<Input defaultValue="" focused={true} width={6} height={1} />, {
-      width: 6,
+      width : 6,
       height: 1,
     });
     handle.press("a");
@@ -2002,7 +2002,7 @@ describe("the mouse reaches what is under it", () => {
       trail.push(event.type);
     };
     const handle = testRender(<Box id="one" width={4} height={2} onMouse={record} />, {
-      width: 4,
+      width : 4,
       height: 2,
     });
     handle.press("\u001b[<0;1;1M");
@@ -2074,9 +2074,9 @@ describe("the mouse reaches what is under it", () => {
     // selection. A renderer with it off has no hit grid and routes nothing.
     const clicked = fn();
     const handle = testRender(<Box id="one" width={4} height={2} onMouseDown={clicked} />, {
-      width: 4,
+      width : 4,
       height: 2,
-      mouse: false,
+      mouse : false,
     });
     handle.press("\u001b[<0;1;1M");
     expect(clicked).not.toHaveBeenCalled();
@@ -2375,7 +2375,7 @@ describe("a drag selects what it crossed", () => {
     // reaches past the package's public surface, and nothing writes to an
     // outer variable during a render to observe it.
     component Copier() {
-      const renderer = useRenderer();
+      const renderer            = useRenderer();
       const [copied, setCopied] = useState<string>("");
       useKeyboard((key) => {
         if (key.name === "y") {
@@ -2439,7 +2439,7 @@ describe("a list a reader chooses from", () => {
 
   /** Ten one-line items, for the tests about a window onto a longer list. */
   const TEN = Array.from({ length: 10 }, (_, index) => ({
-    name: `item ${index}`,
+    name       : `item ${index}`,
     description: "",
   }));
 
@@ -2466,18 +2466,18 @@ describe("a list a reader chooses from", () => {
     expect(cell(frame, 0, 0).bg).toBe(0x334455);
     expect(cell(frame, 19, 1).bg).toBe(0x334455);
     expect(cell(frame, 1, 0)).toEqual({
-      char: "▶",
-      fg: 0xffff00,
-      bg: 0x334455,
+      char      : "▶",
+      fg        : 0xffff00,
+      bg        : 0x334455,
       attributes: Attributes.NONE,
     });
     expect(cell(frame, 3, 1).fg).toBe(0xcccccc);
     // The rest are in the terminal's own colours, with OpenTUI's grey for a
     // description.
     expect(cell(frame, 3, 2)).toEqual({
-      char: "t",
-      fg: INHERIT,
-      bg: INHERIT,
+      char      : "t",
+      fg        : INHERIT,
+      bg        : INHERIT,
       attributes: Attributes.NONE,
     });
     expect(cell(frame, 3, 3).fg).toBe(0x888888);
@@ -2540,7 +2540,7 @@ describe("a list a reader chooses from", () => {
     handle.stop();
 
     const wrapping = testRender(<Select focused={true} options={TASKS} wrapSelection={true} />, {
-      width: 20,
+      width : 20,
       height: 6,
     });
     wrapping.press(UP);
@@ -2698,8 +2698,8 @@ describe("a list a reader chooses from", () => {
 
   it("draws the marker in the vocabulary the terminal has", () => {
     const handle = testRender(<Select options={TASKS} showDescription={false} />, {
-      width: 10,
-      height: 3,
+      width       : 10,
+      height      : 3,
       capabilities: { color: "none", glyphs: "ascii", tty: "piped" },
     });
     expect(frameRow(handle.frame(), 0)).toBe(" > build  ");
@@ -2728,7 +2728,7 @@ describe("a row of tabs", () => {
 
   it("draws the names, a rule under the selected one, and its description", () => {
     const handle = testRender(<TabSelect options={VIEWS.slice(0, 3)} tabWidth={8} />, {
-      width: 24,
+      width : 24,
       height: 4,
     });
     const frame = handle.frame();
@@ -2744,9 +2744,9 @@ describe("a row of tabs", () => {
     expect(cell(frame, 8, 0).bg).toBe(INHERIT);
     expect(cell(frame, 1, 0).fg).toBe(0xffff00);
     expect(cell(frame, 3, 1)).toEqual({
-      char: "▬",
-      fg: 0xffff00,
-      bg: 0x334455,
+      char      : "▬",
+      fg        : 0xffff00,
+      bg        : 0x334455,
       attributes: Attributes.NONE,
     });
     expect(cell(frame, 1, 2).fg).toBe(0xcccccc);
@@ -2950,7 +2950,7 @@ describe("several lines a reader types into", () => {
 
   it("scrolls sideways when it does not wrap", () => {
     const handle = testRender(<Textarea focused={true} wrapMode="none" width={5} height={1} />, {
-      width: 5,
+      width : 5,
       height: 1,
     });
     handle.press("abcdefg");
@@ -3116,7 +3116,7 @@ describe("several lines a reader types into", () => {
 
   it("takes a paste whole, newlines and all, without the escape sequences in it", () => {
     const handle = testRender(<Textarea focused={true} width={10} height={3} />, {
-      width: 10,
+      width : 10,
       height: 3,
     });
     handle.press("\u001b[200~one\r\n\u001b[31mtwo\u001b[0m\u0007\u001b[201~");
@@ -3142,7 +3142,7 @@ describe("several lines a reader types into", () => {
 
   it("takes no keys without focus, and none from a key's release", () => {
     const handle = testRender(<Textarea initialValue="a" width={4} height={1} />, {
-      width: 4,
+      width : 4,
       height: 1,
     });
     handle.press("b");
@@ -3150,7 +3150,7 @@ describe("several lines a reader types into", () => {
     handle.stop();
 
     const focused = testRender(<Textarea focused={true} width={4} height={1} />, {
-      width: 4,
+      width : 4,
       height: 1,
     });
     focused.press("\u001b[98;1:3u");
@@ -3203,8 +3203,8 @@ describe("what the terminal can take", () => {
 
   it("draws a box in ASCII when the terminal cannot be trusted with more", () => {
     const handle = testRender(<Box border={true} width={5} height={3} />, {
-      width: 5,
-      height: 3,
+      width       : 5,
+      height      : 3,
       capabilities: { color: "none", glyphs: "ascii", tty: "interactive" },
     });
     // The same geometry, drawn with characters a `TERM=dumb` terminal prints:
@@ -3216,16 +3216,16 @@ describe("what the terminal can take", () => {
 
   it("downgrades a colour rather than dropping it", () => {
     const red = testRender(<Text fg="#ff0000">x</Text>, {
-      width: 1,
-      height: 1,
+      width       : 1,
+      height      : 1,
       capabilities: { color: "ansi16", glyphs: "unicode", tty: "interactive" },
     });
     expect(red.update().output).toContain("[0;91m");
     red.stop();
 
     const indexed = testRender(<Text fg="#ff0000">x</Text>, {
-      width: 1,
-      height: 1,
+      width       : 1,
+      height      : 1,
       capabilities: { color: "ansi256", glyphs: "unicode", tty: "interactive" },
     });
     expect(indexed.update().output).toContain("[0;38;5;196m");
@@ -3250,7 +3250,7 @@ describe("what the terminal can take", () => {
 
     expect(detectSize(env({ COLUMNS: "40", LINES: "12" }), stream)).toEqual({
       columns: 40,
-      rows: 12,
+      rows   : 12,
     });
     // Half an answer is still an answer for the half it covers.
     expect(detectSize(env({ COLUMNS: "40" }), stream)).toEqual({ columns: 40, rows: 30 });
@@ -3724,8 +3724,8 @@ describe("the guide's comparison against React Ink", () => {
     let bytes = 0;
     return {
       columns: 8,
-      rows: 2,
-      isTTY: true,
+      rows   : 2,
+      isTTY  : true,
       write(chunk: string) {
         bytes += encoder.encode(chunk).length;
         return true;
@@ -3808,8 +3808,8 @@ describe("the guide's comparison against React Ink", () => {
     const app = render(<Bench />, {
       stdout,
       stdin,
-      color: "never",
-      env: { COLUMNS: String(WIDTH), LINES: String(HEIGHT) },
+      color          : "never",
+      env            : { COLUMNS: String(WIDTH), LINES: String(HEIGHT) },
       alternateScreen: false,
     });
 
@@ -3837,8 +3837,8 @@ describe("a real terminal, or something that is not one", () => {
       chunks,
       listeners,
       columns: 8,
-      rows: 2,
-      isTTY: options.isTTY,
+      rows   : 2,
+      isTTY  : options.isTTY,
       write(chunk: string) {
         chunks.push(chunk);
         return true;
@@ -3936,7 +3936,7 @@ describe("a real terminal, or something that is not one", () => {
     const stdin = input();
 
     component Copier() {
-      const clipboard = useClipboard();
+      const clipboard         = useClipboard();
       const [state, setState] = useState<string>(clipboard.supported ? "ready" : "no");
       useKeyboard((key) => {
         if (key.sequence === "c") {
@@ -3949,7 +3949,7 @@ describe("a real terminal, or something that is not one", () => {
     const app = render(<Copier />, {
       stdin,
       stdout,
-      env: { COLORTERM: "truecolor" },
+      env            : { COLORTERM: "truecolor" },
       alternateScreen: false,
     });
     const before = stdout.text().length;
@@ -3984,7 +3984,7 @@ describe("a real terminal, or something that is not one", () => {
     const app = render(<Probe />, {
       stdin,
       stdout,
-      env: { COLORTERM: "truecolor" },
+      env      : { COLORTERM: "truecolor" },
       clipboard: false,
     });
     stdin.type("c");
@@ -4031,7 +4031,7 @@ describe("a real terminal, or something that is not one", () => {
       stdin,
       stdout,
       mouse: true,
-      env: { COLORTERM: "truecolor" },
+      env  : { COLORTERM: "truecolor" },
     });
     const opened = stdout.text();
     // Reporting on, drag reporting on, motion-without-a-button on — which is

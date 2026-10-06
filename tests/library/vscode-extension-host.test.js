@@ -35,7 +35,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(EXTENSION, "package.json")
 type ServerOptions = {
   readonly run: {
     readonly command: string,
-    readonly args: Array<string>,
+    readonly args   : Array<string>,
     readonly options: { readonly cwd: string, ... },
   },
   ...
@@ -44,9 +44,9 @@ type ServerOptions = {
 type Disposable = { dispose(): void };
 
 type StatusItem = {
-  text: string,
-  tooltip: string,
-  visible: boolean,
+  text    : string,
+  tooltip : string,
+  visible : boolean,
   command?: string,
   show(): void,
   hide(): void,
@@ -87,13 +87,13 @@ class FakeClient {
 }
 
 type Fake = {
-  vscode: mixed,
+  vscode        : mixed,
   languageclient: mixed,
-  commands: Map<string, () => mixed>,
-  messages: Array<{ level: string, text: string }>,
-  updates: Array<{ key: string, value: mixed, target: number, language: boolean }>,
-  clients: Array<FakeClient>,
-  statusItem: StatusItem,
+  commands      : Map<string, () => mixed>,
+  messages      : Array<{ level: string, text: string }>,
+  updates       : Array<{ key: string, value: mixed, target: number, language: boolean }>,
+  clients       : Array<FakeClient>,
+  statusItem    : StatusItem,
   workspaceState: Map<string, mixed>,
   // `WorkspaceFolder.uri.toString()` for each folder, in order.
   folderUris: Array<string>,
@@ -113,9 +113,9 @@ function ufProject(): string {
 function fake(
   roots: Array<string>,
   options: {
-    serverVersion?: string,
-    settings?: { [string]: mixed },
-    inspections?: { [string]: { [string]: mixed } },
+    serverVersion? : string,
+    settings?      : { [string]: mixed },
+    inspections?   : { [string]: { [string]: mixed } },
     workspaceState?: Map<string, mixed>,
     // Keys VS Code refuses as a folder setting, as it refuses a
     // window-scoped one in a multi-root workspace.
@@ -130,7 +130,7 @@ function fake(
   FakeClient.created = clients;
   const workspaceState = options.workspaceState ?? new Map<string, mixed>();
   const statusItem: StatusItem = {
-    text: "",
+    text   : "",
     tooltip: "",
     visible: false,
     show() {
@@ -145,7 +145,7 @@ function fake(
   const event = () => disposable;
   const uri = (fsPath: string) => ({ fsPath, toString: () => `file://${fsPath}`, scheme: "file" });
   const folders = roots.map((root, index) => ({
-    uri: uri(root),
+    uri : uri(root),
     name: path.basename(root),
     index,
   }));
@@ -169,19 +169,19 @@ function fake(
       }
       id: string;
     },
-    StatusBarAlignment: { Left: 1, Right: 2 },
+    StatusBarAlignment : { Left: 1, Right: 2 },
     ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
     window: {
-      createOutputChannel: () => ({ appendLine() {}, show() {}, dispose() {} }),
-      createStatusBarItem: () => statusItem,
-      showErrorMessage: message("error"),
-      showWarningMessage: message("warning"),
+      createOutputChannel   : () => ({ appendLine() {}, show() {}, dispose() {} }),
+      createStatusBarItem   : () => statusItem,
+      showErrorMessage      : message("error"),
+      showWarningMessage    : message("warning"),
       showInformationMessage: message("information"),
-      showQuickPick: () => Promise.resolve(undefined),
+      showQuickPick         : () => Promise.resolve(undefined),
     },
     workspace: {
       workspaceFolders: folders,
-      textDocuments: [],
+      textDocuments   : [],
       getWorkspaceFolder: (target: { fsPath: string }) =>
         folders.find((folder) => target.fsPath.startsWith(folder.uri.fsPath)),
       getConfiguration: (section: ?string) => ({
@@ -208,9 +208,9 @@ function fake(
         dispose() {},
       }),
       onDidChangeWorkspaceFolders: event,
-      onDidChangeConfiguration: event,
-      onWillSaveTextDocument: event,
-      onDidOpenTextDocument: event,
+      onDidChangeConfiguration   : event,
+      onWillSaveTextDocument     : event,
+      onDidOpenTextDocument      : event,
     },
     commands: {
       registerCommand: (name: string, handler: () => mixed) => {
@@ -340,7 +340,7 @@ describe("VS Code's built-in JavaScript validation", () => {
     // In a multi-root window the old name is window-scoped; the workspace file
     // would turn validation off for a TypeScript folder beside this one.
     const f = fake([ufProject()], {
-      serverVersion: "0.2.0",
+      serverVersion : "0.2.0",
       refuseInFolder: ["javascript.validate.enable"],
     });
     await activate(f);
@@ -355,7 +355,7 @@ describe("VS Code's built-in JavaScript validation", () => {
       serverVersion: "0.2.0",
       inspections: {
         "javascript.validate.enable": { defaultValue: true, workspaceValue: true },
-        "js/ts.validate.enabled": { defaultValue: true, workspaceLanguageValue: true },
+        "js/ts.validate.enabled"    : { defaultValue: true, workspaceLanguageValue: true },
       },
     });
     await activate(f);
@@ -365,7 +365,7 @@ describe("VS Code's built-in JavaScript validation", () => {
   it("is left alone when the opt-out is set", async () => {
     const f = fake([ufProject()], {
       serverVersion: "0.2.0",
-      settings: { "uf.workspace.disableBuiltinValidation": false },
+      settings     : { "uf.workspace.disableBuiltinValidation": false },
     });
     await activate(f);
     expect(f.updates).toEqual([]);

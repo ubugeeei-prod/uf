@@ -45,7 +45,7 @@ export type PathPattern = {|
   /** The string the handler was written with, for a failure message. */
   readonly source: string,
   /** The origin the pattern pinned, or `null` when it matches any. */
-  readonly origin: string | null,
+  readonly origin  : string | null,
   readonly segments: $ReadOnlyArray<Segment>,
 |};
 

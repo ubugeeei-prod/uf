@@ -96,8 +96,8 @@ type ElementLike = interface {
 /** One row the page is waiting for. */
 type Slot = {|
   readonly promise: Promise<mixed>,
-  readonly settle: (message: PayloadRowMessage) => void,
-  arrived: boolean,
+  readonly settle : (message: PayloadRowMessage) => void,
+  arrived         : boolean,
 |};
 
 /**

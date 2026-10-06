@@ -130,9 +130,9 @@ function loaderArguments(): Array<string> {
 /** What a probe reported, and everything its process wrote to stderr. */
 type Report = {
   duringInstall?: number,
-  setItem?: string,
-  readBack?: string | null,
-  stderr: string,
+  setItem?      : string,
+  readBack?     : string | null,
+  stderr        : string,
 };
 
 function runProbe(source: string): Promise<Report> {

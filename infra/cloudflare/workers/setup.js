@@ -23,9 +23,9 @@ function responseWithHeaders(
     nextHeaders.set(name, value);
   }
   return new Response(response.body, {
-    status: response.status,
+    status    : response.status,
     statusText: response.statusText,
-    headers: nextHeaders,
+    headers   : nextHeaders,
   });
 }
 
@@ -46,15 +46,15 @@ export default {
 
     if (url.pathname === "/health") {
       return Response.json({
-        ok: true,
-        service: "uf-setup",
+        ok            : true,
+        service       : "uf-setup",
         releaseBaseUrl: RELEASE_BASE_URL,
       });
     }
 
     if (url.pathname === "/metadata/latest.json") {
       const upstream = await fetch(`${RELEASE_BASE_URL}/manifest.json`, {
-        headers: { accept: "application/json" },
+        headers : { accept: "application/json" },
         redirect: "follow",
       });
       if (!upstream.ok) {
@@ -66,23 +66,23 @@ export default {
             status: 502,
             headers: {
               "access-control-allow-origin": "*",
-              "cache-control": "no-store",
+              "cache-control"              : "no-store",
             },
           },
         );
       }
       return responseWithHeaders(upstream, {
-        "content-type": "application/json; charset=utf-8",
+        "content-type"               : "application/json; charset=utf-8",
         "access-control-allow-origin": "*",
-        "cache-control": "public, max-age=60",
+        "cache-control"              : "public, max-age=60",
       });
     }
 
     if (url.pathname === "/" || url.pathname === "/install.sh") {
       const installer = await asset("/install.sh", request, env);
       return responseWithHeaders(installer, {
-        "content-type": "text/x-shellscript; charset=utf-8",
-        "cache-control": "public, max-age=300",
+        "content-type"          : "text/x-shellscript; charset=utf-8",
+        "cache-control"         : "public, max-age=300",
         "x-content-type-options": "nosniff",
       });
     }
@@ -90,8 +90,8 @@ export default {
     if (url.pathname === "/install.ps1") {
       const installer = await asset("/install.ps1", request, env);
       return responseWithHeaders(installer, {
-        "content-type": "text/plain; charset=utf-8",
-        "cache-control": "public, max-age=300",
+        "content-type"          : "text/plain; charset=utf-8",
+        "cache-control"         : "public, max-age=300",
         "x-content-type-options": "nosniff",
       });
     }
@@ -103,7 +103,7 @@ export default {
     return new Response("not found\n", {
       status: 404,
       headers: {
-        "content-type": "text/plain; charset=utf-8",
+        "content-type" : "text/plain; charset=utf-8",
         "cache-control": "public, max-age=60",
       },
     });

@@ -80,16 +80,16 @@ describe("failures", () => {
         {
           diagnostics: [
             {
-              rule: "flow/syntax",
-              path: "/tmp/x/sample-0.js",
-              line: 3,
+              rule   : "flow/syntax",
+              path   : "/tmp/x/sample-0.js",
+              line   : 3,
               message: "Unexpected token `=`",
             },
             { rule: "flow/syntax", path: "/tmp/x/sample-0.js", line: 3, message: "recovering" },
             {
-              rule: "import/no-extraneous-dependencies",
-              path: "sample-0.js",
-              line: 2,
+              rule   : "import/no-extraneous-dependencies",
+              path   : "sample-0.js",
+              line   : 2,
               message: "no",
             },
           ],

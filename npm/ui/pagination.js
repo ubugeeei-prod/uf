@@ -57,12 +57,12 @@ import { withProps, withoutComposed } from "./internal/merge-props.js";
  * twenty-five would otherwise announce "page 4 of 5".
  */
 component PaginationRoot(
-  children: React.Node,
-  label?: string = "Pagination",
-  page?: number | null = null,
-  pageCount?: number | null = null,
+  children     : React.Node,
+  label?       : string = "Pagination",
+  page?        : number | null = null,
+  pageCount?   : number | null = null,
   announcePage?: (page: number, pageCount: number) => string,
-  render?: RenderProp,
+  render?      : RenderProp,
   ...rest: Rest
 ) {
   const message =
@@ -73,7 +73,7 @@ component PaginationRoot(
     <>
       {
         match (render) {
-          undefined => <nav {...props} />,
+          undefined    => <nav {...props} />,
           const custom => custom(withProps(props, { role: "navigation" })),
         }
       }
@@ -98,12 +98,12 @@ component PaginationRoot(
  */
 component PaginationContent(
   children: renders* (PaginationItem | PaginationPrevious | PaginationNext),
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) {
   const props = withProps(rest, { children });
   return match (render) {
-    undefined => <ul {...props} />,
+    undefined    => <ul {...props} />,
     const custom => custom(withProps(props, { role: "list" })),
   };
 }
@@ -115,10 +115,10 @@ component PaginationContent(
  * on the `<a>`, which is what they style and what a reader activates.
  */
 component PaginationItem(
-  children: React.Node,
-  current?: boolean = false,
+  children : React.Node,
+  current? : boolean = false,
   disabled?: boolean = false,
-  render?: RenderProp,
+  render?  : RenderProp,
   ...rest: Rest
 ) renders PageLink {
   return (
@@ -138,9 +138,9 @@ component PaginationItem(
  */
 component PaginationPrevious(
   children?: React.Node,
-  label?: string = "Previous page",
+  label?   : string = "Previous page",
   disabled?: boolean = false,
-  render?: RenderProp,
+  render?  : RenderProp,
   ...rest: Rest
 ) renders PageLink {
   return (
@@ -153,9 +153,9 @@ component PaginationPrevious(
 /** The link to the page after this one. See `Pagination.Previous`. */
 component PaginationNext(
   children?: React.Node,
-  label?: string = "Next page",
+  label?   : string = "Next page",
   disabled?: boolean = false,
-  render?: RenderProp,
+  render?  : RenderProp,
   ...rest: Rest
 ) renders PageLink {
   return (
@@ -181,24 +181,24 @@ component PaginationNext(
  * announced as disabled rather than as a silent generic element.
  */
 component PageLink(
-  rest: Rest,
+  rest     : Rest,
   children?: React.Node,
-  current?: boolean = false,
+  current? : boolean = false,
   disabled?: boolean = false,
-  label?: string,
-  render?: RenderProp,
+  label?   : string,
+  render?  : RenderProp,
 ) {
   const passed = withoutComposed(rest, disabled ? ["href"] : []);
   const props = withProps(passed, {
-    "aria-current": current ? "page" : undefined,
+    "aria-current" : current ? "page" : undefined,
     "aria-disabled": disabled ? "true" : undefined,
-    "aria-label": label,
+    "aria-label"   : label,
     children,
     role: disabled ? "link" : undefined,
   });
 
   return match (render) {
-    undefined =>
+    undefined    =>
       <li>
         <a {...props} />
       </li>,

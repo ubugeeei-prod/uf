@@ -54,9 +54,9 @@ export function derived<T>(derive: () => T, options?: CellOptions<T>): Cell<T> {
   // here rather than in the node record where it would apply to sources too.
   const unevaluated: T = null as $FlowFixMe;
   return createNode({
-    kind: "derived",
-    scope: "react-render",
-    value: unevaluated,
+    kind    : "derived",
+    scope   : "react-render",
+    value   : unevaluated,
     evaluate: () => derive(),
     options,
   });
@@ -86,7 +86,7 @@ export function effect(body: () => void | (() => void)): Unsubscribe {
   }
 
   const node = createNode({
-    kind: "derived",
+    kind : "derived",
     scope: "react-render",
     value: null,
     evaluate: () => {

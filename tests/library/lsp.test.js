@@ -45,13 +45,13 @@ type Message = { [string]: mixed };
 // say what shape it expects it to have. These follow the protocol and
 // `crates/uf_cli/src/commands/dev.rs`, which is what produces them.
 type Position = { line: number, character: number };
-type Range = { start: Position, end: Position };
+type Range    = { start: Position, end: Position };
 type Diagnostic = {
-  range: Range,
+  range   : Range,
   severity: number,
-  source: string,
-  code: string,
-  message: string,
+  source  : string,
+  code    : string,
+  message : string,
   // Flow's type errors carry every location their message refers to.
   relatedInformation?: Array<{ location: { uri: string, range: Range }, message: string }>,
 };
@@ -63,56 +63,56 @@ type Diagnostic = {
 // `textDocument/definition` with `Location`s (`uri`, `range`); the tests tell
 // them apart by which fields are set, which is itself part of what they check.
 type Entry = {
-  uri?: string,
-  range?: Range,
-  newText?: string,
-  title?: string,
-  kind?: string | number,
-  diagnostics?: Array<Diagnostic>,
-  edit?: { changes: { [uri: string]: Array<Entry> } },
-  label?: string,
-  detail?: string,
+  uri?          : string,
+  range?        : Range,
+  newText?      : string,
+  title?        : string,
+  kind?         : string | number,
+  diagnostics?  : Array<Diagnostic>,
+  edit?         : { changes: { [uri: string]: Array<Entry> } },
+  label?        : string,
+  detail?       : string,
   documentation?: { kind: string, value: string },
-  textEdit?: Entry,
-  filterText?: string,
-  sortText?: string,
+  textEdit?     : Entry,
+  filterText?   : string,
+  sortText?     : string,
   // A `DocumentSymbol`.
-  name?: string,
+  name?          : string,
   selectionRange?: Range,
-  children?: Array<Entry>,
+  children?      : Array<Entry>,
 };
 
 // A `result` that is not a list: `initialize`'s, and `hover`'s.
 type Answer = {
   serverInfo?: { name: string, version: string },
   capabilities?: {
-    textDocumentSync?: number,
+    textDocumentSync?          : number,
     documentFormattingProvider?: boolean,
-    hoverProvider?: boolean,
-    codeActionProvider?: { codeActionKinds: Array<string> },
-    definitionProvider?: boolean,
-    typeDefinitionProvider?: boolean,
-    renameProvider?: { prepareProvider: boolean },
-    completionProvider?: { triggerCharacters: Array<string> },
-    referencesProvider?: boolean,
-    documentHighlightProvider?: boolean,
-    documentSymbolProvider?: boolean,
+    hoverProvider?             : boolean,
+    codeActionProvider?        : { codeActionKinds: Array<string> },
+    definitionProvider?        : boolean,
+    typeDefinitionProvider?    : boolean,
+    renameProvider?            : { prepareProvider: boolean },
+    completionProvider?        : { triggerCharacters: Array<string> },
+    referencesProvider?        : boolean,
+    documentHighlightProvider? : boolean,
+    documentSymbolProvider?    : boolean,
     // Not advertised; named so a test can say so.
-    signatureHelpProvider?: mixed,
+    signatureHelpProvider?  : mixed,
     workspaceSymbolProvider?: mixed,
-    inlayHintProvider?: mixed,
+    inlayHintProvider?      : mixed,
   },
   contents?: { kind: string, value: string },
-  range?: Range,
+  range?   : Range,
   // A `Range` itself, which is what `prepareRename` answers with.
   start?: Position,
-  end?: Position,
+  end?  : Position,
   // A `WorkspaceEdit`, which is what `rename` answers with.
   changes?: { [uri: string]: Array<Entry> },
   // A `CompletionList`, which completion sends instead of a bare list when
   // the list is not finished.
   isIncomplete?: boolean,
-  items?: Array<Entry>,
+  items?       : Array<Entry>,
 };
 
 // One `Location`: what `definition` and `typeDefinition` answer with a list of.
@@ -120,10 +120,10 @@ type Location = { uri: string, range: Range };
 
 type Wire = {
   jsonrpc: string,
-  id?: number,
+  id?    : number,
   method?: string,
   result?: Answer | Array<Entry> | null,
-  error?: { code: number, message: string },
+  error? : { code: number, message: string },
   params?: { uri: string, diagnostics: Array<Diagnostic> },
 };
 
@@ -141,15 +141,15 @@ const framed = (message: Message): string => {
  */
 const session = (
   messages: Array<Message>,
-  cwd: string = process.cwd(),
-  env: { [string]: string } = {},
-  args: Array<string> = [],
+  cwd     : string = process.cwd(),
+  env     : { [string]: string } = {},
+  args    : Array<string> = [],
 ): Array<Wire> => {
   const run = spawnSync(UF, ["lsp", ...args], {
     input: messages.map(framed).join(""),
     cwd,
-    env: { ...process.env, ...env },
-    encoding: "utf8",
+    env      : { ...process.env, ...env },
+    encoding : "utf8",
     maxBuffer: 32 * 1024 * 1024,
   });
   if (run.status !== 0) {
@@ -178,14 +178,14 @@ const session = (
 
 const didOpen = (text: string, uri: string = URI): Message => ({
   jsonrpc: "2.0",
-  method: "textDocument/didOpen",
-  params: { textDocument: { uri, languageId: "javascript", version: 1, text } },
+  method : "textDocument/didOpen",
+  params : { textDocument: { uri, languageId: "javascript", version: 1, text } },
 });
 
 const didChange = (text: string): Message => ({
   jsonrpc: "2.0",
-  method: "textDocument/didChange",
-  params: { textDocument: { uri: URI, version: 2 }, contentChanges: [{ text }] },
+  method : "textDocument/didChange",
+  params : { textDocument: { uri: URI, version: 2 }, contentChanges: [{ text }] },
 });
 
 const EXIT: Message = { jsonrpc: "2.0", method: "exit" };
@@ -249,7 +249,7 @@ const apply = (source: string, edits: Array<Entry>): string => {
   const lines = source.split("\n");
   const ordered = edits
     .map((edit) => ({
-      range: present(edit.range, "edit range"),
+      range  : present(edit.range, "edit range"),
       newText: present(edit.newText, "edit text"),
     }))
     .sort((a, b) => {
@@ -464,8 +464,8 @@ describe("code actions", () => {
     method: "textDocument/codeAction",
     params: {
       textDocument: { uri: URI },
-      range: { start: { line, character: 9 }, end: { line, character: 9 } },
-      context: only == null ? { diagnostics: [] } : { diagnostics: [], only },
+      range       : { start: { line, character: 9 }, end: { line, character: 9 } },
+      context     : only == null ? { diagnostics: [] } : { diagnostics: [], only },
     },
   });
 
@@ -540,7 +540,7 @@ describe("hover", () => {
     expect(result.contents?.value).toContain("flow/deprecated-type");
     expect(result.range).toEqual({
       start: { line: 1, character: 9 },
-      end: { line: 1, character: 13 },
+      end  : { line: 1, character: 13 },
     });
   });
 
@@ -592,10 +592,10 @@ describe("types", () => {
       "const stamped = stamp();",
       "",
     ].join("\n"),
-    "node_modules/clock/package.json": JSON.stringify({ name: "clock", main: "index.js" }),
-    "node_modules/clock/index.js": "exports.tick = () => 0;\n",
+    "node_modules/clock/package.json" : JSON.stringify({ name: "clock", main: "index.js" }),
+    "node_modules/clock/index.js"     : "exports.tick = () => 0;\n",
     "node_modules/clock/index.js.flow": "// @flow\ndeclare export function tick(): number;\n",
-    "flow-typed/stamp.js": "declare function stamp(): string;\n",
+    "flow-typed/stamp.js"             : "declare function stamp(): string;\n",
   };
 
   const withProject = (run: (root: string, uri: (file: string) => string) => void): void => {
@@ -612,10 +612,10 @@ describe("types", () => {
   };
 
   const at = (
-    id: number,
-    method: string,
-    uri: string,
-    line: number,
+    id       : number,
+    method   : string,
+    uri      : string,
+    line     : number,
     character: number,
   ): Message => ({
     jsonrpc: "2.0",
@@ -628,8 +628,8 @@ describe("types", () => {
 
   const change = (uri: string, text: string): Message => ({
     jsonrpc: "2.0",
-    method: "textDocument/didChange",
-    params: { textDocument: { uri, version: 2 }, contentChanges: [{ text }] },
+    method : "textDocument/didChange",
+    params : { textDocument: { uri, version: 2 }, contentChanges: [{ text }] },
   });
 
   const INITIALIZED: Message = { jsonrpc: "2.0", method: "initialized", params: {} };
@@ -660,12 +660,12 @@ describe("types", () => {
       const result = answered(messages, 1);
 
       expect(result.contents).toEqual({
-        kind: "markdown",
+        kind : "markdown",
         value: "```flow\nconst greeting: string\n```",
       });
       expect(result.range).toEqual({
         start: { line: 4, character: 6 },
-        end: { line: 4, character: 14 },
+        end  : { line: 4, character: 14 },
       });
     });
   });
@@ -849,7 +849,7 @@ describe("types", () => {
           textDocument: { uri: uri("src/app.js") },
           // `greet`, where `src/app.js` calls it.
           position: { line: 4, character: 18 },
-          context: { includeDeclaration },
+          context : { includeDeclaration },
         },
       });
       const messages = session(
@@ -904,7 +904,7 @@ describe("types", () => {
         method: "textDocument/rename",
         params: {
           textDocument: { uri: uri("src/app.js") },
-          position: { line, character },
+          position    : { line, character },
           newName,
         },
       });
@@ -957,9 +957,9 @@ describe("types", () => {
           open(uri("src/greeter.js"), source),
           {
             jsonrpc: "2.0",
-            id: 1,
-            method: "textDocument/documentSymbol",
-            params: { textDocument: { uri: uri("src/greeter.js") } },
+            id     : 1,
+            method : "textDocument/documentSymbol",
+            params : { textDocument: { uri: uri("src/greeter.js") } },
           },
           EXIT,
         ],
@@ -976,7 +976,7 @@ describe("types", () => {
       expect(members.map((symbol) => [symbol.name, symbol.kind])).toEqual([["greet", 6]]);
       expect(members[0].selectionRange).toEqual({
         start: { line: 2, character: 2 },
-        end: { line: 2, character: 7 },
+        end  : { line: 2, character: 7 },
       });
     });
   });
@@ -988,7 +988,7 @@ describe("types", () => {
     const conversation = async (
       root: string,
       steps: (
-        send: (message: Message) => void,
+        send  : (message: Message) => void,
         pushed: (uri: string, found: (Array<Diagnostic>) => boolean) => Promise<Array<Diagnostic>>,
       ) => Promise<void>,
     ): Promise<void> => {
@@ -1022,7 +1022,7 @@ describe("types", () => {
       };
       // The first push for `uri` after this call that `found` accepts.
       const pushed = async (
-        uri: string,
+        uri  : string,
         found: (Array<Diagnostic>) => boolean,
       ): Promise<Array<Diagnostic>> => {
         const from = pushes.length;
@@ -1141,10 +1141,10 @@ describe("completion in uf.config.js", () => {
   const CONFIG = "file:///project/uf.config.js";
 
   const complete = (
-    id: number,
-    line: number,
+    id       : number,
+    line     : number,
     character: number,
-    uri: string = CONFIG,
+    uri      : string = CONFIG,
   ): Message => ({
     jsonrpc: "2.0",
     id,
@@ -1158,16 +1158,16 @@ describe("completion in uf.config.js", () => {
   const marked = (document: string): { text: string, line: number, character: number } => {
     const before = document.slice(0, document.indexOf("‸")).split("\n");
     return {
-      text: document.replace("‸", ""),
-      line: before.length - 1,
+      text     : document.replace("‸", ""),
+      line     : before.length - 1,
       character: before[before.length - 1].length,
     };
   };
 
   const completeAt = (
     document: string,
-    cwd?: string,
-    env?: { [string]: string },
+    cwd?    : string,
+    env?    : { [string]: string },
   ): { text: string, items: Array<Entry> } => {
     const { text, line, character } = marked(document);
     const messages = session([didOpen(text, CONFIG), complete(9, line, character), EXIT], cwd, env);
@@ -1190,27 +1190,27 @@ describe("completion in uf.config.js", () => {
   // publisher on `file://` serving nodejs.org's `index.json` when `published`,
   // and serving nothing otherwise. Nothing here reaches a network.
   const releaseLists = (options: {
-    cached?: boolean,
+    cached?   : boolean,
     published?: boolean,
   }): { env: { [string]: string }, cache: string, cleanup: () => void } => {
     const cache = fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-releases-cache-"));
     const publisher = fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-releases-publisher-"));
     if (options.cached === true) {
       const index = {
-        format: 1,
-        tool: "node",
+        format   : 1,
+        tool     : "node",
         fetchedAt: Math.floor(Date.now() / 1000),
-        sources: ["fixture"],
-        releases: NODE_RELEASES,
+        sources  : ["fixture"],
+        releases : NODE_RELEASES,
       };
       fs.writeFileSync(path.join(cache, "node.json"), JSON.stringify(index));
     }
     if (options.published === true) {
       const rows = NODE_RELEASES.map((release) => ({
         version: `v${release.version}`,
-        date: release.date,
-        files: [] as Array<string>,
-        lts: release.lts ?? false,
+        date   : release.date,
+        files  : [] as Array<string>,
+        lts    : release.lts ?? false,
       }));
       fs.writeFileSync(path.join(publisher, "index.json"), JSON.stringify(rows));
     }
@@ -1267,7 +1267,7 @@ describe("completion in uf.config.js", () => {
     // happens between one request and the next.
     const lists = releaseLists({ published: true });
     const child = spawn(UF, ["lsp"], {
-      env: { ...process.env, ...lists.env },
+      env  : { ...process.env, ...lists.env },
       stdio: ["pipe", "pipe", "inherit"],
     });
     const closed = new Promise((resolve) => child.on("close", resolve));
@@ -1434,9 +1434,9 @@ describe("completion in uf.config.js", () => {
       didOpen(text, CONFIG),
       {
         jsonrpc: "2.0",
-        id: 9,
-        method: "textDocument/hover",
-        params: { textDocument: { uri: CONFIG }, position: { line: 0, character: start + 2 } },
+        id     : 9,
+        method : "textDocument/hover",
+        params : { textDocument: { uri: CONFIG }, position: { line: 0, character: start + 2 } },
       },
       EXIT,
     ]);
@@ -1446,7 +1446,7 @@ describe("completion in uf.config.js", () => {
     expect(result.contents?.value).toContain("What `uf test --coverage` measures");
     expect(result.range).toEqual({
       start: { line: 0, character: start },
-      end: { line: 0, character: start + "coverage".length },
+      end  : { line: 0, character: start + "coverage".length },
     });
   });
 });

@@ -25,7 +25,7 @@ const TOKEN = Symbol.for("uf.test.browser.token");
  */
 async function asHarness(
   value: string,
-  body: (seen: Array<string>) => Promise<void>,
+  body : (seen: Array<string>) => Promise<void>,
 ): Promise<void> {
   const seen: Array<string> = [];
   const captured = async (input: RequestInfo): Promise<Response> => {

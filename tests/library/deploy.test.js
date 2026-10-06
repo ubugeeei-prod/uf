@@ -97,9 +97,9 @@ import { createServeHandler as createViteServeHandler } from "../../npm/vite/int
 // With a deployment id, as every document `uf build` records has one, so the
 // doors are compared on the skew check as well as on everything else.
 const assets = {
-  scripts: ["/assets/client.js"],
-  styles: [],
-  preloads: [],
+  scripts   : ["/assets/client.js"],
+  styles    : [],
+  preloads  : [],
   deployment: "build-n1",
 };
 
@@ -125,9 +125,9 @@ function directoryWith(files: { [string]: string }): string {
  * error at this line rather than an `undefined is not a function` in a case.
  */
 function appWith(options: {
-  guard?: (request: Request) => Promise<Response | Request | null> | Response | Request | null,
+  guard?  : (request: Request) => Promise<Response | Request | null> | Response | Request | null,
   handler?: (request: Request) => Promise<Response | null> | Response | null,
-  render?: (url: string) => { status: number, html: string },
+  render? : (url: string) => { status: number, html: string },
 }): Application {
   return {
     // The real one, because a bundle's own is what a host must be handed: the
@@ -140,7 +140,7 @@ function appWith(options: {
     // endpoint declines every request that carries no id, which is what puts
     // it in the order below without changing what anything else answers.
     callAction: async () => null,
-    dispatch: async (request: Request) => (options.handler ? options.handler(request) : null),
+    dispatch  : async (request: Request) => (options.handler ? options.handler(request) : null),
     render: async (url: string) => {
       const answer = options.render
         ? options.render(url)
@@ -149,7 +149,7 @@ function appWith(options: {
         status: answer.status,
         pipe: (destination: {
           readonly write: (chunk: string | Uint8Array) => mixed,
-          readonly end: () => mixed,
+          readonly end  : () => mixed,
           ...
         }) => {
           destination.write(answer.html);
@@ -170,7 +170,7 @@ function appWith(options: {
 describe("the handler an adapter writes", () => {
   it("is reachable by its package name, which is what makes it an adapter's to use", async () => {
     const handle = createFetchHandler({
-      app: appWith({ handler: () => Response.json({ ok: true }) }),
+      app     : appWith({ handler: () => Response.json({ ok: true }) }),
       document: assets,
     });
 
@@ -195,7 +195,7 @@ describe("the handler an adapter writes", () => {
 describe("the Node front door an adapter's server.js runs", () => {
   it("serves the build's own files from the directory beside it", async () => {
     const staticDir = directoryWith({
-      "index.html": "<!doctype html><p>home</p>",
+      "index.html"      : "<!doctype html><p>home</p>",
       "guide/index.html": "<!doctype html><p>guide</p>",
       "assets/client.js": "console.log(1);",
     });
@@ -292,21 +292,21 @@ async function eventFor(request: Request) {
   const method = request.method.toUpperCase();
   const body = method === "GET" || method === "HEAD" ? undefined : await request.text();
   return {
-    version: "2.0",
-    rawPath: url.pathname,
+    version       : "2.0",
+    rawPath       : url.pathname,
     rawQueryString: url.search.replace(/^\?/, ""),
     cookies,
     headers,
     body,
     isBase64Encoded: false,
-    requestContext: { domainName: url.host, http: { method, path: url.pathname } },
+    requestContext : { domainName: url.host, http: { method, path: url.pathname } },
   };
 }
 
 describe("the Cloudflare front door an adapter's worker.js runs", () => {
   it("serves an asset the build wrote, before the application sees it", async () => {
     const staticDir = directoryWith({
-      "index.html": "<!doctype html><p>home</p>",
+      "index.html"      : "<!doctype html><p>home</p>",
       "assets/client.js": "console.log(1);",
     });
     const handle = createWorkerFetch({
@@ -416,7 +416,7 @@ describe("the Cloudflare front door an adapter's worker.js runs", () => {
             asked.push(pathname);
             if (pathname === "/guide") {
               return new Response(null, {
-                status: 307,
+                status : 307,
                 headers: { location: "/guide/" },
               });
             }
@@ -562,7 +562,7 @@ describe("the Cloudflare front door an adapter's worker.js runs", () => {
     const asked: Array<string> = [];
     const handle = createWorkerFetch({
       handle: createFetchHandler({
-        app: appWith({ handler: () => Response.json({ from: "the handler" }) }),
+        app     : appWith({ handler: () => Response.json({ from: "the handler" }) }),
         document: assets,
       }),
       beginRequest,
@@ -644,15 +644,15 @@ function nodeExchange(url: string) {
   const outgoing: NodeResponse & {
     headers: Map<string, mixed>,
     written: Array<string>,
-    ended: boolean,
+    ended  : boolean,
     ...
   } = {
-    statusCode: 200,
+    statusCode   : 200,
     statusMessage: "",
-    headersSent: false,
-    headers: new Map<string, mixed>(),
-    written: [] as Array<string>,
-    ended: false,
+    headersSent  : false,
+    headers      : new Map<string, mixed>(),
+    written      : [] as Array<string>,
+    ended        : false,
     setHeader(name: string, value: mixed): void {
       outgoing.headers.set(name.toLowerCase(), value);
     },
@@ -682,7 +682,7 @@ function nodeExchange(url: string) {
 describe("the Vercel front door an adapter's index.js runs", () => {
   it("serves the build's files first, then the application", async () => {
     const staticDir = directoryWith({
-      "index.html": "<!doctype html><p>home</p>",
+      "index.html"      : "<!doctype html><p>home</p>",
       "assets/client.js": "console.log(1);",
     });
     const handler = createVercelHandler({
@@ -762,7 +762,7 @@ describe("the AWS front door an adapter's lambda.js runs", () => {
     headers.append("set-cookie", "b=2; Path=/");
     const handler = createLambdaHandler({
       handle: createFetchHandler({
-        app: appWith({ handler: () => new Response("ok", { headers }) }),
+        app     : appWith({ handler: () => new Response("ok", { headers }) }),
         document: assets,
       }),
       beginRequest,
@@ -1007,7 +1007,7 @@ describe("the front doors", () => {
           const { pathname } = new URL(request.url);
           return pathname.startsWith("/shop/")
             ? new Request(new URL(pathname.replace("/shop/", "/posts/"), request.url), {
-                method: request.method,
+                method : request.method,
                 headers: request.headers,
               })
             : null;
@@ -1015,7 +1015,7 @@ describe("the front doors", () => {
       }),
       routing: {
         redirects: [{ source: "/moved/:slug", destination: "/posts/:slug", permanent: true }],
-        rewrites: [{ source: "/articles/:slug", destination: "/posts/:slug" }],
+        rewrites : [{ source: "/articles/:slug", destination: "/posts/:slug" }],
         headers: [
           { source: "/:path*", headers: { "x-served-by": "served-app" } },
           { source: "/api/:rest*", headers: { "cache-control": "no-store" } },
@@ -1027,7 +1027,7 @@ describe("the front doors", () => {
           // rule sends nothing. Both are visible below, and a new adapter that
           // grew its own copy of `headersFor` would land on one of them.
           {
-            source: "/:path*",
+            source : "/:path*",
             headers: { "content-security-policy": "script-src 'nonce-{uf.nonce}'" },
           },
         ],
@@ -1042,7 +1042,7 @@ describe("the front doors", () => {
       handle,
       beginRequest,
       staticDir: distDir,
-      routing: app.routing,
+      routing  : app.routing,
     });
     const compiled = createStandaloneHandler({ app, assets: embedded(built), document: assets });
 
@@ -1154,15 +1154,15 @@ describe("the front doors", () => {
     // `guide/index.html`, and every file at the root of the directory. The base
     // path is in the URLs a build writes, never in its file names.
     const built = {
-      "index.html": "<!doctype html><p>home</p>",
-      "guide.html": "<!doctype html><p>guide</p>",
+      "index.html"      : "<!doctype html><p>home</p>",
+      "guide.html"      : "<!doctype html><p>guide</p>",
       "assets/client.js": "console.log(1);",
     };
     const distDir = directoryWith(built);
     const routing: RoutingRules = {
-      basePath: "/docs",
+      basePath     : "/docs",
       trailingSlash: "never",
-      redirects: [{ source: "/moved/:slug", destination: "/posts/:slug", permanent: true }],
+      redirects    : [{ source: "/moved/:slug", destination: "/posts/:slug", permanent: true }],
     };
     const app = {
       ...appWith({
@@ -1221,25 +1221,25 @@ describe("the front doors", () => {
     const expectations: { readonly [url: string]: string } = {
       // The application's root is the base itself, and the other spelling of
       // it is a redirect.
-      "/docs": "200 location=- <!doctype html><p>home</p>",
+      "/docs" : "200 location=- <!doctype html><p>home</p>",
       "/docs/": "308 location=/docs",
       // A page the build wrote as `guide.html`, at the spelling the policy
       // uses, and a `308` to it from the other spelling, with the query kept.
-      "/docs/guide": "200 location=- <!doctype html><p>guide</p>",
+      "/docs/guide"         : "200 location=- <!doctype html><p>guide</p>",
       "/docs/guide/?tab=api": "308 location=/docs/guide?tab=api",
       // A hashed asset, from the root of the directory.
       "/docs/assets/client.js": "200 location=- console.log(1);",
       // A render and a route handler, each handed the application path.
       "/docs/posts/hello": "200 location=- <!doctype html><p>/posts/hello</p>",
-      "/docs/api/health": '200 location=- {"path":"/api/health"}',
+      "/docs/api/health" : '200 location=- {"path":"/api/health"}',
       // A redirect rule's source is written without the base, and its
       // destination is answered with it.
       "/docs/moved/hello": "308 location=/docs/posts/hello",
       // Outside the base nothing answers: not a page, not a file, and not a
       // path that only starts with the base's characters.
-      "/guide": "404 location=- 404 Not Found",
+      "/guide"           : "404 location=- 404 Not Found",
       "/assets/client.js": "404 location=- 404 Not Found",
-      "/docsx": "404 location=- 404 Not Found",
+      "/docsx"           : "404 location=- 404 Not Found",
     };
 
     for (const [url, expected] of Object.entries(expectations)) {
@@ -1297,7 +1297,7 @@ function nodeResponse() {
     statusCode: 0,
     // A real `ServerResponse` has both, and `send` reads and writes them.
     statusMessage: "",
-    headersSent: false,
+    headersSent  : false,
     headers,
     setHeader(name: string, value: string | $ReadOnlyArray<string>) {
       headers[name.toLowerCase()] = typeof value === "string" ? value : value.join(", ");

@@ -223,7 +223,7 @@ export type { Schedule, ScheduleDecision, ScheduleState };
  * to swear about.
  */
 type EffectKernel<out A, out E> = {
-  readonly run: (Context) => Promise<Exit<A, E>>,
+  readonly run     : (Context) => Promise<Exit<A, E>>,
   readonly runSync?: (Context) => Exit<A, E>,
 };
 
@@ -241,27 +241,27 @@ type EffectKernel<out A, out E> = {
  * easy when it has to solve `R | Service` for `R`.
  */
 type EffectCarrier<out A, out E, out R> = {
-  readonly __kind: "Effect",
+  readonly __kind    : "Effect",
   readonly __requires: () => R,
-  readonly __kernel: EffectKernel<A, E>,
+  readonly __kernel  : EffectKernel<A, E>,
   readonly @@iterator: () => $IteratorProtocol<Effect<mixed, E, R>, A, mixed>,
   ...
 };
 
 /** A `Tag` is an `Effect` that reads its own service, plus the name to read. */
 type TagCarrier<out Service> = {
-  readonly __kind: "Effect",
+  readonly __kind    : "Effect",
   readonly __requires: () => Service,
-  readonly __kernel: EffectKernel<Service, empty>,
+  readonly __kernel  : EffectKernel<Service, empty>,
   readonly @@iterator: () => $IteratorProtocol<Effect<mixed, empty, Service>, Service, mixed>,
   readonly identifier: string,
   ...
 };
 
 type FiberCarrier<out A, out E> = {
-  readonly __kind: "Fiber",
+  readonly __kind   : "Fiber",
   readonly __promise: Promise<Exit<A, E>>,
-  readonly __fiber: FiberState,
+  readonly __fiber  : FiberState,
 };
 
 /**
@@ -281,7 +281,7 @@ type FiberCarrier<out A, out E> = {
  * built walks the graph once per path and opens two connection pools.
  */
 type LayerKernel<out E> = {
-  readonly build: (Context, LayerMemo) => Promise<Exit<$ReadOnlyMap<string, mixed>, E>>,
+  readonly build     : (Context, LayerMemo) => Promise<Exit<$ReadOnlyMap<string, mixed>, E>>,
   readonly buildSync?: (Context, LayerMemo) => Exit<$ReadOnlyMap<string, mixed>, E>,
 };
 
@@ -304,9 +304,9 @@ type LayerKernel<out E> = {
 type LayerMemo = Map<Layer<mixed, mixed, mixed>, $ReadOnlyMap<string, mixed>>;
 
 type LayerCarrier<out Out, out E, out In> = {
-  readonly __kind: "Layer",
-  readonly __out: () => Out,
-  readonly __in: () => In,
+  readonly __kind : "Layer",
+  readonly __out  : () => Out,
+  readonly __in   : () => In,
   readonly __layer: LayerKernel<E>,
 };
 
@@ -322,16 +322,16 @@ type ScopeState = {
  * from outside and mean opposite things.
  */
 type RuntimeCarrier<R> = {
-  readonly __kind: "Runtime",
+  readonly __kind    : "Runtime",
   readonly __provides: () => R,
-  readonly services: $ReadOnlyMap<string, mixed>,
-  readonly scope: ScopeState,
-  disposed: boolean,
+  readonly services  : $ReadOnlyMap<string, mixed>,
+  readonly scope     : ScopeState,
+  disposed           : boolean,
 };
 
 type RefCarrier<A> = {
   readonly __kind: "Ref",
-  value: A,
+  value          : A,
 };
 
 /**
@@ -343,19 +343,19 @@ type RefCarrier<A> = {
  * and telling that from "not yet" is the whole job.
  */
 type DeferredState<A, E> = {
-  settled: ?Exit<A, E>,
+  settled         : ?Exit<A, E>,
   readonly waiters: Set<(Exit<A, E>) => void>,
 };
 
 type DeferredCarrier<A, E> = {
   readonly __kind: "Deferred",
-  readonly state: DeferredState<A, E>,
+  readonly state : DeferredState<A, E>,
 };
 
 /** One fiber queued for permits, and how to tell it whether it got them. */
 type SemaphoreWaiter = {
   readonly permits: number,
-  readonly settle: (taken: boolean) => void,
+  readonly settle : (taken: boolean) => void,
 };
 
 /**
@@ -370,14 +370,14 @@ type SemaphoreWaiter = {
  * and a semaphore nobody can rely on for the widest request is not a bound.
  */
 type SemaphoreState = {
-  available: number,
+  available        : number,
   readonly capacity: number,
-  readonly waiters: Array<SemaphoreWaiter>,
+  readonly waiters : Array<SemaphoreWaiter>,
 };
 
 type SemaphoreCarrier = {
   readonly __kind: "Semaphore",
-  readonly state: SemaphoreState,
+  readonly state : SemaphoreState,
 };
 
 /**
@@ -414,7 +414,7 @@ type QueueTaker<A> = {
 
 /** One fiber waiting for room, still holding the value it could not put down. */
 type QueueOfferer<A> = {
-  readonly value: A,
+  readonly value : A,
   readonly settle: (accepted: boolean) => void,
 };
 
@@ -435,15 +435,15 @@ type QueueOfferer<A> = {
 type QueueState<A> = {
   readonly capacity: number,
   readonly strategy: QueueStrategy,
-  readonly items: Array<A>,
-  readonly takers: Array<QueueTaker<A>>,
+  readonly items   : Array<A>,
+  readonly takers  : Array<QueueTaker<A>>,
   readonly offerers: Array<QueueOfferer<A>>,
-  shutdown: boolean,
+  shutdown         : boolean,
 };
 
 type QueueCarrier<A> = {
   readonly __kind: "Queue",
-  readonly state: QueueState<A>,
+  readonly state : QueueState<A>,
 };
 
 /**
@@ -456,15 +456,15 @@ type QueueCarrier<A> = {
  * rather than a second family of readers.
  */
 type PubSubState<A> = {
-  readonly capacity: number,
-  readonly strategy: QueueStrategy,
+  readonly capacity   : number,
+  readonly strategy   : QueueStrategy,
   readonly subscribers: Set<QueueState<A>>,
-  shutdown: boolean,
+  shutdown            : boolean,
 };
 
 type PubSubCarrier<A> = {
   readonly __kind: "PubSub",
-  readonly state: PubSubState<A>,
+  readonly state : PubSubState<A>,
 };
 
 /**
@@ -478,15 +478,15 @@ type PubSubCarrier<A> = {
  * aimed at the fiber above it.
  */
 type FiberState = {
-  interrupted: boolean,
-  readonly wakers: Set<() => void>,
+  interrupted      : boolean,
+  readonly wakers  : Set<() => void>,
   readonly children: Set<FiberState>,
 };
 
 type Context = {
   readonly services: $ReadOnlyMap<string, mixed>,
-  readonly scope: ?ScopeState,
-  readonly fiber: FiberState,
+  readonly scope   : ?ScopeState,
+  readonly fiber   : FiberState,
 };
 
 /**
@@ -689,9 +689,9 @@ function withScope(parent: Context): Context {
 }
 
 function withService<Service>(
-  parent: Context,
+  parent    : Context,
   serviceTag: Tag<Service>,
-  service: Service,
+  service   : Service,
 ): Context {
   const services = new Map(parent.services);
   services.set(readTag(serviceTag), service);
@@ -818,9 +818,9 @@ function interruptedExit<A, E>(): Exit<A, E> {
  */
 function makeEffect<A, E, R>(kernel: EffectKernel<A, E>): Effect<A, E, R> {
   return {
-    __kind: "Effect",
-    __requires: absurd,
-    __kernel: kernel,
+    __kind           : "Effect",
+    __requires       : absurd,
+    __kernel         : kernel,
     [Symbol.iterator]: iterateEffect,
   };
 }
@@ -910,13 +910,13 @@ function makeFiber<A, E>(promise: Promise<Exit<A, E>>, fiber: FiberState): Fiber
  */
 function makeTag<Service>(identifier: string): Tag<Service> {
   const kernel: EffectKernel<Service, empty> = {
-    run: (runContext) => Promise.resolve(readService<Service>(runContext, identifier)),
+    run    : (runContext) => Promise.resolve(readService<Service>(runContext, identifier)),
     runSync: (runContext) => readService<Service>(runContext, identifier),
   };
   return {
-    __kind: "Effect",
+    __kind    : "Effect",
     __requires: absurd,
-    __kernel: kernel,
+    __kernel  : kernel,
     identifier,
     [Symbol.iterator]: iterateEffect,
   };
@@ -974,9 +974,9 @@ function readLayer<Out, E, In>(layer: Layer<Out, E, In>): LayerKernel<E> {
  * and the answer is two layers rather than one used twice.
  */
 function buildLayer<Out, E, In>(
-  layer: Layer<Out, E, In>,
+  layer     : Layer<Out, E, In>,
   runContext: Context,
-  memo: LayerMemo,
+  memo      : LayerMemo,
 ): Promise<Exit<$ReadOnlyMap<string, mixed>, E>> {
   const alreadyBuilt = memo.get(layer);
   if (alreadyBuilt != null) {
@@ -1001,9 +1001,9 @@ function buildLayer<Out, E, In>(
  * than a promise nobody is awaiting.
  */
 function buildLayerSync<Out, E, In>(
-  layer: Layer<Out, E, In>,
+  layer     : Layer<Out, E, In>,
   runContext: Context,
-  memo: LayerMemo,
+  memo      : LayerMemo,
 ): Exit<$ReadOnlyMap<string, mixed>, E> {
   const alreadyBuilt = memo.get(layer);
   if (alreadyBuilt != null) {
@@ -1228,7 +1228,7 @@ function pause(millis: number, runContext: Context): Promise<void> {
 }
 
 function concurrencyLimit(
-  length: number,
+  length  : number,
   options?: { readonly concurrency?: Concurrency },
 ): number {
   const requested = options == null ? null : options.concurrency;
@@ -1242,7 +1242,7 @@ function concurrencyLimit(
 export function succeed<A>(value: A): Effect<A> {
   const settled: Exit<A, empty> = success(value);
   return makeEffect({
-    run: () => Promise.resolve(settled),
+    run    : () => Promise.resolve(settled),
     runSync: () => settled,
   });
 }
@@ -1251,7 +1251,7 @@ export function succeed<A>(value: A): Effect<A> {
 export function fail<E>(error: E): Effect<empty, E> {
   const settled: Exit<empty, E> = failure(failCause(error));
   return makeEffect({
-    run: () => Promise.resolve(settled),
+    run    : () => Promise.resolve(settled),
     runSync: () => settled,
   });
 }
@@ -1266,7 +1266,7 @@ export function fail<E>(error: E): Effect<empty, E> {
 export function die(defectValue: mixed): Effect<empty> {
   const settled: Exit<empty, empty> = defect(defectValue);
   return makeEffect({
-    run: () => Promise.resolve(settled),
+    run    : () => Promise.resolve(settled),
     runSync: () => settled,
   });
 }
@@ -1305,7 +1305,7 @@ export function sync<A>(body: () => A): Effect<A> {
     }
   };
   return makeEffect({
-    run: () => Promise.resolve(step()),
+    run    : () => Promise.resolve(step()),
     runSync: step,
   });
 }
@@ -1319,7 +1319,7 @@ export function sync<A>(body: () => A): Effect<A> {
  * mapper run lazily, once per execution. A mapper that throws is itself a defect.
  */
 export function trySync<A, E>(options: {
-  readonly try: () => A,
+  readonly try  : () => A,
   readonly catch: (error: mixed) => E,
 }): Effect<A, E> {
   const step = (): Exit<A, E> => {
@@ -1331,7 +1331,7 @@ export function trySync<A, E>(options: {
   };
 
   return makeEffect({
-    run: () => Promise.resolve(step()),
+    run    : () => Promise.resolve(step()),
     runSync: step,
   });
 }
@@ -1371,7 +1371,7 @@ export function promise<A>(body: () => Promise<A>): Effect<A> {
 
 /** Adopt a promise, naming what a rejection means as a typed failure. */
 export function tryPromise<A, E>(options: {
-  readonly try: () => Promise<A>,
+  readonly try  : () => Promise<A>,
   readonly catch: (error: mixed) => E,
 }): Effect<A, E> {
   return makeEffect({
@@ -1524,7 +1524,7 @@ export function effect<A, E, R>(body: () => EffectGenerator<A, E, R>): Effect<A,
 
 /** Change a success, leaving the failure channel alone. */
 export function map<A, B, E, R>(
-  self: Effect<A, E, R>,
+  self     : Effect<A, E, R>,
   transform: (value: A) => B,
 ): Effect<B, E, R> {
   const apply = (settled: Exit<A, E>): Exit<B, E> => {
@@ -1538,14 +1538,14 @@ export function map<A, B, E, R>(
     }
   };
   return makeEffect({
-    run: async (runContext) => apply(await runKernel(self, runContext)),
+    run    : async (runContext) => apply(await runKernel(self, runContext)),
     runSync: (runContext) => apply(runSyncKernel(self, runContext)),
   });
 }
 
 /** Change a typed failure, leaving a defect and an interruption alone. */
 export function mapError<A, E, F, R>(
-  self: Effect<A, E, R>,
+  self     : Effect<A, E, R>,
   transform: (error: E) => F,
 ): Effect<A, F, R> {
   const apply = (settled: Exit<A, E>): Exit<A, F> =>
@@ -1553,7 +1553,7 @@ export function mapError<A, E, F, R>(
       ? failure(mapCause(settled.cause, transform))
       : success(settled.value);
   return makeEffect({
-    run: async (runContext) => apply(await runKernel(self, runContext)),
+    run    : async (runContext) => apply(await runKernel(self, runContext)),
     runSync: (runContext) => apply(runSyncKernel(self, runContext)),
   });
 }
@@ -1611,7 +1611,7 @@ export function andThen<A, B, E1, E2, R1, R2>(
 
 /** Both values as a pair, `self` first and sequentially. */
 export function zip<A, B, E1, E2, R1, R2>(
-  self: Effect<A, E1, R1>,
+  self : Effect<A, E1, R1>,
   other: Effect<B, E2, R2>,
 ): Effect<[A, B], E1 | E2, R1 | R2> {
   return flatMap(self, (left) => map(other, (right) => [left, right]));
@@ -1630,7 +1630,7 @@ export function zip<A, B, E1, E2, R1, R2>(
  * Values come back in the order of the input, whatever order they finished in.
  */
 export function all<A, E, R>(
-  effects: $ReadOnlyArray<Effect<A, E, R>>,
+  effects : $ReadOnlyArray<Effect<A, E, R>>,
   options?: { readonly concurrency?: Concurrency },
 ): Effect<$ReadOnlyArray<A>, E, R> {
   return makeEffect({
@@ -1704,8 +1704,8 @@ export function all<A, E, R>(
 
 /** `all` over the effects `body` builds from `items`. */
 export function forEach<A, B, E, R>(
-  items: $ReadOnlyArray<A>,
-  body: (item: A, index: number) => Effect<B, E, R>,
+  items   : $ReadOnlyArray<A>,
+  body    : (item: A, index: number) => Effect<B, E, R>,
   options?: { readonly concurrency?: Concurrency },
 ): Effect<$ReadOnlyArray<B>, E, R> {
   return all(
@@ -1778,7 +1778,7 @@ export function race<A, E, R>(effects: $ReadOnlyArray<Effect<A, E, R>>): Effect<
  * ends up reported as a handled condition.
  */
 export function catchAll<A, B, E, F, R1, R2>(
-  self: Effect<A, E, R1>,
+  self   : Effect<A, E, R1>,
   recover: (error: E) => Effect<B, F, R2>,
 ): Effect<A | B, F, R1 | R2> {
   return makeEffect({
@@ -1827,7 +1827,7 @@ export function catchTag<
   R1,
   R2,
 >(
-  self: Effect<A, E, R1>,
+  self   : Effect<A, E, R1>,
   tagName: string,
   recover: (error: E) => Effect<B, F, R2>,
 ): Effect<A | B, E | F, R1 | R2> {
@@ -1838,7 +1838,7 @@ export function catchTag<
 
 /** Fall back to another effect on any typed failure. */
 export function orElse<A, B, E, F, R1, R2>(
-  self: Effect<A, E, R1>,
+  self    : Effect<A, E, R1>,
   fallback: () => Effect<B, F, R2>,
 ): Effect<A | B, F, R1 | R2> {
   return catchAll(self, () => fallback());
@@ -1873,7 +1873,7 @@ export function either<A, E, R>(
       : success({ ok: false, error: found.error });
   };
   return makeEffect({
-    run: async (runContext) => apply(await runKernel(self, runContext)),
+    run    : async (runContext) => apply(await runKernel(self, runContext)),
     runSync: (runContext) => apply(runSyncKernel(self, runContext)),
   });
 }
@@ -1943,7 +1943,7 @@ function worthRepeating<A>(value: A, options: ?RepeatOptions<A>): boolean {
 
 /** `while` must hold and `until` must not, and an absent one is no opinion. */
 function allowedBy<T>(
-  subject: T,
+  subject       : T,
   whilePredicate: ?(T) => boolean,
   untilPredicate: ?(T) => boolean,
 ): boolean {
@@ -1972,7 +1972,7 @@ function allowedBy<T>(
  * `jittered` schedule needs is drawn in the same place and for the same reason.
  */
 export function retry<A, E, R>(
-  self: Effect<A, E, R>,
+  self    : Effect<A, E, R>,
   schedule: Schedule<E>,
   options?: RetryOptions<E>,
 ): Effect<A, E, R> {
@@ -2053,7 +2053,7 @@ export function retry<A, E, R>(
  * to have.
  */
 export function repeat<A, E, R>(
-  self: Effect<A, E, R>,
+  self    : Effect<A, E, R>,
   schedule: Schedule<A>,
   options?: RepeatOptions<A>,
 ): Effect<number, E, R> {
@@ -2109,7 +2109,7 @@ export function repeat<A, E, R>(
  * asked for it to stop.
  */
 export function timeout<A, E, R>(
-  self: Effect<A, E, R>,
+  self  : Effect<A, E, R>,
   millis: number,
 ): Effect<A, E | TimeoutError, R> {
   return makeEffect({
@@ -2291,7 +2291,7 @@ function closeScopeSync(state: ScopeState, runContext: Context): ?Cause<mixed> {
  * otherwise force a scope onto the caller's type to run one cleanup.
  */
 export function ensuring<A, E, R>(
-  self: Effect<A, E, R>,
+  self     : Effect<A, E, R>,
   finalizer: () => Effect<mixed, mixed, empty>,
 ): Effect<A, E, R> {
   const combine = (settled: Exit<A, E>, released: Exit<mixed, mixed>): Exit<A, E> => {
@@ -2338,22 +2338,22 @@ export function tag<Service>(identifier: string): Tag<Service> {
  * ubugeeei-prod/uf#1451.
  */
 declare export function provideService<A, E, Service>(
-  self: Effect<A, E, Service>,
+  self      : Effect<A, E, Service>,
   serviceTag: Tag<Service>,
-  service: Service,
+  service   : Service,
 ): Effect<A, E>;
 declare export function provideService<A, E, R, Service>(
-  self: Effect<A, E, R | Service>,
+  self      : Effect<A, E, R | Service>,
   serviceTag: Tag<Service>,
-  service: Service,
+  service   : Service,
 ): Effect<A, E, R>;
 export function provideService<A, E, R, Service>(
-  self: Effect<A, E, R | Service>,
+  self      : Effect<A, E, R | Service>,
   serviceTag: Tag<Service>,
-  service: Service,
+  service   : Service,
 ): Effect<A, E, R> {
   return makeEffect({
-    run: (runContext) => runKernel(self, withService(runContext, serviceTag, service)),
+    run    : (runContext) => runKernel(self, withService(runContext, serviceTag, service)),
     runSync: (runContext) => runSyncKernel(self, withService(runContext, serviceTag, service)),
   });
 }
@@ -2389,15 +2389,15 @@ export function provideService<A, E, R, Service>(
  * ubugeeei-prod/uf#1451.
  */
 declare export function provide<A, E, Out, LayerError, In>(
-  self: Effect<A, E, Out>,
+  self : Effect<A, E, Out>,
   layer: Layer<Out, LayerError, In>,
 ): Effect<A, E | LayerError, In>;
 declare export function provide<A, E, R, Out, LayerError, In>(
-  self: Effect<A, E, R | Out>,
+  self : Effect<A, E, R | Out>,
   layer: Layer<Out, LayerError, In>,
 ): Effect<A, E | LayerError, R | In>;
 export function provide<A, E, R, Out, LayerError, In>(
-  self: Effect<A, E, R | Out>,
+  self : Effect<A, E, R | Out>,
   layer: Layer<Out, LayerError, In>,
 ): Effect<A, E | LayerError, R | In> {
   return makeEffect({
@@ -2405,8 +2405,8 @@ export function provide<A, E, R, Out, LayerError, In>(
       const layerScope: ScopeState = { finalizers: [] };
       const buildContext = {
         services: runContext.services,
-        scope: layerScope,
-        fiber: runContext.fiber,
+        scope   : layerScope,
+        fiber   : runContext.fiber,
       };
       const built = await buildLayer(layer, buildContext, new Map());
       if (built.kind === "failure") {
@@ -2431,8 +2431,8 @@ export function provide<A, E, R, Out, LayerError, In>(
       const layerScope: ScopeState = { finalizers: [] };
       const buildContext = {
         services: runContext.services,
-        scope: layerScope,
-        fiber: runContext.fiber,
+        scope   : layerScope,
+        fiber   : runContext.fiber,
       };
       const built = buildLayerSync(layer, buildContext, new Map());
       if (built.kind === "failure") {
@@ -2454,7 +2454,7 @@ export function layerSucceed<Service>(serviceTag: Tag<Service>, service: Service
   const built: $ReadOnlyMap<string, mixed> = new Map([[readTag(serviceTag), service]]);
   const settled: Exit<$ReadOnlyMap<string, mixed>, empty> = success(built);
   return makeLayer({
-    build: () => Promise.resolve(settled),
+    build    : () => Promise.resolve(settled),
     buildSync: () => settled,
   });
 }
@@ -2462,7 +2462,7 @@ export function layerSucceed<Service>(serviceTag: Tag<Service>, service: Service
 /** A layer that builds its service with an effect, which may itself fail. */
 export function layerEffect<Service, E, R>(
   serviceTag: Tag<Service>,
-  build: Effect<Service, E, R>,
+  build     : Effect<Service, E, R>,
 ): Layer<Service, E, R> {
   const identifier = readTag(serviceTag);
   const collect = (settled: Exit<Service, E>): Exit<$ReadOnlyMap<string, mixed>, E> =>
@@ -2470,7 +2470,7 @@ export function layerEffect<Service, E, R>(
       ? failure(settled.cause)
       : success(new Map([[identifier, settled.value]]));
   return makeLayer({
-    build: async (runContext) => collect(await runKernel(build, runContext)),
+    build    : async (runContext) => collect(await runKernel(build, runContext)),
     buildSync: (runContext) => collect(runSyncKernel(build, runContext)),
   });
 }
@@ -2504,15 +2504,15 @@ export function layerEffect<Service, E, R>(
  */
 declare export function layerScoped<Service, E>(
   serviceTag: Tag<Service>,
-  build: Effect<Service, E, Scope>,
+  build     : Effect<Service, E, Scope>,
 ): Layer<Service, E>;
 declare export function layerScoped<Service, E, R>(
   serviceTag: Tag<Service>,
-  build: Effect<Service, E, R | Scope>,
+  build     : Effect<Service, E, R | Scope>,
 ): Layer<Service, E, R>;
 export function layerScoped<Service, E, R>(
   serviceTag: Tag<Service>,
-  build: Effect<Service, E, R | Scope>,
+  build     : Effect<Service, E, R | Scope>,
 ): Layer<Service, E, R> {
   const identifier = readTag(serviceTag);
   const collect = (settled: Exit<Service, E>): Exit<$ReadOnlyMap<string, mixed>, E> =>
@@ -2520,14 +2520,14 @@ export function layerScoped<Service, E, R>(
       ? failure(settled.cause)
       : success(new Map([[identifier, settled.value]]));
   return makeLayer({
-    build: async (runContext) => collect(await runKernel(build, runContext)),
+    build    : async (runContext) => collect(await runKernel(build, runContext)),
     buildSync: (runContext) => collect(runSyncKernel(build, runContext)),
   });
 }
 
 /** Both layers' services, left built first so the right may fail after it. */
 export function layerMerge<Out1, Out2, E1, E2, In1, In2>(
-  left: Layer<Out1, E1, In1>,
+  left : Layer<Out1, E1, In1>,
   right: Layer<Out2, E2, In2>,
 ): Layer<Out1 | Out2, E1 | E2, In1 | In2> {
   return makeLayer({
@@ -2673,7 +2673,7 @@ export function layerProvideMerge<Out, E1, In1, Out2, E2, In2>(
 
 /** Two built layers' services in one map, the second winning a collision. */
 function mergedServices(
-  first: $ReadOnlyMap<string, mixed>,
+  first : $ReadOnlyMap<string, mixed>,
   second: $ReadOnlyMap<string, mixed>,
 ): $ReadOnlyMap<string, mixed> {
   const merged = new Map(first);
@@ -2946,8 +2946,8 @@ export function forkScoped<A, E, R>(self: Effect<A, E, R>): Effect<Fiber<A, E>, 
       const childScope: ScopeState = { finalizers: [] };
       const child: Context = {
         services: runContext.services,
-        scope: childScope,
-        fiber: newFiber(),
+        scope   : childScope,
+        fiber   : newFiber(),
       };
       const running = runKernel(self, child).then(async (settled) => {
         endFiber(child.fiber);
@@ -3022,7 +3022,7 @@ export function ref<A>(initial: A): Effect<Ref<A>> {
 export function refGet<A>(self: Ref<A>): Effect<A> {
   const step = (): Exit<A, empty> => success(self.value);
   return makeEffect({
-    run: () => Promise.resolve(step()),
+    run    : () => Promise.resolve(step()),
     runSync: step,
   });
 }
@@ -3034,7 +3034,7 @@ export function refSet<A>(self: Ref<A>, value: A): Effect<void> {
     return success(undefined);
   };
   return makeEffect({
-    run: () => Promise.resolve(step()),
+    run    : () => Promise.resolve(step()),
     runSync: step,
   });
 }
@@ -3063,7 +3063,7 @@ export function refModify<A, B>(self: Ref<A>, transform: (value: A) => [B, A]): 
     }
   };
   return makeEffect({
-    run: () => Promise.resolve(step()),
+    run    : () => Promise.resolve(step()),
     runSync: step,
   });
 }
@@ -3104,8 +3104,8 @@ export function refGetAndSet<A>(self: Ref<A>, value: A): Effect<A> {
  * and the second write silently discards the first.
  */
 export function refUpdateEffect<A, E, R>(
-  self: Ref<A>,
-  lock: Semaphore,
+  self     : Ref<A>,
+  lock     : Semaphore,
   transform: (value: A) => Effect<A, E, R>,
 ): Effect<A, E, R> {
   // Written with `flatMap` rather than the generator form: the runtime does
@@ -3131,7 +3131,7 @@ export function deferred<A, E = empty>(): Effect<Deferred<A, E>> {
   return sync(() => {
     const made: DeferredCarrier<A, E> = {
       __kind: "Deferred",
-      state: { settled: null, waiters: new Set() },
+      state : { settled: null, waiters: new Set() },
     };
     return made;
   });
@@ -3183,7 +3183,7 @@ export function deferredSucceed<A, E>(self: Deferred<A, E>, value: A): Effect<bo
   const settled: Exit<A, E> = success(value);
   const step = (): Exit<boolean, empty> => success(completeDeferred(self.state, settled));
   return makeEffect({
-    run: () => Promise.resolve(step()),
+    run    : () => Promise.resolve(step()),
     runSync: step,
   });
 }
@@ -3193,7 +3193,7 @@ export function deferredFail<A, E>(self: Deferred<A, E>, error: E): Effect<boole
   const settled: Exit<A, E> = failure(failCause(error));
   const step = (): Exit<boolean, empty> => success(completeDeferred(self.state, settled));
   return makeEffect({
-    run: () => Promise.resolve(step()),
+    run    : () => Promise.resolve(step()),
     runSync: step,
   });
 }
@@ -3202,7 +3202,7 @@ export function deferredFail<A, E>(self: Deferred<A, E>, error: E): Effect<boole
 export function deferredIsDone<A, E>(self: Deferred<A, E>): Effect<boolean> {
   const step = (): Exit<boolean, empty> => success(self.state.settled != null);
   return makeEffect({
-    run: () => Promise.resolve(step()),
+    run    : () => Promise.resolve(step()),
     runSync: step,
   });
 }
@@ -3240,7 +3240,7 @@ export function semaphore(permits: number): Effect<Semaphore> {
     const capacity = Math.max(0, Math.floor(permits));
     const made: SemaphoreCarrier = {
       __kind: "Semaphore",
-      state: { available: capacity, capacity, waiters: [] },
+      state : { available: capacity, capacity, waiters: [] },
     };
     return made;
   });
@@ -3264,9 +3264,9 @@ export function withPermit<A, E, R>(self: Semaphore, body: Effect<A, E, R>): Eff
  * without releasing one it does not hold.
  */
 export function withPermits<A, E, R>(
-  self: Semaphore,
+  self   : Semaphore,
   permits: number,
-  body: Effect<A, E, R>,
+  body   : Effect<A, E, R>,
 ): Effect<A, E, R> {
   return makeEffect({
     run: async (runContext) => {
@@ -3296,8 +3296,8 @@ export function withPermits<A, E, R>(
  * of it, which is what keeps the order the one people asked in.
  */
 function acquirePermits(
-  state: SemaphoreState,
-  wanted: number,
+  state     : SemaphoreState,
+  wanted    : number,
   runContext: Context,
 ): Promise<boolean> {
   return new Promise((resolve) => {
@@ -3361,8 +3361,8 @@ export function queue<A>(capacity: number, strategy?: QueueStrategy): Effect<Que
       state: {
         capacity: Math.max(1, Math.floor(capacity)),
         strategy: strategy == null ? "bounded" : strategy,
-        items: [],
-        takers: [],
+        items   : [],
+        takers  : [],
         offerers: [],
         shutdown: false,
       },
@@ -3462,7 +3462,7 @@ export function queueSize<A>(self: Queue<A>): Effect<number> {
   const step = (): Exit<number, empty> =>
     state.shutdown ? interruptedExit() : success(state.items.length);
   return makeEffect({
-    run: () => Promise.resolve(step()),
+    run    : () => Promise.resolve(step()),
     runSync: step,
   });
 }
@@ -3486,7 +3486,7 @@ export function queueShutdown<A>(self: Queue<A>): Effect<void> {
     return success(undefined);
   };
   return makeEffect({
-    run: () => Promise.resolve(step()),
+    run    : () => Promise.resolve(step()),
     runSync: step,
   });
 }
@@ -3496,7 +3496,7 @@ export function queueIsShutdown<A>(self: Queue<A>): Effect<boolean> {
   const state = self.state;
   const step = (): Exit<boolean, empty> => success(state.shutdown);
   return makeEffect({
-    run: () => Promise.resolve(step()),
+    run    : () => Promise.resolve(step()),
     runSync: step,
   });
 }
@@ -3516,7 +3516,7 @@ function takeManyEffect<A>(state: QueueState<A>, wanted: number): Effect<$ReadOn
       ? interruptedExit()
       : success(drainQueue(state, wanted));
   return makeEffect({
-    run: (runContext) => Promise.resolve(step(runContext)),
+    run    : (runContext) => Promise.resolve(step(runContext)),
     runSync: step,
   });
 }
@@ -3556,8 +3556,8 @@ function offerNow<A>(state: QueueState<A>, value: A, runContext: Context): Queue
 
 /** `offerNow`, and then the wait a `bounded` queue asks for. */
 function offerToQueue<A>(
-  state: QueueState<A>,
-  value: A,
+  state     : QueueState<A>,
+  value     : A,
   runContext: Context,
 ): Promise<QueueOffered> {
   return new Promise((resolve) => {
@@ -3680,10 +3680,10 @@ export function pubSub<A>(capacity: number, strategy?: QueueStrategy): Effect<Pu
     const made: PubSubCarrier<A> = {
       __kind: "PubSub",
       state: {
-        capacity: Math.max(1, Math.floor(capacity)),
-        strategy: strategy == null ? "bounded" : strategy,
+        capacity   : Math.max(1, Math.floor(capacity)),
+        strategy   : strategy == null ? "bounded" : strategy,
         subscribers: new Set(),
-        shutdown: false,
+        shutdown   : false,
       },
     };
     return made;
@@ -3715,8 +3715,8 @@ export function pubSubSubscribe<A>(self: PubSub<A>): Effect<Queue<A>, empty, Sco
     const subscription: QueueState<A> = {
       capacity: state.capacity,
       strategy: state.strategy,
-      items: [],
-      takers: [],
+      items   : [],
+      takers  : [],
       offerers: [],
       shutdown: false,
     };
@@ -3731,7 +3731,7 @@ export function pubSubSubscribe<A>(self: PubSub<A>): Effect<Queue<A>, empty, Sco
     return success(made);
   };
   return makeEffect({
-    run: (runContext) => Promise.resolve(step(runContext)),
+    run    : (runContext) => Promise.resolve(step(runContext)),
     runSync: step,
   });
 }
@@ -3792,7 +3792,7 @@ export function pubSubShutdown<A>(self: PubSub<A>): Effect<void> {
     return success(undefined);
   };
   return makeEffect({
-    run: () => Promise.resolve(step()),
+    run    : () => Promise.resolve(step()),
     runSync: step,
   });
 }
@@ -3871,7 +3871,7 @@ export function orDie<A, E, R>(self: Effect<A, E, R>): Effect<A, empty, R> {
  */
 export function exit<A, E, R>(self: Effect<A, E, R>): Effect<Exit<A, E>, empty, R> {
   return makeEffect({
-    run: async (runContext) => success(await runKernel(self, runContext)),
+    run    : async (runContext) => success(await runKernel(self, runContext)),
     runSync: (runContext) => success(runSyncKernel(self, runContext)),
   });
 }
@@ -3883,9 +3883,9 @@ export function exit<A, E, R>(self: Effect<A, E, R>): Effect<Exit<A, E>, empty, 
  * `fail`, written out at every call site.
  */
 export function filterOrFail<A, E1, E2, R>(
-  self: Effect<A, E1, R>,
+  self     : Effect<A, E1, R>,
   predicate: (value: A) => boolean,
-  error: (value: A) => E2,
+  error    : (value: A) => E2,
 ): Effect<A, E1 | E2, R> {
   return flatMap(self, (value) => (predicate(value) ? succeed(value) : fail(error(value))));
 }

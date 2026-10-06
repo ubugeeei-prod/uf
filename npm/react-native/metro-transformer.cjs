@@ -59,15 +59,15 @@ async function transform(args) {
   if (flow.isFlowModule(absolute)) {
     findUfBinary(flow);
     const out = await flow.transformFlow(src, absolute, {
-      root: projectRoot,
+      root       : projectRoot,
       development: options?.dev === true,
       // Off, because the upstream transformer registers components for React
       // Refresh itself — Expo's preset and React Native's both add
       // `react-refresh/babel` to a development bundle — and a component
       // registered twice is two families to the runtime, and a refresh that
       // remounts instead of preserving state.
-      refresh: false,
-      sourceMap: true,
+      refresh     : false,
+      sourceMap   : true,
       nativeStyles: true,
     });
     if (out != null) {
@@ -203,8 +203,8 @@ function loadUpstream(projectRoot) {
     candidates = [
       {
         request: configured,
-        from: projectRoot,
-        why: "transformer.babelTransformerPath, composed by withUniflowedMetro()",
+        from   : projectRoot,
+        why    : "transformer.babelTransformerPath, composed by withUniflowedMetro()",
       },
     ];
   } else {
@@ -270,27 +270,27 @@ function installedCandidates(projectRoot) {
   if (expo != null) {
     candidates.push({
       request: "@expo/metro-config/babel-transformer",
-      from: expo,
-      why: "Expo's transformer, beside the installed expo",
+      from   : expo,
+      why    : "Expo's transformer, beside the installed expo",
     });
   }
   candidates.push({
     request: "@react-native/metro-babel-transformer",
-    from: projectRoot,
-    why: "React Native's transformer",
+    from   : projectRoot,
+    why    : "React Native's transformer",
   });
   const reactNative = packageDirectory("react-native", projectRoot);
   if (reactNative != null) {
     candidates.push({
       request: "@react-native/metro-babel-transformer",
-      from: reactNative,
-      why: "React Native's transformer, beside the installed react-native",
+      from   : reactNative,
+      why    : "React Native's transformer, beside the installed react-native",
     });
   }
   candidates.push({
     request: "metro-react-native-babel-transformer",
-    from: projectRoot,
-    why: "React Native's transformer before 0.73",
+    from   : projectRoot,
+    why    : "React Native's transformer before 0.73",
   });
   return candidates;
 }

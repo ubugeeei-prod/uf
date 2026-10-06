@@ -47,8 +47,8 @@ describe("locale routes", () => {
     expect(routing.metadata("/guide")).toEqual({
       alternates: {
         languages: {
-          en: "/en/guide",
-          ja: "/ja/guide",
+          en         : "/en/guide",
+          ja         : "/ja/guide",
           "x-default": "/en/guide",
         },
       },

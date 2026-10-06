@@ -112,8 +112,8 @@ export function createVercelHandler(options: VercelHandlerOptions): (
   const listener = nodeListener(
     createServeHandler({
       staticDir: options.staticDir,
-      handle: options.handle,
-      routing: options.routing,
+      handle   : options.handle,
+      routing  : options.routing,
     }),
     { beginRequest: options.beginRequest },
   );

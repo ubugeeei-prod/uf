@@ -119,7 +119,7 @@ export type LoadContext = {
  * stops rather than one that is merely ignored.
  */
 export function resource<T>(
-  load: (context: LoadContext) => Promise<T>,
+  load    : (context: LoadContext) => Promise<T>,
   options?: CellOptions<?T>,
 ): Cell<?T> {
   const initial: ?T = null;
@@ -142,9 +142,9 @@ export function resource<T>(
   }
 
   return createNode({
-    kind: "resource",
-    scope: "async-resource",
-    value: initial,
+    kind  : "resource",
+    scope : "async-resource",
+    value : initial,
     status: "idle",
     evaluate: (self) => {
       // The evaluation itself bumped the generation, so this is the one this

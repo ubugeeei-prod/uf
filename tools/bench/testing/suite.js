@@ -263,7 +263,7 @@ export function suiteFiles(preset: Preset, name: Dialect): Array<SuiteFile> {
   }
   if (name === "vitest") {
     files.push({
-      path: "vitest.config.js",
+      path    : "vitest.config.js",
       contents: `export default { test: { include: ["lib/**/*.test.js"] } };\n`,
     });
   }

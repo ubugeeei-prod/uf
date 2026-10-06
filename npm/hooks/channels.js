@@ -73,7 +73,7 @@ function channelConstructor(): Class<Channel> | null {
 /** What `useBroadcast` hands back. */
 export type UseBroadcastReturn<T> = {|
   /** Send to every other page on this origin. Never to this one. */
-  readonly post: (message: T) => void,
+  readonly post     : (message: T) => void,
   readonly supported: boolean,
 |};
 
@@ -98,10 +98,10 @@ export type UseBroadcastReturn<T> = {|
  * `@uniflowed/validator` if it matters.
  */
 export hook useBroadcast<T>(
-  name: string,
+  name     : string,
   onMessage: (message: mixed) => mixed,
 ): UseBroadcastReturn<T> {
-  const stable = useStableCallback(onMessage);
+  const stable    = useStableCallback(onMessage);
   const supported = useSupported(() => channelConstructor() != null);
 
   // Written in an effect and read only from `post`, which a render never
@@ -144,7 +144,7 @@ export type UseClipboardReturn = {|
   /** Read the clipboard, which may prompt. `null` when it is refused. */
   readonly read: () => Promise<string | null>,
   /** True for `resetAfter` milliseconds following a successful copy. */
-  readonly copied: boolean,
+  readonly copied   : boolean,
   readonly supported: boolean,
 |};
 
@@ -170,7 +170,7 @@ export type UseClipboardReturn = {|
  */
 export hook useClipboard(options?: {| readonly resetAfter?: number |}): UseClipboardReturn {
   const resetAfter = options?.resetAfter ?? 1_500;
-  const supported = useSupported(() => browserWindow()?.navigator.clipboard != null);
+  const supported           = useSupported(() => browserWindow()?.navigator.clipboard != null);
   const [copied, setCopied] = useState(false);
 
   const timer = useRef<TimeoutID | null>(null);

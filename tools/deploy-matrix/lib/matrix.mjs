@@ -21,11 +21,11 @@ export const MATRIX_FILE = path.resolve(
 
 /** What a cell may say, and how the documentation says it. */
 export const STATUSES = {
-  verified: "Verified in CI",
-  rejected: "Unsupported (rejected)",
+  verified      : "Verified in CI",
+  rejected      : "Unsupported (rejected)",
   "not-emulated": "Not emulated",
-  "known-bug": "Known bug",
-  planned: "Planned",
+  "known-bug"   : "Known bug",
+  planned       : "Planned",
 };
 
 /** The documented alternatives a check can be asked to assert; see `./checks.mjs`. */

@@ -53,11 +53,11 @@ import { useFormState, useWatch } from "./watch.js";
 
 /** The props a controlled component is handed. */
 export type ControlledField = {|
-  readonly name: string,
-  readonly value: mixed,
+  readonly name    : string,
+  readonly value   : mixed,
   readonly onChange: (value: mixed) => void,
-  readonly onBlur: () => void,
-  readonly ref: (element: mixed) => void,
+  readonly onBlur  : () => void,
+  readonly ref     : (element: mixed) => void,
   /**
    * Whether the field is switched off, by its own option or by the form's.
    *
@@ -76,16 +76,16 @@ export type ControlledField = {|
 
 /** What is currently true of the field, for rendering its state. */
 export type ControlledFieldState = {|
-  readonly invalid: boolean,
-  readonly isDirty: boolean,
+  readonly invalid  : boolean,
+  readonly isDirty  : boolean,
   readonly isTouched: boolean,
-  readonly error: mixed,
+  readonly error    : mixed,
 |};
 
 export type UseControllerOptions<TValues extends FieldValues, TOutput> = {|
-  readonly control: Control<TValues, TOutput>,
-  readonly name: FieldPath,
-  readonly rules?: ValidationRules,
+  readonly control      : Control<TValues, TOutput>,
+  readonly name         : FieldPath,
+  readonly rules?       : ValidationRules,
   readonly defaultValue?: mixed,
   /**
    * Switch this field off. The form's own `disabled` switches it off too, and
@@ -95,7 +95,7 @@ export type UseControllerOptions<TValues extends FieldValues, TOutput> = {|
 |};
 
 export type UseControllerReturn = {|
-  readonly field: ControlledField,
+  readonly field     : ControlledField,
   readonly fieldState: ControlledFieldState,
 |};
 
@@ -141,7 +141,7 @@ export hook useController<TValues extends FieldValues, TOutput>(
   // flag moves, which is what re-renders a controlled field whose form was
   // switched off from somewhere other than its own parent's render.
   const isDisabled = useCallback(() => control.isDisabled(name), [control, name]);
-  const disabled = useSyncExternalStore(control.subscribeFormState, isDisabled, isDisabled);
+  const disabled   = useSyncExternalStore(control.subscribeFormState, isDisabled, isDisabled);
 
   const value = useWatch({ control, name, defaultValue: options.defaultValue });
   const state = useFormState({ control, name });
@@ -178,10 +178,10 @@ export hook useController<TValues extends FieldValues, TOutput>(
 
   const fieldState = useMemo(
     () => ({
-      invalid: state.errors[name] != null,
-      isDirty: state.dirtyFields[name] === true,
+      invalid  : state.errors[name] != null,
+      isDirty  : state.dirtyFields[name] === true,
       isTouched: state.touchedFields[name] === true,
-      error: state.errors[name],
+      error    : state.errors[name],
     }),
     [state, name],
   );
@@ -197,12 +197,12 @@ export hook useController<TValues extends FieldValues, TOutput>(
  * a loop cannot call a hook.
  */
 export component Controller<TValues extends FieldValues, TOutput = TValues>(
-  control: Control<TValues, TOutput>,
-  name: FieldPath,
-  rules?: ValidationRules,
+  control      : Control<TValues, TOutput>,
+  name         : FieldPath,
+  rules?       : ValidationRules,
   defaultValue?: mixed,
-  disabled?: boolean,
-  render: (bound: UseControllerReturn) => React.Node,
+  disabled?    : boolean,
+  render       : (bound: UseControllerReturn) => React.Node,
 ) {
   const bound = useController({ control, name, rules, defaultValue, disabled });
   return render(bound);

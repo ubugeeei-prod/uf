@@ -87,13 +87,13 @@ import type { Orientation } from "./internal/roving-focus.js";
 export type ActivationMode = "automatic" | "manual";
 
 type TabsState = {|
-  readonly base: string,
-  readonly selected: string,
-  readonly select: (value: string) => void,
+  readonly base       : string,
+  readonly selected   : string,
+  readonly select     : (value: string) => void,
   readonly orientation: Orientation,
-  readonly activation: ActivationMode,
+  readonly activation : ActivationMode,
   /** The panel values currently mounted, so a tab only claims one that exists. */
-  readonly mounted: $ReadOnlyArray<string>,
+  readonly mounted      : $ReadOnlyArray<string>,
   readonly registerPanel: (value: string, present: boolean) => void,
 |};
 
@@ -115,18 +115,18 @@ hook useTabs(part: string): TabsState {
  * value, and a page that just wants tabs does not.
  */
 component TabsRoot(
-  children: React.Node,
-  defaultValue: string,
-  value?: string,
-  onValueChange?: (value: string) => void,
+  children       : React.Node,
+  defaultValue   : string,
+  value?         : string,
+  onValueChange? : (value: string) => void,
   activationMode?: ActivationMode = "automatic",
-  orientation?: Orientation = "horizontal",
-  render?: RenderProp,
+  orientation?   : Orientation = "horizontal",
+  render?        : RenderProp,
   ...rest: Rest
 ) {
-  const base = useId();
-  const [selected, select] = useControlled(value, defaultValue, onValueChange);
-  const [mounted, setMounted] = useState<$ReadOnlyArray<string>>([]);
+  const base                   = useId();
+  const [selected, select]     = useControlled(value, defaultValue, onValueChange);
+  const [mounted,  setMounted] = useState<$ReadOnlyArray<string>>([]);
 
   // Functional updates, so two panels mounting in the same commit do not each
   // overwrite the other's registration with a list computed before it existed.
@@ -159,7 +159,7 @@ component TabsRoot(
     <TabsContext.Provider value={state}>
       {
         match (render) {
-          undefined => <div {...props} />,
+          undefined    => <div {...props} />,
           const custom => custom(props),
         }
       }
@@ -178,7 +178,7 @@ component TabsRoot(
  * being document order the first time a tab is conditional.
  */
 component TabsList(children: renders* TabsTab, render?: RenderProp, ...rest: Rest) {
-  const tabs = useTabs("Tabs.List");
+  const tabs    = useTabs("Tabs.List");
   const listRef = useRef<HTMLElement | null>(null);
   const selected = tabs.selected;
 
@@ -229,10 +229,10 @@ component TabsList(children: renders* TabsTab, render?: RenderProp, ...rest: Res
       // set inside somebody else's `dir="rtl"` walks the right way without
       // the caller having had to know it needed to say so.
       const next = moveOnKey(event, list, {
-        item: TAB,
-        owner: TAB_LIST,
-        orientation: tabs.orientation,
-        wrap: true,
+        item        : TAB,
+        owner       : TAB_LIST,
+        orientation : tabs.orientation,
+        wrap        : true,
         skipDisabled: true,
       });
       if (next != null && tabs.activation === "automatic") {
@@ -248,7 +248,7 @@ component TabsList(children: renders* TabsTab, render?: RenderProp, ...rest: Res
   });
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }
@@ -313,10 +313,10 @@ function placeIndicator(list: HTMLElement): void {
  * gap they cannot ask about. The keyboard steps over it either way.
  */
 component TabsTab(
-  value: string,
-  children: React.Node,
+  value    : string,
+  children : React.Node,
   disabled?: boolean = false,
-  render?: RenderProp,
+  render?  : RenderProp,
   ...rest: Rest
 ) {
   const tabs = useTabs("Tabs.Tab");
@@ -338,7 +338,7 @@ component TabsTab(
     // Read by the list's key handler, which finds tabs in the document rather
     // than in a registry and so needs each one to carry its own value.
     "data-value": value,
-    id: `${tabs.base}-tab-${value}`,
+    id          : `${tabs.base}-tab-${value}`,
     onClick: composeHandlers(rest.onClick, () => {
       if (!disabled) {
         tabs.select(value);
@@ -362,7 +362,7 @@ component TabsTab(
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -395,7 +395,7 @@ component TabsPanel(value: string, children: React.Node, render?: RenderProp, ..
   const props = withProps(rest, {
     "aria-labelledby": `${tabs.base}-tab-${value}`,
     children,
-    id: `${tabs.base}-panel-${value}`,
+    id  : `${tabs.base}-panel-${value}`,
     role: "tabpanel",
     // The panel itself is focusable so that Tab out of the tab list lands on
     // the content the tab describes, which is where the reader expects to go
@@ -404,7 +404,7 @@ component TabsPanel(value: string, children: React.Node, render?: RenderProp, ..
   });
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

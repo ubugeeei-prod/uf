@@ -40,37 +40,37 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 const styles = stylex.create({
   root: {
     display: "grid",
-    gap: ufTokens.space3,
+    gap    : ufTokens.space3,
   },
   box: {
-    display: "block",
-    flexShrink: 0,
+    display        : "block",
+    flexShrink     : 0,
     backgroundColor: ufTokens.sunken,
-    borderRadius: ufTokens.radiusSm,
+    borderRadius   : ufTokens.radiusSm,
   },
   line: {
-    width: "100%",
+    width : "100%",
     height: ufTokens.textMd,
   },
   block: {
-    width: "100%",
-    height: "5rem",
+    width       : "100%",
+    height      : "5rem",
     borderRadius: ufTokens.radiusMd,
   },
   circle: {
-    width: "40px",
-    height: "40px",
+    width       : "40px",
+    height      : "40px",
     borderRadius: ufTokens.radiusPill,
   },
 });
 
 /** The region a skeleton stands in for. `busy` goes false once the content is there. */
 component SkeletonRoot(
-  children: React.Node,
-  busy?: boolean = true,
-  label?: string = "Loading…",
+  children  : React.Node,
+  busy?     : boolean = true,
+  label?    : string = "Loading…",
   doneLabel?: string = "Loaded",
-  xstyle?: StyleArgument,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -89,16 +89,16 @@ component SkeletonRoot(
 
 /** One shape. Size it with `xstyle` when the content it stands in for is another size. */
 component SkeletonBox(
-  shape?: SkeletonShape = "line",
-  xstyle?: StyleArgument,
+  shape?    : SkeletonShape = "line",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   const styled = props(
     styles.box,
     match (shape) {
-      "line" => styles.line,
-      "block" => styles.block,
+      "line"   => styles.line,
+      "block"  => styles.block,
       "circle" => styles.circle,
     },
     xstyle,

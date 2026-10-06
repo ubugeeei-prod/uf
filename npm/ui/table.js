@@ -79,24 +79,24 @@ import { visuallyHiddenStyle } from "./internal/visually-hidden-style.js";
 
 /** Which column a table is sorted by, and which way. */
 export type Sort = {|
-  readonly column: string,
+  readonly column   : string,
   readonly direction: "ascending" | "descending",
 |};
 
 type TableState = {|
-  readonly sort: Sort | null,
+  readonly sort   : Sort | null,
   readonly setSort: (sort: Sort | null) => void,
   /** How many rows the whole set has, which is not how many are rendered. */
   readonly rowCount: number | null,
   /** Where the rendered rows start in that set, counting from zero. */
-  readonly rowOffset: number,
-  readonly headerRows: number,
-  readonly registerHeader: (present: boolean) => void,
-  readonly captionId: string,
-  readonly captioned: boolean,
+  readonly rowOffset      : number,
+  readonly headerRows     : number,
+  readonly registerHeader : (present: boolean) => void,
+  readonly captionId      : string,
+  readonly captioned      : boolean,
   readonly registerCaption: (present: boolean) => void,
   /** What each sortable column is called, for the announcement. */
-  readonly labels: { readonly [string]: string },
+  readonly labels       : { readonly [string]: string },
   readonly registerLabel: (column: string, label: string) => void,
 |};
 
@@ -128,21 +128,21 @@ hook useTable(part: string): TableState {
  * translation table. The default is English.
  */
 component TableRoot(
-  children: React.Node,
-  sort?: Sort | null,
-  defaultSort?: Sort | null = null,
+  children     : React.Node,
+  sort?        : Sort | null,
+  defaultSort? : Sort | null = null,
   onSortChange?: (sort: Sort | null) => void,
-  rowCount?: number | null = null,
-  rowOffset?: number = 0,
+  rowCount?    : number | null = null,
+  rowOffset?   : number = 0,
   announceSort?: (column: string, direction: "ascending" | "descending") => string,
-  render?: RenderProp,
+  render?      : RenderProp,
   ...rest: Rest
 ) {
-  const base = useId();
-  const [current, setCurrent] = useControlled(sort, defaultSort, onSortChange);
+  const base                        = useId();
+  const [current,    setCurrent]    = useControlled(sort, defaultSort, onSortChange);
   const [headerRows, setHeaderRows] = useState(0);
-  const [captioned, setCaptioned] = useState(false);
-  const [labels, setLabels] = useState<{ readonly [string]: string }>({});
+  const [captioned,  setCaptioned]  = useState(false);
+  const [labels,     setLabels]     = useState<{ readonly [string]: string }>({});
 
   const registerHeader = useStableCallback((present: boolean) => {
     setHeaderRows(present ? 1 : 0);
@@ -157,7 +157,7 @@ component TableRoot(
 
   const state = useMemo(
     () => ({
-      sort: current,
+      sort   : current,
       setSort: setCurrent,
       rowCount,
       rowOffset,
@@ -192,7 +192,7 @@ component TableRoot(
         );
   const props = withProps(rest, {
     "aria-labelledby": captioned ? `${base}-caption` : undefined,
-    "aria-rowcount": rowCount == null ? undefined : rowCount + headerRows,
+    "aria-rowcount"  : rowCount == null ? undefined : rowCount + headerRows,
     children,
   });
 
@@ -200,7 +200,7 @@ component TableRoot(
     <TableContext.Provider value={state}>
       {
         match (render) {
-          undefined => <table {...props} />,
+          undefined    => <table {...props} />,
           const custom => custom(withProps(props, { role: "table" })),
         }
       }
@@ -241,7 +241,7 @@ component TableCaption(children: React.Node, render?: RenderProp, ...rest: Rest)
 
   const props = withProps(rest, { children, id: table.captionId });
   return match (render) {
-    undefined => <caption {...props} />,
+    undefined    => <caption {...props} />,
     const custom => custom(withProps(props, { role: "caption" })),
   };
 }
@@ -267,7 +267,7 @@ component TableHeader(children: React.Node, render?: RenderProp, ...rest: Rest) 
     <HeaderContext.Provider value={true}>
       {
         match (render) {
-          undefined => <thead {...props} />,
+          undefined    => <thead {...props} />,
           const custom => custom(withProps(props, { role: "rowgroup" })),
         }
       }
@@ -282,7 +282,7 @@ component TableBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
     <HeaderContext.Provider value={false}>
       {
         match (render) {
-          undefined => <tbody {...props} />,
+          undefined    => <tbody {...props} />,
           const custom => custom(withProps(props, { role: "rowgroup" })),
         }
       }
@@ -308,11 +308,11 @@ component TableBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
  */
 component TableRow(
   children: React.Node,
-  index?: number | null = null,
-  render?: RenderProp,
+  index?  : number | null = null,
+  render? : RenderProp,
   ...rest: Rest
 ) {
-  const table = useTable("Table.Row");
+  const table  = useTable("Table.Row");
   const header = useContext(HeaderContext);
   const counted = table.rowCount != null;
 
@@ -329,7 +329,7 @@ component TableRow(
 
   const props = withProps(rest, { "aria-rowindex": rowIndex, children });
   return match (render) {
-    undefined => <tr {...props} />,
+    undefined    => <tr {...props} />,
     const custom => custom(withProps(props, { role: "row" })),
   };
 }
@@ -349,8 +349,8 @@ component TableRow(
  */
 component TableHead(
   children: React.Node,
-  column?: string | null = null,
-  render?: RenderProp,
+  column? : string | null = null,
+  render? : RenderProp,
   ...rest: Rest
 ) {
   const table = useTable("Table.Head");
@@ -375,7 +375,7 @@ component TableHead(
   if (column == null) {
     const props = withProps(rest, { children, scope: "col" });
     return match (render) {
-      undefined => <th {...props} />,
+      undefined    => <th {...props} />,
       const custom => custom(withProps(props, { role: "columnheader" })),
     };
   }
@@ -398,13 +398,13 @@ component TableHead(
   );
   const props = withProps(passed, {
     "aria-sort": sorted ? table.sort?.direction : undefined,
-    children: button,
-    ref: composeRefs(rest.ref, setElement),
-    scope: "col",
+    children   : button,
+    ref        : composeRefs(rest.ref, setElement),
+    scope      : "col",
   });
 
   return match (render) {
-    undefined => <th {...props} />,
+    undefined    => <th {...props} />,
     const custom => custom(withProps(props, { role: "columnheader" })),
   };
 }
@@ -413,7 +413,7 @@ component TableHead(
 component TableCell(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   return match (render) {
-    undefined => <td {...props} />,
+    undefined    => <td {...props} />,
     const custom => custom(withProps(props, { role: "cell" })),
   };
 }
@@ -429,7 +429,7 @@ component TableCell(children: React.Node, render?: RenderProp, ...rest: Rest) {
 component TableRowHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children, scope: "row" });
   return match (render) {
-    undefined => <th {...props} />,
+    undefined    => <th {...props} />,
     const custom => custom(withProps(props, { role: "rowheader" })),
   };
 }
@@ -465,12 +465,12 @@ component TableRowHeader(children: React.Node, render?: RenderProp, ...rest: Res
  * for the type of `checked`, not for the markup.
  */
 component TableSelectAll(
-  checked: boolean | "mixed",
+  checked        : boolean | "mixed",
   onCheckedChange: (checked: boolean) => void,
-  label?: string = "Select all rows",
-  className?: string,
-  disabled?: boolean = false,
-  render?: RenderProp,
+  label?         : string = "Select all rows",
+  className?     : string,
+  disabled?      : boolean = false,
+  render?        : RenderProp,
 ) {
   return (
     <Checkbox
@@ -498,12 +498,12 @@ component TableSelectAll(
  * gives above.
  */
 component TableRowSelect(
-  label: string,
-  checked: boolean,
+  label          : string,
+  checked        : boolean,
   onCheckedChange: (checked: boolean) => void,
-  className?: string,
-  disabled?: boolean = false,
-  render?: RenderProp,
+  className?     : string,
+  disabled?      : boolean = false,
+  render?        : RenderProp,
 ) {
   return (
     <Checkbox

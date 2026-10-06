@@ -58,7 +58,7 @@ export function parse<TOutput>(schema: Schema<TOutput, mixed>, value: mixed): TO
 /** [`safeParse`], for a schema with something to wait for. */
 export function safeParseAsync<TOutput>(
   schema: Schema<TOutput, mixed>,
-  value: mixed,
+  value : mixed,
 ): Promise<Result<TOutput>> {
   return runAsync(schema, value, []);
 }
@@ -66,7 +66,7 @@ export function safeParseAsync<TOutput>(
 /** [`parse`], for a schema with something to wait for. */
 export async function parseAsync<TOutput>(
   schema: Schema<TOutput, mixed>,
-  value: mixed,
+  value : mixed,
 ): Promise<TOutput> {
   const result = await safeParseAsync(schema, value);
   if (result.ok) {

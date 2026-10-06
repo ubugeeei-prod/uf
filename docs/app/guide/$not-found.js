@@ -24,7 +24,7 @@ import { sections } from "../_design/nav.js";
 
 /** `noindex` for the reason the site's root 404 gives. */
 export const metadata: Metadata = {
-  title: "No such page · uf",
+  title : "No such page · uf",
   robots: { index: false, follow: false },
 };
 

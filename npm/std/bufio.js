@@ -15,14 +15,14 @@ export type BufferedReaderOptions = {
 };
 
 export type ScannerOptions = {
-  readonly bufferSize?: number,
+  readonly bufferSize?  : number,
   readonly maxTokenSize?: number,
-  readonly split?: SplitFunc,
+  readonly split?       : SplitFunc,
 };
 
 export type SplitResult = {
   readonly advance: number,
-  readonly token: Uint8Array | null,
+  readonly token  : Uint8Array | null,
 };
 
 export type SplitFunc = (data: Uint8Array, atEof: boolean) => SplitResult;

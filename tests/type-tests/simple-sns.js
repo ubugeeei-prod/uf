@@ -8,10 +8,10 @@ import { EmptyState, ActionLink } from "../../examples/simple-sns/app/_shared/ui
 export const missingValue: ActionResult<string> = { status: "success", message: "Saved" };
 // $FlowExpectedError[incompatible-type] value
 export const errorWithValue: ActionResult<string> = {
-  status: "error",
+  status : "error",
   message: "No",
-  fields: {},
-  value: "wrong",
+  fields : {},
+  value  : "wrong",
 };
 export component BadField() {
   const control = <input />;

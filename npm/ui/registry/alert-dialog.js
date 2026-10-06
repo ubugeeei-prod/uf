@@ -63,52 +63,52 @@ type RenderProp = (props: Rest) => React.Node;
 
 const styles = stylex.create({
   overlay: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 50,
+    position       : "fixed",
+    inset          : 0,
+    zIndex         : 50,
     backgroundColor: ufTokens.scrim,
     // Enter: the page dims as the panel arrives, over the panel's duration,
     // rather than going dark first and then showing a dialog. Opacity only, so
     // it is the same under reduced motion.
     // Exit: it clears with the panel, in the panel's shorter exit time.
-    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    opacity           : { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transitionProperty: "opacity",
     transitionDuration: {
-      default: ufTokens.durationSlow,
+      default                   : ufTokens.durationSlow,
       ":is([data-state=closed])": ufTokens.durationBase,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
   panel: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 50,
-    boxSizing: "border-box",
-    display: "grid",
-    gap: ufTokens.space4,
-    width: "calc(100% - 32px)",
-    maxWidth: "28rem",
-    height: "fit-content",
-    maxHeight: "calc(100% - 32px)",
-    margin: "auto",
-    overflowY: "auto",
-    padding: ufTokens.space6,
+    position       : "fixed",
+    inset          : 0,
+    zIndex         : 50,
+    boxSizing      : "border-box",
+    display        : "grid",
+    gap            : ufTokens.space4,
+    width          : "calc(100% - 32px)",
+    maxWidth       : "28rem",
+    height         : "fit-content",
+    maxHeight      : "calc(100% - 32px)",
+    margin         : "auto",
+    overflowY      : "auto",
+    padding        : ufTokens.space6,
     backgroundColor: ufTokens.surface,
-    color: ufTokens.ink,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusLg,
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    color          : ufTokens.ink,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    lineHeight     : ufTokens.leadingBase,
+    borderWidth    : "1px",
+    borderStyle    : "solid",
+    borderColor    : ufTokens.border,
+    borderRadius   : ufTokens.radiusLg,
+    outlineWidth   : { default: "0", ":focus-visible": "2px" },
+    outlineStyle   : "solid",
+    outlineColor   : ufTokens.focus,
+    outlineOffset  : "2px",
     // Enter: it fades in and comes forward from 96% of its size, as if it
     // rose out of the page. 0.96 is enough to be seen at this size and too
     // little to read as growing from nothing, and there is no overshoot back
@@ -122,52 +122,52 @@ const styles = stylex.create({
     // and focus is already back on the trigger. Under reduced motion it only
     // fades: `--uf-exit-travel` is 0 there, so the scale does not jump.
     "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
-    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    opacity           : { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transform: {
-      default: "none",
-      "@starting-style": "scale(0.96)",
+      default                   : "none",
+      "@starting-style"         : "scale(0.96)",
       ":is([data-state=closed])": "scale(calc(1 - 0.04 * var(--uf-exit-travel)))",
     },
     transitionProperty: {
-      default: "opacity, transform",
+      default                                  : "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
     transitionDuration: {
-      default: ufTokens.durationSlow,
+      default                   : ufTokens.durationSlow,
       ":is([data-state=closed])": ufTokens.durationBase,
     },
     transitionTimingFunction: {
-      default: ufTokens.easingEnter,
+      default                   : ufTokens.easingEnter,
       ":is([data-state=closed])": ufTokens.easingExit,
     },
   },
   header: {
     display: "grid",
-    gap: ufTokens.space2,
+    gap    : ufTokens.space2,
   },
   footer: {
-    display: "flex",
-    flexWrap: "wrap",
+    display       : "flex",
+    flexWrap      : "wrap",
     justifyContent: "flex-end",
-    gap: ufTokens.space2,
+    gap           : ufTokens.space2,
   },
   title: {
-    margin: 0,
-    fontSize: ufTokens.textLg,
+    margin    : 0,
+    fontSize  : ufTokens.textLg,
     fontWeight: ufTokens.weightBold,
     lineHeight: ufTokens.leadingTight,
   },
   description: {
     margin: 0,
-    color: ufTokens.muted,
+    color : ufTokens.muted,
   },
 });
 
 /** The alert dialog, open or closed. Uncontrolled unless `open` is given. */
 component AlertDialogRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
@@ -182,11 +182,11 @@ component AlertDialogRoot(
  * `Button` unless `render` says otherwise.
  */
 component AlertDialogTrigger(
-  children: React.Node,
-  tone?: ButtonTone = "neutral",
-  size?: ButtonSize = "md",
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  tone?     : ButtonTone = "neutral",
+  size?     : ButtonSize = "md",
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -213,8 +213,8 @@ component AlertDialogTrigger(
 
 /** The scrim and the panel. There is no close button: see the header. */
 component AlertDialogContent(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -233,8 +233,8 @@ component AlertDialogContent(
 
 /** The question and what answering costs, stacked. */
 component AlertDialogHeader(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -250,8 +250,8 @@ component AlertDialogHeader(
 
 /** The row the two answers sit in, at the end of the reading direction. */
 component AlertDialogFooter(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -267,8 +267,8 @@ component AlertDialogFooter(
 
 /** The question, which is the alert dialog's accessible name. */
 component AlertDialogTitle(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -284,8 +284,8 @@ component AlertDialogTitle(
 
 /** What answering costs, announced the moment focus arrives. Required. */
 component AlertDialogDescription(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -301,11 +301,11 @@ component AlertDialogDescription(
 
 /** The answer that does the thing. A deletion is `tone="danger"`. */
 component AlertDialogAction(
-  children: React.Node,
-  tone?: ButtonTone = "primary",
-  size?: ButtonSize = "md",
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  tone?     : ButtonTone = "primary",
+  size?     : ButtonSize = "md",
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -332,11 +332,11 @@ component AlertDialogAction(
 
 /** The answer that declines, and the one focus starts on. */
 component AlertDialogCancel(
-  children: React.Node,
-  tone?: ButtonTone = "neutral",
-  size?: ButtonSize = "md",
-  render?: RenderProp,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  tone?     : ButtonTone = "neutral",
+  size?     : ButtonSize = "md",
+  render?   : RenderProp,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

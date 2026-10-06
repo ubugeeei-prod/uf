@@ -9,11 +9,11 @@ const MODULE = "@uniflowed/core/markdown";
 
 export type MarkdownOptions = {
   readonly cache?: "opt-in",
-  readonly rsc?: true,
+  readonly rsc?  : true,
 };
 
 export type MdxOptions = MarkdownOptions & {
-  readonly components?: { readonly [string]: mixed },
+  readonly components?     : { readonly [string]: mixed },
   readonly jsxImportSource?: "@uniflowed/jsx-runtime",
 };
 

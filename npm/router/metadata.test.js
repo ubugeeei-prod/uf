@@ -57,20 +57,20 @@ component OwnDocument(children: React.Node) {
  * renders only content and uf wraps it in the shell.
  */
 async function documentFor(
-  metadata: Metadata,
+  metadata       : Metadata,
   layoutMetadata?: Metadata,
-  layout?: React.ComponentType<empty>,
+  layout?        : React.ComponentType<empty>,
 ): Promise<string> {
   const Layout = layout ?? SiteLayout;
   const { prerender } = createRenderer({
     App: routerView("./app"),
     routes: [
       {
-        path: "/guide",
+        path  : "/guide",
         params: [],
-        mdx: false,
-        file: "app/guide/$page.js",
-        page: () => Promise.resolve({ default: Page, metadata }),
+        mdx   : false,
+        file  : "app/guide/$page.js",
+        page  : () => Promise.resolve({ default: Page, metadata }),
         layouts:
           layoutMetadata == null && layout == null
             ? []
@@ -78,7 +78,7 @@ async function documentFor(
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   });
 
   const result = await prerender("/guide", assets);
@@ -102,7 +102,7 @@ describe("a canonical URL", () => {
   it("is resolved against metadataBase when it is a path", async () => {
     const html = await documentFor({
       metadataBase: "https://docs.uniflowed.dev",
-      canonical: "/guide",
+      canonical   : "/guide",
     });
 
     expect(html).toContain('<link rel="canonical" href="https://docs.uniflowed.dev/guide"/>');
@@ -117,8 +117,8 @@ describe("a canonical URL", () => {
     try {
       const html = await documentFor({
         metadataBase: "https://docs.uniflowed.dev",
-        canonical: "/guide",
-        openGraph: { images: ["/brand/uf.png"] },
+        canonical   : "/guide",
+        openGraph   : { images: ["/brand/uf.png"] },
       });
       expect(html).toContain(
         '<link rel="canonical" href="https://docs.uniflowed.dev/docs/guide"/>',
@@ -136,7 +136,7 @@ describe("a canonical URL", () => {
     try {
       const html = await documentFor({
         metadataBase: "https://docs.uniflowed.dev",
-        canonical: "/guide",
+        canonical   : "/guide",
       });
       expect(html).toContain(
         '<link rel="canonical" href="https://docs.uniflowed.dev/docs/guide/"/>',
@@ -170,10 +170,10 @@ describe("the card a page gets without asking for one", () => {
     // shipped thirty pages whose share card was an image with no title on it.
     // A page that has said what it is called has said what its card is called.
     const html = await documentFor({
-      title: "Install · uf",
-      description: "One binary, three runtimes, no plugins to add.",
+      title       : "Install · uf",
+      description : "One binary, three runtimes, no plugins to add.",
       metadataBase: "https://docs.uniflowed.dev",
-      openGraph: { images: ["/brand/uf.png"] },
+      openGraph   : { images: ["/brand/uf.png"] },
     });
 
     expect(html).toContain('<meta property="og:title" content="Install · uf"/>');
@@ -186,9 +186,9 @@ describe("the card a page gets without asking for one", () => {
     // No apostrophes: the renderer escapes them, and an assertion that fails
     // over `&#x27;` is an assertion about escaping written by accident.
     const html = await documentFor({
-      title: "Install · uf",
+      title      : "Install · uf",
       description: "the document",
-      openGraph: { title: "Install uf", description: "the card" },
+      openGraph  : { title: "Install uf", description: "the card" },
     });
 
     expect(html).toContain('<meta property="og:title" content="Install uf"/>');
@@ -204,7 +204,7 @@ describe("the card a page gets without asking for one", () => {
 
   it("takes a type a page names instead", async () => {
     const html = await documentFor({
-      title: "a post",
+      title    : "a post",
       openGraph: { type: "article" },
     });
 
@@ -221,9 +221,9 @@ describe("the card a page gets without asking for one", () => {
 
   it("describes the image, for a reader who cannot see it", async () => {
     const html = await documentFor({
-      title: "a page",
+      title    : "a page",
       openGraph: { images: ["/og.png"], imageAlt: "the uf mark" },
-      twitter: { card: "summary_large_image", images: ["/og.png"] },
+      twitter  : { card: "summary_large_image", images: ["/og.png"] },
     });
 
     expect(html).toContain('<meta property="og:image:alt" content="the uf mark"/>');
@@ -237,9 +237,9 @@ describe("the card a page gets without asking for one", () => {
     // and every validator asks for them, which is reason enough when the value
     // is one the page has already given.
     const html = await documentFor({
-      title: "Install · uf",
+      title      : "Install · uf",
       description: "One binary, three runtimes.",
-      twitter: { card: "summary_large_image" },
+      twitter    : { card: "summary_large_image" },
     });
 
     expect(html).toContain('<meta name="twitter:title" content="Install · uf"/>');
@@ -267,7 +267,7 @@ describe("metadataBase", () => {
     // the crawlers that read it, so the card had no image and nothing said so.
     const html = await documentFor({
       metadataBase: "https://docs.uniflowed.dev",
-      openGraph: { images: ["/brand/uf.png"] },
+      openGraph   : { images: ["/brand/uf.png"] },
     });
 
     expect(html).toContain(
@@ -278,7 +278,7 @@ describe("metadataBase", () => {
   it("leaves an absolute image alone", async () => {
     const html = await documentFor({
       metadataBase: "https://docs.uniflowed.dev",
-      openGraph: { images: ["https://cdn.example.com/og.png"] },
+      openGraph   : { images: ["https://cdn.example.com/og.png"] },
     });
 
     expect(html).toContain('<meta property="og:image" content="https://cdn.example.com/og.png"/>');
@@ -307,7 +307,7 @@ describe("metadataBase", () => {
     // throw out of `Head` — is a blank page for a bad `og:image`.
     const html = await documentFor({
       metadataBase: "not a url",
-      openGraph: { images: ["/og.png"] },
+      openGraph   : { images: ["/og.png"] },
     });
 
     expect(html).toContain('<meta property="og:image" content="/og.png"/>');
@@ -322,10 +322,10 @@ describe("a Twitter card", () => {
     // it, with no error anywhere.
     const html = await documentFor({
       twitter: {
-        card: "summary_large_image",
-        site: "@uniflowed",
-        creator: "@ubugeeei",
-        title: "The manual",
+        card       : "summary_large_image",
+        site       : "@uniflowed",
+        creator    : "@ubugeeei",
+        title      : "The manual",
         description: "Everything uf does.",
       },
     });
@@ -341,7 +341,7 @@ describe("a Twitter card", () => {
   it("resolves its images against metadataBase too", async () => {
     const html = await documentFor({
       metadataBase: "https://docs.uniflowed.dev",
-      twitter: { card: "summary", images: ["/brand/uf.png"] },
+      twitter     : { card: "summary", images: ["/brand/uf.png"] },
     });
 
     expect(html).toContain(
@@ -382,7 +382,7 @@ describe("the head of a document uf wrote the shell for", () => {
     // of `<html>` — with nothing anywhere to say which it had.
     const html = await documentFor({
       metadataBase: "https://docs.uniflowed.dev",
-      canonical: "/guide",
+      canonical   : "/guide",
     });
 
     expect(inHead(html, '<link rel="canonical"')).toBe(true);
@@ -391,10 +391,10 @@ describe("the head of a document uf wrote the shell for", () => {
 
   it("carries the share card too, and the description", async () => {
     const html = await documentFor({
-      title: "The manual",
+      title      : "The manual",
       description: "Everything uf does.",
-      openGraph: { images: ["https://docs.uniflowed.dev/og.png"] },
-      twitter: { card: "summary_large_image" },
+      openGraph  : { images: ["https://docs.uniflowed.dev/og.png"] },
+      twitter    : { card: "summary_large_image" },
     });
 
     expect(inHead(html, '<meta name="description"')).toBe(true);
@@ -429,9 +429,9 @@ describe("the head of a document uf wrote the shell for", () => {
     // not a choice about whether the metadata works. A silent difference
     // between them is the part that was not acceptable.
     const metadata = {
-      title: "The manual",
+      title      : "The manual",
       description: "Everything uf does.",
-      canonical: "https://docs.uniflowed.dev/guide",
+      canonical  : "https://docs.uniflowed.dev/guide",
     };
     const shell = await documentFor(metadata);
     const owned = await documentFor(metadata, undefined, OwnDocument);
@@ -450,12 +450,12 @@ describe("the head of a document uf wrote the shell for", () => {
 describe("what was already there", () => {
   it("still renders the five tags that existed before any of this", async () => {
     const html = await documentFor({
-      title: "The manual",
+      title      : "The manual",
       description: "Everything uf does.",
       openGraph: {
-        title: "uf",
+        title      : "uf",
         description: "A Rust-native, Flow-first React toolchain.",
-        images: ["https://docs.uniflowed.dev/og.png"],
+        images     : ["https://docs.uniflowed.dev/og.png"],
       },
     });
 
@@ -482,16 +482,16 @@ async function documentOf(page: PageModule, layout?: ?LayoutModule): Promise<str
     App: routerView("./app"),
     routes: [
       {
-        path: "/guide",
-        params: [],
-        mdx: false,
-        file: "app/guide/$page.js",
-        page: () => Promise.resolve(page),
+        path   : "/guide",
+        params : [],
+        mdx    : false,
+        file   : "app/guide/$page.js",
+        page   : () => Promise.resolve(page),
         layouts: layout == null ? [] : [() => Promise.resolve(layout)],
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   });
 
   const result = await prerender("/guide", assets);
@@ -528,7 +528,7 @@ describe("what a page tells a crawler", () => {
 
   it("carries the two directives that change what a result looks like", async () => {
     const html = await documentFor({
-      title: "a page",
+      title : "a page",
       robots: { maxSnippet: 160, maxImagePreview: "large" },
     });
 
@@ -542,7 +542,7 @@ describe("the translations of a page", () => {
   it("is one hreflang link each, resolved against metadataBase", async () => {
     const html = await documentFor({
       metadataBase: "https://docs.uniflowed.dev",
-      alternates: { languages: { en: "/guide", ja: "/ja/guide" } },
+      alternates  : { languages: { en: "/guide", ja: "/ja/guide" } },
     });
 
     expect(html).toContain(
@@ -583,8 +583,8 @@ describe("a page in a sequence", () => {
   it("links to the pages either side of it", async () => {
     const html = await documentFor({
       metadataBase: "https://docs.uniflowed.dev",
-      canonical: "/posts?page=4",
-      pagination: { prev: "/posts?page=3", next: "/posts?page=5" },
+      canonical   : "/posts?page=4",
+      pagination  : { prev: "/posts?page=3", next: "/posts?page=5" },
     });
 
     expect(html).toContain('<link rel="prev" href="https://docs.uniflowed.dev/posts?page=3"/>');
@@ -597,7 +597,7 @@ describe("a page in a sequence", () => {
     // two onwards are duplicates, and everything only linked from them stops
     // being reachable.
     const html = await documentFor({
-      canonical: "https://docs.uniflowed.dev/posts?page=4",
+      canonical : "https://docs.uniflowed.dev/posts?page=4",
       pagination: { prev: "https://docs.uniflowed.dev/posts?page=3" },
     });
 
@@ -617,7 +617,7 @@ describe("a page in a sequence", () => {
 describe("structured data", () => {
   it("is one script per entry, in the vocabulary a search engine reads", async () => {
     const html = await documentFor({
-      title: "Install · uf",
+      title : "Install · uf",
       jsonLd: [{ "@context": "https://schema.org", "@type": "TechArticle", name: "Install uf" }],
     });
 
@@ -730,7 +730,7 @@ describe("useSeo", () => {
 /** A component three levels down from the page that declares a tag of its own. */
 component Pagination() {
   const seo = useSeo({
-    canonical: "https://docs.uniflowed.dev/posts?page=2",
+    canonical : "https://docs.uniflowed.dev/posts?page=2",
     pagination: { prev: "/posts?page=1", next: "/posts?page=3" },
   });
   return <nav className="pager">{seo}page 2</nav>;
@@ -825,7 +825,7 @@ describe("the render anchor", () => {
     // The point of the anchor rather than the shape of it: two renders of the
     // same route produce the same numbers, which is what hydration compares.
     component Clock() {
-      const at = useRenderedAt();
+      const at    = useRenderedAt();
       const drawn = useRandom("featured").next();
       return <output>{`${at.toString()} ${drawn.toFixed(6)}`}</output>;
     }

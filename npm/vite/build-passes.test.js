@@ -76,8 +76,8 @@ function inAProject(body: (root: string) => Promise<void>): Promise<void> {
  * it is plain JavaScript Vite loads before any transform exists.
  */
 function flowPlugin(
-  root: string,
-  command: string,
+  root                      : string,
+  command                   : string,
   shareTransformAcrossBuilds: boolean = true,
 ): $FlowFixMe {
   return uniflowed({ root, config: {}, command, shareTransformAcrossBuilds }).find(

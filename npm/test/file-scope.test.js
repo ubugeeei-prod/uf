@@ -46,19 +46,19 @@ function hasInThreadHooks(): boolean {
 }
 
 type Event = {
-  event: string,
+  event      : string,
   generation?: number,
-  name?: string,
-  status?: string,
-  message?: string,
-  text?: string,
+  name?      : string,
+  status?    : string,
+  message?   : string,
+  text?      : string,
 };
 
 /** One request, in the shape `crates/uf_test/src/host.rs` writes it. */
 type Request = {|
-  readonly file: string,
-  readonly filter?: string,
-  readonly timeoutMs: number,
+  readonly file      : string,
+  readonly filter?   : string,
+  readonly timeoutMs : number,
   readonly generation: number,
 |};
 
@@ -67,8 +67,8 @@ function runInOneWorker(requests: $ReadOnlyArray<Request>): Promise<Array<Event>
   return new Promise((resolve, reject) => {
     const worker = path.join(repository, "npm", "test", "worker.js");
     const child = spawn(process.execPath, [...loaderArguments(), worker], {
-      cwd: repository,
-      env: { ...process.env, UF_PROJECT_ROOT: repository },
+      cwd  : repository,
+      env  : { ...process.env, UF_PROJECT_ROOT: repository },
       stdio: ["pipe", "pipe", "inherit"],
     });
     let written = "";
@@ -169,15 +169,15 @@ describe("the next file in the same worker", () => {
       if (!hasInThreadHooks()) return;
       const events = await runInOneWorker([
         {
-          file: path.join(repository, "tests", "library", "payload.test.js"),
-          filter: "hydrates from the rows",
-          timeoutMs: 30_000,
+          file      : path.join(repository, "tests", "library", "payload.test.js"),
+          filter    : "hydrates from the rows",
+          timeoutMs : 30_000,
           generation: 1,
         },
         {
-          file: path.join(repository, "npm", "web", "web.test.js"),
-          filter: "falls back to UTC",
-          timeoutMs: 30_000,
+          file      : path.join(repository, "npm", "web", "web.test.js"),
+          filter    : "falls back to UTC",
+          timeoutMs : 30_000,
           generation: 2,
         },
       ]);

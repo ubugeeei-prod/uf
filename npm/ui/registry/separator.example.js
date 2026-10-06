@@ -6,17 +6,17 @@ import { Separator } from "./separator.js";
 
 const styles = stylex.create({
   text: {
-    margin: 0,
+    margin    : 0,
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    color: ufTokens.ink,
+    fontSize  : ufTokens.textSm,
+    color     : ufTokens.ink,
   },
   row: {
-    display: "flex",
+    display   : "flex",
     alignItems: "center",
-    height: "24px",
+    height    : "24px",
     fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
+    fontSize  : ufTokens.textSm,
   },
   link: {
     color: ufTokens.ink,

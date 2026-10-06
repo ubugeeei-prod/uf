@@ -42,17 +42,17 @@ export type ColorChoice = "auto" | "always" | "never";
 
 /** The environment variables that influence terminal rendering. */
 export type TerminalEnv = {
-  readonly NO_COLOR?: string | void,
-  readonly FORCE_COLOR?: string | void,
-  readonly CLICOLOR?: string | void,
+  readonly NO_COLOR?      : string | void,
+  readonly FORCE_COLOR?   : string | void,
+  readonly CLICOLOR?      : string | void,
   readonly CLICOLOR_FORCE?: string | void,
-  readonly TERM?: string | void,
-  readonly COLORTERM?: string | void,
-  readonly COLUMNS?: string | void,
-  readonly LINES?: string | void,
-  readonly LC_ALL?: string | void,
-  readonly LC_CTYPE?: string | void,
-  readonly LANG?: string | void,
+  readonly TERM?          : string | void,
+  readonly COLORTERM?     : string | void,
+  readonly COLUMNS?       : string | void,
+  readonly LINES?         : string | void,
+  readonly LC_ALL?        : string | void,
+  readonly LC_CTYPE?      : string | void,
+  readonly LANG?          : string | void,
   // `process.env` names every variable the process has, and this type
   // only the ones rendering reads.
   ...
@@ -60,9 +60,9 @@ export type TerminalEnv = {
 
 /** The resolved rendering capability of one stream. */
 export type Capabilities = {
-  readonly color: ColorLevel,
+  readonly color : ColorLevel,
   readonly glyphs: GlyphSet,
-  readonly tty: Tty,
+  readonly tty   : Tty,
 };
 
 const LEVELS: $ReadOnlyArray<ColorLevel> = ["none", "ansi16", "ansi256", "truecolor"];
@@ -207,7 +207,7 @@ export const FALLBACK_ROWS: number = 24;
 /** How big the terminal is, in cells. */
 export type TerminalSize = {
   readonly columns: number,
-  readonly rows: number,
+  readonly rows   : number,
 };
 
 /**
@@ -220,7 +220,7 @@ export type TerminalSize = {
  */
 export type TerminalReport = {
   readonly columns?: number,
-  readonly rows?: number,
+  readonly rows?   : number,
   ...
 };
 
@@ -299,67 +299,67 @@ export type BorderStyle = "single" | "double" | "rounded" | "heavy";
 
 /** Eight characters: the four corners, then top, right, bottom, left. */
 export type BorderGlyphs = {
-  readonly topLeft: string,
-  readonly topRight: string,
-  readonly bottomLeft: string,
+  readonly topLeft    : string,
+  readonly topRight   : string,
+  readonly bottomLeft : string,
   readonly bottomRight: string,
-  readonly top: string,
-  readonly right: string,
-  readonly bottom: string,
-  readonly left: string,
+  readonly top        : string,
+  readonly right      : string,
+  readonly bottom     : string,
+  readonly left       : string,
 };
 
 const ASCII_BORDER: BorderGlyphs = {
-  topLeft: "+",
-  topRight: "+",
-  bottomLeft: "+",
+  topLeft    : "+",
+  topRight   : "+",
+  bottomLeft : "+",
   bottomRight: "+",
-  top: "-",
-  right: "|",
-  bottom: "-",
-  left: "|",
+  top        : "-",
+  right      : "|",
+  bottom     : "-",
+  left       : "|",
 };
 
 const UNICODE_BORDERS: { [BorderStyle]: BorderGlyphs } = {
   single: {
-    topLeft: "┌",
-    topRight: "┐",
-    bottomLeft: "└",
+    topLeft    : "┌",
+    topRight   : "┐",
+    bottomLeft : "└",
     bottomRight: "┘",
-    top: "─",
-    right: "│",
-    bottom: "─",
-    left: "│",
+    top        : "─",
+    right      : "│",
+    bottom     : "─",
+    left       : "│",
   },
   double: {
-    topLeft: "╔",
-    topRight: "╗",
-    bottomLeft: "╚",
+    topLeft    : "╔",
+    topRight   : "╗",
+    bottomLeft : "╚",
     bottomRight: "╝",
-    top: "═",
-    right: "║",
-    bottom: "═",
-    left: "║",
+    top        : "═",
+    right      : "║",
+    bottom     : "═",
+    left       : "║",
   },
   rounded: {
-    topLeft: "╭",
-    topRight: "╮",
-    bottomLeft: "╰",
+    topLeft    : "╭",
+    topRight   : "╮",
+    bottomLeft : "╰",
     bottomRight: "╯",
-    top: "─",
-    right: "│",
-    bottom: "─",
-    left: "│",
+    top        : "─",
+    right      : "│",
+    bottom     : "─",
+    left       : "│",
   },
   heavy: {
-    topLeft: "┏",
-    topRight: "┓",
-    bottomLeft: "┗",
+    topLeft    : "┏",
+    topRight   : "┓",
+    bottomLeft : "┗",
     bottomRight: "┛",
-    top: "━",
-    right: "┃",
-    bottom: "━",
-    left: "┃",
+    top        : "━",
+    right      : "┃",
+    bottom     : "━",
+    left       : "┃",
   },
 };
 

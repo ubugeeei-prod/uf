@@ -137,23 +137,23 @@ export type Scope = {
  * same object that went in.
  */
 export type DraftState = {
-  kind: DraftKind,
+  kind : DraftKind,
   scope: Scope,
   /** The draft this one hangs off, or `null` for the root. */
   parent: null | DraftState,
   /** Where this draft sits in `parent`. Meaningless when `parent` is null. */
-  key: mixed,
+  key : mixed,
   base: mixed,
   copy: mixed,
   /** The proxy handed to the recipe. */
-  draft: mixed,
-  modified: boolean,
+  draft    : mixed,
+  modified : boolean,
   finalized: boolean,
   /** Drafted children, keyed the way the parent keys them. */
   children: null | Map<mixed, DraftState>,
   /** key to `true` (written) or `false` (removed), while recording patches. */
   assigned: null | Map<mixed, boolean>,
-  revoke: () => void,
+  revoke  : () => void,
 };
 
 /**
@@ -325,16 +325,16 @@ export function eachEntry(target: mixed, visit: (key: mixed, value: mixed) => vo
         visit(index, items[index]);
       }
     }
-    "map" => {
+    "map"   => {
       asMap(target).forEach((value, key) => visit(key, value));
     }
     // A set is keyed by its members, so the key and the value are the same
     // thing. Callers that rebuild a set have to add rather than assign, which
     // is why `setEntry` takes the kind into account too.
-    "set" => {
+    "set"   => {
       asSet(target).forEach((value) => visit(value, value));
     }
-    _ => {
+    _       => {
       const source = asObject(target);
       for (const key of Object.keys(source)) {
         visit(key, readProp(source, key));
@@ -352,7 +352,7 @@ export function setEntry(target: mixed, key: mixed, value: mixed): void {
     "set" => {
       asSet(target).add(value);
     }
-    _ => {
+    _     => {
       writeProp(target, key, value);
     }
   }
@@ -568,10 +568,10 @@ const objectTraps = {
       return descriptor;
     }
     return {
-      writable: true,
+      writable    : true,
       configurable: state.kind !== "array" || prop !== "length",
-      enumerable: descriptor.enumerable,
-      value: readProp(owner, prop),
+      enumerable  : descriptor.enumerable,
+      value       : readProp(owner, prop),
     };
   },
 
@@ -730,7 +730,7 @@ const mapMethods = {
   },
   forEach: function (
     this: mixed,
-    visit: (value: mixed, key: mixed, map: mixed) => void,
+    visit   : (value: mixed, key: mixed, map: mixed) => void,
     thisArg?: mixed,
   ): void {
     const draft = this;
@@ -830,7 +830,7 @@ const setMethods = {
   },
   forEach: function (
     this: mixed,
-    visit: (value: mixed, key: mixed, set: mixed) => void,
+    visit   : (value: mixed, key: mixed, set: mixed) => void,
     thisArg?: mixed,
   ): void {
     const draft = this;
@@ -915,11 +915,11 @@ const collectionTraps = {
 /** Open a scope for one `produce` call, suspending whatever was open. */
 export function enterScope(records: boolean): Scope {
   const scope: Scope = {
-    drafts: [],
+    drafts   : [],
     suspended: openScope,
     records,
     freezable: true,
-    pending: 0,
+    pending  : 0,
   };
   openScope = scope;
   return scope;
@@ -947,10 +947,10 @@ export function revokeScope(scope: Scope): void {
 
 /** Build the draft standing in for `base`, and register it with its scope. */
 export function createDraft(
-  scope: Scope,
-  base: mixed,
+  scope : Scope,
+  base  : mixed,
   parent: null | DraftState,
-  key: mixed,
+  key   : mixed,
 ): DraftState {
   const kind = kindOf(base);
   const state: DraftState = {
@@ -959,18 +959,18 @@ export function createDraft(
     parent,
     key,
     base,
-    copy: null,
-    draft: null,
-    modified: false,
+    copy     : null,
+    draft    : null,
+    modified : false,
     finalized: false,
-    children: null,
-    assigned: null,
-    revoke: () => {},
+    children : null,
+    assigned : null,
+    revoke   : () => {},
   };
   const traps = match (kind) {
-    "array" => arrayTraps,
+    "array"       => arrayTraps,
     "map" | "set" => collectionTraps,
-    _ => objectTraps,
+    _             => objectTraps,
   };
   const revocable = makeRevocable(kind === "array" ? [state] : state, traps);
   state.draft = revocable.proxy;

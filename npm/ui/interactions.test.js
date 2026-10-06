@@ -45,14 +45,14 @@ function htmlOf(element: Element): HTMLElement {
 
 /** A mouse's pointer with its primary button down, as a browser reports one. */
 const MOUSE = {
-  button: 0,
-  buttons: 1,
-  height: 1,
-  isPrimary: true,
-  pointerId: 1,
+  button     : 0,
+  buttons    : 1,
+  height     : 1,
+  isPrimary  : true,
+  pointerId  : 1,
   pointerType: "mouse",
-  pressure: 0.5,
-  width: 1,
+  pressure   : 0.5,
+  width      : 1,
 };
 
 /** The same mouse, released. */
@@ -60,14 +60,14 @@ const MOUSE_UP = { ...MOUSE, buttons: 0, pressure: 0 };
 
 /** A finger on a touchscreen: a contact area, and its own pointer id. */
 const TOUCH = {
-  button: 0,
-  buttons: 1,
-  height: 22,
-  isPrimary: true,
-  pointerId: 7,
+  button     : 0,
+  buttons    : 1,
+  height     : 22,
+  isPrimary  : true,
+  pointerId  : 7,
   pointerType: "touch",
-  pressure: 0.5,
-  width: 22,
+  pressure   : 0.5,
+  width      : 22,
 };
 
 /** The same finger, lifted. */
@@ -128,20 +128,20 @@ const MOUSE_PRESS = ["pressstart:mouse", "pressup:mouse", "pressend:mouse", "pre
  * `data-pressed` is the `isPressed` a stylesheet would draw from.
  */
 component PressProbe(
-  onEvent: (event: PressEvent) => void,
+  onEvent                   : (event: PressEvent) => void,
   allowTextSelectionOnPress?: boolean = false,
-  isDisabled?: boolean = false,
-  kind?: "button" | "checkbox" | "div" | "link" | "submit" = "div",
-  preventFocusOnPress?: boolean = false,
+  isDisabled?               : boolean = false,
+  kind?                     : "button" | "checkbox" | "div" | "link" | "submit" = "div",
+  preventFocusOnPress?      : boolean = false,
   shouldCancelOnPointerExit?: boolean = false,
 ) {
   const { isPressed, pressProps } = usePress({
     allowTextSelectionOnPress,
     isDisabled,
-    onPress: onEvent,
-    onPressEnd: onEvent,
+    onPress     : onEvent,
+    onPressEnd  : onEvent,
     onPressStart: onEvent,
-    onPressUp: onEvent,
+    onPressUp   : onEvent,
     preventFocusOnPress,
     shouldCancelOnPointerExit,
   });
@@ -481,10 +481,10 @@ describe("usePress, from the keyboard", () => {
     const clicks: Array<string> = [];
     component Clickable() {
       const { pressProps } = usePress({
-        onPress: record,
-        onPressEnd: record,
+        onPress     : record,
+        onPressEnd  : record,
         onPressStart: record,
-        onPressUp: record,
+        onPressUp   : record,
       });
       return (
         <div
@@ -661,10 +661,10 @@ describe("usePress, one inside another", () => {
   component Nested(inner: (event: PressEvent) => void, outer: (event: PressEvent) => void) {
     const outerPress = usePress({ onPress: outer });
     const innerPress = usePress({
-      onPress: inner,
-      onPressEnd: inner,
+      onPress     : inner,
+      onPressEnd  : inner,
       onPressStart: inner,
-      onPressUp: inner,
+      onPressUp   : inner,
     });
     return (
       <div {...outerPress.pressProps} aria-label="Card" role="button" tabIndex={0}>
@@ -712,12 +712,12 @@ describe("usePress, one inside another", () => {
 
 /** A button that reports its hover as `data-hovered`, and tells a recorder each change. */
 component HoverProbe(
-  onEvent: (event: { readonly type: string, readonly pointerType: string, ... }) => void,
+  onEvent    : (event: { readonly type: string, readonly pointerType: string, ... }) => void,
   isDisabled?: boolean = false,
 ) {
   const { hoverProps, isHovered } = useHover({
     isDisabled,
-    onHoverEnd: onEvent,
+    onHoverEnd  : onEvent,
     onHoverStart: onEvent,
   });
   return (
@@ -868,7 +868,7 @@ component RingGroup() {
 
 /** The input that came last, and whether a ring would be drawn, as text. */
 component ModalityProbe() {
-  const modality = useInteractionModality();
+  const modality           = useInteractionModality();
   const { isFocusVisible } = useFocusVisible();
   return <output>{`${modality ?? "none"} ${isFocusVisible ? "visible" : "hidden"}`}</output>;
 }
@@ -1011,19 +1011,19 @@ describe("useFocusRing, and the input that came last", () => {
 
 /** A link a long press is on, with an ordinary press beside it. */
 component LongPressProbe(
-  onEvent: (event: { readonly type: string, readonly pointerType: string, ... }) => void,
-  description?: string,
-  onPress?: (event: PressEvent) => void,
+  onEvent      : (event: { readonly type: string, readonly pointerType: string, ... }) => void,
+  description? : string,
+  onPress?     : (event: PressEvent) => void,
   pointerTypes?: $ReadOnlyArray<"mouse" | "pen" | "touch">,
 ) {
   const { longPressProps } = useLongPress({
     accessibilityDescription: description,
-    onLongPress: onEvent,
-    onLongPressEnd: onEvent,
-    onLongPressStart: onEvent,
+    onLongPress             : onEvent,
+    onLongPressEnd          : onEvent,
+    onLongPressStart        : onEvent,
     pointerTypes,
   });
-  const { pressProps } = usePress({ onPress });
+  const { pressProps }     = usePress({ onPress });
   return (
     <a {...mergeProps(pressProps, longPressProps)} href="#row">
       Row
@@ -1279,12 +1279,12 @@ describe("useMove", () => {
 /** A field whose keys a handler hears, inside a parent that hears whatever gets past. */
 component KeyProbe(
   onKey: (event: {
-    readonly key: string,
+    readonly key                : string,
     readonly continuePropagation: () => void,
-    readonly preventDefault: () => void,
+    readonly preventDefault     : () => void,
     ...
   }) => mixed,
-  onPast: (key: string) => mixed,
+  onPast     : (key: string) => mixed,
   isDisabled?: boolean = false,
 ) {
   const { keyboardProps } = useKeyboard({ isDisabled, onKeyDown: onKey });
@@ -1386,8 +1386,8 @@ describe("mergeProps", () => {
   it("puts a press, a hover and a ring on one element, and leaves an engine nothing to report", async () => {
     uft.useFakeTimers();
     component Control() {
-      const { isPressed, pressProps } = usePress({});
-      const { hoverProps, isHovered } = useHover({});
+      const { isPressed, pressProps }      = usePress({});
+      const { hoverProps, isHovered }      = useHover({});
       const { focusProps, isFocusVisible } = useFocusRing();
       return (
         <div

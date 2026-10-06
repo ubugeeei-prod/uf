@@ -44,8 +44,8 @@ const runModule = (files: { [string]: string }, entry: string): Result => {
       fs.writeFileSync(path.join(root, name), files[name]);
     }
     const result = spawnSync("node", ["--import", REGISTER, path.join(root, entry)], {
-      cwd: root,
-      env: { ...process.env, UF_PROJECT_ROOT: root },
+      cwd     : root,
+      env     : { ...process.env, UF_PROJECT_ROOT: root },
       encoding: "utf8",
     });
     return { status: result.status, stdout: result.stdout, stderr: result.stderr };

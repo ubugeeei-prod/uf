@@ -7,22 +7,22 @@ import { nativeRuntimeRequired } from "@uniflowed/core/native";
 
 const MODULE = "@uniflowed/core/motion";
 
-export type MotionEngine = "uf-native";
+export type MotionEngine   = "uf-native";
 export type MotionProperty = "transform" | "opacity" | "color";
-export type MotionEasing = "linear" | "out" | "spring";
+export type MotionEasing   = "linear" | "out" | "spring";
 
 export type MotionTrack = {
-  readonly id: string,
-  readonly property: MotionProperty,
+  readonly id        : string,
+  readonly property  : MotionProperty,
   readonly durationMs: number,
-  readonly easing?: MotionEasing,
+  readonly easing?   : MotionEasing,
 };
 
 export type MotionContract = {
-  readonly engine: MotionEngine,
-  readonly tracks: $ReadOnlyArray<MotionTrack>,
-  readonly compilerSafe: true,
-  readonly serverComponentSafe: true,
+  readonly engine              : MotionEngine,
+  readonly tracks              : $ReadOnlyArray<MotionTrack>,
+  readonly compilerSafe        : true,
+  readonly serverComponentSafe : true,
   readonly reducedMotionDefault: true,
 };
 

@@ -46,17 +46,17 @@ component Counter() {
 }
 
 type GeneratedRequirement = {|
-  readonly name: string,
+  readonly name : string,
   readonly value: string | null,
-  readonly set: boolean,
+  readonly set  : boolean,
   readonly unset: boolean,
 |};
 
 type GeneratedImplicitRole = {|
-  readonly element: string,
+  readonly element   : string,
   readonly attributes: $ReadOnlyArray<GeneratedRequirement>,
-  readonly placed: boolean,
-  readonly role: string,
+  readonly placed    : boolean,
+  readonly role      : string,
 |};
 
 function generatedImplicitRoles(): $ReadOnlyArray<GeneratedImplicitRole> {
@@ -89,9 +89,9 @@ function generatedImplicitRoles(): $ReadOnlyArray<GeneratedImplicitRole> {
         break;
       }
       attributes.push({
-        name: requiredMatch[1],
+        name : requiredMatch[1],
         value: requiredMatch[2] === "None" ? null : requiredMatch[3],
-        set: requiredMatch[4] === "true",
+        set  : requiredMatch[4] === "true",
         unset: requiredMatch[5] === "true",
       });
     }
@@ -1017,7 +1017,7 @@ describe("fireEvent", () => {
 describe("userEvent", () => {
   it("accepts elements returned by queries", () => {
     noDiagnosticsAreReported({
-      fixture: path.join("tests", "type-tests", "react-testing-events.js"),
+      fixture  : path.join("tests", "type-tests", "react-testing-events.js"),
       alongside: ["npm/react", "npm/react-testing"],
     });
   });
@@ -1502,11 +1502,11 @@ describe("a query that finds nothing", () => {
 
 /** One line the worker wrote back, in the shape `host.rs` reads. */
 type Event = {
-  event: string,
-  name?: string,
-  status?: string,
+  event   : string,
+  name?   : string,
+  status? : string,
   message?: string,
-  site?: {| line: number, column: number |} | null,
+  site?   : {| line: number, column: number |} | null,
 };
 
 /**

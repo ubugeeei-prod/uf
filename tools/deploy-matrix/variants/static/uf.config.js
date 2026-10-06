@@ -15,7 +15,7 @@ export default defineConfig({
   app: {
     router: {
       entry: "app.js",
-      root: "app",
+      root : "app",
     },
     rendering: {
       modes: ["ssg"],
@@ -23,6 +23,6 @@ export default defineConfig({
   },
   build: {
     entries: ["app.js"],
-    outDir: "dist",
+    outDir : "dist",
   },
 });

@@ -90,13 +90,13 @@ import { withProps } from "./internal/merge-props.js";
  */
 component AlertRoot(
   children: React.Node,
-  live?: boolean = false,
-  render?: RenderProp,
+  live?   : boolean = false,
+  render? : RenderProp,
   ...rest: Rest
 ) {
   const props = withProps(rest, { children, role: live ? "alert" : undefined });
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }
@@ -122,7 +122,7 @@ component AlertTitle(children: React.Node, level?: number = 3, render?: RenderPr
   const props = withProps(rest, { children });
 
   return match (render) {
-    undefined => <Heading {...props} />,
+    undefined    => <Heading {...props} />,
     const custom => custom(withProps(props, { "aria-level": clamped, role: "heading" })),
   };
 }
@@ -131,7 +131,7 @@ component AlertTitle(children: React.Node, level?: number = 3, render?: RenderPr
 component AlertDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   return match (render) {
-    undefined => <p {...props} />,
+    undefined    => <p {...props} />,
     const custom => custom(props),
   };
 }

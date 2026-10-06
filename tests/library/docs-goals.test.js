@@ -29,7 +29,7 @@ describe("the goals map", () => {
   it("says why a goal is not implemented, and only then", () => {
     for (const goal of goals) {
       expect({ goal: goal.title, caveat: goal.caveat != null }).toEqual({
-        goal: goal.title,
+        goal  : goal.title,
         caveat: goal.status !== "Implemented",
       });
     }

@@ -9,28 +9,28 @@ import {
 } from "./internal/action-wire.js";
 
 export type RouteClientOptions = {|
-  readonly origin: string,
-  readonly getToken?: () => Promise<string>,
-  readonly fetch?: (url: string, options: RequestOptions) => Promise<Response>,
+  readonly origin                   : string,
+  readonly getToken?                : () => Promise<string>,
+  readonly fetch?                   : (url: string, options: RequestOptions) => Promise<Response>,
   readonly allowInsecureDevelopment?: boolean,
 |};
 
 export type RouteRequest = {|
-  readonly method?: string,
+  readonly method? : string,
   readonly headers?: { readonly [string]: string },
-  readonly body?: string,
-  readonly signal?: AbortSignal,
+  readonly body?   : string,
+  readonly signal? : AbortSignal,
 |};
 
 type RequestOptions = {|
   ...RouteRequest,
   readonly credentials: "omit",
-  readonly redirect: "error",
+  readonly redirect   : "error",
 |};
 
 /** Fetch transport shared by generated typed route clients and native actions. */
 export function createRouteClient(options: RouteClientOptions): (
-  path: string,
+  path    : string,
   request?: RouteRequest,
 ) => Promise<Response> {
   const origin = new URL(options.origin);
@@ -93,9 +93,9 @@ export function createNativeActionClient(options: {|
     const response = await send(path, {
       method: "POST",
       headers: {
-        [ACTION_HEADER]: id,
+        [ACTION_HEADER]   : id,
         "uf-native-action": "bearer-v1",
-        "content-type": ACTION_CONTENT_TYPE,
+        "content-type"    : ACTION_CONTENT_TYPE,
       },
       body: encodeActionArguments(args),
     });

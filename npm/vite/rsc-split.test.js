@@ -91,13 +91,13 @@ function project(files: { readonly [string]: string }): string {
 /** One module, as the manifest describes it. */
 function manifestModule(modulePath: string, reaches: boolean) {
   return {
-    path: modulePath,
-    environment: "server",
-    reachability: "server-only",
-    proximity: reaches ? "reaches-boundary" : "isolated",
-    imports: [],
+    path           : modulePath,
+    environment    : "server",
+    reachability   : "server-only",
+    proximity      : reaches ? "reaches-boundary" : "isolated",
+    imports        : [],
     externalImports: [],
-    exports: ["default"],
+    exports        : ["default"],
   };
 }
 
@@ -119,8 +119,8 @@ function manifestIn(root: string, manifest: mixed): mixed {
 function splitProject(): string {
   const page = "// @flow\nexport default function Page() {}\n";
   return project({
-    "app/$layout.js": page,
-    "app/$page.js": page,
+    "app/$layout.js"      : page,
+    "app/$page.js"        : page,
     "app/counter/$page.js": page,
   });
 }
@@ -129,10 +129,10 @@ function splitProject(): string {
 function slottedProject(): string {
   const page = "// @flow\nexport default function Page() {}\n";
   return project({
-    "app/$layout.js": page,
-    "app/$page.js": page,
-    "app/docs/$page.js": page,
-    "app/@panel/$default.js": page,
+    "app/$layout.js"          : page,
+    "app/$page.js"            : page,
+    "app/docs/$page.js"       : page,
+    "app/@panel/$default.js"  : page,
     "app/@panel/docs/$page.js": page,
   });
 }
@@ -141,17 +141,17 @@ function slottedProject(): string {
 function splitManifest(version: number = 3) {
   return {
     version,
-    engine: "uf-native",
+    engine          : "uf-native",
     buildFingerprint: "0".repeat(64),
     modules: [
       manifestModule("app/$layout.js", false),
       manifestModule("app/$page.js", false),
       manifestModule("app/counter/$page.js", true),
     ],
-    clientBoundaries: [],
+    clientBoundaries : [],
     clientBundleRoots: [],
-    serverActions: [],
-    diagnostics: [],
+    serverActions    : [],
+    diagnostics      : [],
   };
 }
 
@@ -242,9 +242,9 @@ describe("the client route table", () => {
     // anywhere to say otherwise.
     const page = "// @flow\nexport default function Page() {}\n";
     const root = project({
-      "app/$layout.js": page,
-      "app/$page.js": page,
-      "app/photo/[id]/$page.js": page,
+      "app/$layout.js"                   : page,
+      "app/$page.js"                     : page,
+      "app/photo/[id]/$page.js"          : page,
       "app/@modal/(.)photo/[id]/$page.js": page,
     });
     const table = scanRoutes(path.join(root, "app"));
@@ -308,11 +308,11 @@ describe("the client route table", () => {
     // hydration re-renders the whole matched tree, including the slot template.
     const page = "// @flow\nexport default function Page() {}\n";
     const root = project({
-      "app/$layout.js": page,
-      "app/$page.js": page,
-      "app/docs/$page.js": page,
-      "app/@panel/$default.js": page,
-      "app/@panel/docs/$page.js": page,
+      "app/$layout.js"              : page,
+      "app/$page.js"                : page,
+      "app/docs/$page.js"           : page,
+      "app/@panel/$default.js"      : page,
+      "app/@panel/docs/$page.js"    : page,
       "app/@panel/docs/$template.js": page,
     });
     const table = scanRoutes(path.join(root, "app"));
@@ -349,11 +349,11 @@ describe("the client route table", () => {
     // server-only.
     const page = "// @flow\nexport default function Page() {}\n";
     const root = project({
-      "app/$layout.js": page,
-      "app/$page.js": page,
-      "app/docs/$page.js": page,
-      "app/@panel/$default.js": page,
-      "app/@panel/docs/$page.js": page,
+      "app/$layout.js"             : page,
+      "app/$page.js"               : page,
+      "app/docs/$page.js"          : page,
+      "app/@panel/$default.js"     : page,
+      "app/@panel/docs/$page.js"   : page,
       "app/@panel/docs/$loading.js": page,
     });
     const table = scanRoutes(path.join(root, "app"));
@@ -463,7 +463,7 @@ describe("the client route table", () => {
       clientBoundaries: [
         {
           importer: "app/counter/$page.js",
-          target: { kind: "module", path: "app/counter/Counter.js" },
+          target  : { kind: "module", path: "app/counter/Counter.js" },
         },
       ],
       clientBundleRoots: [{ kind: "module", path: "app/counter/Counter.js" }],
@@ -483,7 +483,7 @@ describe("the client route table", () => {
     // only ever drop a route uf positively decided needs no browser.
     const root = project({
       "app/$layout.js": "// @flow\nexport default function Layout() {}\n",
-      "app/$page.mdx": "# home\n",
+      "app/$page.mdx" : "# home\n",
     });
     const table = scanRoutes(path.join(root, "app"));
     const manifest = manifestIn(root, {
@@ -613,20 +613,20 @@ function tables(): {
   const staticPage = { default: StaticPage };
 
   const home = {
-    path: "/",
-    params: [],
-    mdx: false,
-    file: "app/$page.js",
-    page: () => Promise.resolve(staticPage),
+    path   : "/",
+    params : [],
+    mdx    : false,
+    file   : "app/$page.js",
+    page   : () => Promise.resolve(staticPage),
     layouts: [],
     loading: [],
   };
   const counter = {
-    path: "/counter",
-    params: [],
-    mdx: false,
-    file: "app/counter/$page.js",
-    page: () => Promise.resolve(counterPage),
+    path   : "/counter",
+    params : [],
+    mdx    : false,
+    file   : "app/counter/$page.js",
+    page   : () => Promise.resolve(counterPage),
     layouts: [],
     loading: [],
   };
@@ -658,10 +658,10 @@ async function serve(url: string): Promise<void> {
   const { createRenderer, ROOT_ID } = await serverModule();
   const { server } = tables();
   const renderer = createRenderer({
-    App: routerView("./app"),
-    routes: server,
+    App     : routerView("./app"),
+    routes  : server,
     notFound: [],
-    errors: [],
+    errors  : [],
   });
   const { html } = await renderer.prerender(url, { scripts: [], styles: [], preloads: [] });
 
@@ -750,7 +750,7 @@ describe("navigating into a route that ships no page", () => {
     const original = location.assign;
     Object.defineProperty(location, "assign", {
       configurable: true,
-      writable: true,
+      writable    : true,
       value: (to: string) => {
         assigned.push(String(to));
       },
@@ -767,8 +767,8 @@ describe("navigating into a route that ships no page", () => {
     } finally {
       Object.defineProperty(location, "assign", {
         configurable: true,
-        writable: true,
-        value: original,
+        writable    : true,
+        value       : original,
       });
     }
 

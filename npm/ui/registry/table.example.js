@@ -6,10 +6,10 @@ import type { Sort } from "./table.js";
 import * as Table from "./table.js";
 
 type Invoice = {|
-  readonly id: string,
+  readonly id      : string,
   readonly customer: string,
-  readonly amount: number,
-  readonly status: string,
+  readonly amount  : number,
+  readonly status  : string,
 |};
 
 const INVOICES: $ReadOnlyArray<Invoice> = [
@@ -20,7 +20,7 @@ const INVOICES: $ReadOnlyArray<Invoice> = [
 
 /** Invoices the page sorts by customer or amount, with rows to choose. */
 export component Example() {
-  const [sort, setSort] = useState<Sort | null>(null);
+  const [sort,   setSort]   = useState<Sort | null>(null);
   const [chosen, setChosen] = useState<$ReadOnlySet<string>>(new Set());
   const all = chosen.size === INVOICES.length ? true : chosen.size === 0 ? false : "mixed";
   return (

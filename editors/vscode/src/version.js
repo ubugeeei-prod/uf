@@ -58,9 +58,9 @@ function parseVersion(text /*: string */) /*: Version | null */ {
     return null;
   }
   return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
+    major     : Number(match[1]),
+    minor     : Number(match[2]),
+    patch     : Number(match[3]),
     prerelease: match[4] == null ? null : match[4],
   };
 }
@@ -143,7 +143,7 @@ function checkVersion(
     return { kind: "supported", version: reported };
   }
   return {
-    kind: "old",
+    kind   : "old",
     version: reported,
     message:
       `uf: this project runs uf ${reported}, older than ${minimum}, the oldest this extension ` +

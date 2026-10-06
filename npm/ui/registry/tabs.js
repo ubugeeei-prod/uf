@@ -82,77 +82,77 @@ const SlidingContext: React.Context<boolean> = createContext(false);
 
 const styles = stylex.create({
   root: {
-    display: "flex",
+    display      : "flex",
     flexDirection: "column",
-    gap: ufTokens.space4,
-    fontFamily: ufTokens.fontSans,
-    color: ufTokens.ink,
+    gap          : ufTokens.space4,
+    fontFamily   : ufTokens.fontSans,
+    color        : ufTokens.ink,
   },
   rootVertical: {
     flexDirection: "row",
   },
   list: {
     // The containing block the sliding bar is placed in.
-    position: "relative",
-    display: "flex",
-    gap: ufTokens.space1,
+    position         : "relative",
+    display          : "flex",
+    gap              : ufTokens.space1,
     borderBottomWidth: "1px",
     borderBottomStyle: "solid",
     borderBottomColor: ufTokens.border,
   },
   listVertical: {
-    flexDirection: "column",
-    borderBottomWidth: 0,
+    flexDirection       : "column",
+    borderBottomWidth   : 0,
     borderInlineEndWidth: "1px",
     borderInlineEndStyle: "solid",
     borderInlineEndColor: ufTokens.border,
   },
   tab: {
-    display: "inline-flex",
-    alignItems: "center",
+    display       : "inline-flex",
+    alignItems    : "center",
     justifyContent: "center",
-    gap: ufTokens.space2,
-    boxSizing: "border-box",
-    minHeight: "36px",
-    margin: 0,
+    gap           : ufTokens.space2,
+    boxSizing     : "border-box",
+    minHeight     : "36px",
+    margin        : 0,
     // Over the list's own border, so the underline replaces that line under
     // the selected tab rather than sitting on top of it.
-    marginBottom: "-1px",
-    paddingBlock: ufTokens.space2,
-    paddingInline: ufTokens.space3,
-    borderWidth: 0,
-    borderStyle: "solid",
-    borderColor: "transparent",
+    marginBottom     : "-1px",
+    paddingBlock     : ufTokens.space2,
+    paddingInline    : ufTokens.space3,
+    borderWidth      : 0,
+    borderStyle      : "solid",
+    borderColor      : "transparent",
     borderBottomWidth: "2px",
     borderBottomColor: {
-      default: "transparent",
+      default                    : "transparent",
       ":is([aria-selected=true])": ufTokens.accent,
     },
     backgroundColor: "transparent",
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    fontWeight: ufTokens.weightMedium,
-    lineHeight: ufTokens.leadingTight,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    fontWeight     : ufTokens.weightMedium,
+    lineHeight     : ufTokens.leadingTight,
     color: {
-      default: ufTokens.muted,
-      ":hover": ufTokens.ink,
+      default                    : ufTokens.muted,
+      ":hover"                   : ufTokens.ink,
       ":is([aria-selected=true])": ufTokens.ink,
     },
-    cursor: { default: "pointer", ":is([aria-disabled=true])": "not-allowed" },
+    cursor : { default: "pointer", ":is([aria-disabled=true])": "not-allowed" },
     opacity: { default: 1, ":is([aria-disabled=true])": 0.55 },
     // Inside the tab, so the list's edge never clips the ring.
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "-2px",
     // The underline and the label change together in `durationBase`: long
     // enough to see which tab took the mark from which. Colours, so they stay
     // under reduced motion; the ring does not.
     transitionProperty: {
-      default: "border-color, color, outline-width",
+      default                                  : "border-color, color, outline-width",
       "@media (prefers-reduced-motion: reduce)": "border-color, color",
     },
-    transitionDuration: ufTokens.durationBase,
+    transitionDuration      : ufTokens.durationBase,
     transitionTimingFunction: ufTokens.easing,
   },
   // Once the bar is drawn, the tab's own underline goes: the bar is the mark.
@@ -170,53 +170,53 @@ const styles = stylex.create({
   // `scaleX` here is the tab's width in pixels, geometry rather than a grow.
   // It fades in when it is first drawn. Under reduced motion it moves at once.
   indicator: {
-    position: "absolute",
-    left: 0,
-    bottom: "-1px",
-    width: "1px",
-    height: "2px",
+    position       : "absolute",
+    left           : 0,
+    bottom         : "-1px",
+    width          : "1px",
+    height         : "2px",
     backgroundColor: ufTokens.accent,
-    pointerEvents: "none",
+    pointerEvents  : "none",
     transformOrigin: "0 0",
     transform:
       "translateX(calc(var(--uf-tabs-indicator-left, 0) * 1px)) scaleX(var(--uf-tabs-indicator-width, 0))",
     opacity: { default: 1, "@starting-style": 0 },
     transitionProperty: {
-      default: "transform, opacity",
+      default                                  : "transform, opacity",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
-    transitionDuration: ufTokens.durationBase,
+    transitionDuration      : ufTokens.durationBase,
     transitionTimingFunction: ufTokens.easing,
   },
   // Down the inline-end edge of a vertical list, where its border is.
   indicatorVertical: {
-    left: "auto",
-    bottom: "auto",
-    top: 0,
+    left          : "auto",
+    bottom        : "auto",
+    top           : 0,
     insetInlineEnd: "-1px",
-    width: "2px",
-    height: "1px",
+    width         : "2px",
+    height        : "1px",
     transform:
       "translateY(calc(var(--uf-tabs-indicator-top, 0) * 1px)) scaleY(var(--uf-tabs-indicator-height, 0))",
   },
   tabVertical: {
-    justifyContent: "flex-start",
-    marginBottom: 0,
-    marginInlineEnd: "-1px",
-    borderBottomWidth: 0,
+    justifyContent      : "flex-start",
+    marginBottom        : 0,
+    marginInlineEnd     : "-1px",
+    borderBottomWidth   : 0,
     borderInlineEndWidth: "2px",
     borderInlineEndColor: {
-      default: "transparent",
+      default                    : "transparent",
       ":is([aria-selected=true])": ufTokens.accent,
     },
   },
   panel: {
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
-    borderRadius: ufTokens.radiusSm,
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
+    fontSize     : ufTokens.textSm,
+    lineHeight   : ufTokens.leadingBase,
+    borderRadius : ufTokens.radiusSm,
+    outlineWidth : { default: "0", ":focus-visible": "2px" },
+    outlineStyle : "solid",
+    outlineColor : ufTokens.focus,
     outlineOffset: "2px",
   },
 });
@@ -234,14 +234,14 @@ const styles = stylex.create({
  *     </Tabs>
  */
 component TabsRoot(
-  children: React.Node,
-  defaultValue: string,
-  value?: string,
-  onValueChange?: (value: string) => void,
+  children       : React.Node,
+  defaultValue   : string,
+  value?         : string,
+  onValueChange? : (value: string) => void,
   activationMode?: ActivationMode = "automatic",
-  orientation?: TabsOrientation = "horizontal",
-  xstyle?: StyleArgument,
-  className?: string,
+  orientation?   : TabsOrientation = "horizontal",
+  xstyle?        : StyleArgument,
+  className?     : string,
   ...rest: Rest
 ) {
   const styled = props(styles.root, orientation === "vertical" && styles.rootVertical, xstyle);
@@ -264,8 +264,8 @@ component TabsRoot(
 
 /** The row of tabs. Give it an `aria-label` that says what they choose between. */
 component TabsList(
-  children: renders* TabsTab,
-  xstyle?: StyleArgument,
+  children  : renders* TabsTab,
+  xstyle?   : StyleArgument,
   className?: string,
   ...given: Rest
 ) {
@@ -308,15 +308,15 @@ component TabsList(
 
 /** One tab. `disabled` keeps it in the row, announced and unavailable. */
 component TabsTab(
-  value: string,
-  children: React.Node,
-  disabled?: boolean = false,
-  xstyle?: StyleArgument,
+  value     : string,
+  children  : React.Node,
+  disabled? : boolean = false,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) renders Tabs.Tab {
   const orientation = useContext(OrientationContext);
-  const sliding = useContext(SlidingContext);
+  const sliding     = useContext(SlidingContext);
   const vertical = orientation === "vertical";
   const styled = props(
     styles.tab,
@@ -338,9 +338,9 @@ component TabsTab(
 
 /** The panel a tab shows, in the document only while its tab is selected. */
 component TabsPanel(
-  value: string,
-  children: React.Node,
-  xstyle?: StyleArgument,
+  value     : string,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

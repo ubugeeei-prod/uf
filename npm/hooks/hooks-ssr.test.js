@@ -120,10 +120,10 @@ beforeAll(() => {
 afterAll(() => {
   for (const name of Object.keys(removed)) {
     Object.defineProperty(globalThis, name, {
-      value: removed[name],
-      writable: true,
+      value       : removed[name],
+      writable    : true,
       configurable: true,
-      enumerable: true,
+      enumerable  : true,
     });
   }
 });
@@ -142,11 +142,11 @@ describe("the process these tests run in", () => {
 describe("the environment hooks, prerendered", () => {
   it("uses the stated server value rather than guessing", () => {
     component Probe() {
-      const wide = useMediaQuery("(min-width: 48rem)", true);
-      const narrow = useMediaQuery("(min-width: 48rem)");
-      const scheme = usePreferredColorScheme("dark");
-      const still = usePrefersReducedMotion(true);
-      const online = useOnline();
+      const wide    = useMediaQuery("(min-width: 48rem)", true);
+      const narrow  = useMediaQuery("(min-width: 48rem)");
+      const scheme  = usePreferredColorScheme("dark");
+      const still   = usePrefersReducedMotion(true);
+      const online  = useOnline();
       const visible = useDocumentVisible();
       return (
         <ul>
@@ -168,7 +168,7 @@ describe("the environment hooks, prerendered", () => {
 
   it("reports the stated size and scroll offset", () => {
     component Probe() {
-      const size = useWindowSize({ width: 1280, height: 800 });
+      const size   = useWindowSize({ width: 1280, height: 800 });
       const offset = useWindowScroll();
       return <output>{`${size.width}x${size.height}@${offset.x},${offset.y}`}</output>;
     }
@@ -180,12 +180,12 @@ describe("the environment hooks, prerendered", () => {
       // The probe would answer `true` in this process — `Date` is always
       // there — and the server snapshot is what wins, because the client's
       // hydrating render has to produce the same markup.
-      const supported = useSupported(() => true);
-      const clipboard = useClipboard();
-      const channel = useBroadcast<mixed>("uf-ssr", () => {});
-      const network = useNetwork();
-      const where = useGeolocation();
-      const idle = useGeolocation({ enabled: false });
+      const supported  = useSupported(() => true);
+      const clipboard  = useClipboard();
+      const channel    = useBroadcast<mixed>("uf-ssr", () => {});
+      const network    = useNetwork();
+      const where      = useGeolocation();
+      const idle       = useGeolocation({ enabled: false });
       const permission = usePermission("geolocation");
       return (
         <output>
@@ -223,7 +223,7 @@ describe("the environment hooks, prerendered", () => {
   it("renders an empty fragment, because a request never carried one", () => {
     component Probe() {
       const [fragment, write] = useHash();
-      const [, again] = useHash();
+      const [, again]         = useHash();
       // One identity for the writer, from two calls in one render: it is a
       // module-level function rather than a closure, so nothing has to memoize
       // it and a caller can put it in a dependency array.
@@ -261,13 +261,13 @@ describe("the environment hooks, prerendered", () => {
 describe("the element hooks, prerendered", () => {
   it("renders every one of them from a ref that is null", () => {
     component Probe() {
-      const ref = useElementRef<HTMLDivElement>();
+      const ref            = useElementRef<HTMLDivElement>();
       const [node, attach] = useElementState<HTMLSpanElement>();
-      const size = useElementSize(ref);
-      const offset = useScroll(ref);
-      const hovered = useHover(ref);
-      const focused = useFocusWithin(ref);
-      const seen = useIntersecting(ref);
+      const size           = useElementSize(ref);
+      const offset         = useScroll(ref);
+      const hovered        = useHover(ref);
+      const focused        = useFocusWithin(ref);
+      const seen           = useIntersecting(ref);
       useClickOutside(ref, () => {});
       useLongPress(ref, () => {});
       useMutationObserver(ref, () => {});
@@ -305,7 +305,7 @@ describe("the element hooks, prerendered", () => {
 describe("state and time, prerendered", () => {
   it("gives storage the stated initial value", () => {
     component Probe() {
-      const [name] = useStorage("uf-ssr-name", "unset");
+      const [name]  = useStorage("uf-ssr-name", "unset");
       const [count] = useStorage("uf-ssr-count", 7, { session: true });
       return <output>{`${name} ${String(count)}`}</output>;
     }
@@ -314,15 +314,15 @@ describe("state and time, prerendered", () => {
 
   it("renders the state shapes at their starting values", () => {
     component Probe() {
-      const { on } = useToggle();
+      const { on }    = useToggle();
       const { count } = useCounter(3, { min: 0, max: 5 });
-      const list = useList<string>(["a", "b"]);
-      const set = useSet<string>(["x"]);
-      const cycle = useCycle(["one", "two"]);
-      const empty = useCycle<string>([]);
-      const history = useUndoable("start");
-      const before = usePrevious(count);
-      const mounted = useMounted();
+      const list      = useList<string>(["a", "b"]);
+      const set       = useSet<string>(["x"]);
+      const cycle     = useCycle(["one", "two"]);
+      const empty     = useCycle<string>([]);
+      const history   = useUndoable("start");
+      const before    = usePrevious(count);
+      const mounted   = useMounted();
       return (
         <output>
           {[
@@ -352,7 +352,7 @@ describe("state and time, prerendered", () => {
     component Probe() {
       const stated = useTimeAgo(at);
       const chosen = useTimeAgo(at, { serverValue: "a while back" });
-      const now = useNow(1000, new Date(0));
+      const now    = useNow(1000, new Date(0));
       return <output>{`${stated} | ${chosen} | ${now.toISOString()}`}</output>;
     }
     expect(markupOf(<Probe />)).toBe(
@@ -366,8 +366,8 @@ describe("state and time, prerendered", () => {
       useInterval(() => {
         ran += 1;
       }, 1);
-      const idle = useIdle(1);
-      const settled = useDebouncedValue("typed", 1);
+      const idle      = useIdle(1);
+      const settled   = useDebouncedValue("typed", 1);
       const throttled = useThrottledCallback(() => {}, 1);
       useAnimationFrame(() => {
         ran += 1;
@@ -408,7 +408,7 @@ describe("state and time, prerendered", () => {
       // Called during the render on purpose: the ref behind a stable callback is
       // seeded with the body and only *updated* in an insertion effect, so a
       // prerender that called one would otherwise reach a `null.current`.
-      const stable = useStableCallback(() => "stable");
+      const stable   = useStableCallback(() => "stable");
       const rerender = useRerender();
       return <output>{`${typeof debounced} ${stable()} ${typeof rerender}`}</output>;
     }
@@ -462,8 +462,8 @@ describe("the render anchor, prerendered", () => {
 
   it("hands the tree the instant, the zone and a stream, and no clock", () => {
     component Probe() {
-      const at = useRenderedAt();
-      const zone = useRenderTimeZone();
+      const at    = useRenderedAt();
+      const zone  = useRenderTimeZone();
       const drawn = useRandom("featured").next();
       const order = useShuffled(["a", "b", "c"], "featured").join("");
       return <output>{`${at.toString()} ${zone} ${drawn.toFixed(6)} ${order}`}</output>;
@@ -520,8 +520,8 @@ describe("the render anchor, prerendered", () => {
 
   it("gives a nested provider the fields it overrode and inherits the rest", () => {
     component Probe() {
-      const at = useRenderedAt();
-      const zone = useRenderTimeZone();
+      const at    = useRenderedAt();
+      const zone  = useRenderTimeZone();
       const drawn = useRandom("featured").next();
       return <output>{`${at.toString()} ${zone} ${drawn.toFixed(6)}`}</output>;
     }

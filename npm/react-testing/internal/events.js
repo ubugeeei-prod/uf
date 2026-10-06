@@ -33,38 +33,38 @@ export type EventInit = { readonly [string]: mixed };
 
 /** Event constructors by DOM event name, with the right interface for each. */
 const EVENT_TYPES: { readonly [string]: string } = {
-  click: "MouseEvent",
-  dblclick: "MouseEvent",
-  mousedown: "MouseEvent",
-  mouseup: "MouseEvent",
-  mouseover: "MouseEvent",
-  mouseout: "MouseEvent",
-  mouseenter: "MouseEvent",
-  mouseleave: "MouseEvent",
-  mousemove: "MouseEvent",
+  click      : "MouseEvent",
+  dblclick   : "MouseEvent",
+  mousedown  : "MouseEvent",
+  mouseup    : "MouseEvent",
+  mouseover  : "MouseEvent",
+  mouseout   : "MouseEvent",
+  mouseenter : "MouseEvent",
+  mouseleave : "MouseEvent",
+  mousemove  : "MouseEvent",
   contextmenu: "MouseEvent",
-  keydown: "KeyboardEvent",
-  keyup: "KeyboardEvent",
-  keypress: "KeyboardEvent",
-  focus: "FocusEvent",
-  blur: "FocusEvent",
-  focusin: "FocusEvent",
-  focusout: "FocusEvent",
-  input: "InputEvent",
+  keydown    : "KeyboardEvent",
+  keyup      : "KeyboardEvent",
+  keypress   : "KeyboardEvent",
+  focus      : "FocusEvent",
+  blur       : "FocusEvent",
+  focusin    : "FocusEvent",
+  focusout   : "FocusEvent",
+  input      : "InputEvent",
   pointerdown: "PointerEvent",
-  pointerup: "PointerEvent",
+  pointerup  : "PointerEvent",
   pointermove: "PointerEvent",
   // Every pointer event, and not only the three a click is made of. Built as a
   // bare `Event`, a `pointerenter` has no `pointerType` — and `pointerType` is
   // the whole difference between a mouse arriving and a finger arriving, which
   // is what a tooltip that must not open on touch is tested on. That test had
   // to build its event by hand and write the property onto it.
-  pointercancel: "PointerEvent",
-  pointerenter: "PointerEvent",
-  pointerleave: "PointerEvent",
-  pointerover: "PointerEvent",
-  pointerout: "PointerEvent",
-  gotpointercapture: "PointerEvent",
+  pointercancel     : "PointerEvent",
+  pointerenter      : "PointerEvent",
+  pointerleave      : "PointerEvent",
+  pointerover       : "PointerEvent",
+  pointerout        : "PointerEvent",
+  gotpointercapture : "PointerEvent",
   lostpointercapture: "PointerEvent",
 };
 
@@ -102,7 +102,7 @@ const NON_BUBBLING = new Set([
  */
 const ALSO_BUBBLES: { readonly [string]: string } = {
   focus: "focusin",
-  blur: "focusout",
+  blur : "focusout",
 };
 
 /**
@@ -164,7 +164,7 @@ function construct(name: string, init: EventInit): Event {
  */
 function optionsFor(name: string, init: EventInit): EventInit {
   const options: { [string]: mixed } = {
-    bubbles: !NON_BUBBLING.has(name),
+    bubbles   : !NON_BUBBLING.has(name),
     cancelable: true,
   };
   for (const key of Object.keys(init)) {
@@ -189,8 +189,8 @@ function optionsFor(name: string, init: EventInit): EventInit {
  * for the same reason.
  */
 const PRECEDED_BY: { readonly [string]: string } = {
-  mouseenter: "mouseover",
-  mouseleave: "mouseout",
+  mouseenter  : "mouseover",
+  mouseleave  : "mouseout",
   pointerenter: "pointerover",
   pointerleave: "pointerout",
 };
@@ -286,140 +286,140 @@ export type FireEvent = {
   (target: EventTarget, name: string, init?: EventInit): boolean,
 
   // The clipboard.
-  readonly copy: Firer,
-  readonly cut: Firer,
+  readonly copy : Firer,
+  readonly cut  : Firer,
   readonly paste: Firer,
 
   // An input method editor composing a character.
-  readonly compositionEnd: Firer,
-  readonly compositionStart: Firer,
+  readonly compositionEnd   : Firer,
+  readonly compositionStart : Firer,
   readonly compositionUpdate: Firer,
 
   // Keys.
-  readonly keyDown: Firer,
+  readonly keyDown : Firer,
   readonly keyPress: Firer,
-  readonly keyUp: Firer,
+  readonly keyUp   : Firer,
 
   // Focus. `focus` and `blur` are paired with the bubbling forms React listens for; see `ALSO_BUBBLES`.
-  readonly blur: Firer,
-  readonly focus: Firer,
-  readonly focusIn: Firer,
+  readonly blur    : Firer,
+  readonly focus   : Firer,
+  readonly focusIn : Firer,
   readonly focusOut: Firer,
 
   // Forms.
   readonly beforeInput: Firer,
-  readonly change: Firer,
-  readonly input: Firer,
-  readonly invalid: Firer,
-  readonly reset: Firer,
-  readonly submit: Firer,
+  readonly change     : Firer,
+  readonly input      : Firer,
+  readonly invalid    : Firer,
+  readonly reset      : Firer,
+  readonly submit     : Firer,
 
   // The mouse.
-  readonly auxClick: Firer,
-  readonly click: Firer,
+  readonly auxClick   : Firer,
+  readonly click      : Firer,
   readonly contextMenu: Firer,
-  readonly dblClick: Firer,
-  readonly mouseDown: Firer,
-  readonly mouseEnter: Firer,
-  readonly mouseLeave: Firer,
-  readonly mouseMove: Firer,
-  readonly mouseOut: Firer,
-  readonly mouseOver: Firer,
-  readonly mouseUp: Firer,
+  readonly dblClick   : Firer,
+  readonly mouseDown  : Firer,
+  readonly mouseEnter : Firer,
+  readonly mouseLeave : Firer,
+  readonly mouseMove  : Firer,
+  readonly mouseOut   : Firer,
+  readonly mouseOver  : Firer,
+  readonly mouseUp    : Firer,
 
   // Dragging.
-  readonly drag: Firer,
-  readonly dragEnd: Firer,
+  readonly drag     : Firer,
+  readonly dragEnd  : Firer,
   readonly dragEnter: Firer,
   readonly dragLeave: Firer,
-  readonly dragOver: Firer,
+  readonly dragOver : Firer,
   readonly dragStart: Firer,
-  readonly drop: Firer,
+  readonly drop     : Firer,
 
   // Pointers, which is what a component that works under both a mouse and a finger listens for.
-  readonly gotPointerCapture: Firer,
+  readonly gotPointerCapture : Firer,
   readonly lostPointerCapture: Firer,
-  readonly pointerCancel: Firer,
-  readonly pointerDown: Firer,
-  readonly pointerEnter: Firer,
-  readonly pointerLeave: Firer,
-  readonly pointerMove: Firer,
-  readonly pointerOut: Firer,
-  readonly pointerOver: Firer,
-  readonly pointerUp: Firer,
+  readonly pointerCancel     : Firer,
+  readonly pointerDown       : Firer,
+  readonly pointerEnter      : Firer,
+  readonly pointerLeave      : Firer,
+  readonly pointerMove       : Firer,
+  readonly pointerOut        : Firer,
+  readonly pointerOver       : Firer,
+  readonly pointerUp         : Firer,
 
   // Touch.
   readonly touchCancel: Firer,
-  readonly touchEnd: Firer,
-  readonly touchMove: Firer,
-  readonly touchStart: Firer,
+  readonly touchEnd   : Firer,
+  readonly touchMove  : Firer,
+  readonly touchStart : Firer,
 
   // Scrolling and the wheel.
-  readonly scroll: Firer,
+  readonly scroll   : Firer,
   readonly scrollEnd: Firer,
-  readonly wheel: Firer,
+  readonly wheel    : Firer,
 
   // Selection.
-  readonly select: Firer,
+  readonly select         : Firer,
   readonly selectionChange: Firer,
 
   // Media.
-  readonly abort: Firer,
-  readonly canPlay: Firer,
+  readonly abort         : Firer,
+  readonly canPlay       : Firer,
   readonly canPlayThrough: Firer,
   readonly durationChange: Firer,
-  readonly emptied: Firer,
-  readonly encrypted: Firer,
-  readonly ended: Firer,
-  readonly loadStart: Firer,
-  readonly loadedData: Firer,
+  readonly emptied       : Firer,
+  readonly encrypted     : Firer,
+  readonly ended         : Firer,
+  readonly loadStart     : Firer,
+  readonly loadedData    : Firer,
   readonly loadedMetadata: Firer,
-  readonly pause: Firer,
-  readonly play: Firer,
-  readonly playing: Firer,
-  readonly progress: Firer,
-  readonly rateChange: Firer,
-  readonly seeked: Firer,
-  readonly seeking: Firer,
-  readonly stalled: Firer,
-  readonly suspend: Firer,
-  readonly timeUpdate: Firer,
-  readonly volumeChange: Firer,
-  readonly waiting: Firer,
+  readonly pause         : Firer,
+  readonly play          : Firer,
+  readonly playing       : Firer,
+  readonly progress      : Firer,
+  readonly rateChange    : Firer,
+  readonly seeked        : Firer,
+  readonly seeking       : Firer,
+  readonly stalled       : Firer,
+  readonly suspend       : Firer,
+  readonly timeUpdate    : Firer,
+  readonly volumeChange  : Firer,
+  readonly waiting       : Firer,
 
   // Loading a resource.
   readonly error: Firer,
-  readonly load: Firer,
+  readonly load : Firer,
 
   // Animations and transitions.
-  readonly animationCancel: Firer,
-  readonly animationEnd: Firer,
+  readonly animationCancel   : Firer,
+  readonly animationEnd      : Firer,
   readonly animationIteration: Firer,
-  readonly animationStart: Firer,
-  readonly transitionCancel: Firer,
-  readonly transitionEnd: Firer,
-  readonly transitionRun: Firer,
-  readonly transitionStart: Firer,
+  readonly animationStart    : Firer,
+  readonly transitionCancel  : Firer,
+  readonly transitionEnd     : Firer,
+  readonly transitionRun     : Firer,
+  readonly transitionStart   : Firer,
 
   // A dialog and a disclosure.
   readonly cancel: Firer,
-  readonly close: Firer,
+  readonly close : Firer,
   readonly toggle: Firer,
 
   // The window and the document.
-  readonly beforeUnload: Firer,
-  readonly hashChange: Firer,
-  readonly message: Firer,
-  readonly messageError: Firer,
-  readonly offline: Firer,
-  readonly online: Firer,
-  readonly pageHide: Firer,
-  readonly pageShow: Firer,
-  readonly popState: Firer,
+  readonly beforeUnload    : Firer,
+  readonly hashChange      : Firer,
+  readonly message         : Firer,
+  readonly messageError    : Firer,
+  readonly offline         : Firer,
+  readonly online          : Firer,
+  readonly pageHide        : Firer,
+  readonly pageShow        : Firer,
+  readonly popState        : Firer,
   readonly readyStateChange: Firer,
-  readonly resize: Firer,
-  readonly storage: Firer,
-  readonly unload: Firer,
+  readonly resize          : Firer,
+  readonly storage         : Firer,
+  readonly unload          : Firer,
   readonly visibilityChange: Firer,
   ...
 };
@@ -605,18 +605,18 @@ function setValue(element: Element, value: string): void {
 /** A key's `key`, `code` and printable text. */
 function describeKey(key: string): {| key: string, code: string, text: string | null |} {
   const named: { readonly [string]: {| code: string, text: string | null |} } = {
-    Enter: { code: "Enter", text: "\n" },
-    Tab: { code: "Tab", text: null },
-    Escape: { code: "Escape", text: null },
-    Backspace: { code: "Backspace", text: null },
-    Delete: { code: "Delete", text: null },
-    ArrowUp: { code: "ArrowUp", text: null },
-    ArrowDown: { code: "ArrowDown", text: null },
-    ArrowLeft: { code: "ArrowLeft", text: null },
+    Enter     : { code: "Enter", text: "\n" },
+    Tab       : { code: "Tab", text: null },
+    Escape    : { code: "Escape", text: null },
+    Backspace : { code: "Backspace", text: null },
+    Delete    : { code: "Delete", text: null },
+    ArrowUp   : { code: "ArrowUp", text: null },
+    ArrowDown : { code: "ArrowDown", text: null },
+    ArrowLeft : { code: "ArrowLeft", text: null },
     ArrowRight: { code: "ArrowRight", text: null },
-    Home: { code: "Home", text: null },
-    End: { code: "End", text: null },
-    " ": { code: "Space", text: " " },
+    Home      : { code: "Home", text: null },
+    End       : { code: "End", text: null },
+    " "       : { code: "Space", text: " " },
   };
   const entry = named[key];
   if (entry != null) {

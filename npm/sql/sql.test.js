@@ -290,7 +290,7 @@ describe("sqlc.slice", () => {
     expect(
       expand(["a IN (", ") AND b = ? AND c IN (", ")"], [slice([1, 2]), "x", slice([3])]),
     ).toEqual({
-      text: "a IN (?, ?) AND b = ? AND c IN (?)",
+      text  : "a IN (?, ?) AND b = ? AND c IN (?)",
       params: [1, 2, "x", 3],
     });
   });
@@ -302,10 +302,10 @@ describe("sqlc.slice", () => {
 
 describe(":copyfrom", () => {
   const plan = {
-    head: "INSERT INTO t (a, b) VALUES ",
+    head : "INSERT INTO t (a, b) VALUES ",
     tuple: ["(", ", ", ")"],
-    refs: [0, 1],
-    tail: "",
+    refs : [0, 1],
+    tail : "",
   };
 
   it("numbers PostgreSQL placeholders across rows", async () => {
@@ -338,10 +338,10 @@ describe(":copyfrom", () => {
 
   it("throws when one row needs more parameters than the adapter allows", async () => {
     const wide = {
-      head: "INSERT INTO t (a, b, c) VALUES ",
+      head : "INSERT INTO t (a, b, c) VALUES ",
       tuple: ["(", ", ", ", ", ")"],
-      refs: [0, 1, 2],
-      tail: "",
+      refs : [0, 1, 2],
+      tail : "",
     };
     const { db, statements } = recorder("sqlite", 2);
     await expect(copyFrom(db, "Copy", wide, [[1, 2, 3]])).rejects.toMatchObject({
@@ -370,7 +370,7 @@ describe(":copyfrom", () => {
     const statements: Array<number> = [];
     let transactions = 0;
     const db: SyncQueryable = {
-      engine: "sqlite",
+      engine   : "sqlite",
       maxParams: 5,
       querySync: (_text, params) => {
         statements.push(params.length);
@@ -410,7 +410,7 @@ describe(":batch*", () => {
     const seen: Array<string> = [];
     let transactions = 0;
     const db: SyncQueryable = {
-      engine: "sqlite",
+      engine   : "sqlite",
       maxParams: 10,
       querySync: (text) => {
         seen.push(text);
@@ -433,9 +433,9 @@ describe(":batch*", () => {
 
 describe("running a query", () => {
   const rows = (result: $ReadOnlyArray<$ReadOnlyArray<mixed>>): Queryable => ({
-    engine: "postgresql",
+    engine   : "postgresql",
     maxParams: 100,
-    query: () => Promise.resolve({ rows: result, rowsAffected: 0, lastInsertId: null }),
+    query    : () => Promise.resolve({ rows: result, rowsAffected: 0, lastInsertId: null }),
   });
 
   it("names the query in a decode failure", async () => {
@@ -473,7 +473,7 @@ describe("transactions", () => {
     return {
       log,
       connection: {
-        engine: "sqlite",
+        engine   : "sqlite",
         maxParams: 100,
         run: (text: string): Promise<QueryResult> => {
           log.push(text);
@@ -537,9 +537,9 @@ describe("transactions", () => {
       return { rows: [], rowsAffected: 0, lastInsertId: null };
     };
     const connection: Connection = {
-      engine: "sqlite",
+      engine   : "sqlite",
       maxParams: 100,
-      run: async (text) => runSync(text),
+      run      : async (text) => runSync(text),
       runSync,
     };
     transactionOnSync(connection, (tx) => {
@@ -577,10 +577,10 @@ describe("transactions", () => {
 
   it("refuses a synchronous statement on a transaction that has ended", () => {
     const connection: Connection = {
-      engine: "sqlite",
+      engine   : "sqlite",
       maxParams: 100,
-      run: async () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
-      runSync: () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
+      run      : async () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
+      runSync  : () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
     };
     let leaked: ?SyncQueryable = null;
     transactionOnSync(connection, (tx) => {
@@ -592,7 +592,7 @@ describe("transactions", () => {
   it("rolls back when COMMIT fails, and rethrows that error", async () => {
     const log: Array<string> = [];
     const connection: Connection = {
-      engine: "sqlite",
+      engine   : "sqlite",
       maxParams: 100,
       run: async (text) => {
         log.push(text);
@@ -612,7 +612,7 @@ describe("transactions", () => {
   it("rolls a savepoint back when RELEASE fails", async () => {
     const log: Array<string> = [];
     const connection: Connection = {
-      engine: "sqlite",
+      engine   : "sqlite",
       maxParams: 100,
       run: async (text) => {
         log.push(text);
@@ -644,9 +644,9 @@ describe("transactions", () => {
   it("rolls back a synchronous transaction when COMMIT fails", () => {
     const log: Array<string> = [];
     const connection: Connection = {
-      engine: "sqlite",
+      engine   : "sqlite",
       maxParams: 100,
-      run: async () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
+      run      : async () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
       runSync: (text) => {
         log.push(text);
         if (text === "COMMIT" || text.startsWith("RELEASE")) {
@@ -708,9 +708,9 @@ describe("transactions", () => {
   it("refuses to mix a synchronous call into an open asynchronous transaction", async () => {
     const runSync = (): QueryResult => ({ rows: [], rowsAffected: 0, lastInsertId: null });
     const db = singleConnectionSync({
-      engine: "sqlite",
+      engine   : "sqlite",
       maxParams: 100,
-      run: async () => runSync(),
+      run      : async () => runSync(),
       runSync,
     });
     const transaction = db.transaction;
@@ -737,10 +737,10 @@ describe("transactions", () => {
 
   it("refuses the outer handle while a synchronous transaction is open", () => {
     const db = singleConnectionSync({
-      engine: "sqlite",
+      engine   : "sqlite",
       maxParams: 100,
-      run: async () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
-      runSync: () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
+      run      : async () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
+      runSync  : () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
     });
     const transactionSync = db.transactionSync;
     if (transactionSync === undefined) {

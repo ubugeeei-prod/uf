@@ -64,13 +64,13 @@ export const INHERIT: Color = -1;
  * crosses between the two libraries means the same thing.
  */
 export const Attributes = {
-  NONE: 0,
-  BOLD: 1,
-  DIM: 2,
-  ITALIC: 4,
-  UNDERLINE: 8,
-  BLINK: 16,
-  INVERSE: 32,
+  NONE         : 0,
+  BOLD         : 1,
+  DIM          : 2,
+  ITALIC       : 4,
+  UNDERLINE    : 8,
+  BLINK        : 16,
+  INVERSE      : 32,
   STRIKETHROUGH: 64,
 };
 
@@ -98,24 +98,24 @@ export const PLAIN: Style = { fg: INHERIT, bg: INHERIT, attributes: Attributes.N
  * lands on the same name it started as.
  */
 const NAMED: { [string]: Color } = {
-  black: 0x000000,
-  red: 0xcd0000,
-  green: 0x00cd00,
-  yellow: 0xcdcd00,
-  blue: 0x0000ee,
-  magenta: 0xcd00cd,
-  cyan: 0x00cdcd,
-  white: 0xe5e5e5,
-  gray: 0x7f7f7f,
-  grey: 0x7f7f7f,
-  brightblack: 0x7f7f7f,
-  brightred: 0xff0000,
-  brightgreen: 0x00ff00,
-  brightyellow: 0xffff00,
-  brightblue: 0x5c5cff,
+  black        : 0x000000,
+  red          : 0xcd0000,
+  green        : 0x00cd00,
+  yellow       : 0xcdcd00,
+  blue         : 0x0000ee,
+  magenta      : 0xcd00cd,
+  cyan         : 0x00cdcd,
+  white        : 0xe5e5e5,
+  gray         : 0x7f7f7f,
+  grey         : 0x7f7f7f,
+  brightblack  : 0x7f7f7f,
+  brightred    : 0xff0000,
+  brightgreen  : 0x00ff00,
+  brightyellow : 0xffff00,
+  brightblue   : 0x5c5cff,
   brightmagenta: 0xff00ff,
-  brightcyan: 0x00ffff,
-  brightwhite: 0xffffff,
+  brightcyan   : 0x00ffff,
+  brightwhite  : 0xffffff,
 };
 
 /**
@@ -176,9 +176,9 @@ export type Frame = {
 
 /** A rectangle in frame coordinates; `x`/`y` are the top-left cell. */
 export type Rect = {
-  readonly x: number,
-  readonly y: number,
-  readonly width: number,
+  readonly x     : number,
+  readonly y     : number,
+  readonly width : number,
   readonly height: number,
 };
 
@@ -193,8 +193,8 @@ export function createFrame(width: number, height: number): Frame {
     width,
     height,
     chars,
-    fg: new Int32Array(size).fill(INHERIT),
-    bg: new Int32Array(size).fill(INHERIT),
+    fg        : new Int32Array(size).fill(INHERIT),
+    bg        : new Int32Array(size).fill(INHERIT),
     attributes: new Uint8Array(size),
   };
 }
@@ -241,13 +241,13 @@ function clearSpan(frame: Frame, index: number): void {
  * is not a character.
  */
 export function writeGrapheme(
-  frame: Frame,
-  x: number,
-  y: number,
+  frame  : Frame,
+  x      : number,
+  y      : number,
   cluster: string,
-  width: number,
-  style: Style,
-  clip: Rect,
+  width  : number,
+  style  : Style,
+  clip   : Rect,
 ): number {
   if (y < clip.y || y >= clip.y + clip.height || y < 0 || y >= frame.height) {
     return width;

@@ -134,12 +134,12 @@ export { memorySessionStore, sameOrigin } from "./internal/oauth.js";
 /** What a token endpoint answered with, in uf's spelling rather than OAuth's. */
 export type TokenSet = {|
   readonly accessToken: string,
-  readonly tokenType: string,
+  readonly tokenType  : string,
   /** Absent for a provider that does not issue one, or a flow that did not ask. */
   readonly refreshToken: string | null,
   /** The OpenID Connect identity token, unverified; see the module header. */
   readonly idToken: string | null,
-  readonly scope: string | null,
+  readonly scope  : string | null,
   /**
    * When the access token stops working, or `null` when the provider did not
    * say.
@@ -181,7 +181,7 @@ export type OAuthProvider = {|
   readonly authorizationEndpoint: string,
   /** Where uf exchanges a code for tokens. Must be `https`. */
   readonly tokenEndpoint: string,
-  readonly clientId: string,
+  readonly clientId     : string,
   /**
    * The client secret, for a provider that issues one.
    *
@@ -208,7 +208,7 @@ export type OAuthProvider = {|
 /** What an application sees of somebody who is signed in. */
 export type Session = {|
   readonly subject: string,
-  readonly claims: { readonly [string]: mixed },
+  readonly claims : { readonly [string]: mixed },
   /**
    * The session is gone after this.
    *
@@ -228,7 +228,7 @@ const DEFAULT_AUTHORIZATION_SECONDS = 60 * 10;
 /** What `createAuth` may be told. */
 export type AuthOptions = {|
   readonly provider: OAuthProvider,
-  readonly store: SessionStore,
+  readonly store   : SessionStore,
   /**
    * Where `callback` is mounted, as a path on this site.
    *
@@ -275,8 +275,8 @@ export type AuthOptions = {|
    * host reached by name over plain HTTP — and it is spelled out so that it is
    * a decision somebody made rather than a default they inherited.
    */
-  readonly secureCookies?: boolean,
-  readonly sessionSeconds?: number,
+  readonly secureCookies?       : boolean,
+  readonly sessionSeconds?      : number,
   readonly authorizationSeconds?: number,
 |};
 
@@ -441,7 +441,7 @@ export function createAuth(options: AuthOptions): Auth {
       tokens = await exchange(provider, {
         grant_type: "authorization_code",
         code,
-        redirect_uri: text(pending.redirectUri),
+        redirect_uri : text(pending.redirectUri),
         code_verifier: text(pending.verifier),
       });
     } catch (error) {
@@ -481,7 +481,7 @@ export function createAuth(options: AuthOptions): Auth {
       sessionKey(sessionId),
       {
         subject: identity.subject,
-        claims: identity.claims ?? {},
+        claims : identity.claims ?? {},
         expiresAt,
         tokens: storedTokens(tokens),
       },
@@ -507,7 +507,7 @@ export function createAuth(options: AuthOptions): Auth {
   async function refresh(request: Request): Promise<Response> {
     if (!sameOrigin(request)) {
       return new Response("cross-site request refused\n", {
-        status: 403,
+        status : 403,
         headers: privateHeaders(),
       });
     }
@@ -519,7 +519,7 @@ export function createAuth(options: AuthOptions): Auth {
     const held = tokensOf(record);
     if (held == null || held.refreshToken == null) {
       return new Response("this session has no refresh token\n", {
-        status: 409,
+        status : 409,
         headers: privateHeaders(),
       });
     }
@@ -527,7 +527,7 @@ export function createAuth(options: AuthOptions): Auth {
     let renewed: TokenSet;
     try {
       renewed = await exchange(provider, {
-        grant_type: "refresh_token",
+        grant_type   : "refresh_token",
         refresh_token: held.refreshToken,
       });
     } catch (error) {
@@ -549,7 +549,7 @@ export function createAuth(options: AuthOptions): Auth {
       sessionKey(id),
       {
         subject: record.subject,
-        claims: record.claims ?? {},
+        claims : record.claims ?? {},
         expiresAt,
         tokens: storedTokens({
           ...renewed,
@@ -583,8 +583,8 @@ export function createAuth(options: AuthOptions): Auth {
       // browser and a server component asking the same question are told the
       // same answer spelled the same way.
       const body = JSON.stringify({
-        subject: record.subject,
-        claims: record.claims ?? {},
+        subject  : record.subject,
+        claims   : record.claims ?? {},
         expiresAt: instantOf(record.expiresAt),
       });
       return new Response(method === "HEAD" ? null : body, { status: 200, headers });
@@ -596,7 +596,7 @@ export function createAuth(options: AuthOptions): Auth {
       // and a nuisance that costs one line to refuse is a nuisance uf refuses.
       if (!sameOrigin(request)) {
         return new Response("cross-site request refused\n", {
-          status: 403,
+          status : 403,
           headers: privateHeaders(),
         });
       }
@@ -632,8 +632,8 @@ export function createAuth(options: AuthOptions): Auth {
       return null;
     }
     return {
-      subject: text(record.subject),
-      claims: record.claims == null ? {} : (record.claims as $FlowFixMe),
+      subject  : text(record.subject),
+      claims   : record.claims == null ? {} : (record.claims as $FlowFixMe),
       expiresAt: instantOf(record.expiresAt),
     };
   }
@@ -667,8 +667,8 @@ export function createAuth(options: AuthOptions): Auth {
  */
 function privateHeaders(): Headers {
   return new Headers({
-    "cache-control": "no-store, private",
-    vary: "Cookie",
+    "cache-control"  : "no-store, private",
+    vary             : "Cookie",
     "referrer-policy": "no-referrer",
   });
 }
@@ -686,12 +686,12 @@ function privateHeaders(): Headers {
  */
 async function exchange(
   provider: OAuthProvider,
-  form: { readonly [string]: string },
+  form    : { readonly [string]: string },
 ): Promise<TokenSet> {
   const body = new URLSearchParams(form);
   const headers: { [string]: string } = {
     "content-type": "application/x-www-form-urlencoded",
-    accept: "application/json",
+    accept        : "application/json",
   };
   const secret = provider.clientSecret;
   if (secret != null && secret !== "") {
@@ -723,11 +723,11 @@ async function exchange(
   }
   return {
     accessToken,
-    tokenType: typeof payload.token_type === "string" ? payload.token_type : "Bearer",
+    tokenType   : typeof payload.token_type === "string" ? payload.token_type : "Bearer",
     refreshToken: typeof payload.refresh_token === "string" ? payload.refresh_token : null,
-    idToken: typeof payload.id_token === "string" ? payload.id_token : null,
-    scope: typeof payload.scope === "string" ? payload.scope : null,
-    expiresAt: expiryFrom(payload.expires_in),
+    idToken     : typeof payload.id_token === "string" ? payload.id_token : null,
+    scope       : typeof payload.scope === "string" ? payload.scope : null,
+    expiresAt   : expiryFrom(payload.expires_in),
   };
 }
 
@@ -774,11 +774,11 @@ function tokensOf(record: StoredValue): TokenSet | null {
   }
   return {
     accessToken,
-    tokenType: typeof held.tokenType === "string" ? held.tokenType : "Bearer",
+    tokenType   : typeof held.tokenType === "string" ? held.tokenType : "Bearer",
     refreshToken: typeof held.refreshToken === "string" ? held.refreshToken : null,
-    idToken: typeof held.idToken === "string" ? held.idToken : null,
-    scope: typeof held.scope === "string" ? held.scope : null,
-    expiresAt: typeof held.expiresAt === "number" ? instantOf(held.expiresAt) : null,
+    idToken     : typeof held.idToken === "string" ? held.idToken : null,
+    scope       : typeof held.scope === "string" ? held.scope : null,
+    expiresAt   : typeof held.expiresAt === "number" ? instantOf(held.expiresAt) : null,
   };
 }
 
@@ -794,12 +794,12 @@ function tokensOf(record: StoredValue): TokenSet | null {
  */
 function storedTokens(tokens: TokenSet): StoredValue {
   return {
-    accessToken: tokens.accessToken,
-    tokenType: tokens.tokenType,
+    accessToken : tokens.accessToken,
+    tokenType   : tokens.tokenType,
     refreshToken: tokens.refreshToken,
-    idToken: tokens.idToken,
-    scope: tokens.scope,
-    expiresAt: tokens.expiresAt == null ? null : tokens.expiresAt.epochMilliseconds,
+    idToken     : tokens.idToken,
+    scope       : tokens.scope,
+    expiresAt   : tokens.expiresAt == null ? null : tokens.expiresAt.epochMilliseconds,
   };
 }
 

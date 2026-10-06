@@ -154,10 +154,10 @@ export function relative(at: TimeValue, from?: TimeValue): string {
  * would defeat the entire component.
  */
 export component Time(
-  value: TimeValue,
-  format?: TimeFormat = "iso",
-  zone?: string,
-  locale?: string,
+  value     : TimeValue,
+  format?   : TimeFormat = "iso",
+  zone?     : string,
+  locale?   : string,
   className?: string,
 ) {
   const at = asInstant(value);

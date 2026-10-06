@@ -63,8 +63,8 @@ import type { FieldValues } from "./internal/field-path.js";
 export function errorsFromIssues(issues: $ReadOnlyArray<Issue>): ResolverErrors {
   return collectErrors(
     issues.map((issue) => ({
-      path: issue.path == null ? "" : issue.path.join("."),
-      type: issue.code,
+      path   : issue.path == null ? "" : issue.path.join("."),
+      type   : issue.code,
       message: issue.message,
     })),
   );

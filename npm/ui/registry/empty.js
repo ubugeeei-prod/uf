@@ -53,56 +53,56 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    display: "grid",
-    justifyItems: "center",
-    gap: ufTokens.space4,
-    boxSizing: "border-box",
-    paddingBlock: ufTokens.space12,
+    display      : "grid",
+    justifyItems : "center",
+    gap          : ufTokens.space4,
+    boxSizing    : "border-box",
+    paddingBlock : ufTokens.space12,
     paddingInline: ufTokens.space6,
-    textAlign: "center",
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
-    color: ufTokens.ink,
-    borderWidth: "1px",
-    borderStyle: "dashed",
-    borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusLg,
+    textAlign    : "center",
+    fontFamily   : ufTokens.fontSans,
+    fontSize     : ufTokens.textSm,
+    lineHeight   : ufTokens.leadingBase,
+    color        : ufTokens.ink,
+    borderWidth  : "1px",
+    borderStyle  : "dashed",
+    borderColor  : ufTokens.border,
+    borderRadius : ufTokens.radiusLg,
   },
   media: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "40px",
-    height: "40px",
-    color: ufTokens.muted,
+    display        : "inline-flex",
+    alignItems     : "center",
+    justifyContent : "center",
+    width          : "40px",
+    height         : "40px",
+    color          : ufTokens.muted,
     backgroundColor: ufTokens.sunken,
-    borderRadius: ufTokens.radiusMd,
+    borderRadius   : ufTokens.radiusMd,
   },
   title: {
-    margin: 0,
-    fontSize: ufTokens.textMd,
+    margin    : 0,
+    fontSize  : ufTokens.textMd,
     fontWeight: ufTokens.weightBold,
     lineHeight: ufTokens.leadingTight,
   },
   description: {
-    margin: 0,
+    margin  : 0,
     maxWidth: "32rem",
-    color: ufTokens.muted,
+    color   : ufTokens.muted,
   },
   content: {
-    display: "flex",
-    flexWrap: "wrap",
+    display       : "flex",
+    flexWrap      : "wrap",
     justifyContent: "center",
-    alignItems: "center",
-    gap: ufTokens.space2,
+    alignItems    : "center",
+    gap           : ufTokens.space2,
   },
 });
 
 /** The frame. */
 component EmptyRoot(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -115,8 +115,8 @@ component EmptyRoot(
 
 /** An icon or an illustration, hidden from assistive technology. */
 component EmptyMedia(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -133,9 +133,9 @@ component EmptyMedia(
 
 /** What is empty, as a heading at `level`. */
 component EmptyTitle(
-  children: React.Node,
-  level?: EmptyTitleLevel = 2,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  level?    : EmptyTitleLevel = 2,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -155,8 +155,8 @@ component EmptyTitle(
 
 /** Why it is empty, or what will appear here. */
 component EmptyDescription(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -169,8 +169,8 @@ component EmptyDescription(
 
 /** The next step: the button or link that fills it. */
 component EmptyContent(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

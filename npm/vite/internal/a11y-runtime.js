@@ -128,8 +128,8 @@ export function start(options) {
 
   const observer = new MutationObserver(schedule);
   observer.observe(document.documentElement, {
-    subtree: true,
-    childList: true,
+    subtree   : true,
+    childList : true,
     attributes: true,
   });
   document.addEventListener("visibilitychange", () => {
@@ -196,7 +196,7 @@ function report(endpoint, violations, error) {
     violations == null
       ? {
           severity: "info",
-          message: `the accessibility audit could not run: ${String(error)}`,
+          message : `the accessibility audit could not run: ${String(error)}`,
         }
       : {
           severity: "warn",
@@ -206,10 +206,10 @@ function report(endpoint, violations, error) {
           detail: detailLines(violations),
         };
   void fetch(endpoint, {
-    method: "POST",
+    method   : "POST",
     keepalive: true,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ...body, url: window.location.href }),
+    headers  : { "content-type": "application/json" },
+    body     : JSON.stringify({ ...body, url: window.location.href }),
   }).then(
     () => {},
     () => {},

@@ -152,7 +152,7 @@ const WAIT_TIMEOUT_MS = 1_000;
  * what went wrong, and "timed out" says only that something did.
  */
 export async function waitFor<T>(
-  body: () => T | Promise<T>,
+  body    : () => T | Promise<T>,
   options?: { readonly timeout?: number, readonly interval?: number },
 ): Promise<T> {
   const timeout = options?.timeout ?? WAIT_TIMEOUT_MS;
@@ -180,7 +180,7 @@ export async function waitFor<T>(
 
 /** Run `body` until it returns something truthy, or the timeout passes. */
 export async function waitUntil(
-  body: () => mixed | Promise<mixed>,
+  body    : () => mixed | Promise<mixed>,
   options?: { readonly timeout?: number, readonly interval?: number },
 ): Promise<mixed> {
   return waitFor(async () => {
@@ -215,40 +215,40 @@ export function mocked<T>(value: T): $FlowFixMe {
  * them.
  */
 export type Uft = {
-  readonly fn: typeof fn,
-  readonly spyOn: typeof spyOn,
+  readonly fn    : typeof fn,
+  readonly spyOn : typeof spyOn,
   readonly mocked: typeof mocked,
 
-  readonly clearAllMocks: typeof clearAllMocks,
-  readonly resetAllMocks: typeof resetAllMocks,
+  readonly clearAllMocks  : typeof clearAllMocks,
+  readonly resetAllMocks  : typeof resetAllMocks,
   readonly restoreAllMocks: typeof restoreAllMocks,
 
-  readonly stubEnv: typeof stubEnv,
-  readonly unstubAllEnvs: typeof unstubAllEnvs,
-  readonly stubGlobal: typeof stubGlobal,
+  readonly stubEnv         : typeof stubEnv,
+  readonly unstubAllEnvs   : typeof unstubAllEnvs,
+  readonly stubGlobal      : typeof stubGlobal,
   readonly unstubAllGlobals: typeof unstubAllGlobals,
 
-  readonly waitFor: typeof waitFor,
+  readonly waitFor  : typeof waitFor,
   readonly waitUntil: typeof waitUntil,
 
-  readonly useFakeTimers: typeof timers.installFakeClock,
-  readonly useRealTimers: typeof timers.restoreRealClock,
-  readonly isFakeTimers: typeof timers.isFaked,
-  readonly advanceTimersByTime: typeof timers.advanceTimersByTime,
+  readonly useFakeTimers           : typeof timers.installFakeClock,
+  readonly useRealTimers           : typeof timers.restoreRealClock,
+  readonly isFakeTimers            : typeof timers.isFaked,
+  readonly advanceTimersByTime     : typeof timers.advanceTimersByTime,
   readonly advanceTimersByTimeAsync: typeof timers.advanceTimersByTimeAsync,
   readonly advanceTimersToNextTimer: typeof timers.advanceTimersToNextTimer,
-  readonly runAllTimers: typeof timers.runAllTimers,
-  readonly runOnlyPendingTimers: typeof timers.runOnlyPendingTimers,
-  readonly getTimerCount: typeof timers.getTimerCount,
-  readonly setSystemTime: typeof timers.setSystemTime,
-  readonly getMockedSystemTime: typeof timers.getMockedSystemTime,
+  readonly runAllTimers            : typeof timers.runAllTimers,
+  readonly runOnlyPendingTimers    : typeof timers.runOnlyPendingTimers,
+  readonly getTimerCount           : typeof timers.getTimerCount,
+  readonly setSystemTime           : typeof timers.setSystemTime,
+  readonly getMockedSystemTime     : typeof timers.getMockedSystemTime,
 
-  readonly mock: typeof mockModule,
-  readonly doMock: typeof mockModule,
-  readonly unmock: typeof unmockModule,
-  readonly doUnmock: typeof unmockModule,
+  readonly mock        : typeof mockModule,
+  readonly doMock      : typeof mockModule,
+  readonly unmock      : typeof unmockModule,
+  readonly doUnmock    : typeof unmockModule,
   readonly importActual: typeof importActualModule,
-  readonly importMock: typeof importMockModule,
+  readonly importMock  : typeof importMockModule,
   readonly resetModules: typeof resetModulesNow,
 };
 
@@ -278,27 +278,27 @@ export const uft: Uft = Object.freeze({
 
   // The clock a test controls. A test about "after five minutes the session
   // expires" should not take five minutes.
-  useFakeTimers: timers.installFakeClock,
-  useRealTimers: timers.restoreRealClock,
-  isFakeTimers: timers.isFaked,
-  advanceTimersByTime: timers.advanceTimersByTime,
+  useFakeTimers           : timers.installFakeClock,
+  useRealTimers           : timers.restoreRealClock,
+  isFakeTimers            : timers.isFaked,
+  advanceTimersByTime     : timers.advanceTimersByTime,
   advanceTimersByTimeAsync: timers.advanceTimersByTimeAsync,
   advanceTimersToNextTimer: timers.advanceTimersToNextTimer,
-  runAllTimers: timers.runAllTimers,
-  runOnlyPendingTimers: timers.runOnlyPendingTimers,
-  getTimerCount: timers.getTimerCount,
-  setSystemTime: timers.setSystemTime,
-  getMockedSystemTime: timers.getMockedSystemTime,
+  runAllTimers            : timers.runAllTimers,
+  runOnlyPendingTimers    : timers.runOnlyPendingTimers,
+  getTimerCount           : timers.getTimerCount,
+  setSystemTime           : timers.setSystemTime,
+  getMockedSystemTime     : timers.getMockedSystemTime,
 
   // Module interception. `doMock` is `mock` and `doUnmock` is `unmock`, under
   // the names Vitest gives the un-hoisted forms: there is one form here,
   // because uf hoists neither, and a `doMock` that was a different function
   // would be claiming a difference that does not exist.
-  mock: mockModule,
-  doMock: mockModule,
-  unmock: unmockModule,
-  doUnmock: unmockModule,
+  mock        : mockModule,
+  doMock      : mockModule,
+  unmock      : unmockModule,
+  doUnmock    : unmockModule,
   importActual: importActualModule,
-  importMock: importMockModule,
+  importMock  : importMockModule,
   resetModules: resetModulesNow,
 });

@@ -90,7 +90,7 @@ export function selectionBetween(anchor: SelectionPoint, focus: SelectionPoint):
     anchor,
     focus,
     start: forwards ? anchor : focus,
-    end: forwards ? focus : anchor,
+    end  : forwards ? focus : anchor,
   };
 }
 

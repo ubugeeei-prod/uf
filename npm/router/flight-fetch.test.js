@@ -24,7 +24,7 @@ afterEach(() => {
 
 /** A page at `href`, whose `fetch` answers every request with `answer`. */
 function pageAt(
-  href: string,
+  href  : string,
   answer: (input?: mixed, init?: $FlowFixMe) => Promise<Response>,
 ): void {
   globals.window = { location: new URL(href) };

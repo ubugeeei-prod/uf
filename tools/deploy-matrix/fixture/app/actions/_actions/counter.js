@@ -16,7 +16,7 @@ import { cookies } from "@uniflowed/server";
 
 /** Add one to `count`, and say who asked (the `visitor` cookie). */
 export async function add(count: number): Promise<{|
-  readonly total: number,
+  readonly total  : number,
   readonly visitor: string,
 |}> {
   return { total: count + 1, visitor: cookies().get("visitor") ?? "anonymous" };

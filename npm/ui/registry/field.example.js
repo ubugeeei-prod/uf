@@ -6,8 +6,8 @@ import * as Field from "./field.js";
 
 const styles = stylex.create({
   form: {
-    display: "grid",
-    gap: ufTokens.space4,
+    display : "grid",
+    gap     : ufTokens.space4,
     maxWidth: "24rem",
   },
 });

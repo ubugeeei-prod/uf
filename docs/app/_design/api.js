@@ -19,9 +19,9 @@ import { Link } from "@uniflowed/router";
 import { blocksOf } from "./doc-comment.js";
 
 type Entry = {|
-  readonly name: string,
-  readonly kind: string,
-  readonly signature: string,
+  readonly name       : string,
+  readonly kind       : string,
+  readonly signature  : string,
   readonly description: string,
 |};
 
@@ -33,20 +33,20 @@ type Bare = {|
 |};
 
 type Module = {|
-  readonly specifier: string,
-  readonly files: $ReadOnlyArray<string>,
-  readonly entries: $ReadOnlyArray<Entry>,
-  readonly bare: $ReadOnlyArray<Bare>,
+  readonly specifier     : string,
+  readonly files         : $ReadOnlyArray<string>,
+  readonly entries       : $ReadOnlyArray<Entry>,
+  readonly bare          : $ReadOnlyArray<Bare>,
   readonly everythingFrom: $ReadOnlyArray<string>,
 |};
 
 export type ApiPackage = {|
-  readonly name: string,
-  readonly slug: string,
-  readonly dir: string,
-  readonly version: string,
+  readonly name       : string,
+  readonly slug       : string,
+  readonly dir        : string,
+  readonly version    : string,
   readonly description: string,
-  readonly modules: $ReadOnlyArray<Module>,
+  readonly modules    : $ReadOnlyArray<Module>,
 |};
 
 const SOURCE = "https://github.com/ubugeeei-prod/uf/blob/main/npm/";

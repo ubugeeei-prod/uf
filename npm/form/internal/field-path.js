@@ -220,8 +220,8 @@ export function readAt(root: mixed, path: FieldPath): mixed {
 function put(node: { [string]: mixed, ... }, key: string, value: mixed): void {
   Object.defineProperty(node, key, {
     value,
-    writable: true,
-    enumerable: true,
+    writable    : true,
+    enumerable  : true,
     configurable: true,
   });
 }

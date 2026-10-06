@@ -214,14 +214,14 @@ function contextFor(id, rule, root, file, sourceCode, lineStarts, diagnostics) {
     // `lint.rules` takes a level and nothing else, so there are no options to
     // hand over; an empty list is what a rule reading `context.options[0]`
     // defensively expects.
-    options: [],
-    settings: {},
-    cwd: root,
-    filename: file.filename,
+    options         : [],
+    settings        : {},
+    cwd             : root,
+    filename        : file.filename,
     physicalFilename: file.filename,
     sourceCode,
-    getCwd: () => root,
-    getFilename: () => file.filename,
+    getCwd       : () => root,
+    getFilename  : () => file.filename,
     getSourceCode: () => sourceCode,
     report(descriptor) {
       diagnostics.push(diagnosticOf(id, descriptor, messages, fixable, file.source, lineStarts));
@@ -339,14 +339,14 @@ function sourceCodeOf(text, ast, lineStarts) {
 }
 
 const FIXER = Object.freeze({
-  replaceTextRange: (range, text) => ({ range: [range[0], range[1]], text: String(text) }),
-  replaceText: (node, text) => FIXER.replaceTextRange(node.range, text),
+  replaceTextRange     : (range, text) => ({ range: [range[0], range[1]], text: String(text) }),
+  replaceText          : (node, text) => FIXER.replaceTextRange(node.range, text),
   insertTextBeforeRange: (range, text) => FIXER.replaceTextRange([range[0], range[0]], text),
-  insertTextAfterRange: (range, text) => FIXER.replaceTextRange([range[1], range[1]], text),
-  insertTextBefore: (node, text) => FIXER.insertTextBeforeRange(node.range, text),
-  insertTextAfter: (node, text) => FIXER.insertTextAfterRange(node.range, text),
-  removeRange: (range) => FIXER.replaceTextRange(range, ""),
-  remove: (node) => FIXER.replaceTextRange(node.range, ""),
+  insertTextAfterRange : (range, text) => FIXER.replaceTextRange([range[1], range[1]], text),
+  insertTextBefore     : (node, text) => FIXER.insertTextBeforeRange(node.range, text),
+  insertTextAfter      : (node, text) => FIXER.insertTextAfterRange(node.range, text),
+  removeRange          : (range) => FIXER.replaceTextRange(range, ""),
+  remove               : (node) => FIXER.replaceTextRange(node.range, ""),
 });
 
 /**

@@ -40,7 +40,7 @@ function flowPlugin(): $FlowFixMe {
 function contextIn(environment: string): $FlowFixMe {
   return {
     environment: { name: environment },
-    resolve: async (id: string) => ({ id: `resolved:${id}` }),
+    resolve    : async (id: string) => ({ id: `resolved:${id}` }),
   };
 }
 
@@ -289,7 +289,7 @@ describe("the stylesheets a development document links from the rsc graph", () =
     modules: Array<[string, { readonly file: ?string, readonly url: string }]>,
   ): $FlowFixMe {
     return {
-      config: { root: "/repo/docs", base: "/" },
+      config      : { root: "/repo/docs", base: "/" },
       environments: { [RSC_ENVIRONMENT]: { moduleGraph: { idToModuleMap: new Map(modules) } } },
     };
   }
@@ -313,7 +313,7 @@ describe("the stylesheets a development document links from the rsc graph", () =
           "uf-style:/repo/docs/app/$page.js.css",
           {
             file: "uf-style:/repo/docs/app/$page.js.css",
-            url: "/@id/uf-style:/repo/docs/app/$page.js.css",
+            url : "/@id/uf-style:/repo/docs/app/$page.js.css",
           },
         ],
       ]),

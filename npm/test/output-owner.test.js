@@ -90,11 +90,11 @@ describe("late output", () => {
 
 /** One line the worker wrote back, in the shape `host.rs` reads. */
 type Event = {
-  event: string,
+  event  : string,
   stream?: string,
-  test?: string | null,
-  text?: string,
-  name?: string,
+  test?  : string | null,
+  text?  : string,
+  name?  : string,
   status?: string,
 };
 

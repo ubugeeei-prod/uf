@@ -633,7 +633,7 @@ async function withHeaders(
     }
   }
   return new Response(response.body, {
-    status: response.status,
+    status    : response.status,
     statusText: response.statusText,
     headers,
   });
@@ -644,7 +644,7 @@ function docsRedirect(url /*: URL */) /*: Response */ {
   return new Response(null, {
     status: 308,
     headers: {
-      location: `${DOCS_ORIGIN}${url.pathname}${url.search}`,
+      location       : `${DOCS_ORIGIN}${url.pathname}${url.search}`,
       "cache-control": "public, max-age=3600",
     },
   });
@@ -675,7 +675,7 @@ export default {
       if (!readOnly) {
         return withHeaders(
           new Response("method not allowed\n", {
-            status: 405,
+            status : 405,
             headers: { "content-type": "text/plain; charset=utf-8", allow: "GET, HEAD" },
           }),
         );
@@ -683,7 +683,7 @@ export default {
       return withHeaders(
         new Response(PAGE, {
           headers: {
-            "content-type": "text/html; charset=utf-8",
+            "content-type" : "text/html; charset=utf-8",
             "cache-control": "public, max-age=300",
           },
         }),
@@ -694,7 +694,7 @@ export default {
       return withHeaders(
         new Response(ROBOTS, {
           headers: {
-            "content-type": "text/plain; charset=utf-8",
+            "content-type" : "text/plain; charset=utf-8",
             "cache-control": "public, max-age=3600",
           },
         }),

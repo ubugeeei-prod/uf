@@ -76,10 +76,10 @@ export type MockHandler = {|
   /** An upper-cased HTTP method, or `"ALL"` for every method. */
   readonly method: string,
   /** The path as it was written, for a failure message. */
-  readonly path: string,
+  readonly path   : string,
   readonly pattern: PathPattern,
   readonly resolve: Resolver,
-  readonly once: boolean,
+  readonly once   : boolean,
 |};
 
 /** The shape of every `http.*` function. */
@@ -87,13 +87,13 @@ type Route = (path: string, resolver: Resolver, options?: HandlerOptions) => Moc
 
 /** The methods `http` covers. */
 export type Http = {|
-  readonly all: Route,
-  readonly get: Route,
-  readonly post: Route,
-  readonly put: Route,
-  readonly patch: Route,
-  readonly delete: Route,
-  readonly head: Route,
+  readonly all    : Route,
+  readonly get    : Route,
+  readonly post   : Route,
+  readonly put    : Route,
+  readonly patch  : Route,
+  readonly delete : Route,
+  readonly head   : Route,
   readonly options: Route,
 |};
 
@@ -103,7 +103,7 @@ function declare(method: string, path: string, resolver: Resolver, options?: Han
     path,
     pattern: compilePattern(path),
     resolve: resolver,
-    once: options?.once === true,
+    once   : options?.once === true,
   };
 }
 
@@ -116,13 +116,13 @@ function declare(method: string, path: string, resolver: Resolver, options?: Han
  * reason.
  */
 export const http: Http = {
-  all: (path, resolver, options) => declare("ALL", path, resolver, options),
-  get: (path, resolver, options) => declare("GET", path, resolver, options),
-  post: (path, resolver, options) => declare("POST", path, resolver, options),
-  put: (path, resolver, options) => declare("PUT", path, resolver, options),
-  patch: (path, resolver, options) => declare("PATCH", path, resolver, options),
-  delete: (path, resolver, options) => declare("DELETE", path, resolver, options),
-  head: (path, resolver, options) => declare("HEAD", path, resolver, options),
+  all    : (path, resolver, options) => declare("ALL", path, resolver, options),
+  get    : (path, resolver, options) => declare("GET", path, resolver, options),
+  post   : (path, resolver, options) => declare("POST", path, resolver, options),
+  put    : (path, resolver, options) => declare("PUT", path, resolver, options),
+  patch  : (path, resolver, options) => declare("PATCH", path, resolver, options),
+  delete : (path, resolver, options) => declare("DELETE", path, resolver, options),
+  head   : (path, resolver, options) => declare("HEAD", path, resolver, options),
   options: (path, resolver, options) => declare("OPTIONS", path, resolver, options),
 };
 

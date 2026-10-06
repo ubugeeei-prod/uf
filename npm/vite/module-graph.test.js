@@ -27,34 +27,34 @@ describe("createModuleGraphCollector", () => {
     });
     const infos = {
       "\0virtual:uf/client": {
-        importedIds: ["/project/app/runtime.js"],
+        importedIds           : ["/project/app/runtime.js"],
         dynamicallyImportedIds: ["/project/app/$page.js"],
       },
       "/project/app/runtime.js": { importedIds: [], dynamicallyImportedIds: [] },
-      "/project/app/Plot.js": { importedIds: [], dynamicallyImportedIds: [] },
+      "/project/app/Plot.js"   : { importedIds: [], dynamicallyImportedIds: [] },
     };
     const context = {
-      environment: { name: "client" },
-      getModuleIds: () => Object.keys(infos),
+      environment  : { name: "client" },
+      getModuleIds : () => Object.keys(infos),
       getModuleInfo: (id) => infos[id] ?? null,
     };
     const bundle = {
       "assets/plot.js": {
-        type: "chunk",
-        fileName: "assets/plot.js",
-        isEntry: true,
+        type          : "chunk",
+        fileName      : "assets/plot.js",
+        isEntry       : true,
         facadeModuleId: "/project/app/Plot.js",
-        modules: { "/project/app/Plot.js": { code: "export function Plot() {}" } },
+        modules       : { "/project/app/Plot.js": { code: "export function Plot() {}" } },
       },
       "assets/client.js": {
-        type: "chunk",
-        fileName: "assets/client.js",
-        isEntry: true,
+        type          : "chunk",
+        fileName      : "assets/client.js",
+        isEntry       : true,
         facadeModuleId: "\0virtual:uf/client",
         modules: {
-          "\0virtual:uf/client": { code: "import './runtime.js';" },
+          "\0virtual:uf/client"    : { code: "import './runtime.js';" },
           "/project/app/runtime.js": { code: "export const ready = true;" },
-          "/project/app/unused.js": { code: null },
+          "/project/app/unused.js" : { code: null },
         },
       },
       "assets/style.css": { type: "asset", fileName: "assets/style.css" },
@@ -69,8 +69,8 @@ describe("createModuleGraphCollector", () => {
     expect(build.environment).toBe("client");
     expect(build.entries).toEqual(["virtual:uf/client"]);
     expect(build.modules.find((module) => module.id === "virtual:uf/client")).toEqual({
-      id: "virtual:uf/client",
-      imports: ["app/runtime.js"],
+      id            : "virtual:uf/client",
+      imports       : ["app/runtime.js"],
       dynamicImports: ["app/$page.js"],
     });
     expect(build.chunks.map((chunk) => chunk.file)).toEqual(["assets/client.js", "assets/plot.js"]);

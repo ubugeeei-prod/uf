@@ -74,10 +74,10 @@ import { useControlled } from "./internal/controlled-state.js";
 
 type CollapsibleState = {|
   readonly contentId: string,
-  readonly open: boolean,
-  readonly setOpen: (open: boolean) => void,
+  readonly open     : boolean,
+  readonly setOpen  : (open: boolean) => void,
   /** Whether a `Collapsible.Content` is rendered, so the trigger names one that exists. */
-  readonly present: boolean,
+  readonly present        : boolean,
   readonly registerContent: (present: boolean) => void,
   /** Whether the content carries its measured height; see the module header. */
   readonly measure: boolean,
@@ -102,14 +102,14 @@ hook useCollapsible(part: string): CollapsibleState {
  * choice for the same reason.
  */
 component CollapsibleRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  open?: boolean,
+  children     : React.Node,
+  defaultOpen? : boolean = false,
+  open?        : boolean,
   onOpenChange?: (open: boolean) => void,
-  measure?: boolean = false,
+  measure?     : boolean = false,
 ) {
   const contentId = `${useId()}-content`;
-  const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
+  const [isOpen,  setOpen]    = useControlled(open, defaultOpen, onOpenChange);
   const [present, setPresent] = useState(false);
 
   const state = useMemo(
@@ -122,9 +122,9 @@ component CollapsibleRoot(
 
 /** The control that shows and hides the content. */
 component CollapsibleTrigger(
-  children: React.Node,
+  children : React.Node,
   disabled?: boolean = false,
-  render?: RenderProp,
+  render?  : RenderProp,
   ...rest: Rest
 ) {
   const collapsible = useCollapsible("Collapsible.Trigger");
@@ -144,7 +144,7 @@ component CollapsibleTrigger(
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -159,7 +159,7 @@ component CollapsibleTrigger(
  */
 component CollapsibleContent(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const collapsible = useCollapsible("Collapsible.Content");
-  const contentRef = useRef<HTMLElement | null>(null);
+  const contentRef  = useRef<HTMLElement | null>(null);
   useRegistered(collapsible.registerContent);
   const presence = useDisclosurePanel(contentRef, collapsible.open, collapsible.measure);
 
@@ -167,7 +167,7 @@ component CollapsibleContent(children: React.Node, render?: RenderProp, ...rest:
     ...presenceProps(presence),
     children,
     hidden: !presence.present,
-    id: collapsible.contentId,
+    id    : collapsible.contentId,
     // React calls callback refs during commit; this node is only read by effects.
     // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
@@ -176,7 +176,7 @@ component CollapsibleContent(children: React.Node, render?: RenderProp, ...rest:
   });
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

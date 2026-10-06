@@ -65,8 +65,8 @@ const guard = (path: string, middleware: mixed): MiddlewareRecord => ({
 const route = (path: string, module: HandlerModule): HandlerRecord => ({
   path,
   params: [],
-  file: `app${path}/$route.js`,
-  load: async () => module,
+  file  : `app${path}/$route.js`,
+  load  : async () => module,
 });
 
 /**
@@ -80,8 +80,8 @@ const route = (path: string, module: HandlerModule): HandlerRecord => ({
  */
 async function serving<T>(
   request: Request,
-  answer: () => Promise<T>,
-  write: () => mixed,
+  answer : () => Promise<T>,
+  write  : () => mixed,
 ): Promise<T> {
   const { run, settle } = beginRequest(request);
   try {
@@ -348,17 +348,17 @@ function pageTable(Page: React.ComponentType<empty>) {
   return {
     routes: [
       {
-        path: "/",
-        params: [],
-        mdx: false,
-        file: "app/$page.js",
-        page: () => Promise.resolve({ default: Page }),
+        path   : "/",
+        params : [],
+        mdx    : false,
+        file   : "app/$page.js",
+        page   : () => Promise.resolve({ default: Page }),
         layouts: [],
         loading: [],
       },
     ],
     notFound: [],
-    errors: [],
+    errors  : [],
   };
 }
 
@@ -439,8 +439,8 @@ describe("the request a page is inside", () => {
  */
 function bundle(options: {
   middleware?: $ReadOnlyArray<MiddlewareRecord>,
-  handlers?: $ReadOnlyArray<HandlerRecord>,
-  render?: (url: string) => mixed,
+  handlers?  : $ReadOnlyArray<HandlerRecord>,
+  render?    : (url: string) => mixed,
 }) {
   return {
     beginRequest,
@@ -449,8 +449,8 @@ function bundle(options: {
     // prove the host calls something. It refuses outside a request like the
     // other two, so it is also part of what these cases are about.
     callAction: createActionDispatcher({ actions: [] }),
-    dispatch: createDispatcher({ handlers: options.handlers ?? [] }),
-    render: options.render ?? (async () => ({ status: 200, stream: () => emptyStream() })),
+    dispatch  : createDispatcher({ handlers: options.handlers ?? [] }),
+    render    : options.render ?? (async () => ({ status: 200, stream: () => emptyStream() })),
   };
 }
 
@@ -490,9 +490,9 @@ function outgoing(order: Array<string>) {
   // The listener methods return the object by name rather than `this`, as a
   // stream's do, so one taken off the response and called still chains.
   const response: NodeResponse = {
-    statusCode: 0,
+    statusCode   : 0,
     statusMessage: "",
-    headersSent: false,
+    headersSent  : false,
     setHeader() {},
     write(chunk: Uint8Array | string): boolean {
       order.push(`wrote ${text(chunk)}`);
@@ -632,14 +632,14 @@ describe("the compiled binary", () => {
     };
     const handle = createHandler({
       app,
-      assets: {},
+      assets  : {},
       document: { scripts: [], styles: [], preloads: [] },
     });
 
     const response = {
-      statusCode: 0,
+      statusCode   : 0,
       statusMessage: "",
-      headersSent: false,
+      headersSent  : false,
       setHeader() {},
       write(): boolean {
         return true;

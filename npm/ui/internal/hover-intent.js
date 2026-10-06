@@ -104,7 +104,7 @@ export type DelayGroup = {|
  * first one's opinion.
  */
 export hook useHoverIntent(setOpen: (open: boolean) => void): HoverIntent {
-  const timer = useRef<TimeoutID | null>(null);
+  const timer  = useRef<TimeoutID | null>(null);
   const change = useStableCallback(setOpen);
 
   const cancel = useStableCallback(() => {
@@ -138,7 +138,7 @@ export hook useHoverIntent(setOpen: (open: boolean) => void): HoverIntent {
     () => ({
       cancel,
       closeAfter: (millis: number) => schedule(false, millis),
-      openAfter: (millis: number) => schedule(true, millis),
+      openAfter : (millis: number) => schedule(true, millis),
     }),
     [cancel, schedule],
   );
@@ -158,7 +158,7 @@ export hook useHoverIntent(setOpen: (open: boolean) => void): HoverIntent {
  */
 export hook useDelayGroup(skipDelay: number): DelayGroup {
   const skipping = useRef(false);
-  const timer = useRef<TimeoutID | null>(null);
+  const timer    = useRef<TimeoutID | null>(null);
 
   const stop = useStableCallback(() => {
     if (timer.current != null) {
@@ -207,8 +207,8 @@ export hook useDelayGroup(skipDelay: number): DelayGroup {
  * dialog that closed because a tooltip was showing.
  */
 export hook useDismissOnEscape(
-  open: boolean,
-  ref: { current: HTMLElement | null },
+  open     : boolean,
+  ref      : { current: HTMLElement | null },
   onDismiss: () => void,
 ): void {
   const dismiss = useStableCallback(onDismiss);

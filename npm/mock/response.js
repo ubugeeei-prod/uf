@@ -17,9 +17,9 @@
 
 /** The subset of `ResponseInit` a mocked response needs. */
 export type HttpResponseInit = {|
-  readonly status?: number,
+  readonly status?    : number,
   readonly statusText?: string,
-  readonly headers?: { readonly [string]: string },
+  readonly headers?   : { readonly [string]: string },
 |};
 
 /**
@@ -43,7 +43,7 @@ const PASSTHROUGH_HEADER = "x-uf-mock-intention";
  * its headers in: a plain object, a `Headers`, or a list of pairs.
  */
 function withContentType(
-  init: HttpResponseInit | ResponseOptions | void,
+  init    : HttpResponseInit | ResponseOptions | void,
   fallback: string,
 ): Headers {
   const headers = new Headers();
@@ -86,18 +86,18 @@ export class HttpResponse extends Response {
    */
   static json(body: mixed, init?: HttpResponseInit | ResponseOptions): HttpResponse {
     return new HttpResponse(JSON.stringify(body), {
-      status: init?.status ?? 200,
+      status    : init?.status ?? 200,
       statusText: init?.statusText ?? "",
-      headers: withContentType(init, "application/json"),
+      headers   : withContentType(init, "application/json"),
     });
   }
 
   /** A plain-text body, with `content-type` already set. */
   static text(body: string, init?: HttpResponseInit): HttpResponse {
     return new HttpResponse(body, {
-      status: init?.status ?? 200,
+      status    : init?.status ?? 200,
       statusText: init?.statusText ?? "",
-      headers: withContentType(init, "text/plain;charset=UTF-8"),
+      headers   : withContentType(init, "text/plain;charset=UTF-8"),
     });
   }
 

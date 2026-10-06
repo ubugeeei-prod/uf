@@ -62,8 +62,8 @@ function appRoot(files: $ReadOnlyArray<string>): string {
  */
 function boundaries(root: string) {
   return scanRoutes(root).notFound.map((boundary) => ({
-    path: boundary.path,
-    page: boundary.page == null ? null : path.relative(root, boundary.page),
+    path   : boundary.path,
+    page   : boundary.page == null ? null : path.relative(root, boundary.page),
     layouts: boundary.layouts.map((layout) => path.relative(root, layout)),
   }));
 }
@@ -71,8 +71,8 @@ function boundaries(root: string) {
 /** The same, for the error boundaries. */
 function errorBoundaries(root: string) {
   return scanRoutes(root).errors.map((boundary) => ({
-    path: boundary.path,
-    module: boundary.module == null ? null : path.relative(root, boundary.module),
+    path   : boundary.path,
+    module : boundary.module == null ? null : path.relative(root, boundary.module),
     layouts: boundary.layouts.map((layout) => path.relative(root, layout)),
   }));
 }
@@ -107,8 +107,8 @@ describe("scanning for not-found boundaries", () => {
       // root's layout to render the framework's page inside. See #351.
       { path: "/", page: null, layouts: ["$layout.js"] },
       {
-        path: "/guide",
-        page: "guide/$not-found.js",
+        path   : "/guide",
+        page   : "guide/$not-found.js",
         layouts: ["$layout.js", "guide/$layout.js"],
       },
     ]);
@@ -208,26 +208,26 @@ const guideLayout = { metadata: { title: "guide section" } };
  * declares no `$not-found.js`: the root's layouts, and no page to import.
  */
 const synthesisedRoot = {
-  path: "/",
-  mdx: false,
-  file: "@uniflowed/router",
-  page: null,
+  path   : "/",
+  mdx    : false,
+  file   : "@uniflowed/router",
+  page   : null,
   layouts: [() => Promise.resolve(rootLayout)],
 };
 
 const rootNotFound = {
-  path: "/",
-  mdx: false,
-  file: "app/$not-found.js",
-  page: () => Promise.resolve({ metadata: { title: "site 404" } }),
+  path   : "/",
+  mdx    : false,
+  file   : "app/$not-found.js",
+  page   : () => Promise.resolve({ metadata: { title: "site 404" } }),
   layouts: [() => Promise.resolve(rootLayout)],
 };
 
 const guideNotFound = {
-  path: "/guide",
-  mdx: false,
-  file: "app/guide/$not-found.js",
-  page: () => Promise.resolve({ metadata: { title: "guide 404" } }),
+  path   : "/guide",
+  mdx    : false,
+  file   : "app/guide/$not-found.js",
+  page   : () => Promise.resolve({ metadata: { title: "guide 404" } }),
   layouts: [() => Promise.resolve(rootLayout), () => Promise.resolve(guideLayout)],
 };
 
@@ -321,10 +321,10 @@ describe("resolving an unmatched path", () => {
 
   it("matches a boundary under a parameter segment", async () => {
     const perPost = {
-      path: "/posts/:slug",
-      mdx: false,
-      file: "app/posts/[slug]/$not-found.js",
-      page: () => Promise.resolve({ metadata: { title: "no such section" } }),
+      path   : "/posts/:slug",
+      mdx    : false,
+      file   : "app/posts/[slug]/$not-found.js",
+      page   : () => Promise.resolve({ metadata: { title: "no such section" } }),
       layouts: [],
     };
     const table = { routes: [], notFound: [rootNotFound, perPost], errors: [] };
@@ -353,10 +353,10 @@ describe("the framework's pages when a project declares no boundary", () => {
       App: routerView("./app"),
       routes: [
         {
-          path: "/",
+          path  : "/",
           params: [],
-          mdx: false,
-          file: "app/$page.js",
+          mdx   : false,
+          file  : "app/$page.js",
           page,
           layouts: [() => Promise.resolve({ default: Masthead })],
           loading: [],
@@ -365,18 +365,18 @@ describe("the framework's pages when a project declares no boundary", () => {
       // What `scanRoutes` synthesises for a project that declares neither file.
       notFound: [
         {
-          path: "/",
-          mdx: false,
-          file: "@uniflowed/router",
-          page: null,
+          path   : "/",
+          mdx    : false,
+          file   : "@uniflowed/router",
+          page   : null,
           layouts: [() => Promise.resolve({ default: Masthead })],
         },
       ],
       errors: [
         {
-          path: "/",
-          file: "@uniflowed/router",
-          module: null,
+          path   : "/",
+          file   : "@uniflowed/router",
+          module : null,
           layouts: [() => Promise.resolve({ default: Masthead })],
         },
       ],
@@ -426,11 +426,11 @@ describe("notFound() thrown from a page", () => {
     // URL *did* match a route — `/guide/:slug` — and the loader said the slug
     // names nothing; the root 404 then answered it outside the manual.
     const slugPage = {
-      path: "/guide/:slug",
-      params: [{ name: "slug", catchAll: false }],
-      mdx: false,
-      file: "app/guide/[slug]/$page.js",
-      page: () => Promise.resolve({ loader: () => notFound() }),
+      path   : "/guide/:slug",
+      params : [{ name: "slug", catchAll: false }],
+      mdx    : false,
+      file   : "app/guide/[slug]/$page.js",
+      page   : () => Promise.resolve({ loader: () => notFound() }),
       layouts: [() => Promise.resolve(rootLayout), () => Promise.resolve(guideLayout)],
     };
 

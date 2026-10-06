@@ -130,11 +130,11 @@ function reactReporting(version: string): { readonly [string]: string } {
       version,
       type: "module",
       exports: {
-        ".": "./index.js",
+        "."                 : "./index.js",
         "./compiler-runtime": "./compiler-runtime.js",
-        "./jsx-dev-runtime": "./jsx-dev-runtime.js",
-        "./jsx-runtime": "./jsx-runtime.js",
-        "./package.json": "./package.json",
+        "./jsx-dev-runtime" : "./jsx-dev-runtime.js",
+        "./jsx-runtime"     : "./jsx-runtime.js",
+        "./package.json"    : "./package.json",
       },
     }),
     "react/index.js": `${reexport("index.js")}export const version = ${JSON.stringify(version)};\n`,
@@ -150,10 +150,10 @@ let web: string | null = null;
 function webProject(): string {
   if (web == null) {
     web = project({
-      react: installed("react"),
-      "react-dom": installed("react-dom"),
-      "@uniflowed/hooks": sibling("hooks"),
-      "@uniflowed/server": sibling("server"),
+      react                 : installed("react"),
+      "react-dom"           : installed("react-dom"),
+      "@uniflowed/hooks"    : sibling("hooks"),
+      "@uniflowed/server"   : sibling("server"),
       "@uniflowed/validator": sibling("validator"),
     });
   }
@@ -167,11 +167,11 @@ function olderReactProject(): string {
   if (older == null) {
     older = project(
       {
-        "react-dom": installed("react-dom"),
+        "react-dom"              : installed("react-dom"),
         "react-server-dom-parcel": installed("react-server-dom-parcel"),
-        "@uniflowed/hooks": sibling("hooks"),
-        "@uniflowed/server": sibling("server"),
-        "@uniflowed/validator": sibling("validator"),
+        "@uniflowed/hooks"       : sibling("hooks"),
+        "@uniflowed/server"      : sibling("server"),
+        "@uniflowed/validator"   : sibling("validator"),
       },
       reactReporting("19.2.3"),
     );
@@ -195,16 +195,16 @@ describe("an application that renders no Server Component", () => {
 
     expect({
       RouterProvider: typeof index.RouterProvider,
-      hydrate: typeof client.hydrate,
-      render: typeof client.render,
+      hydrate       : typeof client.hydrate,
+      render        : typeof client.render,
       createRenderer: typeof server.createRenderer,
-      matchRoute: typeof routing.matchRoute,
+      matchRoute    : typeof routing.matchRoute,
     }).toEqual({
       RouterProvider: "function",
-      hydrate: "function",
-      render: "function",
+      hydrate       : "function",
+      render        : "function",
       createRenderer: "function",
-      matchRoute: "function",
+      matchRoute    : "function",
     });
   });
 
@@ -235,8 +235,8 @@ describe("React Server Components on React 19.2.3", () => {
     const { createDocumentRenderer } = await routerModule(olderReactProject(), "rsc-ssr.js");
     const refusal = await failureOf(() =>
       createDocumentRenderer({
-        App: () => null,
-        renderFlight: () => Promise.reject(new Error("rendered on React 19.2.3")),
+        App             : () => null,
+        renderFlight    : () => Promise.reject(new Error("rendered on React 19.2.3")),
         loadClientModule: () => Promise.resolve({}),
       }),
     );

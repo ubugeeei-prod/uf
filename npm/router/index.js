@@ -118,9 +118,9 @@ export type PageProps<
   TData = void,
   TSearchParams = { readonly [string]: string },
 > = {|
-  readonly params: TParams,
+  readonly params      : TParams,
   readonly searchParams: TSearchParams,
-  readonly data: TData,
+  readonly data        : TData,
 |};
 
 /**
@@ -153,6 +153,6 @@ export type ErrorProps = {|
 export type LayoutProps<
   TParams extends { readonly [string]: string | $ReadOnlyArray<string> } = {},
 > = {|
-  readonly params: TParams,
+  readonly params  : TParams,
   readonly children: React.Node,
 |};

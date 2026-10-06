@@ -110,22 +110,22 @@ type DateWidth = "full" | "long" | "medium" | "short";
 
 /** What MF2's `:date`, `:time` and `:datetime` may ask `Intl` for. */
 type DateTimeOptions = {
-  dateStyle?: DateWidth,
-  timeStyle?: DateWidth,
-  weekday?: "narrow" | "short" | "long",
-  era?: "narrow" | "short" | "long",
-  year?: "numeric" | "2-digit",
-  month?: "numeric" | "2-digit" | "narrow" | "short" | "long",
-  day?: "numeric" | "2-digit",
-  hour?: "numeric" | "2-digit",
-  minute?: "numeric" | "2-digit",
-  second?: "numeric" | "2-digit",
+  dateStyle?             : DateWidth,
+  timeStyle?             : DateWidth,
+  weekday?               : "narrow" | "short" | "long",
+  era?                   : "narrow" | "short" | "long",
+  year?                  : "numeric" | "2-digit",
+  month?                 : "numeric" | "2-digit" | "narrow" | "short" | "long",
+  day?                   : "numeric" | "2-digit",
+  hour?                  : "numeric" | "2-digit",
+  minute?                : "numeric" | "2-digit",
+  second?                : "numeric" | "2-digit",
   fractionalSecondDigits?: number,
-  timeZoneName?: "short" | "long",
-  hour12?: boolean,
-  timeZone?: string,
-  calendar?: string,
-  numberingSystem?: string,
+  timeZoneName?          : "short" | "long",
+  hour12?                : boolean,
+  timeZone?              : string,
+  calendar?              : string,
+  numberingSystem?       : string,
 };
 
 /**
@@ -138,17 +138,17 @@ type DateTimeOptions = {
  * without the currency code it would then need.
  */
 type NumberOptions = {
-  style?: "decimal" | "percent",
-  minimumIntegerDigits?: number,
-  minimumFractionDigits?: number,
-  maximumFractionDigits?: number,
+  style?                   : "decimal" | "percent",
+  minimumIntegerDigits?    : number,
+  minimumFractionDigits?   : number,
+  maximumFractionDigits?   : number,
   minimumSignificantDigits?: number,
   maximumSignificantDigits?: number,
-  useGrouping?: boolean,
-  signDisplay?: "auto" | "always" | "exceptZero" | "never",
-  notation?: "standard" | "scientific" | "engineering" | "compact",
-  compactDisplay?: "short" | "long",
-  numberingSystem?: string,
+  useGrouping?             : boolean,
+  signDisplay?             : "auto" | "always" | "exceptZero" | "never",
+  notation?                : "standard" | "scientific" | "engineering" | "compact",
+  compactDisplay?          : "short" | "long",
+  numberingSystem?         : string,
 };
 
 declare class MessageNumberFormat {
@@ -168,9 +168,9 @@ declare class MessagePluralRules {
 
 /** See the module header on why these are declared rather than imported. */
 declare var Intl: {
-  NumberFormat: Class<MessageNumberFormat>,
+  NumberFormat  : Class<MessageNumberFormat>,
   DateTimeFormat: Class<MessageDateTimeFormat>,
-  PluralRules?: Class<MessagePluralRules>,
+  PluralRules?  : Class<MessagePluralRules>,
   ...
 };
 
@@ -208,10 +208,10 @@ export type FormatContext = {
    * right-to-left content in it should turn this on.
    */
   readonly bidiIsolation: boolean,
-  readonly onError: (error: MessageFormatError) => void,
+  readonly onError      : (error: MessageFormatError) => void,
   readonly numberFormats: Map<string, MessageNumberFormat>,
-  readonly dateFormats: Map<string, MessageDateTimeFormat>,
-  readonly pluralRules: Map<string, MessagePluralRules>,
+  readonly dateFormats  : Map<string, MessageDateTimeFormat>,
+  readonly pluralRules  : Map<string, MessagePluralRules>,
 };
 
 /** The options one annotation was given, already resolved to values. */
@@ -219,9 +219,9 @@ type OptionBag = Map<string, mixed>;
 
 /** A value with the annotation that was applied to it, if any. */
 type Resolved = {
-  readonly value: mixed,
+  readonly value       : mixed,
   readonly functionName: string | null,
-  readonly options: OptionBag,
+  readonly options     : OptionBag,
   /** The MF2 fallback text for the expression this came from. */
   readonly fallback: string,
 };
@@ -314,8 +314,8 @@ function asWidth(value: mixed): DateWidth | null {
 /** The value of an operand, looked up in the scope if it is a variable. */
 function resolveOperand(
   operand: MessageOperand,
-  scope: Scope,
-  args: Map<string, mixed>,
+  scope  : Scope,
+  args   : Map<string, mixed>,
 ): { readonly value: mixed, readonly known: boolean } {
   if (operand.kind === "literal") return { value: operand.value, known: true };
   const declared = scope.get(operand.name);
@@ -326,8 +326,8 @@ function resolveOperand(
 
 function resolveOptions(
   annotation: MessageAnnotation,
-  scope: Scope,
-  args: Map<string, mixed>,
+  scope     : Scope,
+  args      : Map<string, mixed>,
 ): OptionBag {
   const resolved: OptionBag = new Map();
   for (const option of annotation.options) {
@@ -345,9 +345,9 @@ function resolveOptions(
  */
 function resolveExpression(
   expression: MessageExpression,
-  scope: Scope,
-  args: Map<string, mixed>,
-  context: FormatContext,
+  scope     : Scope,
+  args      : Map<string, mixed>,
+  context   : FormatContext,
 ): Resolved {
   const fallback = fallbackFor(expression);
   const annotation = expression.annotation;
@@ -649,8 +649,8 @@ function formatValue(resolved: Resolved, context: FormatContext): string {
  */
 function selectKeys(
   resolved: Resolved,
-  keys: $ReadOnlyArray<string>,
-  context: FormatContext,
+  keys    : $ReadOnlyArray<string>,
+  context : FormatContext,
 ): $ReadOnlyArray<string> {
   const name = resolved.functionName ?? impliedFunction(resolved.value);
   if (!SELECTOR_FUNCTIONS.includes(name)) {
@@ -708,8 +708,8 @@ function selectKeys(
  */
 function selectVariant(
   selectors: $ReadOnlyArray<Resolved>,
-  variants: $ReadOnlyArray<MessageVariant>,
-  context: FormatContext,
+  variants : $ReadOnlyArray<MessageVariant>,
+  context  : FormatContext,
 ): MessageVariant {
   const preferences: Array<$ReadOnlyArray<string>> = [];
   for (let index = 0; index < selectors.length; index += 1) {
@@ -762,8 +762,8 @@ const ISOLATE_POP = "⁩";
 
 function formatPattern(
   pattern: MessagePattern,
-  scope: Scope,
-  args: Map<string, mixed>,
+  scope  : Scope,
+  args   : Map<string, mixed>,
   context: FormatContext,
 ): string {
   let out = "";

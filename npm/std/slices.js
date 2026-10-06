@@ -75,7 +75,7 @@ export function search(length: number, predicate: (index: number) => boolean): n
  * The first equal item is returned, so duplicates behave like a lower bound.
  */
 export function binarySearchBy<T>(
-  items: $ReadOnlyArray<T>,
+  items              : $ReadOnlyArray<T>,
   compareItemToTarget: (item: T) => number,
 ): SearchResult {
   const index = search(items.length, (at) => compareItemToTarget(items[at]) >= 0);
@@ -91,8 +91,8 @@ export function binarySearchBy<T>(
  * order.
  */
 export function binarySearch<T>(
-  items: $ReadOnlyArray<T>,
-  target: T,
+  items  : $ReadOnlyArray<T>,
+  target : T,
   compare: Compare<T>,
 ): SearchResult {
   return binarySearchBy(items, (item) => compare(item, target));

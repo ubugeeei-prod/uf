@@ -92,18 +92,18 @@ export function lambdaCapabilities(options?: CapabilityOptions): ServerCapabilit
  * where a missing one can be reported as the wrong event shape.
  */
 export type LambdaHttpEvent = {
-  readonly version?: string,
-  readonly rawPath?: string,
-  readonly rawQueryString?: string,
-  readonly cookies?: $ReadOnlyArray<string>,
-  readonly headers?: { readonly [string]: string | void },
-  readonly body?: string,
+  readonly version?        : string,
+  readonly rawPath?        : string,
+  readonly rawQueryString? : string,
+  readonly cookies?        : $ReadOnlyArray<string>,
+  readonly headers?        : { readonly [string]: string | void },
+  readonly body?           : string,
   readonly isBase64Encoded?: boolean,
   readonly requestContext?: {
     readonly domainName?: string,
     readonly http?: {
       readonly method?: string,
-      readonly path?: string,
+      readonly path?  : string,
       ...
     },
     ...
@@ -113,10 +113,10 @@ export type LambdaHttpEvent = {
 
 /** What Lambda expects back for payload format 2.0. */
 export type LambdaHttpResult = {|
-  readonly statusCode: number,
-  readonly headers: { [string]: string },
-  readonly cookies: $ReadOnlyArray<string>,
-  readonly body: string,
+  readonly statusCode     : number,
+  readonly headers        : { [string]: string },
+  readonly cookies        : $ReadOnlyArray<string>,
+  readonly body           : string,
   readonly isBase64Encoded: boolean,
 |};
 
@@ -236,7 +236,7 @@ export async function toResult(response: Response): Promise<LambdaHttpResult> {
     statusCode: response.status,
     headers,
     cookies,
-    body: text ? body.toString("utf8") : body.toString("base64"),
+    body           : text ? body.toString("utf8") : body.toString("base64"),
     isBase64Encoded: !text,
   };
 }
@@ -301,18 +301,18 @@ export function createLambdaHandler(options: LambdaHandlerOptions): (
       // answering it 500 forever would hide that.
       processLogger().error("request failed", { error });
       return {
-        statusCode: 500,
-        headers: { "content-type": "text/plain; charset=utf-8" },
-        cookies: [],
-        body: "500 Internal Server Error\n",
+        statusCode     : 500,
+        headers        : { "content-type": "text/plain; charset=utf-8" },
+        cookies        : [],
+        body           : "500 Internal Server Error\n",
         isBase64Encoded: false,
       };
     } finally {
       logRequest(processLogger(), {
         requestId: lifecycle.context.id,
-        method: request.method.toUpperCase(),
-        path: new URL(request.url).pathname,
-        route: lifecycle.context.route,
+        method   : request.method.toUpperCase(),
+        path     : new URL(request.url).pathname,
+        route    : lifecycle.context.route,
         status,
         durationMs: elapsedMs(started),
       });

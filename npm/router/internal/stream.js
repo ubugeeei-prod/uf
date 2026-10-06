@@ -57,7 +57,7 @@ import { type StreamRecord, inspected } from "./inspector.js";
  */
 export type WritableLike = {
   readonly write: (chunk: string) => mixed,
-  readonly end: () => mixed,
+  readonly end  : () => mixed,
   ...
 };
 
@@ -89,14 +89,14 @@ export type DocumentBody = {|
  * point of writing it down.
  */
 type NodeDestination = {
-  readonly write: (chunk: string | Uint8Array) => boolean,
-  readonly end: () => mixed,
-  readonly destroy: (error?: mixed) => mixed,
-  readonly on: (event: string, listener: (...args: Array<mixed>) => mixed) => mixed,
-  readonly once: (event: string, listener: (...args: Array<mixed>) => mixed) => mixed,
-  readonly off: () => mixed,
+  readonly write         : (chunk: string | Uint8Array) => boolean,
+  readonly end           : () => mixed,
+  readonly destroy       : (error?: mixed) => mixed,
+  readonly on            : (event: string, listener: (...args: Array<mixed>) => mixed) => mixed,
+  readonly once          : (event: string, listener: (...args: Array<mixed>) => mixed) => mixed,
+  readonly off           : () => mixed,
   readonly removeListener: () => mixed,
-  readonly emit: () => boolean,
+  readonly emit          : () => boolean,
 };
 
 /** The controller a `ReadableStream` source is handed. */
@@ -107,7 +107,7 @@ type NodeDestination = {
  * cannot type a value whose definition depends on itself without being told.
  */
 type PipeableStream = {
-  readonly pipe: (destination: NodeDestination) => mixed,
+  readonly pipe : (destination: NodeDestination) => mixed,
   readonly abort: (reason?: mixed) => void,
   ...
 };
@@ -322,10 +322,10 @@ function queueDestination(queue: ChunkQueue): NodeDestination {
  * once, and everything that belongs in it has to be in hand by then.
  */
 async function* assembled(
-  chunks: AsyncGenerator<string, void, void>,
-  shell: DocumentShell,
+  chunks        : AsyncGenerator<string, void, void>,
+  shell         : DocumentShell,
   transformHead?: (html: string) => Promise<string>,
-  layout?: Layout,
+  layout?       : Layout,
 ): AsyncGenerator<string, void, void> {
   let held = "";
   let shape = "unknown";
@@ -725,7 +725,7 @@ export type RenderOptions = {|
  * handed, head and all, and not React's own output on the way past.
  */
 function outgoing(
-  chunks: AsyncGenerator<string, void, void>,
+  chunks   : AsyncGenerator<string, void, void>,
   onStream?: (record: StreamRecord) => void,
 ): AsyncGenerator<string, void, void> {
   return onStream == null ? chunks : inspected(chunks, onStream, () => performance.now());
@@ -772,7 +772,7 @@ export function renderDocument(node: React.Node, options: RenderOptions): Promis
         // the streaming runtime that reveals a boundary and patches a segment,
         // and the bootstrap. uf nonces the scripts it writes itself; these are
         // React's, and there is no other way to reach them.
-        nonce: options.nonce ?? undefined,
+        nonce    : options.nonce ?? undefined,
         formState: options.formState ?? null,
       });
       return;
@@ -799,9 +799,9 @@ export function renderDocument(node: React.Node, options: RenderOptions): Promis
 type ReadableStreamRenderer = (
   node: React.Node,
   settings: {|
-    readonly onError: (error: mixed) => void,
-    readonly signal: AbortSignal,
-    readonly nonce?: string,
+    readonly onError   : (error: mixed) => void,
+    readonly signal    : AbortSignal,
+    readonly nonce?    : string,
     readonly formState?: FormState | null,
   |},
 ) => Promise<ByteSource>;
@@ -823,15 +823,15 @@ type ReadableStreamRenderer = (
  * disagreed.
  */
 export function renderWithReadableStream(
-  render: ReadableStreamRenderer,
-  node: React.Node,
+  render : ReadableStreamRenderer,
+  node   : React.Node,
   options: RenderOptions,
 ): Promise<DocumentBody> {
   const controller = new AbortController();
   return render(node, {
-    onError: options.onError,
-    signal: controller.signal,
-    nonce: options.nonce ?? undefined,
+    onError  : options.onError,
+    signal   : controller.signal,
+    nonce    : options.nonce ?? undefined,
     formState: options.formState ?? null,
   }).then((stream: ByteSource) =>
     bodyOf(
@@ -960,9 +960,9 @@ export type PrerenderedShell = {|
 export async function prerenderShell(
   node: React.Node,
   options: {|
-    readonly shell: DocumentShell,
+    readonly shell  : DocumentShell,
     readonly onError: (error: mixed) => void,
-    readonly settle: () => Promise<void>,
+    readonly settle : () => Promise<void>,
   |},
 ): Promise<PrerenderedShell> {
   const controller = new AbortController();
@@ -994,15 +994,15 @@ export async function prerenderShell(
   // a document React wrote ends in its own, which `resume` writes again.
   if (text.endsWith(options.shell.close)) {
     return {
-      html: text.slice(0, text.length - options.shell.close.length),
-      close: options.shell.close,
+      html     : text.slice(0, text.length - options.shell.close.length),
+      close    : options.shell.close,
       rootDepth: layout.rootDepth,
       postponed,
     };
   }
   return {
-    html: text.replace(/<\/body>\s*<\/html>\s*$/i, ""),
-    close: "",
+    html     : text.replace(/<\/body>\s*<\/html>\s*$/i, ""),
+    close    : "",
     rootDepth: layout.rootDepth,
     postponed,
   };
@@ -1024,12 +1024,12 @@ export async function prerenderShell(
  * own level, so the payload may follow it as soon as it exists.
  */
 export function resumeDocument(
-  node: React.Node,
+  node : React.Node,
   shell: PrerenderedShell,
   options: {|
-    readonly onError: (error: mixed) => void,
-    readonly payload: ReadableStream<Uint8Array>,
-    readonly nonce?: string | null,
+    readonly onError  : (error: mixed) => void,
+    readonly payload  : ReadableStream<Uint8Array>,
+    readonly nonce?   : string | null,
     readonly onStream?: (record: StreamRecord) => void,
   |},
 ): DocumentBody {
@@ -1039,8 +1039,8 @@ export function resumeDocument(
   // for the shell to be read before it starts on the holes.
   const resuming: Promise<ByteSource> = ReactDOMServer.resume(node, shell.postponed, {
     onError: options.onError,
-    signal: controller.signal,
-    nonce: options.nonce ?? undefined,
+    signal : controller.signal,
+    nonce  : options.nonce ?? undefined,
   });
   // A resume that fails before its first byte fails the stream below, once it
   // is read; this keeps the rejection from being reported as unhandled while
@@ -1079,11 +1079,11 @@ type Layout = {|
 
 /** [`assembled`] alone when there is no payload, and [`interleaved`] with one. */
 function withPayload(
-  chunks: AsyncGenerator<string, void, void>,
-  shell: DocumentShell,
+  chunks       : AsyncGenerator<string, void, void>,
+  shell        : DocumentShell,
   transformHead: ?(html: string) => Promise<string>,
-  payload: ?ReadableStream<Uint8Array>,
-  nonce?: string | null,
+  payload      : ?ReadableStream<Uint8Array>,
+  nonce?       : string | null,
 ): AsyncGenerator<string, void, void> {
   if (payload == null) {
     return assembled(chunks, shell, transformHead ?? undefined);
@@ -1158,9 +1158,9 @@ function withPayload(
  * in the `finally`, which is where `return()` on this generator lands.
  */
 async function* interleaved(
-  chunks: AsyncGenerator<string, void, void>,
+  chunks : AsyncGenerator<string, void, void>,
   payload: ReadableStream<Uint8Array>,
-  nonce?: string | null,
+  nonce? : string | null,
   layout?: Layout,
 ): AsyncGenerator<string, void, void> {
   const encoder = createChunkEncoder(nonce);
@@ -1269,11 +1269,11 @@ type Boundary = {|
 |};
 
 const NOTHING_WRITTEN: Boundary = {
-  safe: false,
-  rawText: null,
+  safe       : false,
+  rawText    : null,
   replaceable: 0,
-  open: "",
-  depth: null,
+  open       : "",
+  depth      : null,
 };
 
 /** Elements with no closing tag, for markup whose `/>` React did not write. */

@@ -145,29 +145,29 @@ export type TestHandle = {
 export type OutputStream = {
   write(chunk: string): mixed,
   readonly columns?: number,
-  readonly rows?: number,
-  readonly isTTY?: boolean,
+  readonly rows?   : number,
+  readonly isTTY?  : boolean,
   /** A real `process.stdout` emits `"resize"`; a string collector does not. */
-  readonly on?: (event: string, listener: () => mixed) => mixed,
+  readonly on? : (event: string, listener: () => mixed) => mixed,
   readonly off?: (event: string, listener: () => mixed) => mixed,
   ...
 };
 
 /** Anything keys arrive from; `process.stdin`. */
 export type InputStream = {
-  readonly isTTY?: boolean,
-  readonly setRawMode?: (raw: boolean) => mixed,
-  readonly resume?: () => mixed,
-  readonly pause?: () => mixed,
+  readonly isTTY?      : boolean,
+  readonly setRawMode? : (raw: boolean) => mixed,
+  readonly resume?     : () => mixed,
+  readonly pause?      : () => mixed,
   readonly setEncoding?: (encoding: string) => mixed,
-  readonly on?: (event: string, listener: (chunk: string) => mixed) => mixed,
-  readonly off?: (event: string, listener: (chunk: string) => mixed) => mixed,
+  readonly on?         : (event: string, listener: (chunk: string) => mixed) => mixed,
+  readonly off?        : (event: string, listener: (chunk: string) => mixed) => mixed,
   ...
 };
 
 /** How to mount onto a real terminal. */
 export type RenderOptions = {
-  readonly stdin?: InputStream,
+  readonly stdin? : InputStream,
   readonly stdout?: OutputStream,
   /** `--color`, when the application has such a flag. */
   readonly color?: ColorChoice,
@@ -244,18 +244,18 @@ function mount(element: React.Node, renderer: Renderer) {
 export function testRender(
   element: React.Node,
   options: {
-    readonly width?: number,
-    readonly height?: number,
+    readonly width?       : number,
+    readonly height?      : number,
     readonly capabilities?: Capabilities,
-    readonly mouse?: boolean,
+    readonly mouse?       : boolean,
   } = {},
 ): TestHandle {
   const width = options.width ?? FALLBACK_COLUMNS;
   const height = options.height ?? FALLBACK_ROWS;
   const capabilities: Capabilities = options.capabilities ?? {
-    color: "truecolor",
+    color : "truecolor",
     glyphs: "unicode",
-    tty: "interactive",
+    tty   : "interactive",
   };
   // On by default here and off in `render`, and the difference is the whole
   // reason the option exists: what `render` weighs is a terminal it would take

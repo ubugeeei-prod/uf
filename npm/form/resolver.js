@@ -78,7 +78,7 @@ export type ResolverResult<TOut> =
  * in `onChange` mode.
  */
 export type Resolver<TIn extends FieldValues, TOut = TIn> = (
-  values: TIn,
+  values : TIn,
   context: mixed,
 ) => ResolverResult<TOut> | Promise<ResolverResult<TOut>>;
 
@@ -92,8 +92,8 @@ export type Resolver<TIn extends FieldValues, TOut = TIn> = (
  */
 export function runResolver<TIn extends FieldValues, TOut>(
   resolver: Resolver<TIn, TOut>,
-  values: TIn,
-  context: mixed,
+  values  : TIn,
+  context : mixed,
 ): ResolverResult<TOut> | Promise<ResolverResult<TOut>> {
   return resolver(values, context);
 }
@@ -114,8 +114,8 @@ export function errorsOf<TOut>(result: ResolverResult<TOut>): ResolverErrors {
  */
 export function collectErrors(
   issues: $ReadOnlyArray<{|
-    readonly path: string,
-    readonly type: string,
+    readonly path   : string,
+    readonly type   : string,
     readonly message: string,
   |}>,
 ): ResolverErrors {
@@ -126,9 +126,9 @@ export function collectErrors(
       // schema, and a schema describes data, and data can contain the key
       // `__proto__`. Assigning to it runs a setter instead of adding a key.
       Object.defineProperty(errors, issue.path, {
-        value: { type: issue.type, message: issue.message },
-        writable: true,
-        enumerable: true,
+        value       : { type: issue.type, message: issue.message },
+        writable    : true,
+        enumerable  : true,
         configurable: true,
       });
     }

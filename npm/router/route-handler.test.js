@@ -25,8 +25,8 @@ import { Temporal } from "@uniflowed/core/temporal";
 const record = (path: string, module: HandlerModule): HandlerRecord => ({
   path,
   params: [],
-  file: `${path}/$route.js`,
-  load: async () => module,
+  file  : `${path}/$route.js`,
+  load  : async () => module,
 });
 
 const get = (url: string, init?: RequestOptions) => new Request(`http://localhost${url}`, init);
@@ -205,9 +205,9 @@ describe("methods", () => {
 
     const created = await table()(
       get("/api/thing", {
-        method: "POST",
+        method : "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "ada" }),
+        body   : JSON.stringify({ name: "ada" }),
       }),
     );
     expect(created?.status).toBe(201);
@@ -238,7 +238,7 @@ describe("methods", () => {
       createDispatcher({
         handlers: [
           record("/api/thing", {
-            GET: () => new Response("read"),
+            GET  : () => new Response("read"),
             PURGE: () => new Response("purged"),
           }),
         ],
@@ -268,9 +268,9 @@ describe("methods", () => {
 
     const response = await dispatch(
       get("/api/search", {
-        method: "QUERY",
+        method : "QUERY",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ filters: ["a", "b"] }),
+        body   : JSON.stringify({ filters: ["a", "b"] }),
       }),
     );
 
@@ -286,7 +286,7 @@ describe("methods", () => {
       createDispatcher({
         handlers: [
           record("/api/search", {
-            GET: () => new Response("read"),
+            GET  : () => new Response("read"),
             QUERY: () => new Response("searched"),
           }),
         ],
@@ -308,7 +308,7 @@ describe("methods", () => {
       createDispatcher({
         handlers: [
           record("/api/thing", {
-            GET: () => new Response("body"),
+            GET : () => new Response("body"),
             HEAD: () => new Response(null, { status: 204 }),
           }),
         ],
@@ -349,9 +349,9 @@ describe("errors", () => {
       createDispatcher({
         handlers: [
           {
-            path: "/api/lazy",
+            path  : "/api/lazy",
             params: [],
-            file: "app/api/lazy/$route.js",
+            file  : "app/api/lazy/$route.js",
             load: async () => {
               loaded += 1;
               return { GET: () => new Response("ok") };
@@ -376,13 +376,13 @@ describe("the request a handler is inside", () => {
       createDispatcher({
         handlers: [
           {
-            path: "/api/who",
+            path  : "/api/who",
             params: [],
-            file: "app/api/who/$route.js",
+            file  : "app/api/who/$route.js",
             load: async () => ({
               GET: () =>
                 Response.json({
-                  agent: headers().get("x-agent"),
+                  agent  : headers().get("x-agent"),
                   session: cookies().get("session"),
                 }),
             }),

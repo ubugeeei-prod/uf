@@ -40,17 +40,17 @@ export const ROOT_ERROR_ID: string = "error:root";
  * is how many layouts are outside the boundary.
  */
 export type RouteBoundary = {|
-  readonly id: string,
-  readonly kind: BoundaryKind,
-  readonly above: number,
+  readonly id    : string,
+  readonly kind  : BoundaryKind,
+  readonly above : number,
   readonly source: ?string,
 |};
 
 /** The part of a resolved route the boundary map reads. */
 type BoundedRoute = {
   readonly errorBoundary: { readonly above: number, ... },
-  readonly loading: $ReadOnlyArray<{ readonly above: number, ... }>,
-  readonly error: mixed,
+  readonly loading      : $ReadOnlyArray<{ readonly above: number, ... }>,
+  readonly error        : mixed,
   ...
 };
 
@@ -62,21 +62,21 @@ type BoundedRoute = {
  * summaries walk the values.
  */
 export function routeBoundaries(
-  resolved: BoundedRoute,
+  resolved   : BoundedRoute,
   errorSource: ?string,
 ): Map<string, RouteBoundary> {
   const found: Map<string, RouteBoundary> = new Map();
   found.set(ROOT_ERROR_ID, {
-    id: ROOT_ERROR_ID,
-    kind: "error",
-    above: 0,
+    id    : ROOT_ERROR_ID,
+    kind  : "error",
+    above : 0,
     source: SYNTHESISED_SOURCE,
   });
   if (resolved.error == null) {
     found.set(ROUTE_ERROR_ID, {
-      id: ROUTE_ERROR_ID,
-      kind: "error",
-      above: resolved.errorBoundary.above,
+      id    : ROUTE_ERROR_ID,
+      kind  : "error",
+      above : resolved.errorBoundary.above,
       source: errorSource,
     });
   }

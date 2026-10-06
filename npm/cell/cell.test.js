@@ -31,7 +31,7 @@ import type { Cell } from "@uniflowed/cell";
  */
 function controlled(): {
   settle: (key: string, value: string) => void,
-  load: (key: string) => Promise<string>,
+  load  : (key: string) => Promise<string>,
 } {
   const waiting: Map<string, (value: string) => void> = new Map();
   return {

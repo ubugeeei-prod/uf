@@ -35,7 +35,7 @@ import process from "node:process";
 // What a question sends: a method and a body, and sometimes a header.
 type Init = {
   readonly method: string,
-  readonly body: string,
+  readonly body  : string,
   // Only the skew questions send a header, and it is always this one.
   readonly headers?: { readonly "uf-deployment": string },
 };
@@ -102,7 +102,7 @@ async function ask(
 ) /*: Promise<string> */ {
   const response = await fetch(new URL(path, base), {
     ...init,
-    headers: { accept: "text/html", ...init?.headers },
+    headers : { accept: "text/html", ...init?.headers },
     redirect: "manual",
   });
   const body = (await response.text())

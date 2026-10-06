@@ -42,61 +42,61 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   root: {
-    display: "grid",
-    gap: ufTokens.space1,
+    display   : "grid",
+    gap       : ufTokens.space1,
     fontFamily: ufTokens.fontSans,
-    color: ufTokens.ink,
+    color     : ufTokens.ink,
   },
   label: {
-    fontSize: ufTokens.textSm,
+    fontSize  : ufTokens.textSm,
     fontWeight: ufTokens.weightMedium,
     lineHeight: ufTokens.leadingTight,
   },
   control: {
-    boxSizing: "border-box",
-    width: "100%",
-    minHeight: "36px",
-    margin: 0,
-    paddingBlock: ufTokens.space2,
-    paddingInline: ufTokens.space3,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
-    color: { default: ufTokens.ink, ":disabled": ufTokens.muted },
+    boxSizing      : "border-box",
+    width          : "100%",
+    minHeight      : "36px",
+    margin         : 0,
+    paddingBlock   : ufTokens.space2,
+    paddingInline  : ufTokens.space3,
+    fontFamily     : ufTokens.fontSans,
+    fontSize       : ufTokens.textSm,
+    lineHeight     : ufTokens.leadingBase,
+    color          : { default: ufTokens.ink, ":disabled": ufTokens.muted },
     backgroundColor: { default: ufTokens.surface, ":disabled": ufTokens.sunken },
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: { default: ufTokens.border, ":is([aria-invalid=true])": ufTokens.danger },
-    borderRadius: ufTokens.radiusMd,
-    cursor: { default: "text", ":disabled": "not-allowed" },
-    outlineWidth: { default: "0", ":focus-visible": "2px" },
-    outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "1px",
+    borderWidth    : "1px",
+    borderStyle    : "solid",
+    borderColor    : { default: ufTokens.border, ":is([aria-invalid=true])": ufTokens.danger },
+    borderRadius   : ufTokens.radiusMd,
+    cursor         : { default: "text", ":disabled": "not-allowed" },
+    outlineWidth   : { default: "0", ":focus-visible": "2px" },
+    outlineStyle   : "solid",
+    outlineColor   : ufTokens.focus,
+    outlineOffset  : "1px",
     "::placeholder": {
-      color: ufTokens.muted,
+      color  : ufTokens.muted,
       opacity: 1,
     },
   },
   textarea: {
     minHeight: "5rem",
-    resize: "vertical",
+    resize   : "vertical",
   },
   description: {
-    margin: 0,
+    margin  : 0,
     fontSize: ufTokens.textSm,
-    color: ufTokens.muted,
+    color   : ufTokens.muted,
   },
   status: {
-    margin: 0,
+    margin  : 0,
     fontSize: ufTokens.textSm,
-    color: ufTokens.muted,
+    color   : ufTokens.muted,
   },
   error: {
-    margin: 0,
-    fontSize: ufTokens.textSm,
+    margin    : 0,
+    fontSize  : ufTokens.textSm,
     fontWeight: ufTokens.weightMedium,
-    color: ufTokens.danger,
+    color     : ufTokens.danger,
   },
 });
 
@@ -105,13 +105,13 @@ const styles = stylex.create({
  * `@uniflowed/form` passes `field` instead.
  */
 component FieldRoot(
-  children: React.Node,
-  invalid?: boolean = false,
-  required?: boolean = false,
-  busy?: boolean = false,
-  field?: FieldSource,
-  group?: boolean = false,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  invalid?  : boolean = false,
+  required? : boolean = false,
+  busy?     : boolean = false,
+  field?    : FieldSource,
+  group?    : boolean = false,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -132,8 +132,8 @@ component FieldRoot(
 
 /** The field's name. */
 component FieldLabel(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -149,8 +149,8 @@ component FieldLabel(
 
 /** A text input, wired to the label, the description and the error. */
 component FieldInput(
-  type?: string = "text",
-  xstyle?: StyleArgument,
+  type?     : string = "text",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -188,8 +188,8 @@ component FieldTextarea(xstyle?: StyleArgument, className?: string, ...rest: Res
 
 /** Help that stays under the field, and is read with it. */
 component FieldDescription(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -205,8 +205,8 @@ component FieldDescription(
 
 /** Progress while the field is being saved or checked, announced politely. */
 component FieldStatus(
-  children?: React.Node,
-  xstyle?: StyleArgument,
+  children? : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -222,8 +222,8 @@ component FieldStatus(
 
 /** What is wrong and how to fix it, shown only while the field is invalid. */
 component FieldError(
-  children?: React.Node,
-  xstyle?: StyleArgument,
+  children? : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

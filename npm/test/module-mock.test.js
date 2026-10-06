@@ -82,9 +82,9 @@ const SUBPROCESS_BUDGET = { timeout: 120_000 };
  */
 function stubClient(): { [string]: mixed } {
   return {
-    BASE: "https://stub.test",
+    BASE  : "https://stub.test",
     origin: () => "https://stub.test",
-    send: uft.fn().mockReturnValue("stubbed"),
+    send  : uft.fn().mockReturnValue("stubbed"),
   };
 }
 
@@ -633,8 +633,8 @@ describe("a factory is checked against the module it stands in for", () => {
 
 /** What `uf` sends a worker for one file. */
 type Request = {|
-  readonly file: string,
-  readonly timeoutMs: number,
+  readonly file      : string,
+  readonly timeoutMs : number,
   readonly generation: number,
 |};
 

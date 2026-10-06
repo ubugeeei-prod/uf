@@ -238,21 +238,21 @@ component AboutPage() {
 }
 
 const home = {
-  path: "/",
-  params: [],
-  mdx: false,
-  file: "app/$page.js",
-  page: () => Promise.resolve({ default: HomePage }),
+  path   : "/",
+  params : [],
+  mdx    : false,
+  file   : "app/$page.js",
+  page   : () => Promise.resolve({ default: HomePage }),
   layouts: [],
   loading: [],
 };
 
 const about = {
-  path: "/about",
-  params: [],
-  mdx: false,
-  file: "app/about/$page.js",
-  page: () => Promise.resolve({ default: AboutPage }),
+  path   : "/about",
+  params : [],
+  mdx    : false,
+  file   : "app/about/$page.js",
+  page   : () => Promise.resolve({ default: AboutPage }),
   layouts: [],
   loading: [],
 };
@@ -272,7 +272,7 @@ async function serve(url: string): Promise<void> {
     App: routerView("./app"),
     routes,
     notFound: [],
-    errors: [],
+    errors  : [],
   });
   const { html } = await renderer.prerender(url, { scripts: [], styles: [], preloads: [] });
 
@@ -296,7 +296,7 @@ async function hydrateHere(strictMode: boolean): Promise<void> {
       App: routerView("./app"),
       routes,
       notFound: [],
-      errors: [],
+      errors  : [],
       strictMode,
     });
   });

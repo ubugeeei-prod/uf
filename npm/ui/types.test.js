@@ -48,10 +48,10 @@ const checker = oneCheckPerCommand();
 /** What `uf check npm/ui --json` says, as the first block below reads it. */
 type PackageReport = {
   typeCheck: {
-    status: string,
+    status      : string,
     filesChecked: number,
     /** How many files the command named, before their imports were added. */
-    requested: number,
+    requested  : number,
     diagnostics: Array<CheckDiagnostic>,
   },
 };
@@ -87,8 +87,8 @@ describe("the props a part spreads onto its element", () => {
 
   it("does not make React's key mixed", () => {
     const run = spawnSync(UF, ["check", "npm/ui", "--json", "--no-lint"], {
-      cwd: repository,
-      encoding: "utf8",
+      cwd      : repository,
+      encoding : "utf8",
       maxBuffer: 32 * 1024 * 1024,
     });
     // A non-zero status is expected: the package still has the `value-as-type`
@@ -112,7 +112,7 @@ describe("the props a part spreads onto its element", () => {
     const keyed = report.typeCheck.diagnostics
       .filter((diagnostic) => !diagnostic.primary.path.endsWith(".test.js"))
       .map((diagnostic) => ({
-        at: `${diagnostic.primary.path}:${String(diagnostic.primary.start.line)}`,
+        at  : `${diagnostic.primary.path}:${String(diagnostic.primary.start.line)}`,
         said: diagnostic.message.map((span) => span.text).join(""),
       }))
       .filter((diagnostic) => diagnostic.said.includes("in property key"));
@@ -140,9 +140,9 @@ describe("a side and an alignment are unions, not strings", () => {
 
   it("reports every misuse, and only the misuses", () => {
     everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "anchoring.js"),
+      fixture  : path.join("tests", "type-tests", "anchoring.js"),
       alongside: ["npm/ui"],
-      atLeast: 4,
+      atLeast  : 4,
       checker,
     });
   });
@@ -173,9 +173,9 @@ describe("a wrong child is a type error and not a review comment", () => {
 
   it("reports every misuse, and only the misuses", () => {
     everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "composition.js"),
+      fixture  : path.join("tests", "type-tests", "composition.js"),
       alongside: ["npm/ui"],
-      atLeast: 4,
+      atLeast  : 4,
       checker,
     });
   });
@@ -193,9 +193,9 @@ describe("an edge, a role, an alphabet and an orientation are unions too", () =>
 
   it("reports every misuse, and only the misuses", () => {
     everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "overlays.js"),
+      fixture  : path.join("tests", "type-tests", "overlays.js"),
       alongside: ["npm/ui"],
-      atLeast: 4,
+      atLeast  : 4,
       checker,
     });
   });

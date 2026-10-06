@@ -62,7 +62,7 @@ import { elapsedMs, logRequest, processLogger } from "./log.js";
 export type Schedule = {|
   readonly name: string,
   readonly cron: Cron,
-  readonly run: () => mixed,
+  readonly run : () => mixed,
 |};
 
 // The backend type lives beside the other capabilities and is re-exported
@@ -78,7 +78,7 @@ export type { SchedulerBackend } from "./internal/capabilities.js";
  * process refuse it.
  */
 export const processScheduler: SchedulerBackend = Object.freeze({
-  name: "process",
+  name     : "process",
   triggered: false,
 });
 
@@ -93,7 +93,7 @@ export const processScheduler: SchedulerBackend = Object.freeze({
 export function defineSchedule(options: {|
   readonly name: string,
   readonly cron: string,
-  readonly run: () => mixed,
+  readonly run : () => mixed,
 |}): Schedule {
   if (options.name.trim() === "") {
     throw new TypeError("a schedule needs a name: it is what a platform's scheduler calls back");
@@ -103,7 +103,7 @@ export function defineSchedule(options: {|
 
 /** What a scheduler did with one minute. */
 export type Tick = {|
-  readonly ran: $ReadOnlyArray<string>,
+  readonly ran   : $ReadOnlyArray<string>,
   readonly failed: $ReadOnlyArray<string>,
 |};
 
@@ -116,9 +116,9 @@ export type Tick = {|
  */
 export function createScheduler(options: {|
   readonly schedules: $ReadOnlyArray<Schedule>,
-  readonly log?: Logger,
+  readonly log?     : Logger,
 |}): {|
-  readonly tick: (instant: Instant) => Promise<Tick>,
+  readonly tick : (instant: Instant) => Promise<Tick>,
   readonly start: () => () => void,
 |} {
   const log = options.log ?? processLogger();
@@ -202,7 +202,7 @@ function minuteOf(instant: Instant): string {
  */
 export function startSchedules(
   schedules: $ReadOnlyArray<Schedule> | void,
-  log: Logger,
+  log      : Logger,
 ): () => void {
   if (schedules == null || schedules.length === 0) {
     return () => {};
@@ -247,16 +247,16 @@ export const SCHEDULED_HEADER: string = "uf-scheduled";
  * down the timer for every other schedule with it.
  */
 export function runScheduled(options: {|
-  readonly handle: (request: Request) => Promise<Response>,
+  readonly handle      : (request: Request) => Promise<Response>,
   readonly beginRequest: (request: Request) => RequestLifecycle,
-  readonly path: string,
-  readonly cron: string,
-  readonly log?: Logger,
+  readonly path        : string,
+  readonly cron        : string,
+  readonly log?        : Logger,
 |}): Promise<RequestLifecycle> {
   const { handle, beginRequest, path, cron } = options;
   const log = options.log ?? processLogger();
   const request = new Request(`${SCHEDULED_ORIGIN}${path}`, {
-    method: "GET",
+    method : "GET",
     headers: { [SCHEDULED_HEADER]: cron },
   });
   const lifecycle = beginRequest(request);
@@ -276,7 +276,7 @@ export function runScheduled(options: {|
     } finally {
       logRequest(log, {
         requestId: lifecycle.context.id,
-        method: "GET",
+        method   : "GET",
         path,
         route: lifecycle.context.route,
         status,
@@ -299,10 +299,10 @@ export function runScheduled(options: {|
  * reads the same in a log wherever it ran.
  */
 export function routeSchedule(options: {|
-  readonly handle: (request: Request) => Promise<Response>,
+  readonly handle      : (request: Request) => Promise<Response>,
   readonly beginRequest: (request: Request) => RequestLifecycle,
-  readonly path: string,
-  readonly cron: string,
+  readonly path        : string,
+  readonly cron        : string,
 |}): Schedule {
   return defineSchedule({
     name: options.path,

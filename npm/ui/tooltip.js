@@ -96,17 +96,17 @@ export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 type TooltipScope = {|
   /** The default `openDelay` for every tooltip in the group. */
   readonly delayDuration: number,
-  readonly group: DelayGroup,
+  readonly group        : DelayGroup,
 |};
 
 const TooltipScopeContext: React.Context<TooltipScope | null> = createContext(null);
 
 type TooltipState = {|
-  readonly base: string,
-  readonly open: boolean,
-  readonly setOpen: (open: boolean) => void,
+  readonly base      : string,
+  readonly open      : boolean,
+  readonly setOpen   : (open: boolean) => void,
   readonly triggerRef: { current: HTMLElement | null },
-  readonly intent: HoverIntent,
+  readonly intent    : HoverIntent,
   /**
    * How long a pointer must rest before this tooltip opens, asked at the moment
    * it arrives rather than read from a render.
@@ -115,7 +115,7 @@ type TooltipState = {|
    * moves: the same tooltip waits the full delay when it is the first one
    * touched and opens at once when it is the second.
    */
-  readonly openDelay: () => number,
+  readonly openDelay : () => number,
   readonly closeDelay: number,
   /**
    * Whether `Escape` has dismissed it while the reader is still here.
@@ -152,8 +152,8 @@ hook useTooltip(part: string): TooltipState {
  * toolbar is the caller's business.
  */
 component TooltipProvider(
-  children: React.Node,
-  delayDuration?: number = DEFAULT_OPEN_DELAY,
+  children          : React.Node,
+  delayDuration?    : number = DEFAULT_OPEN_DELAY,
   skipDelayDuration?: number = DEFAULT_SKIP_DELAY,
 ) {
   const group = useDelayGroup(skipDelayDuration);
@@ -170,19 +170,19 @@ component TooltipProvider(
  * own is a complete tooltip and needs nothing around it.
  */
 component TooltipRoot(
-  children: React.Node,
-  closeDelay?: number = DEFAULT_CLOSE_DELAY,
-  defaultOpen?: boolean = false,
+  children     : React.Node,
+  closeDelay?  : number = DEFAULT_CLOSE_DELAY,
+  defaultOpen? : boolean = false,
   onOpenChange?: (open: boolean) => void,
-  open?: boolean,
-  openDelay?: number,
+  open?        : boolean,
+  openDelay?   : number,
 ) {
-  const base = useId();
-  const scope = useContext(TooltipScopeContext);
+  const base              = useId();
+  const scope             = useContext(TooltipScopeContext);
   const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
-  const triggerRef = useRef<HTMLElement | null>(null);
-  const dismissedRef = useRef(false);
-  const intent = useHoverIntent(setOpen);
+  const triggerRef        = useRef<HTMLElement | null>(null);
+  const dismissedRef      = useRef(false);
+  const intent            = useHoverIntent(setOpen);
   const own = openDelay ?? scope?.delayDuration ?? DEFAULT_OPEN_DELAY;
   const group = scope?.group;
 
@@ -220,7 +220,7 @@ component TooltipRoot(
       closeDelay,
       dismissedRef,
       intent,
-      open: isOpen,
+      open     : isOpen,
       openDelay: () => group?.delayFor(own) ?? own,
       setOpen,
       triggerRef,
@@ -307,7 +307,7 @@ component TooltipTrigger(children?: React.Node, render?: RenderProp, ...rest: Re
   });
 
   return match (render) {
-    undefined => <button {...props} type="button" />,
+    undefined    => <button {...props} type="button" />,
     const custom => custom(props),
   };
 }
@@ -322,20 +322,20 @@ component TooltipTrigger(children?: React.Node, render?: RenderProp, ...rest: Re
  * happens to be.
  */
 component TooltipBody(
-  children: React.Node,
-  align?: Align = "center",
-  alignOffset?: number = 0,
-  avoidCollisions?: boolean = true,
+  children         : React.Node,
+  align?           : Align = "center",
+  alignOffset?     : number = 0,
+  avoidCollisions? : boolean = true,
   collisionPadding?: number = 0,
-  render?: RenderProp,
-  side?: LogicalSide = "top",
-  sideOffset?: number = 0,
+  render?          : RenderProp,
+  side?            : LogicalSide = "top",
+  sideOffset?      : number = 0,
   ...rest: Rest
 ) {
   const tooltip = useTooltip("Tooltip.Body");
   const { closeDelay, dismissedRef, intent, open, triggerRef } = tooltip;
   const bodyRef = useRef<HTMLElement | null>(null);
-  const close = useStableCallback(() => {
+  const close   = useStableCallback(() => {
     // `Escape` dismisses it *and* keeps it dismissed while the reader is still
     // on the trigger. Without the flag the pointer that is still resting there
     // — or, for a hover card, the focus it hands back — reopens it at once,
@@ -354,7 +354,7 @@ component TooltipBody(
     anchorRef: triggerRef,
     avoidCollisions,
     collisionPadding,
-    open: presence.present,
+    open      : presence.present,
     overlayRef: bodyRef,
     side,
     sideOffset,
@@ -388,7 +388,7 @@ component TooltipBody(
   const props = withProps(withoutComposed(rest, ["ref"]), {
     children,
     "data-align": anchored.align,
-    "data-side": anchored.side,
+    "data-side" : anchored.side,
     ...presenceProps(presence),
     id: `${tooltip.base}-body`,
     // React calls callback refs during commit; placement effects read it later.
@@ -402,7 +402,7 @@ component TooltipBody(
   });
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }

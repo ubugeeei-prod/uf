@@ -643,9 +643,9 @@ export class TransformService {
           // right the whole time; the shim in front of it was returning three
           // quarters of the answer. See ubugeeei-prod/uf#306.
           resolve({
-            code: reply.code,
-            map: reply.map ?? null,
-            css: reply.css ?? null,
+            code       : reply.code,
+            map        : reply.map ?? null,
+            css        : reply.css ?? null,
             diagnostics: reply.diagnostics ?? [],
           });
         },
@@ -701,7 +701,7 @@ export function sharedService(root, options = {}) {
   const entry = options.configBootstrap === true ? "bootstrap" : "project";
   if (entry === "bootstrap") {
     sharedForConfigBootstrap ??= new TransformService({
-      root: root ?? environmentVariable("UF_PROJECT_ROOT") ?? process.cwd(),
+      root           : root ?? environmentVariable("UF_PROJECT_ROOT") ?? process.cwd(),
       configBootstrap: true,
     });
     return sharedForConfigBootstrap;
@@ -750,8 +750,8 @@ function denoRefusal(command) {
   if (deno == null) return null;
   try {
     new deno.Command(command, {
-      args: ["--version"],
-      stdin: "null",
+      args  : ["--version"],
+      stdin : "null",
       stdout: "null",
       stderr: "null",
     }).outputSync();
@@ -795,9 +795,9 @@ export function transformFlowSync(code, filename, options = {}) {
     delete env.UF_TRANSFORM_BOOTSTRAP_CONFIG;
   }
   const result = spawnSync(command, ["--cwd", root, "transform"], {
-    input: `${JSON.stringify({ id: filename, code, options: requestOptions })}\n`,
+    input   : `${JSON.stringify({ id: filename, code, options: requestOptions })}\n`,
     encoding: "utf8",
-    stdio: ["pipe", "pipe", "inherit"],
+    stdio   : ["pipe", "pipe", "inherit"],
     env,
     maxBuffer: MAX_SYNC_REPLY_BYTES,
   });
@@ -833,9 +833,9 @@ export function transformFlowSync(code, filename, options = {}) {
   }
   if (reply.code == null) return null;
   return {
-    code: reply.code,
-    map: reply.map ?? null,
-    css: reply.css ?? null,
+    code       : reply.code,
+    map        : reply.map ?? null,
+    css        : reply.css ?? null,
     diagnostics: reply.diagnostics ?? [],
   };
 }

@@ -36,7 +36,7 @@ function contextFor(barrel: string = BARREL): $FlowFixMe {
   const warnings: Array<string> = [];
   return {
     warnings,
-    resolve: async (id: string) => (id === "@uniflowed/ui" ? { id: barrel } : null),
+    resolve     : async (id: string) => (id === "@uniflowed/ui" ? { id: barrel } : null),
     addWatchFile: () => {},
     warn: (message: string) => {
       warnings.push(message);

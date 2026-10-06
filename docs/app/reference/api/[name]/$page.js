@@ -22,9 +22,9 @@ export function generateMetadata(args: MetadataArgs): Metadata {
   return item == null
     ? {}
     : {
-        title: `${item.name} · API · uf`,
+        title      : `${item.name} · API · uf`,
         description: item.description,
-        canonical: `/reference/api/${item.slug}`,
+        canonical  : `/reference/api/${item.slug}`,
       };
 }
 

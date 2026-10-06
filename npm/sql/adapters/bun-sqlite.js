@@ -21,7 +21,7 @@ import { DEFAULT_STATEMENT_CACHE, count, rowId, statementCache } from "../intern
 export interface BunSqliteStatement {
   values(...params: $ReadOnlyArray<SqlParam>): $ReadOnlyArray<mixed>;
   run(...params: $ReadOnlyArray<SqlParam>): {
-    readonly changes: number | bigint,
+    readonly changes        : number | bigint,
     readonly lastInsertRowid: number | bigint,
     ...
   };
@@ -34,15 +34,15 @@ export interface BunSqliteDatabase {
 }
 
 export type BunSqliteOptions = {|
-  readonly begin?: string,
+  readonly begin?         : string,
   readonly statementCache?: number,
-  readonly maxParams?: number,
+  readonly maxParams?     : number,
 |};
 
 /** A [`Queryable`] and a [`SyncQueryable`] over one `bun:sqlite` `Database`. */
 export function fromBunSqlite(
   database: BunSqliteDatabase,
-  options: BunSqliteOptions = {},
+  options : BunSqliteOptions = {},
 ): Queryable & SyncQueryable {
   const statement = statementCache((text) => {
     const prepared = database.prepare(text);
@@ -63,16 +63,16 @@ export function fromBunSqlite(
     }
     const result = prepared.run(...params);
     return {
-      rows: [],
+      rows        : [],
       rowsAffected: count(result.changes),
       lastInsertId: rowId(result.lastInsertRowid),
     };
   };
   return singleConnectionSync({
-    engine: "sqlite",
+    engine   : "sqlite",
     maxParams: options.maxParams ?? 32766,
-    begin: options.begin,
-    run: async (text, params, mode) => runSync(text, params, mode),
+    begin    : options.begin,
+    run      : async (text, params, mode) => runSync(text, params, mode),
     runSync,
   });
 }

@@ -139,7 +139,7 @@ export type ReValidateMode = "onChange" | "onBlur" | "onSubmit";
 
 /** Errors, dirty flags and touched flags, all keyed by field path. */
 export type FieldErrors = { readonly [string]: FieldError, ... };
-export type FieldFlags = { readonly [string]: boolean, ... };
+export type FieldFlags  = { readonly [string]: boolean, ... };
 
 /**
  * Everything a form knows about itself that is not a value.
@@ -150,16 +150,16 @@ export type FieldFlags = { readonly [string]: boolean, ... };
  * defaults as `mixed`, exactly as it would have before.
  */
 export type FormState<TValues extends FieldValues = FieldValues> = {|
-  readonly errors: FieldErrors,
-  readonly isDirty: boolean,
-  readonly dirtyFields: FieldFlags,
-  readonly touchedFields: FieldFlags,
-  readonly isSubmitting: boolean,
-  readonly isSubmitted: boolean,
+  readonly errors            : FieldErrors,
+  readonly isDirty           : boolean,
+  readonly dirtyFields       : FieldFlags,
+  readonly touchedFields     : FieldFlags,
+  readonly isSubmitting      : boolean,
+  readonly isSubmitted       : boolean,
   readonly isSubmitSuccessful: boolean,
-  readonly isValidating: boolean,
-  readonly isValid: boolean,
-  readonly submitCount: number,
+  readonly isValidating      : boolean,
+  readonly isValid           : boolean,
+  readonly submitCount       : number,
   /**
    * Whether the whole form is switched off — `useForm({ disabled })`.
    *
@@ -214,8 +214,8 @@ export type FormState<TValues extends FieldValues = FieldValues> = {|
  */
 export type SetValueOptions = {|
   readonly shouldValidate?: boolean,
-  readonly shouldDirty?: boolean,
-  readonly shouldTouch?: boolean,
+  readonly shouldDirty?   : boolean,
+  readonly shouldTouch?   : boolean,
 |};
 
 /**
@@ -242,13 +242,13 @@ export type ResetOptions = {|
    * the same reason: it was theirs, and the point of this flag is that their
    * work is not what a re-seed is for.
    */
-  readonly keepDirtyValues?: boolean,
+  readonly keepDirtyValues?  : boolean,
   readonly keepDefaultValues?: boolean,
-  readonly keepErrors?: boolean,
-  readonly keepDirty?: boolean,
-  readonly keepTouched?: boolean,
-  readonly keepSubmitCount?: boolean,
-  readonly keepIsSubmitted?: boolean,
+  readonly keepErrors?       : boolean,
+  readonly keepDirty?        : boolean,
+  readonly keepTouched?      : boolean,
+  readonly keepSubmitCount?  : boolean,
+  readonly keepIsSubmitted?  : boolean,
   /**
    * Keep `isSubmitSuccessful`.
    *
@@ -288,7 +288,7 @@ export type WatchInfo = {|
 
 type FieldRecord = {|
   elements: Array<mixed>,
-  rules: ValidationRules,
+  rules   : ValidationRules,
   /** `register(name, { disabled })` — this field alone. */
   disabled: boolean,
 |};
@@ -297,15 +297,15 @@ type FieldRecord = {|
 export type FieldArrayRow = { readonly id: string, readonly [string]: mixed, ... };
 
 type RowsCell = {|
-  items: mixed,
-  keys: $ReadOnlyArray<string>,
+  items   : mixed,
+  keys    : $ReadOnlyArray<string>,
   snapshot: $ReadOnlyArray<FieldArrayRow>,
 |};
 
 type WatchCell = {|
-  paths: $ReadOnlyArray<FieldPath>,
-  values: Array<mixed>,
-  snapshot: mixed,
+  paths    : $ReadOnlyArray<FieldPath>,
+  values   : Array<mixed>,
+  snapshot : mixed,
   listeners: Set<() => void>,
 |};
 
@@ -323,13 +323,13 @@ export type CreateStoreOptions<TValues extends FieldValues, TOutput> = {|
   /** The errors something outside the form owns — a server's, usually. */
   readonly errors: FieldErrors | null,
   /** What a `values` or `errors` re-seed keeps. */
-  readonly resetOptions: ResetOptions | null,
-  readonly mode: Mode,
-  readonly reValidateMode: ReValidateMode,
-  readonly resolver: Resolver<TValues, TOutput> | null,
-  readonly context: mixed,
+  readonly resetOptions    : ResetOptions | null,
+  readonly mode            : Mode,
+  readonly reValidateMode  : ReValidateMode,
+  readonly resolver        : Resolver<TValues, TOutput> | null,
+  readonly context         : mixed,
   readonly shouldFocusError: boolean,
-  readonly disabled: boolean,
+  readonly disabled        : boolean,
 |};
 
 /**
@@ -350,9 +350,9 @@ export type Control<TValues extends FieldValues, TOutput = TValues> = {|
   readonly __output: () => TOutput,
 
   readonly getValues: () => TValues,
-  readonly valueAt: (name: FieldPath) => mixed,
-  readonly setValue: (name: FieldPath, value: mixed, options?: SetValueOptions) => void,
-  readonly reset: (values?: TValues, options?: ResetOptions) => void,
+  readonly valueAt  : (name: FieldPath) => mixed,
+  readonly setValue : (name: FieldPath, value: mixed, options?: SetValueOptions) => void,
+  readonly reset    : (values?: TValues, options?: ResetOptions) => void,
 
   readonly rulesFor: (name: FieldPath, rules: ValidationRules) => void,
   /**
@@ -364,27 +364,27 @@ export type Control<TValues extends FieldValues, TOutput = TValues> = {|
    */
   readonly noteDisabled: (off: boolean) => void,
   /** Whether this field is switched off, by its own flag or the form's. */
-  readonly isDisabled: (name: FieldPath) => boolean,
-  readonly attach: (name: FieldPath, element: mixed) => void,
-  readonly detach: (name: FieldPath, element: mixed) => void,
-  readonly unregister: (names?: FieldPath | $ReadOnlyArray<FieldPath>) => void,
-  readonly handleChange: (name: FieldPath) => void,
+  readonly isDisabled            : (name: FieldPath) => boolean,
+  readonly attach                : (name: FieldPath, element: mixed) => void,
+  readonly detach                : (name: FieldPath, element: mixed) => void,
+  readonly unregister            : (names?: FieldPath | $ReadOnlyArray<FieldPath>) => void,
+  readonly handleChange          : (name: FieldPath) => void,
   readonly handleControlledChange: (name: FieldPath) => void,
-  readonly handleBlur: (name: FieldPath) => void,
-  readonly focus: (name: FieldPath, select?: boolean) => void,
+  readonly handleBlur            : (name: FieldPath) => void,
+  readonly focus                 : (name: FieldPath, select?: boolean) => void,
 
   readonly errorAt: (name: FieldPath) => FieldError | void,
   readonly setError: (
-    name: FieldPath,
-    error: FieldError,
+    name    : FieldPath,
+    error   : FieldError,
     options?: {| readonly shouldFocus?: boolean |},
   ) => void,
-  readonly clearErrors: (names?: FieldPath | $ReadOnlyArray<FieldPath>) => void,
-  readonly trigger: (names?: FieldPath | $ReadOnlyArray<FieldPath>) => Promise<boolean>,
+  readonly clearErrors  : (names?: FieldPath | $ReadOnlyArray<FieldPath>) => void,
+  readonly trigger      : (names?: FieldPath | $ReadOnlyArray<FieldPath>) => Promise<boolean>,
   readonly primeValidity: () => void,
 
   readonly submitWith: (
-    onValid: (values: TOutput, event?: mixed) => mixed,
+    onValid   : (values: TOutput, event?: mixed) => mixed,
     onInvalid?: (errors: FieldErrors, event?: mixed) => mixed,
   ) => (event?: mixed) => Promise<void>,
 
@@ -400,38 +400,38 @@ export type Control<TValues extends FieldValues, TOutput = TValues> = {|
   readonly loadDefaults: () => void,
 
   readonly subscribeFormState: (listener: () => void) => () => void,
-  readonly formState: () => FormState<TValues>,
+  readonly formState         : () => FormState<TValues>,
   readonly fieldStateSnapshot: (
-    key: string,
+    key  : string,
     names: $ReadOnlyArray<FieldPath> | null,
   ) => FormState<TValues>,
 
   readonly subscribeWatch: (
-    key: string,
-    paths: $ReadOnlyArray<FieldPath>,
+    key     : string,
+    paths   : $ReadOnlyArray<FieldPath>,
     listener: () => void,
   ) => () => void,
   readonly watchSnapshot: (key: string, paths: $ReadOnlyArray<FieldPath>) => mixed,
 
-  readonly observe: (name: FieldPath) => void,
+  readonly observe          : (name: FieldPath) => void,
   readonly subscribeObserved: (listener: () => void) => () => void,
-  readonly observedVersion: () => number,
+  readonly observedVersion  : () => number,
 
   readonly listen: (
-    name: FieldPath | null,
+    name    : FieldPath | null,
     listener: (values: TValues, info: WatchInfo) => void,
   ) => () => void,
 
   readonly arrayRows: (name: FieldPath) => $ReadOnlyArray<FieldArrayRow>,
   readonly spliceArray: (
-    name: FieldPath,
-    start: number,
-    remove: number,
+    name    : FieldPath,
+    start   : number,
+    remove  : number,
     inserted: $ReadOnlyArray<mixed>,
   ) => void,
-  readonly moveArray: (name: FieldPath, from: number, to: number) => void,
-  readonly swapArray: (name: FieldPath, left: number, right: number) => void,
-  readonly updateArray: (name: FieldPath, index: number, value: mixed) => void,
+  readonly moveArray   : (name: FieldPath, from: number, to: number) => void,
+  readonly swapArray   : (name: FieldPath, left: number, right: number) => void,
+  readonly updateArray : (name: FieldPath, index: number, value: mixed) => void,
   readonly replaceArray: (name: FieldPath, items: $ReadOnlyArray<mixed>) => void,
 |};
 
@@ -467,7 +467,7 @@ function toList(names: FieldPath | $ReadOnlyArray<FieldPath>): $ReadOnlyArray<Fi
  * object it was last time.
  */
 function sameShallow(
-  left: { readonly [string]: mixed, ... },
+  left : { readonly [string]: mixed, ... },
   right: { readonly [string]: mixed, ... },
 ): boolean {
   if (left === right) {
@@ -489,10 +489,10 @@ function sameShallow(
  * the piece most worth testing on its own.
  */
 export function validatesOnChange(
-  mode: Mode,
+  mode          : Mode,
   reValidateMode: ReValidateMode,
-  isSubmitted: boolean,
-  isTouched: boolean,
+  isSubmitted   : boolean,
+  isTouched     : boolean,
 ): boolean {
   if (isSubmitted) {
     return reValidateMode === "onChange";
@@ -507,9 +507,9 @@ export function validatesOnChange(
 
 /** Whether a blur should be validated now. */
 export function validatesOnBlur(
-  mode: Mode,
+  mode          : Mode,
   reValidateMode: ReValidateMode,
-  isSubmitted: boolean,
+  isSubmitted   : boolean,
 ): boolean {
   if (isSubmitted) {
     return reValidateMode === "onBlur";
@@ -709,7 +709,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   const observedListeners: Set<() => void> = new Set();
   let observedVersionCount = 0;
   const imperative: Set<{|
-    readonly name: FieldPath | null,
+    readonly name    : FieldPath | null,
     readonly listener: (values: TValues, info: WatchInfo) => void,
   |}> = new Set();
 
@@ -740,8 +740,8 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       // key. `@uniflowed/validator` guards its object parser the same way.
       Object.defineProperty(out, name, {
         value,
-        writable: true,
-        enumerable: true,
+        writable    : true,
+        enumerable  : true,
         configurable: true,
       });
     }
@@ -798,9 +798,9 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     }
     formStateStale = false;
     const next: FormState<TValues> = {
-      errors: errorsSnapshot(),
-      isDirty: dirty.size > 0,
-      dirtyFields: dirtySnapshot(),
+      errors       : errorsSnapshot(),
+      isDirty      : dirty.size > 0,
+      dirtyFields  : dirtySnapshot(),
       touchedFields: touchedSnapshot(),
       isSubmitting,
       isSubmitted,
@@ -871,7 +871,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
    * rather than a copy of it.
    */
   function fieldStateSnapshot(
-    key: string,
+    key  : string,
     names: $ReadOnlyArray<FieldPath> | null,
   ): FormState<TValues> {
     const whole = formState();
@@ -888,21 +888,21 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       // an error. Leaving them as the whole form's would undo the narrowing —
       // any field anywhere going wrong would move `isValid`, and every scoped
       // subscriber would render for it.
-      isDirty: Object.keys(dirtySlice).length > 0,
-      dirtyFields: dirtySlice,
-      touchedFields: sliceOf(whole.touchedFields, names),
-      isSubmitting: whole.isSubmitting,
-      isSubmitted: whole.isSubmitted,
+      isDirty           : Object.keys(dirtySlice).length > 0,
+      dirtyFields       : dirtySlice,
+      touchedFields     : sliceOf(whole.touchedFields, names),
+      isSubmitting      : whole.isSubmitting,
+      isSubmitted       : whole.isSubmitted,
       isSubmitSuccessful: whole.isSubmitSuccessful,
       // Submission is about the form, not about a field, so these stay whole.
       isValidating: whole.isValidating,
-      isValid: Object.keys(errorSlice).length === 0,
-      submitCount: whole.submitCount,
-      disabled: whole.disabled,
+      isValid     : Object.keys(errorSlice).length === 0,
+      submitCount : whole.submitCount,
+      disabled    : whole.disabled,
       // Not about a field either: whether the form's values have arrived, and
       // what a reset would go back to, are the same answer wherever they are
       // read from.
-      isLoading: whole.isLoading,
+      isLoading    : whole.isLoading,
       defaultValues: whole.defaultValues,
     };
     if (cell != null && sameSlice(cell, next)) {
@@ -915,7 +915,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   /** The entries of `source` at, or under, one of `names`. */
   function sliceOf<TValue>(
     source: { readonly [string]: TValue, ... },
-    names: $ReadOnlyArray<FieldPath>,
+    names : $ReadOnlyArray<FieldPath>,
   ): { readonly [string]: TValue, ... } {
     const kept: Map<FieldPath, TValue> = new Map();
     for (const path of Object.keys(source)) {
@@ -969,8 +969,8 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       const collected = paths.map((path) => readAt(values, path));
       cell = {
         paths,
-        values: collected,
-        snapshot: shapeOf(collected, paths),
+        values   : collected,
+        snapshot : shapeOf(collected, paths),
         listeners: new Set(),
       };
       watchCells.set(key, cell);
@@ -1003,8 +1003,8 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   }
 
   function subscribeWatch(
-    key: string,
-    paths: $ReadOnlyArray<FieldPath>,
+    key     : string,
+    paths   : $ReadOnlyArray<FieldPath>,
     listener: () => void,
   ): () => void {
     const cell = cellFor(key, paths);
@@ -1045,7 +1045,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   }
 
   function listen(
-    name: FieldPath | null,
+    name    : FieldPath | null,
     listener: (values: TValues, info: WatchInfo) => void,
   ): () => void {
     const handle = { name, listener };
@@ -1433,8 +1433,8 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   }
 
   function setError(
-    name: FieldPath,
-    error: FieldError,
+    name         : FieldPath,
+    error        : FieldError,
     errorOptions?: {| readonly shouldFocus?: boolean |},
   ): void {
     errors.set(name, error);
@@ -1572,8 +1572,8 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
 
   function checkFrom(
     targets: $ReadOnlyArray<FieldPath>,
-    from: number,
-    found: Map<FieldPath, FieldError>,
+    from   : number,
+    found  : Map<FieldPath, FieldError>,
   ): Map<FieldPath, FieldError> | Promise<Map<FieldPath, FieldError>> {
     let at = from;
     while (at < targets.length) {
@@ -1601,7 +1601,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   }
 
   function recordVerdict(
-    name: FieldPath,
+    name : FieldPath,
     error: FieldError | null,
     found: Map<FieldPath, FieldError>,
   ): void {
@@ -1633,9 +1633,9 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   }
 
   function publish(
-    found: Map<FieldPath, FieldError>,
+    found  : Map<FieldPath, FieldError>,
     targets: $ReadOnlyArray<FieldPath>,
-    seq: number,
+    seq    : number,
   ): void {
     const names: Set<FieldPath> = new Set(targets);
     for (const name of found.keys()) {
@@ -1714,7 +1714,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
    * `try`/`catch` is where that decision belongs.
    */
   function submitWith(
-    onValid: (values: TOutput, event?: mixed) => mixed,
+    onValid   : (values: TOutput, event?: mixed) => mixed,
     onInvalid?: (errors: FieldErrors, event?: mixed) => mixed,
   ): (event?: mixed) => Promise<void> {
     return async (event?: mixed) => {
@@ -2002,8 +2002,8 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       }
       reset(resolved, {
         keepDirtyValues: true,
-        keepTouched: true,
-        keepValues: seededValues != null,
+        keepTouched    : true,
+        keepValues     : seededValues != null,
       });
     }, reportAsyncFailure);
   }
@@ -2131,8 +2131,8 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   }
 
   function remapKeyed<TValue>(
-    source: Map<FieldPath, TValue>,
-    name: FieldPath,
+    source : Map<FieldPath, TValue>,
+    name   : FieldPath,
     mapping: (index: number) => number | null,
   ): void {
     const moved: Array<[FieldPath, TValue]> = [];
@@ -2153,8 +2153,8 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   }
 
   function remapSet(
-    source: Set<FieldPath>,
-    name: FieldPath,
+    source : Set<FieldPath>,
+    name   : FieldPath,
     mapping: (index: number) => number | null,
   ): void {
     const moved: Array<FieldPath> = [];
@@ -2239,9 +2239,9 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   }
 
   function spliceArray(
-    name: FieldPath,
-    start: number,
-    remove: number,
+    name    : FieldPath,
+    start   : number,
+    remove  : number,
     inserted: $ReadOnlyArray<mixed>,
   ): void {
     const next = currentArray(name);

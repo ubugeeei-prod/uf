@@ -226,15 +226,15 @@ export function withUrls(image, baseUrl) {
   const widest = fallbacks[fallbacks.length - 1] ?? variants[variants.length - 1];
 
   return {
-    src: widest?.url ?? null,
-    width: image.width,
+    src   : widest?.url ?? null,
+    width : image.width,
     height: image.height,
     srcSet: srcSetFor(image.format),
     // Alternatives first: a browser takes the first `<source>` it understands,
     // so the format every browser understands must not be offered before the
     // ones that are smaller.
     sources: formats.map((format) => ({
-      type: variants.find((variant) => variant.format === format).mime,
+      type  : variants.find((variant) => variant.format === format).mime,
       srcSet: srcSetFor(format),
     })),
     blurDataURL: image.blur,
@@ -245,7 +245,7 @@ export function withUrls(image, baseUrl) {
     // a format that was correctly not emitted is noise — and `uf explain build`
     // is where the limit itself is stated.
     declined: image.declined,
-    note: image.note,
+    note    : image.note,
   };
 }
 
@@ -405,9 +405,9 @@ export function assetPlugin({ images = {}, fonts = {}, icons = {}, og = {}, comm
           kind: "og",
           file,
           transformed,
-          service: ensureService(),
+          service : ensureService(),
           cacheDir: cacheDir(),
-          baseUrl: baseUrl(),
+          baseUrl : baseUrl(),
           assetsDir,
           isBuild,
           images,
@@ -433,7 +433,7 @@ export function assetPlugin({ images = {}, fonts = {}, icons = {}, og = {}, comm
         if (isBuild) return assetModuleSource({ markup: SPRITE_PLACEHOLDER });
         const sprite = await ensureService().sprite({
           outDir: cacheDir(),
-          icons: [...reachedIcons.values()],
+          icons : [...reachedIcons.values()],
         });
         return assetModuleSource({ markup: sprite.markup });
       }
@@ -449,17 +449,17 @@ export function assetPlugin({ images = {}, fonts = {}, icons = {}, og = {}, comm
         }
         const asset = await ensureService().icon(resolved.file, {
           outDir: cacheDir(),
-          name: resolved.name,
+          name  : resolved.name,
         });
         this.addWatchFile(resolved.file);
         reachedIcons.set(asset.id, asset);
         invalidateSprite();
         return assetModuleSource({
-          id: asset.id,
-          href: `#${asset.id}`,
+          id     : asset.id,
+          href   : `#${asset.id}`,
           viewBox: asset.viewBox,
-          width: asset.width,
-          height: asset.height,
+          width  : asset.width,
+          height : asset.height,
         });
       }
 
@@ -472,9 +472,9 @@ export function assetPlugin({ images = {}, fonts = {}, icons = {}, og = {}, comm
         kind,
         file,
         transformed,
-        service: ensureService(),
+        service : ensureService(),
         cacheDir: cacheDir(),
-        baseUrl: baseUrl(),
+        baseUrl : baseUrl(),
         assetsDir,
         isBuild,
         images,
@@ -490,7 +490,7 @@ export function assetPlugin({ images = {}, fonts = {}, icons = {}, og = {}, comm
       if (!iconsOn || !spriteRequested) return;
       const sprite = await ensureService().sprite({
         outDir: cacheDir(),
-        icons: [...reachedIcons.values()],
+        icons : [...reachedIcons.values()],
       });
       // Inlined into the chunk and *not* emitted as a file of its own. An
       // external sprite would be the better answer if it worked — one file
@@ -571,7 +571,7 @@ export function assetPlugin({ images = {}, fonts = {}, icons = {}, og = {}, comm
               const asked = new Request(
                 `http://localhost/__uf/image${queryAt === -1 ? "" : url.slice(queryAt)}`,
                 {
-                  method: request.method,
+                  method : request.method,
                   headers: typeof accept === "string" ? { accept } : {},
                 },
               );
@@ -630,19 +630,19 @@ async function loadAsset(context) {
   if (manifest == null) {
     if (kind === "image") {
       manifest = await service.image(file, {
-        outDir: cacheDir,
-        widths: images.widths,
+        outDir : cacheDir,
+        widths : images.widths,
         quality: images.quality,
-        blur: images.placeholder,
+        blur   : images.placeholder,
       });
     } else if (kind === "og") {
       manifest = await service.og(file, { outDir: cacheDir });
     } else {
       manifest = await service.font(file, {
-        outDir: cacheDir,
-        family: fonts.family,
+        outDir : cacheDir,
+        family : fonts.family,
         display: fonts.display,
-        subset: fonts.subset,
+        subset : fonts.subset,
         preload: fonts.preload,
         baseUrl,
       });
@@ -671,7 +671,7 @@ async function loadAsset(context) {
         // the source and the parameters, and letting Rollup hash it again
         // would move it on every encoder change while saying nothing new.
         fileName: `${assetsDir}/${name}`,
-        source: readFileSync(path.join(cacheDir, name)),
+        source  : readFileSync(path.join(cacheDir, name)),
       });
     }
   }
@@ -683,17 +683,17 @@ async function loadAsset(context) {
     return assetModuleSource({
       // The shape `Metadata.openGraph.images` and `OgImage` both read. A URL,
       // a size and the alt text, which is all a card ever is to a page.
-      url: `${baseUrl}${manifest.file}`,
-      width: manifest.width,
+      url   : `${baseUrl}${manifest.file}`,
+      width : manifest.width,
       height: manifest.height,
-      type: manifest.mime,
-      alt: manifest.alt,
-      bytes: manifest.bytes,
+      type  : manifest.mime,
+      alt   : manifest.alt,
+      bytes : manifest.bytes,
     });
   }
   return assetModuleSource({
-    src: `${baseUrl}${manifest.file}`,
-    family: manifest.family,
+    src           : `${baseUrl}${manifest.file}`,
+    family        : manifest.family,
     fallbackFamily: manifest.fallbackFamily,
     // The stack a page should set `font-family` to: the real face, then the
     // metric-matched fallback, then the local face it was scaled from. Written
@@ -703,10 +703,10 @@ async function loadAsset(context) {
       .filter((name) => name != null)
       .map((name) => JSON.stringify(name))
       .join(", "),
-    type: manifest.mime,
-    css: manifest.css,
-    metrics: manifest.metrics,
-    fallback: manifest.fallback,
+    type            : manifest.mime,
+    css             : manifest.css,
+    metrics         : manifest.metrics,
+    fallback        : manifest.fallback,
     fallbackDeclined: manifest.fallbackDeclined,
     // Every emitted file with its URL, so `Font` can preload exactly the one
     // marked rather than all of them — which is the one thing that would undo
@@ -720,7 +720,7 @@ async function loadAsset(context) {
     // that asked for a subset and got the whole font is entitled to the
     // sentence saying why, without reading this plugin.
     subsetDeclined: manifest.subsetDeclined ?? null,
-    sourceBytes: manifest.sourceBytes ?? null,
+    sourceBytes   : manifest.sourceBytes ?? null,
   });
 }
 
@@ -728,16 +728,16 @@ async function loadAsset(context) {
 function contentTypeOf(name) {
   const extension = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
   const types = {
-    avif: "image/avif",
-    gif: "image/gif",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    otf: "font/otf",
-    png: "image/png",
-    svg: "image/svg+xml",
-    ttf: "font/ttf",
-    webp: "image/webp",
-    woff: "font/woff",
+    avif : "image/avif",
+    gif  : "image/gif",
+    jpg  : "image/jpeg",
+    jpeg : "image/jpeg",
+    otf  : "font/otf",
+    png  : "image/png",
+    svg  : "image/svg+xml",
+    ttf  : "font/ttf",
+    webp : "image/webp",
+    woff : "font/woff",
     woff2: "font/woff2",
   };
   return types[extension] ?? "application/octet-stream";

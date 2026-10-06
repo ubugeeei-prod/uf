@@ -74,9 +74,9 @@ function ownKeys(value: interface {}, strictness: Strictness): Array<string | sy
 }
 
 function sameSet(
-  left: Set<mixed>,
-  right: Set<mixed>,
-  seen: Array<Pair>,
+  left      : Set<mixed>,
+  right     : Set<mixed>,
+  seen      : Array<Pair>,
   strictness: Strictness,
 ): boolean {
   if (left.size !== right.size) {
@@ -94,9 +94,9 @@ function sameSet(
 }
 
 function sameMap(
-  left: Map<mixed, mixed>,
-  right: Map<mixed, mixed>,
-  seen: Array<Pair>,
+  left      : Map<mixed, mixed>,
+  right     : Map<mixed, mixed>,
+  seen      : Array<Pair>,
   strictness: Strictness,
 ): boolean {
   if (left.size !== right.size) {
@@ -123,9 +123,9 @@ function sameMap(
  * cyclic structure terminate.
  */
 export function equals(
-  left: mixed,
-  right: mixed,
-  seen: Array<Pair> = [],
+  left      : mixed,
+  right     : mixed,
+  seen      : Array<Pair> = [],
   strictness: Strictness = "loose",
 ): boolean {
   if (Object.is(left, right)) {

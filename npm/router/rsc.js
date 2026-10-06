@@ -172,7 +172,7 @@ export type FlightOptions = {|
 export type FlightRender =
   | {| readonly kind: "redirect", readonly status: 307 | 308, readonly location: string |}
   | {|
-      readonly kind: "route",
+      readonly kind  : "route",
       readonly status: 200 | 400 | 401 | 403 | 404 | 500,
       /** The payload, as React writes it. Read exactly once. */
       readonly stream: ReadableStream<Uint8Array>,
@@ -207,9 +207,9 @@ const CLIENT_REFERENCE: symbol = Symbol.for("react.client.reference");
  * — and it is `virtual:uf/routes` as this graph generates it.
  */
 export function createFlightRenderer(options: {|
-  readonly routes: RouteTable["routes"],
+  readonly routes  : RouteTable["routes"],
   readonly notFound: RouteTable["notFound"],
-  readonly errors: RouteTable["errors"],
+  readonly errors  : RouteTable["errors"],
   /**
    * The build's deployment id, written into every payload's root so that a
    * page on another build can tell — including from a payload that was
@@ -222,9 +222,9 @@ export function createFlightRenderer(options: {|
   // and React's Flight renderer would only say so from inside a render.
   requireServerComponentsReact("@uniflowed/router/rsc");
   const table: RouteTable = {
-    routes: options.routes,
+    routes  : options.routes,
     notFound: options.notFound,
-    errors: options.errors,
+    errors  : options.errors,
   };
 
   return async function renderFlight(url: string, settings?: FlightOptions): Promise<FlightRender> {
@@ -285,7 +285,7 @@ export function createFlightRenderer(options: {|
         // Handed over as it is, so that the digest it returns reaches the row.
         // Our callback preserves React's console fallback when none was given.
         onError: report,
-        signal: settings?.signal,
+        signal : settings?.signal,
       }),
     );
     return { kind: "route", status: route.status, stream, failure };
@@ -294,8 +294,8 @@ export function createFlightRenderer(options: {|
 
 async function resolveFlightInterception(
   table: RouteTable,
-  url: string,
-  from: ?string,
+  url  : string,
+  from : ?string,
   defer: boolean,
 ): Promise<?ResolvedRoute> {
   const baseUrl = usableInterceptionBase(from);
@@ -305,7 +305,7 @@ async function resolveFlightInterception(
   try {
     const base = await resolveMatch(table, baseUrl, {
       defer,
-      onMatch: noteRoute,
+      onMatch  : noteRoute,
       runLoader: traceLoader,
     });
     return await resolveInterception(table, base, url);
@@ -378,10 +378,10 @@ component RoutePage(page: PageModule, params: RouteParams, searchParams: mixed, 
  * browser's `AwaitedPage` already uses for the same wait.
  */
 component DeferredPage(
-  page: PageModule,
-  params: RouteParams,
+  page        : PageModule,
+  params      : RouteParams,
   searchParams: mixed,
-  loader: Promise<mixed>,
+  loader      : Promise<mixed>,
 ) {
   return <RoutePage page={page} params={params} searchParams={searchParams} data={use(loader)} />;
 }
@@ -401,9 +401,9 @@ function forTheBrowser(resolved: ResolvedRoute, file: string | null): ResolvedRo
     ...resolved,
     // Only an `Error` has React's production rule of carrying no message; see
     // `crossableRouteError`.
-    error: crossableRouteError(resolved.error),
+    error        : crossableRouteError(resolved.error),
     errorBoundary: { above: boundary.above, module: clientErrorModule(boundary.module, file) },
-    slots: resolved.slots.map(slotForTheBrowser),
+    slots        : resolved.slots.map(slotForTheBrowser),
   };
 }
 
@@ -455,8 +455,8 @@ function renderFailure(resolved: ResolvedRoute): mixed {
   }
   return match (resolved.error) {
     {kind: "thrown", error: const error} => error,
-    {kind: "badRequest", ...} => undefined,
-    {kind: "unauthorized"} => undefined,
-    {kind: "forbidden"} => undefined,
+    {kind: "badRequest", ...}            => undefined,
+    {kind: "unauthorized"}               => undefined,
+    {kind: "forbidden"}                  => undefined,
   };
 }

@@ -36,20 +36,20 @@ const UF: string = (() => {
 type Message = { [string]: mixed };
 
 type Content = { type: string, text: string };
-type Tool = { name: string, description: string, inputSchema: { type: string, ... } };
+type Tool    = { name: string, description: string, inputSchema: { type: string, ... } };
 type Result = {
   protocolVersion?: string,
-  capabilities?: { tools?: { ... } },
-  serverInfo?: { name: string, version: string },
-  tools?: Array<Tool>,
-  content?: Array<Content>,
-  isError?: boolean,
+  capabilities?   : { tools?: { ... } },
+  serverInfo?     : { name: string, version: string },
+  tools?          : Array<Tool>,
+  content?        : Array<Content>,
+  isError?        : boolean,
 };
 type Wire = {
   jsonrpc: string,
-  id?: number,
+  id?    : number,
   result?: Result,
-  error?: { code: number, message: string },
+  error? : { code: number, message: string },
 };
 
 /**
@@ -63,7 +63,7 @@ const session = (messages: Array<Message>, cwd: string): Array<Wire> => {
   const run = spawnSync(UF, ["mcp"], {
     input: messages.map((message) => `${JSON.stringify(message)}\n`).join(""),
     cwd,
-    encoding: "utf8",
+    encoding : "utf8",
     maxBuffer: 32 * 1024 * 1024,
   });
   if (run.status !== 0) {
@@ -84,8 +84,8 @@ const request = (id: number, method: string, params?: Message): Message => ({
 
 const INITIALIZE: Message = request(1, "initialize", {
   protocolVersion: "2024-11-05",
-  capabilities: {},
-  clientInfo: { name: "uf-test", version: "0" },
+  capabilities   : {},
+  clientInfo     : { name: "uf-test", version: "0" },
 });
 
 const answered = (messages: Array<Wire>, id: number): Result => {
@@ -138,8 +138,8 @@ describe("uf mcp", () => {
   it("speaks newline-delimited JSON, not LSP's framing", () => {
     const root = brokenProject();
     const run = spawnSync(UF, ["mcp"], {
-      input: `${JSON.stringify(INITIALIZE)}\n`,
-      cwd: root,
+      input   : `${JSON.stringify(INITIALIZE)}\n`,
+      cwd     : root,
       encoding: "utf8",
     });
 
@@ -310,9 +310,9 @@ describe("uf mcp", () => {
     const root = brokenProject();
     const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "uf-mcp-elsewhere-"));
     const run = spawnSync(UF, ["--cwd", root, "mcp"], {
-      input: `${JSON.stringify(INITIALIZE)}\n${JSON.stringify(callTool(2, "uf_lint"))}\n`,
-      cwd: elsewhere,
-      encoding: "utf8",
+      input    : `${JSON.stringify(INITIALIZE)}\n${JSON.stringify(callTool(2, "uf_lint"))}\n`,
+      cwd      : elsewhere,
+      encoding : "utf8",
       maxBuffer: 32 * 1024 * 1024,
     });
     const out = run.stdout
@@ -330,8 +330,8 @@ describe("uf mcp", () => {
   it("survives a line that is not JSON", () => {
     const root = brokenProject();
     const run = spawnSync(UF, ["mcp"], {
-      input: `{ not json\n${JSON.stringify(request(2, "ping"))}\n`,
-      cwd: root,
+      input   : `{ not json\n${JSON.stringify(request(2, "ping"))}\n`,
+      cwd     : root,
       encoding: "utf8",
     });
     const out = run.stdout

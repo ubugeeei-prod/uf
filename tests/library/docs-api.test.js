@@ -21,8 +21,8 @@ describe("publicModules", () => {
   it("names each subpath by the specifier a program writes, and skips what is not a module", () => {
     expect(
       publicModules("@uniflowed/query", {
-        ".": "./index.js",
-        "./cache": "./cache.js",
+        "."             : "./index.js",
+        "./cache"       : "./cache.js",
         "./package.json": "./package.json",
         "./styles/*": "./styles/*.js",
         "./metro": { require: "./metro.cjs", default: "./metro.js" },
@@ -96,26 +96,26 @@ describe("assemble", () => {
   };
   const api = assemble(
     {
-      name: "@uniflowed/fetch",
-      version: "1.0.0",
+      name       : "@uniflowed/fetch",
+      version    : "1.0.0",
       description: "Typed HTTP.",
-      exports: { ".": "./index.js" },
-      dir: "fetch",
+      exports    : { ".": "./index.js" },
+      dir        : "fetch",
     },
     [
       {
         path: "internal/client.js",
         entries: [
           {
-            name: "createFetch",
-            kind: "function",
-            signature: "export function createFetch()",
+            name       : "createFetch",
+            kind       : "function",
+            signature  : "export function createFetch()",
             description: "A client.",
           },
           {
-            name: "never",
-            kind: "function",
-            signature: "export function never()",
+            name       : "never",
+            kind       : "function",
+            signature  : "export function never()",
             description: "Not public.",
           },
         ],

@@ -9,15 +9,15 @@ export async function createTransport(options: ControlOptions): Promise<BrowserT
   if (typeof token !== "string")
     throw new Error("createBrowser needs uf test --browser or a Node test worker");
   async function command(
-    id: string | null,
+    id    : string | null,
     method: string,
-    args: $ReadOnlyArray<mixed> = [],
+    args  : $ReadOnlyArray<mixed> = [],
   ): Promise<$FlowFixMe> {
     // The platform's `fetch`, not the global a test's request mock replaced.
     const response = await runnerFetch("/uf-test/browser", {
-      method: "POST",
+      method : "POST",
       headers: { "content-type": "application/json", "uf-test-browser": token },
-      body: JSON.stringify({ id, method, args }),
+      body   : JSON.stringify({ id, method, args }),
     });
     const result = await response.json();
     if (!response.ok || result.error)

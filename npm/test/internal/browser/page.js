@@ -41,11 +41,11 @@ import { runnerFetch } from "./runner-fetch.js";
 
 /** One file, as the server hands it over. */
 type PageRequest = {
-  readonly file?: string,
-  readonly filter?: string | null,
-  readonly timeoutMs?: number,
+  readonly file?      : string,
+  readonly filter?    : string | null,
+  readonly timeoutMs? : number,
   readonly generation?: number,
-  readonly done?: boolean,
+  readonly done?      : boolean,
   ...
 };
 
@@ -78,9 +78,9 @@ function flush(): Promise<void> {
   // Not the global: a file that installed a request mock owns that one, and
   // would answer the runner's report as an unhandled request.
   const sent = runnerFetch("/uf-test/events", {
-    method: "POST",
+    method : "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(batch),
+    body   : JSON.stringify(batch),
   })
     .catch(() => {
       // The run is over, or `uf` killed the driver on a deadline. Either way
@@ -130,17 +130,17 @@ async function runFile(request: PageRequest): Promise<void> {
     } catch (thrown) {
       const error = asError(thrown);
       write({
-        event: "file",
-        status: "load-failed",
-        message: `${error.name}: ${error.message}`,
-        stack: error.stack ?? null,
+        event         : "file",
+        status        : "load-failed",
+        message       : `${error.name}: ${error.message}`,
+        stack         : error.stack ?? null,
         durationMicros: micros(started),
       });
       return;
     }
     await run(
       {
-        filter: request.filter ?? null,
+        filter   : request.filter ?? null,
         timeoutMs: request.timeoutMs,
         file,
       },
@@ -148,9 +148,9 @@ async function runFile(request: PageRequest): Promise<void> {
         write({
           event: "test",
           ...result.outcome,
-          name: result.name,
-          line: result.line,
-          column: result.column,
+          name          : result.name,
+          line          : result.line,
+          column        : result.column,
           durationMicros: result.durationMicros,
         });
       },
@@ -159,10 +159,10 @@ async function runFile(request: PageRequest): Promise<void> {
   } catch (thrown) {
     const error = asError(thrown);
     write({
-      event: "file",
-      status: "run-failed",
-      message: `${error.name}: ${error.message}`,
-      stack: error.stack ?? null,
+      event         : "file",
+      status        : "run-failed",
+      message       : `${error.name}: ${error.message}`,
+      stack         : error.stack ?? null,
       durationMicros: micros(started),
     });
   } finally {
@@ -231,10 +231,10 @@ page().addEventListener("unhandledrejection", (event: mixed) => {
   const reason = event != null && typeof event === "object" ? event.reason : undefined;
   const error = asError(reason);
   write({
-    event: "file",
-    status: "run-failed",
+    event  : "file",
+    status : "run-failed",
     message: `unhandled rejection: ${error.message}`,
-    stack: error.stack ?? null,
+    stack  : error.stack ?? null,
   });
   void flush();
 });
@@ -253,10 +253,10 @@ page().addEventListener("error", (event: mixed) => {
   const thrown = event != null && typeof event === "object" ? event.error : undefined;
   const error = asError(thrown ?? "an error with no value");
   write({
-    event: "file",
-    status: "run-failed",
+    event  : "file",
+    status : "run-failed",
     message: `${error.name}: ${error.message}`,
-    stack: error.stack ?? null,
+    stack  : error.stack ?? null,
   });
   void flush();
 });

@@ -122,7 +122,7 @@ export class StoryPlayError extends Error {
  * wherever the stack happened to unwind to.
  */
 export function createStage(container: Element): {|
-  readonly stage: PlayStage,
+  readonly stage   : PlayStage,
   readonly stepPath: () => string | null,
 |} {
   const path: Array<string> = [];
@@ -137,7 +137,7 @@ export function createStage(container: Element): {|
     stage: {
       container,
       canvas: within(container),
-      user: userEvent,
+      user  : userEvent,
       step,
     },
     stepPath: () => (path.length === 0 ? null : path.join(STEP_SEPARATOR)),
@@ -152,9 +152,9 @@ export function createStage(container: Element): {|
  * a synchronous throw and a rejected promise both arrive here.
  */
 export async function runPlay(
-  play: PlayFunction,
-  story: string,
-  stage: PlayStage,
+  play    : PlayFunction,
+  story   : string,
+  stage   : PlayStage,
   stepPath: () => string | null,
 ): Promise<void> {
   try {

@@ -144,8 +144,8 @@ export function mountStory(story: Story): MountedStory {
   return {
     story,
     container: result.container,
-    canvas: stage.canvas,
-    requests: registry?.requests ?? [],
+    canvas   : stage.canvas,
+    requests : registry?.requests ?? [],
     play: async () => {
       if (story.play != null) {
         await runPlay(story.play, story.id, stage, stepPath);
@@ -180,7 +180,7 @@ export function mountStory(story: Story): MountedStory {
  * meant.
  */
 export async function renderStoryToHtml(
-  story: Story,
+  story   : Story,
   options?: {| readonly play?: boolean |},
 ): Promise<string> {
   const mounted = mountStory(story);

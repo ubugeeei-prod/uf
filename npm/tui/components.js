@@ -100,37 +100,37 @@ export type TitleAlignment = "left" | "center" | "right";
  * copying an example should not have to translate.
  */
 export type BoxLayoutProps = {
-  readonly flexDirection?: FlexDirection,
-  readonly flexWrap?: FlexWrap,
+  readonly flexDirection? : FlexDirection,
+  readonly flexWrap?      : FlexWrap,
   readonly justifyContent?: JustifyContent,
-  readonly alignItems?: AlignItems,
-  readonly alignContent?: AlignContent,
-  readonly alignSelf?: AlignSelf,
-  readonly flexGrow?: number,
-  readonly flexShrink?: number,
-  readonly flexBasis?: Dimension,
-  readonly width?: Dimension,
-  readonly height?: Dimension,
-  readonly minWidth?: Dimension,
-  readonly minHeight?: Dimension,
-  readonly maxWidth?: Dimension,
-  readonly maxHeight?: Dimension,
-  readonly padding?: number,
-  readonly paddingX?: number,
-  readonly paddingY?: number,
-  readonly paddingTop?: number,
-  readonly paddingRight?: number,
-  readonly paddingBottom?: number,
-  readonly paddingLeft?: number,
-  readonly margin?: Margin,
-  readonly marginTop?: Margin,
-  readonly marginRight?: Margin,
-  readonly marginBottom?: Margin,
-  readonly marginLeft?: Margin,
-  readonly gap?: number,
-  readonly rowGap?: number,
-  readonly columnGap?: number,
-  readonly overflow?: Overflow,
+  readonly alignItems?    : AlignItems,
+  readonly alignContent?  : AlignContent,
+  readonly alignSelf?     : AlignSelf,
+  readonly flexGrow?      : number,
+  readonly flexShrink?    : number,
+  readonly flexBasis?     : Dimension,
+  readonly width?         : Dimension,
+  readonly height?        : Dimension,
+  readonly minWidth?      : Dimension,
+  readonly minHeight?     : Dimension,
+  readonly maxWidth?      : Dimension,
+  readonly maxHeight?     : Dimension,
+  readonly padding?       : number,
+  readonly paddingX?      : number,
+  readonly paddingY?      : number,
+  readonly paddingTop?    : number,
+  readonly paddingRight?  : number,
+  readonly paddingBottom? : number,
+  readonly paddingLeft?   : number,
+  readonly margin?        : Margin,
+  readonly marginTop?     : Margin,
+  readonly marginRight?   : Margin,
+  readonly marginBottom?  : Margin,
+  readonly marginLeft?    : Margin,
+  readonly gap?           : number,
+  readonly rowGap?        : number,
+  readonly columnGap?     : number,
+  readonly overflow?      : Overflow,
   /**
    * In its parent's flex line (`"relative"`, the default) or out of it
    * (`"absolute"`). `"static"` is in the line too, but is not what an
@@ -144,10 +144,10 @@ export type BoxLayoutProps = {
    * where its line put it. A static box ignores them. Cells or a percentage;
    * negative is allowed.
    */
-  readonly top?: Dimension,
-  readonly right?: Dimension,
+  readonly top?   : Dimension,
+  readonly right? : Dimension,
   readonly bottom?: Dimension,
-  readonly left?: Dimension,
+  readonly left?  : Dimension,
   /**
    * Which of two overlapping siblings is on top: the higher one, painted
    * later. Ties, and siblings that give none, stack in tree order.
@@ -157,14 +157,14 @@ export type BoxLayoutProps = {
 
 /** Everything that paints a node's text. Inherited by nested `Text`. */
 export type TextStyleProps = {
-  readonly fg?: ColorValue,
-  readonly bg?: ColorValue,
-  readonly bold?: boolean,
-  readonly dim?: boolean,
-  readonly italic?: boolean,
-  readonly underline?: boolean,
-  readonly blink?: boolean,
-  readonly inverse?: boolean,
+  readonly fg?           : ColorValue,
+  readonly bg?           : ColorValue,
+  readonly bold?         : boolean,
+  readonly dim?          : boolean,
+  readonly italic?       : boolean,
+  readonly underline?    : boolean,
+  readonly blink?        : boolean,
+  readonly inverse?      : boolean,
   readonly strikethrough?: boolean,
   /**
    * Whether a reader may select this text with the mouse.
@@ -216,9 +216,9 @@ export type TextStyleProps = {
  */
 export type MouseProps = {
   /** Every mouse event, after the handler for its own type. */
-  readonly onMouse?: (event: MouseEvent) => mixed,
+  readonly onMouse?    : (event: MouseEvent) => mixed,
   readonly onMouseDown?: (event: MouseEvent) => mixed,
-  readonly onMouseUp?: (event: MouseEvent) => mixed,
+  readonly onMouseUp?  : (event: MouseEvent) => mixed,
   /** The pointer moved over this box with nothing held down. */
   readonly onMouseMove?: (event: MouseEvent) => mixed,
   /** The pointer moved with a button held, since it was pressed on this box. */
@@ -248,16 +248,16 @@ export type BoxProps = {
    * else reads it, and two boxes with the same id are not an error — the
    * events simply cannot tell them apart.
    */
-  readonly id?: string,
-  readonly style?: BoxLayoutProps,
-  readonly backgroundColor?: ColorValue,
-  readonly border?: boolean,
-  readonly borderStyle?: BorderStyle,
-  readonly borderColor?: ColorValue,
-  readonly title?: string,
-  readonly titleColor?: ColorValue,
-  readonly titleAlignment?: TitleAlignment,
-  readonly bottomTitle?: string,
+  readonly id?                  : string,
+  readonly style?               : BoxLayoutProps,
+  readonly backgroundColor?     : ColorValue,
+  readonly border?              : boolean,
+  readonly borderStyle?         : BorderStyle,
+  readonly borderColor?         : ColorValue,
+  readonly title?               : string,
+  readonly titleColor?          : ColorValue,
+  readonly titleAlignment?      : TitleAlignment,
+  readonly bottomTitle?         : string,
   readonly bottomTitleAlignment?: TitleAlignment,
   /** Whether this box may hold focus at all. */
   readonly focusable?: boolean,
@@ -276,7 +276,7 @@ export component Box(children?: React.Node, ...props: BoxProps) {
 export type TextProps = {
   ...BoxLayoutProps,
   ...TextStyleProps,
-  readonly id?: string,
+  readonly id?   : string,
   readonly style?: BoxLayoutProps,
   /** How lines break: at word boundaries, anywhere, or not at all. */
   readonly wrap?: WrapMode,
@@ -385,9 +385,9 @@ export type ScrollBoxProps = {
  * layout has run.
  */
 export component ScrollBox(
-  children?: React.Node,
-  scrollTop?: number = 0,
-  scrollbar?: boolean = true,
+  children?      : React.Node,
+  scrollTop?     : number = 0,
+  scrollbar?     : boolean = true,
   scrollbarColor?: ColorValue,
   ...props: BoxProps
 ) {
@@ -457,7 +457,7 @@ export function useRenderer(): Renderer {
  */
 export function useKeyboard(handler: (key: KeyEvent) => mixed): void {
   const renderer = useRenderer();
-  const latest = useRef(handler);
+  const latest   = useRef(handler);
   useEffect(() => {
     latest.current = handler;
   });
@@ -475,7 +475,7 @@ export function useKeyboard(handler: (key: KeyEvent) => mixed): void {
 
 /** The terminal's current size, re-rendering the caller when it changes. */
 export function useTerminalSize(): { readonly width: number, readonly height: number } {
-  const renderer = useRenderer();
+  const renderer  = useRenderer();
   const subscribe = useCallback(
     (notify: () => void) => {
       renderer.sizeListeners.add(notify);
@@ -485,7 +485,7 @@ export function useTerminalSize(): { readonly width: number, readonly height: nu
     },
     [renderer],
   );
-  const snapshot = useCallback(() => renderer.size, [renderer]);
+  const snapshot  = useCallback(() => renderer.size, [renderer]);
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
@@ -517,9 +517,9 @@ export type InputProps = {
   /** Called with the new text on every edit. */
   readonly onInput?: (value: string) => void,
   /** Called with the text when Enter is pressed. */
-  readonly onSubmit?: (value: string) => void,
-  readonly fg?: ColorValue,
-  readonly bg?: ColorValue,
+  readonly onSubmit?        : (value: string) => void,
+  readonly fg?              : ColorValue,
+  readonly bg?              : ColorValue,
   readonly placeholderColor?: ColorValue,
 };
 
@@ -539,14 +539,14 @@ export type InputProps = {
  * hidden; an inverse cell is a property of the frame, so it composes.
  */
 export component Input(
-  value?: string,
-  defaultValue?: string = "",
-  placeholder?: string = "",
-  focused?: boolean = false,
-  onInput?: (value: string) => void,
-  onSubmit?: (value: string) => void,
-  fg?: ColorValue,
-  bg?: ColorValue,
+  value?           : string,
+  defaultValue?    : string = "",
+  placeholder?     : string = "",
+  focused?         : boolean = false,
+  onInput?         : (value: string) => void,
+  onSubmit?        : (value: string) => void,
+  fg?              : ColorValue,
+  bg?              : ColorValue,
   placeholderColor?: ColorValue = "gray",
   ...layout: BoxLayoutProps
 ) {
@@ -681,11 +681,11 @@ export component Input(
  * that ignored Shift would make the second unreachable.
  */
 function bound(
-  key: KeyEvent,
-  name: string,
-  ctrl: boolean = false,
+  key  : KeyEvent,
+  name : string,
+  ctrl : boolean = false,
   shift: boolean = false,
-  meta: boolean = false,
+  meta : boolean = false,
 ): boolean {
   return key.name === name && key.ctrl === ctrl && key.shift === shift && key.meta === meta;
 }
@@ -993,10 +993,10 @@ export type TextareaProps = {
   /** Whether this textarea has focus, and so receives the keys. */
   readonly focused?: boolean,
   /** How long lines break: at a word, anywhere, or not at all. `"word"` by default. */
-  readonly wrapMode?: EditWrapMode,
-  readonly textColor?: ColorValue,
-  readonly backgroundColor?: ColorValue,
-  readonly focusedTextColor?: ColorValue,
+  readonly wrapMode?              : EditWrapMode,
+  readonly textColor?             : ColorValue,
+  readonly backgroundColor?       : ColorValue,
+  readonly focusedTextColor?      : ColorValue,
   readonly focusedBackgroundColor?: ColorValue,
   /** Called with the new text on every edit. */
   readonly onContentChange?: (value: string) => void,
@@ -1149,7 +1149,7 @@ export component Textarea(...props: TextareaProps) {
     undo: $ReadOnlyArray<Snapshot>,
     redo: $ReadOnlyArray<Snapshot>,
   }>({ undo: [], redo: [] });
-  const node = useRef<TuiNode | null>(null);
+  const node                  = useRef<TuiNode | null>(null);
 
   const change = (next: string, nextCursor: number) => {
     if (value == null) {

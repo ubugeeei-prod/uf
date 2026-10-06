@@ -16,14 +16,14 @@ export default defineConfig({
   app: {
     router: {
       entry: "app.js",
-      root: "app",
+      root : "app",
       // `app.router`'s three lists. `/moved` and `/articles` have no route of
       // their own, so a redirect or a render there can only be the rule's.
       // `x-matrix` is on every answer and `cache-control` only on route
       // handlers, so a target that applies rules to documents and forgets
       // files, or the reverse, is caught.
       redirects: [{ source: "/moved/:slug", destination: "/posts/:slug", permanent: true }],
-      rewrites: [{ source: "/articles/:slug", destination: "/posts/:slug" }],
+      rewrites : [{ source: "/articles/:slug", destination: "/posts/:slug" }],
       headers: [
         { source: "/:path*", headers: { "x-matrix": "deploy-matrix" } },
         { source: "/api/:rest*", headers: { "cache-control": "no-store" } },
@@ -37,6 +37,6 @@ export default defineConfig({
   },
   build: {
     entries: ["app.js"],
-    outDir: "dist",
+    outDir : "dist",
   },
 });

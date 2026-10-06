@@ -66,9 +66,9 @@ function startProcess(command, args, { cwd, env, log }) {
   const lines = [];
   const child = spawn(command, args, {
     cwd,
-    env: { ...process.env, ...env },
+    env     : { ...process.env, ...env },
     detached: true,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio   : ["ignore", "pipe", "pipe"],
   });
   for (const stream of [child.stdout, child.stderr]) {
     stream.on("data", (data) => {
@@ -82,7 +82,7 @@ function startProcess(command, args, { cwd, env, log }) {
   });
   return {
     child,
-    alive: () => !exited,
+    alive : () => !exited,
     output: () => lines.join(""),
     async stop() {
       if (exited) return;
@@ -118,7 +118,7 @@ function dockerLogs(name) {
 function docker(...args) {
   return execFileSync("docker", args, {
     encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio   : ["ignore", "pipe", "pipe"],
   }).trim();
 }
 
@@ -143,8 +143,8 @@ async function processHost(name, spawnArgs, { cwd, env = {}, port }) {
   return {
     base,
     alive: () => current.alive(),
-    logs: () => current.output(),
-    stop: () => current.stop(),
+    logs : () => current.output(),
+    stop : () => current.stop(),
     async restart() {
       await current.stop();
       await start();
@@ -250,7 +250,7 @@ function wranglerBinary() {
   try {
     reported = execFileSync(binary, ["--version"], {
       encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio   : ["ignore", "pipe", "pipe"],
     });
   } catch (error) {
     throw new Error(
@@ -305,14 +305,14 @@ function staticHost(deployDir) {
     path.join(hostDir, "wrangler.json"),
     `${JSON.stringify(
       {
-        name: "uf-deploy-matrix-static",
+        name              : "uf-deploy-matrix-static",
         compatibility_date: "2024-09-23",
         assets: {
           directory: path.relative(hostDir, deployDir),
           // uf links to `/posts/first`, and the build writes
           // `posts/first/index.html`: served at the link's URL, not redirected
           // to one with a trailing slash first.
-          html_handling: "drop-trailing-slash",
+          html_handling     : "drop-trailing-slash",
           not_found_handling: "404-page",
         },
       },
@@ -328,7 +328,7 @@ async function kumoCall(kumo, method, route, body) {
   const response = await fetch(`${kumo}${route}`, {
     method,
     headers: { "content-type": "application/json" },
-    body: body == null ? undefined : JSON.stringify(body),
+    body   : body == null ? undefined : JSON.stringify(body),
   });
   const text = await response.text();
   assert.ok(response.ok, `Kumo ${method} ${route} answered ${response.status}: ${text}`);
@@ -393,29 +393,29 @@ async function serverless(deployDir) {
   startFunction();
 
   await kumoCall(kumo, "POST", "/2015-03-31/functions", {
-    FunctionName: "uf-deploy-matrix",
-    Runtime: "nodejs24.x",
-    Role: "arn:aws:iam::000000000000:role/uf-deploy-matrix",
-    Handler: "lambda.handler",
-    Code: {},
-    Timeout: 30,
+    FunctionName  : "uf-deploy-matrix",
+    Runtime       : "nodejs24.x",
+    Role          : "arn:aws:iam::000000000000:role/uf-deploy-matrix",
+    Handler       : "lambda.handler",
+    Code          : {},
+    Timeout       : 30,
     InvokeEndpoint: runtime,
   });
   const api = await kumoCall(kumo, "POST", "/v2/apis", {
-    name: "uf-deploy-matrix",
+    name        : "uf-deploy-matrix",
     protocolType: "HTTP",
   });
   const integration = await kumoCall(kumo, "POST", `/v2/apis/${api.apiId}/integrations`, {
-    integrationType: "AWS_PROXY",
-    integrationUri: "arn:aws:lambda:us-east-1:000000000000:function:uf-deploy-matrix",
+    integrationType     : "AWS_PROXY",
+    integrationUri      : "arn:aws:lambda:us-east-1:000000000000:function:uf-deploy-matrix",
     payloadFormatVersion: "2.0",
   });
   await kumoCall(kumo, "POST", `/v2/apis/${api.apiId}/routes`, {
     routeKey: "$default",
-    target: `integrations/${integration.integrationId}`,
+    target  : `integrations/${integration.integrationId}`,
   });
   await kumoCall(kumo, "POST", `/v2/apis/${api.apiId}/stages`, {
-    stageName: "$default",
+    stageName : "$default",
     autoDeploy: true,
   });
 
@@ -451,7 +451,7 @@ async function serverless(deployDir) {
   return {
     base,
     alive: running,
-    logs: () => `--- function ---\n${functionLogs()}\n--- kumo ---\n${server.output()}`,
+    logs : () => `--- function ---\n${functionLogs()}\n--- kumo ---\n${server.output()}`,
     async stop() {
       try {
         docker("rm", "-f", name);
@@ -473,7 +473,7 @@ async function serverless(deployDir) {
 /** Every host, by the target id `../matrix.json` uses. */
 export const HOSTS = {
   node: printed,
-  bun: printed,
+  bun : printed,
   deno: printed,
   container,
   edge,

@@ -89,12 +89,12 @@ const FULLY_OPEN: $ReadOnlyArray<number> = Object.freeze([1]);
 const DRAG_THRESHOLD = 0.25;
 
 type DrawerState = {|
-  readonly side: Edge,
-  readonly snapPoints: $ReadOnlyArray<number>,
-  readonly snapIndex: number,
+  readonly side        : Edge,
+  readonly snapPoints  : $ReadOnlyArray<number>,
+  readonly snapIndex   : number,
   readonly setSnapIndex: (next: number) => void,
-  readonly close: () => void,
-  readonly bodyRef: { current: HTMLElement | null },
+  readonly close       : () => void,
+  readonly bodyRef     : { current: HTMLElement | null },
   /**
    * How many `Drawer.Close`es and `Drawer.Handle`s are in the document.
    *
@@ -102,7 +102,7 @@ type DrawerState = {|
    * child's effect runs before its parent's, so `Drawer.Body` can ask about
    * both on the commit that mounted them, and nothing renders either number.
    */
-  readonly closeCountRef: { current: number },
+  readonly closeCountRef : { current: number },
   readonly handleCountRef: { current: number },
 |};
 
@@ -133,21 +133,21 @@ hook useDrawer(part: string): DrawerState {
  * because `internal/controlled-state.js` is what answers here too.
  */
 component DrawerRoot(
-  children: React.Node,
-  defaultOpen?: boolean = false,
-  defaultSnapPoint?: number = 0,
-  onOpenChange?: (open: boolean) => void,
+  children          : React.Node,
+  defaultOpen?      : boolean = false,
+  defaultSnapPoint? : number = 0,
+  onOpenChange?     : (open: boolean) => void,
   onSnapPointChange?: (index: number) => void,
-  open?: boolean,
-  side?: Edge = "bottom",
-  snapPoint?: number,
-  snapPoints?: $ReadOnlyArray<number> = FULLY_OPEN,
+  open?             : boolean,
+  side?             : Edge = "bottom",
+  snapPoint?        : number,
+  snapPoints?       : $ReadOnlyArray<number> = FULLY_OPEN,
 ) {
-  const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
+  const [isOpen,    setOpen]      = useControlled(open, defaultOpen, onOpenChange);
   const [snapIndex, setSnapIndex] = useControlled(snapPoint, defaultSnapPoint, onSnapPointChange);
-  const bodyRef = useRef<HTMLElement | null>(null);
-  const closeCountRef = useRef(0);
-  const handleCountRef = useRef(0);
+  const bodyRef                   = useRef<HTMLElement | null>(null);
+  const closeCountRef             = useRef(0);
+  const handleCountRef            = useRef(0);
 
   const state = useMemo(
     () => ({
@@ -175,7 +175,7 @@ component DrawerRoot(
 /** What opens it, and what focus comes back to when it closes. */
 component DrawerTrigger(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders SheetTrigger {
   return (
@@ -266,7 +266,7 @@ component RequireCloseForTheDrag() {
 /** The top of the drawer, where the handle usually goes. */
 component DrawerHeader(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders SheetHeader {
   return (
@@ -279,7 +279,7 @@ component DrawerHeader(
 /** The bottom of the drawer, where the actions go. */
 component DrawerFooter(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders SheetFooter {
   return (
@@ -301,7 +301,7 @@ component DrawerTitle(children: React.Node, render?: RenderProp, ...rest: Rest) 
 /** What the drawer is for, announced after its name. */
 component DrawerDescription(
   children: React.Node,
-  render?: RenderProp,
+  render? : RenderProp,
   ...rest: Rest
 ) renders SheetDescription {
   return (
@@ -363,7 +363,7 @@ component DrawerHandle(label?: string = "Resize the drawer", render?: RenderProp
   ]);
   // Where the finger went down, and along which axis. A ref because nothing
   // renders it: it is a fact about a gesture in progress.
-  const dragFrom = useRef<number | null>(null);
+  const dragFrom                = useRef<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const vertical = side === "top" || side === "bottom";
   const last = snapPoints.length - 1;
@@ -412,13 +412,13 @@ component DrawerHandle(label?: string = "Resize the drawer", render?: RenderProp
     // The axis the drag runs along, which is the axis the snap points are
     // measured on: a bottom sheet grows upwards, so its slider is vertical.
     "aria-orientation": vertical ? "vertical" : "horizontal",
-    "aria-valuemax": last,
-    "aria-valuemin": 0,
-    "aria-valuenow": snapIndex,
+    "aria-valuemax"   : last,
+    "aria-valuemin"   : 0,
+    "aria-valuenow"   : snapIndex,
     // The number a reader can act on. `aria-valuenow` is an index into a list
     // nobody outside this component has seen, and "2" says nothing.
     "aria-valuetext": `${String(Math.round((snapPoints[snapIndex] ?? 1) * 100))}%`,
-    "data-dragging": dragging ? "true" : undefined,
+    "data-dragging" : dragging ? "true" : undefined,
     onKeyDown: composeHandlers(rest.onKeyDown, (event: $FlowFixMe) => {
       if (event.key === "Home" || event.key === "End") {
         event.preventDefault();
@@ -482,7 +482,7 @@ component DrawerHandle(label?: string = "Resize the drawer", render?: RenderProp
   });
 
   return match (render) {
-    undefined => <div {...props} />,
+    undefined    => <div {...props} />,
     const custom => custom(props),
   };
 }
@@ -497,17 +497,17 @@ component DrawerHandle(label?: string = "Resize the drawer", render?: RenderProp
  */
 const OPENS_WITH: { readonly [Edge]: string } = {
   bottom: "ArrowUp",
-  left: "ArrowRight",
-  right: "ArrowLeft",
-  top: "ArrowDown",
+  left  : "ArrowRight",
+  right : "ArrowLeft",
+  top   : "ArrowDown",
 };
 
 /** The key that makes it smaller, and closes it at the smallest snap point. */
 const CLOSES_WITH: { readonly [Edge]: string } = {
   bottom: "ArrowDown",
-  left: "ArrowLeft",
-  right: "ArrowRight",
-  top: "ArrowUp",
+  left  : "ArrowLeft",
+  right : "ArrowRight",
+  top   : "ArrowUp",
 };
 
 /**

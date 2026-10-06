@@ -21,10 +21,10 @@ import { describe, expect, it } from "@uniflowed/test";
 /** The smallest record `matchRoute` will rank. */
 function record(routePath: string) {
   return {
-    path: routePath,
-    params: [],
-    mdx: false,
-    file: `app${routePath}/$page.js`,
+    path   : routePath,
+    params : [],
+    mdx    : false,
+    file   : `app${routePath}/$page.js`,
     layouts: [],
   };
 }

@@ -105,7 +105,7 @@ export type MockRegistry = {|
    */
   readonly resetHandlers: (...next: $ReadOnlyArray<MockHandler>) => void,
   /** Every request seen since the last `clearRequests`, in request order. */
-  readonly requests: $ReadOnlyArray<RecordedRequest>,
+  readonly requests     : $ReadOnlyArray<RecordedRequest>,
   readonly clearRequests: () => void,
 |};
 
@@ -129,8 +129,8 @@ export class UnhandledRequestError extends Error {
 
 /** The message an unhandled request produces: what was asked, and what existed. */
 function describeUnhandled(
-  method: string,
-  url: string,
+  method  : string,
+  url     : string,
   handlers: $ReadOnlyArray<MockHandler>,
 ): string {
   const declared =
@@ -273,7 +273,7 @@ export function mock(...handlers: $ReadOnlyArray<MockHandler>): MockRegistry {
         declared = [...next];
       }
     },
-    requests: log.entries,
+    requests     : log.entries,
     clearRequests: log.clear,
   };
 }

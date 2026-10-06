@@ -64,10 +64,10 @@
 /** One stored answer, as it survives a process. */
 export type DurableCacheEntry = {|
   /** The value, through [`encodeCacheValue`]. Opaque to the provider. */
-  readonly value: string,
-  readonly storedAt: number,
+  readonly value       : string,
+  readonly storedAt    : number,
   readonly revalidateAt: number,
-  readonly expiresAt: number,
+  readonly expiresAt   : number,
   /** What `invalidateTag` matches on. */
   readonly tags: $ReadOnlyArray<string>,
   /** What `invalidatePath` matches on. */

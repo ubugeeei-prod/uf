@@ -56,69 +56,69 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
   group: {
-    display: "grid",
-    gap: ufTokens.space2,
-    margin: 0,
-    padding: 0,
+    display  : "grid",
+    gap      : ufTokens.space2,
+    margin   : 0,
+    padding  : 0,
     listStyle: "none",
   },
   item: {
-    display: "flex",
-    alignItems: "center",
-    gap: ufTokens.space4,
-    boxSizing: "border-box",
-    paddingBlock: ufTokens.space3,
+    display      : "flex",
+    alignItems   : "center",
+    gap          : ufTokens.space4,
+    boxSizing    : "border-box",
+    paddingBlock : ufTokens.space3,
     paddingInline: ufTokens.space4,
-    fontFamily: ufTokens.fontSans,
-    fontSize: ufTokens.textSm,
-    lineHeight: ufTokens.leadingBase,
-    color: ufTokens.ink,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderRadius: ufTokens.radiusMd,
+    fontFamily   : ufTokens.fontSans,
+    fontSize     : ufTokens.textSm,
+    lineHeight   : ufTokens.leadingBase,
+    color        : ufTokens.ink,
+    borderWidth  : "1px",
+    borderStyle  : "solid",
+    borderRadius : ufTokens.radiusMd,
   },
   outline: {
     backgroundColor: ufTokens.surface,
-    borderColor: ufTokens.border,
+    borderColor    : ufTokens.border,
   },
   plain: {
     backgroundColor: "transparent",
-    borderColor: "transparent",
+    borderColor    : "transparent",
   },
   media: {
-    display: "inline-flex",
-    flexShrink: 0,
-    alignItems: "center",
+    display       : "inline-flex",
+    flexShrink    : 0,
+    alignItems    : "center",
     justifyContent: "center",
-    color: ufTokens.muted,
+    color         : ufTokens.muted,
   },
   content: {
-    display: "grid",
+    display : "grid",
     flexGrow: 1,
-    gap: "2px",
+    gap     : "2px",
     minWidth: 0,
   },
   title: {
-    margin: 0,
+    margin    : 0,
     fontWeight: ufTokens.weightMedium,
     lineHeight: ufTokens.leadingTight,
   },
   description: {
     margin: 0,
-    color: ufTokens.muted,
+    color : ufTokens.muted,
   },
   actions: {
-    display: "flex",
+    display   : "flex",
     flexShrink: 0,
     alignItems: "center",
-    gap: ufTokens.space2,
+    gap       : ufTokens.space2,
   },
 });
 
 /** A list of items, announced as one. */
 component ItemGroup(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -131,10 +131,10 @@ component ItemGroup(
 
 /** One row: a `<div>`, or with `as="li"` a row of an `Item.Group`. */
 component ItemRoot(
-  children: React.Node,
-  as?: "div" | "li" = "div",
-  variant?: ItemVariant = "outline",
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  as?       : "div" | "li" = "div",
+  variant?  : ItemVariant = "outline",
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -145,7 +145,7 @@ component ItemRoot(
         styles.item,
         match (variant) {
           "outline" => styles.outline,
-          "plain" => styles.plain,
+          "plain"   => styles.plain,
         },
         xstyle,
       ).className,
@@ -157,8 +157,8 @@ component ItemRoot(
 
 /** An icon, an avatar or a thumbnail at the start of the row. */
 component ItemMedia(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -171,8 +171,8 @@ component ItemMedia(
 
 /** The title and the description, which take the room the row has. */
 component ItemContent(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -185,8 +185,8 @@ component ItemContent(
 
 /** What the row is. Not a heading: a row of a list is not a section. */
 component ItemTitle(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -199,8 +199,8 @@ component ItemTitle(
 
 /** A line under the title, in the quieter colour. */
 component ItemDescription(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
@@ -213,8 +213,8 @@ component ItemDescription(
 
 /** The buttons or links at the end of the row, after what they act on. */
 component ItemActions(
-  children: React.Node,
-  xstyle?: StyleArgument,
+  children  : React.Node,
+  xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
 ) {

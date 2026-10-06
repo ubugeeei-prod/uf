@@ -47,10 +47,10 @@ component Startup() {
 
 /** A terminal that keeps its bytes rather than a terminal. */
 const sink = {
-  isTTY: true,
+  isTTY  : true,
   columns: 80,
-  rows: 24,
-  bytes: 0,
+  rows   : 24,
+  bytes  : 0,
   write(chunk: string): boolean {
     sink.bytes += Buffer.byteLength(chunk, "utf8");
     return true;
@@ -60,10 +60,10 @@ const sink = {
 };
 
 const handle = render(<Startup />, {
-  stdout: sink,
-  stdin: { isTTY: false },
-  color: "never",
-  env: { COLUMNS: "80", LINES: "24" },
+  stdout         : sink,
+  stdin          : { isTTY: false },
+  color          : "never",
+  env            : { COLUMNS: "80", LINES: "24" },
   alternateScreen: false,
 });
 const drawn = performance.now();
@@ -71,8 +71,8 @@ handle.stop();
 
 process.stdout.write(
   `${JSON.stringify({
-    node: process.version,
+    node          : process.version,
     msToFirstFrame: Number(drawn.toFixed(1)),
-    bytesWritten: sink.bytes,
+    bytesWritten  : sink.bytes,
   })}\n`,
 );

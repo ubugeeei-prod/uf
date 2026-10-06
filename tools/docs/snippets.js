@@ -173,10 +173,10 @@ function main(): void {
     let out = "";
     try {
       out = execFileSync(uf, ["lint", "--json", "."], {
-        cwd: scratch,
-        encoding: "utf8",
-        env: { ...process.env, NO_COLOR: "1" },
-        stdio: ["ignore", "pipe", "pipe"],
+        cwd      : scratch,
+        encoding : "utf8",
+        env      : { ...process.env, NO_COLOR: "1" },
+        stdio    : ["ignore", "pipe", "pipe"],
         maxBuffer: 64 * 1024 * 1024,
       });
     } catch (error) {
