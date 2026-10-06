@@ -256,6 +256,12 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `class C { static x = any }` and `class C { static x: string = any }`
+    // pass a value. `class C { static x: any }` stays a type.
+    if names_a_static_initializer(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -705,6 +711,55 @@ fn import_specifier_brace(code: &str, at: usize) -> Option<usize> {
                 _ => None,
             }
         }
+    }
+}
+
+/// Whether the name is the initializer of a static field.
+///
+/// `class C { static x = any }` and `class C { static x: string = any }` pass a
+/// value, including `static x: Box<string> = any`. `class C { static x: any }`
+/// and `class C { static x: any = 1 }` still name a type.
+fn names_a_static_initializer(code: &str, at: usize) -> bool {
+    let Some(eq) = single_equals_before(code, at) else {
+        return false;
+    };
+    let Some(field) = field_before_equals(code, eq) else {
+        return false;
+    };
+    previous_word(code, field).is_some_and(|(_, word)| word == "static")
+}
+
+/// A single `=` in front of `at`, not `==`, `=>`, or a compound assignment.
+fn single_equals_before(code: &str, at: usize) -> Option<usize> {
+    let Some((eq, b'=')) = prev_non_space(code, at) else {
+        return None;
+    };
+    if eq > 0
+        && matches!(
+            code.as_bytes()[eq - 1],
+            b'=' | b'!' | b'<' | b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'^'
+        )
+    {
+        return None;
+    }
+    Some(eq)
+}
+
+/// The field an initializer `=` belongs to, skipping its annotation.
+///
+/// `x =`, `x: string =`, and `x: Box<string> =` all name `x`.
+fn field_before_equals(code: &str, eq: usize) -> Option<usize> {
+    let (name, _) = match prev_non_space(code, eq) {
+        Some((close, b'>')) => {
+            let open = matching_open_angle(code, close)?;
+            previous_word(code, open)?
+        }
+        Some((_, byte)) if is_word_byte(byte) => previous_word(code, eq)?,
+        _ => return None,
+    };
+    match prev_non_space(code, name) {
+        Some((colon, b':')) => previous_word(code, colon).map(|(at, _)| at),
+        _ => Some(name),
     }
 }
 
@@ -1990,6 +2045,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_for_update(code, at, len)
                 || names_a_namespace(code, at)
                 || names_an_import_typeof(code, at)
+                || names_a_static_initializer(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)

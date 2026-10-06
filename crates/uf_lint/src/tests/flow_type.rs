@@ -2464,3 +2464,58 @@ fn internal_type_ignores_an_import_typeof() {
     assert_eq!((still[1].line, still[1].column), (3, 15), "{still:?}");
     assert_eq!((still[2].line, still[2].column), (4, 15), "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_static_initializer() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass L { static x = any }\nclass L2 { static x: string = any }\nclass L3 { static x: Box<string> = Object }\nclass L5 { x = any }\nfunction f(value: string = any) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass L3 { static x: any = 1 }\nclass L4 { static x: any }\ntype T = any;\ntype Box<T = any> = T;\n",
+    );
+    assert_eq!(still.len(), 4, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 22), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 22), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 10), "{still:?}");
+    assert_eq!((still[3].line, still[3].column), (5, 14), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_static_initializer() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass L { static x = bool }\nclass L2 { static x: string = bool }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass L { static x: bool = 1 }\nclass M { static x: bool }\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 21), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 21), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_static_initializer() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass L { static x = React$Node }\nclass L2 { static x: string = React$Node }\nclass L3 { static x: Box<string> = React$Node }\nfunction f(value: string = React$Node) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass L3 { static x: React$Node = 1 }\nclass L4 { static x: React$Node }\ntype T = React$Node;\ntype Box<T = React$Node> = T;\n",
+    );
+    assert_eq!(still.len(), 4, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 22), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 22), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 10), "{still:?}");
+    assert_eq!((still[3].line, still[3].column), (5, 14), "{still:?}");
+}
