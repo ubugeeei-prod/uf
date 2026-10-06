@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.34.0
+
+- fix(lint): class and loop value positions are not reported as types (#1858) (bfb2c764)
+
 ## uf@0.33.0
 
 - fix(lint): more value positions are not reported as types (#1846) (920b570d)
