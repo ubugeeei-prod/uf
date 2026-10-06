@@ -2223,3 +2223,486 @@ fn internal_type_ignores_an_unannotated_class_field() {
     assert_eq!((still[1].line, still[1].column), (3, 23), "{still:?}");
     assert_eq!((still[2].line, still[2].column), (4, 15), "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_decorator() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass C { @any method() {} }\nclass D { @Object field = 1 }\n@any()\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/unclear-type", "// @flow\nclass C { @dec x: any }\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 19), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_decorator() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass C { @bool method() {} }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass C { @dec x: bool }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 19), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_decorator() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass C { @React$Node method() {} }\nclass D { @React$Node field = 1 }\n@React$Node.foo\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass C { @dec x: React$Node }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 19), "{still:?}");
+}
+
+#[test]
+fn unclear_type_ignores_a_for_initializer() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfor (any; i < n; i++) {}\nfor (Object; i < n; i++) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfor (const item of any) {}\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_for_initializer() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfor (bool; i < n; i++) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfor (const item of bool) {}\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_for_initializer() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfor (React$Node; i < n; i++) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nfor (const item of React$Node) {}\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
+}
+
+#[test]
+fn unclear_type_ignores_a_for_update() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfor (let i = 0; i < n; any) {}\nfor (;; Object) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfor (const item of any) {}\ntype F = (any) => void;\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 11), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_for_update() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\nfor (;; bool) {}\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfor (const item of bool) {}\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_for_update() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfor (let i = 0; i < n; React$Node) {}\nfor (;; React$Node) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nfor (const item of React$Node) {}\ntype F = (React$Node) => void;\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 11), "{still:?}");
+}
+
+#[test]
+fn unclear_type_ignores_a_namespace() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\ndeclare namespace any {}\ndeclare namespace Object {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ndeclare namespace N { declare var x: any }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 38), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_namespace() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ndeclare namespace bool {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ndeclare namespace N { declare var x: bool }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 38), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_namespace() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\ndeclare namespace React$Node {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ndeclare namespace N { declare var x: React$Node }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 38), "{still:?}");
+}
+
+#[test]
+fn unclear_type_ignores_an_import_typeof() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nimport typeof * as any from \"./m\";\nimport typeof { any as Local } from \"./m\";\nimport typeof { Object as any } from \"./m\";\nimport typeof { any } from \"./m\";\ntype T = typeof any;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nimport type { any } from \"./m\";\nimport { type any } from \"./m\";\nimport type { any as Box } from \"./m\";\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 15), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 15), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_an_import_typeof() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nimport typeof * as bool from \"./m\";\nimport typeof { bool as Flag } from \"./m\";\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nimport type { bool } from \"./m\";\nimport { type bool } from \"./m\";\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 15), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_an_import_typeof() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nimport typeof * as React$Node from \"./m\";\nimport typeof { React$Node as Box } from \"./m\";\nimport typeof { Box as React$Node } from \"./m\";\ntype T = typeof React$Node;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nimport type { React$Node } from \"./m\";\nimport { type React$Node } from \"./m\";\nimport type { React$Node as Box } from \"./m\";\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 15), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 15), "{still:?}");
+}
+
+#[test]
+fn unclear_type_ignores_a_static_initializer() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass L { static x = any }\nclass L2 { static x: string = any }\nclass L3 { static x: Box<string> = Object }\nclass L5 { x = any }\nfunction f(value: string = any) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass L3 { static x: any = 1 }\nclass L4 { static x: any }\ntype T = any;\ntype Box<T = any> = T;\n",
+    );
+    assert_eq!(still.len(), 4, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 22), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 22), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 10), "{still:?}");
+    assert_eq!((still[3].line, still[3].column), (5, 14), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_static_initializer() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass L { static x = bool }\nclass L2 { static x: string = bool }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass L { static x: bool = 1 }\nclass M { static x: bool }\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 21), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 21), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_static_initializer() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass L { static x = React$Node }\nclass L2 { static x: string = React$Node }\nclass L3 { static x: Box<string> = React$Node }\nfunction f(value: string = React$Node) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass L3 { static x: React$Node = 1 }\nclass L4 { static x: React$Node }\ntype T = React$Node;\ntype Box<T = React$Node> = T;\n",
+    );
+    assert_eq!(still.len(), 4, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 22), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 22), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 10), "{still:?}");
+    assert_eq!((still[3].line, still[3].column), (5, 14), "{still:?}");
+}
+
+#[test]
+fn unclear_type_ignores_an_array_default() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst [a = any] = xs;\nconst [a = Object, b = any] = xs;\nfunction f([a = any]) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype T = [any];\nconst xs = [any];\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 11), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 13), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_an_array_default() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\nconst [a = bool] = xs;\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ntype T = [bool];\nconst xs = [bool];\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 11), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 13), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_an_array_default() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst [a = React$Node] = xs;\nfunction f([a = React$Node]) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype T = [React$Node];\nconst xs = [React$Node];\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 11), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 13), "{still:?}");
+}
+
+#[test]
+fn unclear_type_ignores_a_renamed_default() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst { a: b = any } = obj;\nconst { a: c = Object } = obj;\nfunction g({ a: b = any }) {}\nconst { a = any } = obj;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype T = { a: any };\nclass C { x: string = any }\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 23), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_renamed_default() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nconst { a: b = bool } = obj;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype T = { a: bool };\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_renamed_default() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst { a: b = React$Node } = obj;\nfunction h({ a: b = React$Node } = {}) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype T = { a: React$Node };\nclass C { x: string = React$Node }\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 23), "{still:?}");
+}
+
+#[test]
+fn unclear_type_ignores_a_private_initializer() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass C { #x = any }\nclass D { #x: string = any }\nclass E { #y: Box<string> = Object }\nclass F { x = any }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/unclear-type", "// @flow\nclass C { #x: any }\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_private_initializer() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass C { #x = bool }\nclass D { #x: string = bool }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\nclass C { #x: bool }\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_private_initializer() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass C { #x = React$Node }\nclass D { #x: string = React$Node }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass C { #x: React$Node }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+}
+
+#[test]
+fn unclear_type_ignores_a_static_field() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass C { static any }\nclass D { static any; }\nclass E { static Object }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass L { static x: any }\nclass M { static x: any = 1 }\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 21), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 21), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_static_field() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass C { static bool }\nclass D { static bool; }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass L { static x: bool }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 21), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_static_field() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass C { static React$Node }\nclass D { static React$Node; }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass L { static x: React$Node }\nclass M { static x: React$Node = 1 }\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 21), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 21), "{still:?}");
+}

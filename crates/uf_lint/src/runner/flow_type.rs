@@ -227,6 +227,63 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `class C { @any method() {} }` names a decorator. `@` is not part of the
+    // word. `class C { @dec x: any }` still names a type.
+    if names_a_decorator(code, at) {
+        return true;
+    }
+
+    // `for (any; i < n; i++)` names the initializer. The name after `of` stays
+    // a type.
+    if names_a_for_initializer(code, at, len) {
+        return true;
+    }
+
+    // `for (;; any)` and `for (let i = 0; i < n; any)` name the update.
+    if names_a_for_update(code, at, len) {
+        return true;
+    }
+
+    // `declare namespace any {}` names the namespace. A type inside the body
+    // stays a type.
+    if names_a_namespace(code, at) {
+        return true;
+    }
+
+    // `import typeof * as any` and `import typeof { any as Local }` bind a
+    // value. `import type { any }` stays a type.
+    if names_an_import_typeof(code, at) {
+        return true;
+    }
+
+    // `class C { static x = any }` and `class C { static x: string = any }`
+    // pass a value. `class C { static x: any }` stays a type.
+    if names_a_static_initializer(code, at) {
+        return true;
+    }
+
+    // `const [a = any] = xs` passes a value. `type T = [any]` stays a type.
+    if names_an_array_default(code, at) {
+        return true;
+    }
+
+    // `const { a: b = any } = obj` passes a value. `type T = { a: any }` stays
+    // a type.
+    if names_a_renamed_default(code, at) {
+        return true;
+    }
+
+    // `class C { #x = any }` passes a value. `class C { #x: any }` stays a type.
+    if names_a_private_initializer(code, at) {
+        return true;
+    }
+
+    // `class C { static any }` names a field. `class C { static x: any }` stays
+    // a type.
+    if names_a_static_field(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -578,6 +635,210 @@ fn names_a_for_of_binding(code: &str, at: usize, len: usize) -> bool {
     previous_word(code, await_at).is_some_and(|(_, word)| word == "for")
 }
 
+/// Whether `for (` introduces this name as the loop initializer.
+///
+/// `for (any; i < n; i++)` binds a value. `for (const item of React$Node)`
+/// still names a type after `of`, and `for (any of items)` is a for-of binding.
+fn names_a_for_initializer(code: &str, at: usize, len: usize) -> bool {
+    if !next_non_space(code, at + len).is_some_and(|(_, byte)| byte == b';') {
+        return false;
+    }
+    let Some((paren, b'(')) = prev_non_space(code, at) else {
+        return false;
+    };
+    previous_word(code, paren).is_some_and(|(_, word)| word == "for")
+}
+
+/// Whether this name is the update clause of a `for` loop.
+///
+/// `for (;; any)` and `for (let i = 0; i < n; any)` name a value. A `for` whose
+/// header has fewer than two semicolons is not one: `for (const item of
+/// React$Node)` and `type F = (any) => void` stay types.
+fn names_a_for_update(code: &str, at: usize, len: usize) -> bool {
+    if !next_non_space(code, at + len).is_some_and(|(_, byte)| byte == b')') {
+        return false;
+    }
+    let mut semis = 0usize;
+    let mut paren = 0usize;
+    let mut index = at;
+    while let Some((prev, byte)) = prev_non_space(code, index) {
+        match byte {
+            b')' => paren += 1,
+            b'(' if paren > 0 => paren -= 1,
+            b'(' => {
+                return semis == 2
+                    && previous_word(code, prev).is_some_and(|(_, word)| word == "for");
+            }
+            b';' if paren == 0 => semis += 1,
+            _ => {}
+        }
+        index = prev;
+    }
+    false
+}
+
+/// Whether `namespace` introduces this name.
+///
+/// `declare namespace any {}` names a value. `declare namespace N { declare var
+/// x: any }` still names a type.
+fn names_a_namespace(code: &str, at: usize) -> bool {
+    previous_word(code, at).is_some_and(|(_, word)| word == "namespace")
+}
+
+/// Whether the name is an `import typeof` binding.
+///
+/// `import typeof * as any` and `import typeof { any as Local }` bind a value.
+/// `import type { any }` and `import { type any }` stay types: the word in
+/// front of the brace is `type`, not `typeof`.
+fn names_an_import_typeof(code: &str, at: usize) -> bool {
+    if import_typeof_namespace(code, at) {
+        return true;
+    }
+    let Some(brace) = import_specifier_brace(code, at) else {
+        return false;
+    };
+    let Some((typeof_at, "typeof")) = previous_word(code, brace) else {
+        return false;
+    };
+    previous_word(code, typeof_at).is_some_and(|(_, word)| word == "import")
+}
+
+/// `import typeof * as any`.
+fn import_typeof_namespace(code: &str, at: usize) -> bool {
+    let Some((as_at, "as")) = previous_word(code, at) else {
+        return false;
+    };
+    let Some((star_at, b'*')) = prev_non_space(code, as_at) else {
+        return false;
+    };
+    let Some((typeof_at, "typeof")) = previous_word(code, star_at) else {
+        return false;
+    };
+    previous_word(code, typeof_at).is_some_and(|(_, word)| word == "import")
+}
+
+/// The `{` of an import specifier, including `Name as Local`.
+fn import_specifier_brace(code: &str, at: usize) -> Option<usize> {
+    match prev_non_space(code, at) {
+        Some((index, b'{')) => Some(index),
+        Some((index, b',')) => enclosing_brace(code, index),
+        _ => {
+            let Some((as_at, "as")) = previous_word(code, at) else {
+                return None;
+            };
+            let (imported, _) = previous_word(code, as_at)?;
+            match prev_non_space(code, imported) {
+                Some((index, b'{')) => Some(index),
+                Some((index, b',')) => enclosing_brace(code, index),
+                _ => None,
+            }
+        }
+    }
+}
+
+/// Whether the name is the initializer of a static field.
+///
+/// `class C { static x = any }` and `class C { static x: string = any }` pass a
+/// value, including `static x: Box<string> = any`. `class C { static x: any }`
+/// and `class C { static x: any = 1 }` still name a type.
+fn names_a_static_initializer(code: &str, at: usize) -> bool {
+    let Some(eq) = single_equals_before(code, at) else {
+        return false;
+    };
+    let Some(field) = field_before_equals(code, eq) else {
+        return false;
+    };
+    previous_word(code, field).is_some_and(|(_, word)| word == "static")
+}
+
+/// A single `=` in front of `at`, not `==`, `=>`, or a compound assignment.
+fn single_equals_before(code: &str, at: usize) -> Option<usize> {
+    let Some((eq, b'=')) = prev_non_space(code, at) else {
+        return None;
+    };
+    if eq > 0
+        && matches!(
+            code.as_bytes()[eq - 1],
+            b'=' | b'!' | b'<' | b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'^'
+        )
+    {
+        return None;
+    }
+    Some(eq)
+}
+
+/// The field an initializer `=` belongs to, skipping its annotation.
+///
+/// `x =`, `x: string =`, and `x: Box<string> =` all name `x`.
+fn field_before_equals(code: &str, eq: usize) -> Option<usize> {
+    let (name, _) = match prev_non_space(code, eq) {
+        Some((close, b'>')) => {
+            let open = matching_open_angle(code, close)?;
+            previous_word(code, open)?
+        }
+        Some((_, byte)) if is_word_byte(byte) => previous_word(code, eq)?,
+        _ => return None,
+    };
+    match prev_non_space(code, name) {
+        Some((colon, b':')) => previous_word(code, colon).map(|(at, _)| at),
+        _ => Some(name),
+    }
+}
+
+/// Whether the name is the default of an array binding.
+///
+/// `const [a = any] = xs` and `function f([a = any])` pass a value.
+/// `type T = [any]` and `const xs = [any]` stay types.
+fn names_an_array_default(code: &str, at: usize) -> bool {
+    let Some(eq) = single_equals_before(code, at) else {
+        return false;
+    };
+    enclosing_bracket(code, eq).is_some_and(|bracket| bracket_is_a_binding(code, bracket))
+}
+
+/// Whether the name is the default of a renamed binding.
+///
+/// `const { a: b = any } = obj` passes a value. `type T = { a: any }` stays a
+/// type, and so does `class C { x: string = any }`.
+fn names_a_renamed_default(code: &str, at: usize) -> bool {
+    let Some(eq) = single_equals_before(code, at) else {
+        return false;
+    };
+    let Some((name, _)) = previous_word(code, eq) else {
+        return false;
+    };
+    let Some((colon, b':')) = prev_non_space(code, name) else {
+        return false;
+    };
+    let Some((key, _)) = previous_word(code, colon) else {
+        return false;
+    };
+    brace_of_key(code, key).is_some_and(|brace| brace_is_a_binding_pattern(code, brace))
+}
+
+/// Whether the name is the initializer of a private field.
+///
+/// `class C { #x = any }` and `class C { #x: string = any }` pass a value.
+/// `class C { #x: any }` still names a type. `#` is not part of the word.
+fn names_a_private_initializer(code: &str, at: usize) -> bool {
+    let Some(eq) = single_equals_before(code, at) else {
+        return false;
+    };
+    let Some(field) = field_before_equals(code, eq) else {
+        return false;
+    };
+    field > 0 && code.as_bytes()[field - 1] == b'#'
+}
+
+/// Whether `static` introduces this name as an unannotated field.
+///
+/// `class C { static any }` and `class C { static any; }` name a field.
+/// `class C { static x: any }` still names a type: `:` sits between `static`
+/// and the annotation.
+fn names_a_static_field(code: &str, at: usize) -> bool {
+    previous_word(code, at).is_some_and(|(_, word)| word == "static")
+}
+
 /// Whether the name is a function or arrow parameter's default.
 ///
 /// `function f(value = Object)` and `function f(value: string = React$Node)`
@@ -773,6 +1034,15 @@ fn matching_close_angle(code: &str, open: usize) -> Option<usize> {
 /// any; }` still reports the annotation.
 fn names_a_private_name(code: &str, at: usize) -> bool {
     at > 0 && code.as_bytes()[at - 1] == b'#'
+}
+
+/// Whether `@` is glued to the front of the word.
+///
+/// `class C { @any method() {} }` names a decorator. Flow has no decorator
+/// types, so the name is a value. `class C { @dec x: any }` still reports the
+/// annotation.
+fn names_a_decorator(code: &str, at: usize) -> bool {
+    at > 0 && code.as_bytes()[at - 1] == b'@'
 }
 
 /// Whether the name is an enum member.
@@ -1846,6 +2116,16 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_parameter_default(code, at, outer)
                 || names_a_type_parameter(code, at)
                 || names_a_private_name(code, at)
+                || names_a_decorator(code, at)
+                || names_a_for_initializer(code, at, len)
+                || names_a_for_update(code, at, len)
+                || names_a_namespace(code, at)
+                || names_an_import_typeof(code, at)
+                || names_a_static_initializer(code, at)
+                || names_an_array_default(code, at)
+                || names_a_renamed_default(code, at)
+                || names_a_private_initializer(code, at)
+                || names_a_static_field(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)
