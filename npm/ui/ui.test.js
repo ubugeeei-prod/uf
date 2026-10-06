@@ -9758,7 +9758,7 @@ describe("the escape hatch: which part hands its element to the caller", () => {
       // `match (render)` is the same hatch: the part still chooses the caller's
       // element, and the call is `custom(...)` inside that match.
       return (
-        !/\brender\??: RenderProp[,)]/.test(source) ||
+        !/\brender\s*\??\s*:\s*RenderProp\s*[,)]/.test(source) ||
         !(source.includes("render(") || source.includes("match (render)"))
       );
     });
@@ -9770,7 +9770,9 @@ describe("the escape hatch: which part hands its element to the caller", () => {
   });
 
   it("keeps the fixed list shrinking rather than growing", () => {
-    const hatched = FIXED.filter((part) => /\brender\??: RenderProp[,)]/.test(sourceOf(part)));
+    const hatched = FIXED.filter((part) =>
+      /\brender\s*\??\s*:\s*RenderProp\s*[,)]/.test(sourceOf(part)),
+    );
     // A part that has grown the escape hatch belongs in `RENDER`. Moving it is
     // the point: the two lists are what #303's remainder is counted from, and
     // a stale one is a remainder nobody can trust.
