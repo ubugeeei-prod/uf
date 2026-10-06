@@ -157,7 +157,7 @@ component InputOtpGroup(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders InputOtp.Group {
   return (
     <InputOtp.Group
       {...forwarded(rest)}
@@ -169,7 +169,12 @@ component InputOtpGroup(
 }
 
 /** The box that shows the character at `index`. */
-component InputOtpSlot(index: number, xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component InputOtpSlot(
+  index     : number,
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders InputOtp.Slot {
   const disabled = useContext(DisabledContext);
   const styled = props(styles.slot, disabled && styles.slotDisabled, xstyle);
   return (
@@ -182,7 +187,11 @@ component InputOtpSlot(index: number, xstyle?: StyleArgument, className?: string
 }
 
 /** A short dash between groups, silent to a reader. */
-component InputOtpSeparator(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component InputOtpSeparator(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders InputOtp.Separator {
   return (
     <InputOtp.Separator
       {...forwarded(rest)}

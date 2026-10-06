@@ -62,7 +62,7 @@ component NumberFieldRoot(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders NumberField.Root {
   return (
     <NumberField.Root
       {...forwarded(rest)}
@@ -72,7 +72,11 @@ component NumberFieldRoot(
     </NumberField.Root>
   );
 }
-component NumberFieldInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component NumberFieldInput(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders NumberField.Input {
   return (
     <NumberField.Input
       {...forwarded(rest)}
@@ -85,7 +89,7 @@ component NumberFieldIncrement(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders NumberField.Increment {
   return (
     <NumberField.Increment
       {...forwarded(rest)}
@@ -100,7 +104,7 @@ component NumberFieldDecrement(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders NumberField.Decrement {
   return (
     <NumberField.Decrement
       {...forwarded(rest)}

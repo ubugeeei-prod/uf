@@ -59,7 +59,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useId, useMemo, useRef, useState } from "@uniflowed/react";
+import { createContext, useContext, useId, useRef, useState } from "@uniflowed/react";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import {
@@ -112,10 +112,7 @@ component CollapsibleRoot(
   const [isOpen,  setOpen]    = useControlled(open, defaultOpen, onOpenChange);
   const [present, setPresent] = useState(false);
 
-  const state = useMemo(
-    () => ({ contentId, open: isOpen, setOpen, present, registerContent: setPresent, measure }),
-    [contentId, isOpen, setOpen, present, measure],
-  );
+  const state = { contentId, open: isOpen, setOpen, present, registerContent: setPresent, measure };
 
   return <CollapsibleContext.Provider value={state}>{children}</CollapsibleContext.Provider>;
 }

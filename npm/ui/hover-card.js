@@ -45,7 +45,6 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
-  useMemo,
   useRef,
 } from "@uniflowed/react";
 import { useEventListener } from "@uniflowed/hooks/dom";
@@ -111,19 +110,16 @@ component HoverCardRoot(
   const dismissedRef      = useRef(false);
   const intent            = useHoverIntent(setOpen);
 
-  const state = useMemo(
-    () => ({
-      base,
-      closeDelay,
-      dismissedRef,
-      intent,
-      open: isOpen,
-      openDelay,
-      setOpen,
-      triggerRef,
-    }),
-    [base, closeDelay, intent, isOpen, openDelay, setOpen],
-  );
+  const state = {
+    base,
+    closeDelay,
+    dismissedRef,
+    intent,
+    open: isOpen,
+    openDelay,
+    setOpen,
+    triggerRef,
+  };
 
   return <HoverCardContext.Provider value={state}>{children}</HoverCardContext.Provider>;
 }

@@ -118,14 +118,18 @@ component DateRangePickerRoot(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders DateRangePicker.Root {
   return (
     <DateRangePicker.Root {...forwarded(rest)}>
       <div className={classNames(props(styles.root, xstyle).className, className)}>{children}</div>
     </DateRangePicker.Root>
   );
 }
-component DateRangePickerStartField(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component DateRangePickerStartField(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders DateRangePicker.StartField {
   return (
     <DateRangePicker.StartField
       {...forwarded(rest)}
@@ -133,7 +137,11 @@ component DateRangePickerStartField(xstyle?: StyleArgument, className?: string, 
     />
   );
 }
-component DateRangePickerEndField(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component DateRangePickerEndField(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders DateRangePicker.EndField {
   return (
     <DateRangePicker.EndField
       {...forwarded(rest)}
@@ -146,7 +154,7 @@ component DateRangePickerTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders DateRangePicker.Trigger {
   return (
     <DateRangePicker.Trigger
       {...forwarded(rest)}
@@ -161,21 +169,25 @@ component DateRangePickerCalendar(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders DateRangePicker.Calendar {
   return (
     <DateRangePicker.Calendar
       {...forwarded(rest)}
       className={classNames(props(styles.panel, xstyle).className, className)}
     >
-      {children ?? (
-        <>
-          <Calendar.Header>
-            <Calendar.Previous />
-            <Calendar.Next />
-          </Calendar.Header>
-          <Calendar.Month />
-        </>
-      )}
+      {
+        match (children) {
+          null | undefined =>
+            <>
+              <Calendar.Header>
+                <Calendar.Previous />
+                <Calendar.Next />
+              </Calendar.Header>
+              <Calendar.Month />
+            </>,
+          const given      => given,
+        }
+      }
     </DateRangePicker.Calendar>
   );
 }

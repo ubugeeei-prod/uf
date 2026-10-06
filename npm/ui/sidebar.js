@@ -52,7 +52,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useId, useMemo } from "@uniflowed/react";
+import { createContext, useContext, useId } from "@uniflowed/react";
 import { useMediaQuery } from "@uniflowed/hooks/browser";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
@@ -134,20 +134,17 @@ component SidebarRoot(
   // that is still usable when there is no viewport to ask.
   const modal = useMediaQuery(narrowQuery, false);
 
-  const state = useMemo(
-    () => ({
-      base,
-      collapsed: !modal && !isOpen,
-      modal,
-      open: isOpen,
-      // A sheet's navigation is in the document only while the sheet is open;
-      // the page's is always there, collapsed or not.
-      present: modal ? isOpen : true,
-      setOpen,
-      side,
-    }),
-    [base, isOpen, modal, setOpen, side],
-  );
+  const state = {
+    base,
+    collapsed: !modal && !isOpen,
+    modal,
+    open: isOpen,
+    // A sheet's navigation is in the document only while the sheet is open;
+    // the page's is always there, collapsed or not.
+    present: modal ? isOpen : true,
+    setOpen,
+    side,
+  };
 
   return (
     <SidebarContext.Provider value={state}>

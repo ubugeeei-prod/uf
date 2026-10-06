@@ -152,7 +152,10 @@ component ItemRoot(
       className,
     ),
   };
-  return as === "li" ? <li {...shared}>{children}</li> : <div {...shared}>{children}</div>;
+  return match (as) {
+    "li"  => <li {...shared}>{children}</li>,
+    "div" => <div {...shared}>{children}</div>,
+  };
 }
 
 /** An icon, an avatar or a thumbnail at the start of the row. */

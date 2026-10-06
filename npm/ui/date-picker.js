@@ -45,7 +45,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useMemo, useRef, useState } from "@uniflowed/react";
+import { createContext, useContext, useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import type { PlainDate } from "@uniflowed/core/temporal";
 import { Temporal } from "@uniflowed/core/temporal";
@@ -138,15 +138,9 @@ component DatePickerRoot(
   const fieldRef          = useRef<HTMLElement | null>(null);
   const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
 
-  const controlled          = useMemo(
-    () =>
-      value === undefined ? undefined : value === null ? null : Temporal.PlainDate.from(value),
-    [value],
-  );
-  const initial             = useMemo(
-    () => (defaultValue == null ? null : Temporal.PlainDate.from(defaultValue)),
-    [defaultValue],
-  );
+  const controlled =
+    value === undefined ? undefined : value === null ? null : Temporal.PlainDate.from(value);
+  const initial = defaultValue == null ? null : Temporal.PlainDate.from(defaultValue);
   const report              = useStableCallback((next: PlainDate | null) => {
     onValueChange?.(next);
   });
@@ -196,24 +190,18 @@ component DatePickerRoot(
     setOpen(false);
   });
 
-  const dateSettings = useMemo(
-    () => ({ isDateDisabled, locale, today, weekStartsOn }),
-    [isDateDisabled, locale, today, weekStartsOn],
-  );
+  const dateSettings = { isDateDisabled, locale, today, weekStartsOn };
 
-  const state = useMemo(
-    () => ({
-      choose,
-      commit,
-      fieldRef,
-      focusField,
-      invalid,
-      setDraft,
-      text,
-      value: chosen,
-    }),
-    [choose, chosen, commit, focusField, invalid, text],
-  );
+  const state = {
+    choose,
+    commit,
+    fieldRef,
+    focusField,
+    invalid,
+    setDraft,
+    text,
+    value: chosen,
+  };
 
   return (
     <DatePickerContext.Provider value={state}>

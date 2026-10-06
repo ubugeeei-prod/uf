@@ -268,7 +268,7 @@ component TabsList(
   xstyle?   : StyleArgument,
   className?: string,
   ...given: Rest
-) {
+) renders Tabs.List {
   const orientation = useContext(OrientationContext);
   const vertical = orientation === "vertical";
   const styled = props(styles.list, orientation === "vertical" && styles.listVertical, xstyle);
@@ -288,12 +288,16 @@ component TabsList(
       <SlidingContext.Provider value={sliding}>
         <div {...forwarded(list)}>
           {children}
-          {sliding ? (
-            <span
-              {...props(styles.indicator, vertical && styles.indicatorVertical)}
-              aria-hidden="true"
-            />
-          ) : null}
+          {
+            match (sliding) {
+              true  =>
+                <span
+                  {...props(styles.indicator, vertical && styles.indicatorVertical)}
+                  aria-hidden="true"
+                />,
+              false => null,
+            }
+          }
         </div>
       </SlidingContext.Provider>
     ),
@@ -343,7 +347,7 @@ component TabsPanel(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Tabs.Panel {
   return (
     <Tabs.Panel
       {...forwarded(rest)}

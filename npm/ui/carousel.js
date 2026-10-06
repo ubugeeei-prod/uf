@@ -62,16 +62,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "@uniflowed/react";
 import { usePrefersReducedMotion } from "@uniflowed/hooks/browser";
 
 import type { Orientation } from "./internal/roving-focus.js";
@@ -161,31 +152,28 @@ component CarouselRoot(
   // once per render of the root — which would decrement and re-increment the
   // count, and leave it at zero for exactly as long as it takes the check
   // below to read it.
-  const registerPause = useCallback((present: boolean) => {
+  const registerPause = (present: boolean) => {
     paused.current += present ? 1 : -1;
-  }, []);
+  };
 
   // A reader who asked their system to stop moving things has answered this
   // question already, and the answer is not "rotate anyway and offer a button".
   const rotates = autoplay != null && !reducedMotion;
   const rotating = rotates && !stopped && !held;
 
-  const state = useMemo(
-    () => ({
-      base,
-      count,
-      index: current,
-      loop,
-      orientation,
-      registerPause,
-      rotates,
-      rotating,
-      setIndex,
-      setStopped,
-      stopped,
-    }),
-    [base, count, current, loop, orientation, registerPause, rotates, rotating, setIndex, stopped],
-  );
+  const state = {
+    base,
+    count,
+    index: current,
+    loop,
+    orientation,
+    registerPause,
+    rotates,
+    rotating,
+    setIndex,
+    setStopped,
+    stopped,
+  };
 
   useEffect(() => {
     if (!rotating || count <= 1) {

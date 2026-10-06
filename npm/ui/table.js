@@ -63,7 +63,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useEffect, useId, useMemo, useState } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import { Checkbox } from "./checkbox.js";
@@ -155,33 +155,19 @@ component TableRoot(
     setLabels((held) => (held[column] === label ? held : { ...held, [column]: label }));
   });
 
-  const state = useMemo(
-    () => ({
-      sort   : current,
-      setSort: setCurrent,
-      rowCount,
-      rowOffset,
-      headerRows,
-      registerHeader,
-      captionId: `${base}-caption`,
-      captioned,
-      registerCaption: setCaptioned,
-      labels,
-      registerLabel,
-    }),
-    [
-      base,
-      current,
-      setCurrent,
-      rowCount,
-      rowOffset,
-      headerRows,
-      registerHeader,
-      captioned,
-      labels,
-      registerLabel,
-    ],
-  );
+  const state = {
+    sort   : current,
+    setSort: setCurrent,
+    rowCount,
+    rowOffset,
+    headerRows,
+    registerHeader,
+    captionId: `${base}-caption`,
+    captioned,
+    registerCaption: setCaptioned,
+    labels,
+    registerLabel,
+  };
 
   const message =
     current == null
@@ -471,7 +457,7 @@ component TableSelectAll(
   className?     : string,
   disabled?      : boolean = false,
   render?        : RenderProp,
-) {
+) renders Checkbox {
   return (
     <Checkbox
       aria-label={label}
@@ -504,7 +490,7 @@ component TableRowSelect(
   className?     : string,
   disabled?      : boolean = false,
   render?        : RenderProp,
-) {
+) renders Checkbox {
   return (
     <Checkbox
       aria-label={label}

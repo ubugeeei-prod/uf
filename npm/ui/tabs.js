@@ -61,16 +61,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "@uniflowed/react";
 
 import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
 import {
@@ -130,7 +121,7 @@ component TabsRoot(
 
   // Functional updates, so two panels mounting in the same commit do not each
   // overwrite the other's registration with a list computed before it existed.
-  const registerPanel = useCallback((panel: string, present: boolean) => {
+  const registerPanel = (panel: string, present: boolean) => {
     setMounted((current) => {
       const has = current.includes(panel);
       if (present === has) {
@@ -138,20 +129,17 @@ component TabsRoot(
       }
       return present ? [...current, panel] : current.filter((each) => each !== panel);
     });
-  }, []);
+  };
 
-  const state = useMemo(
-    () => ({
-      base,
-      selected,
-      select,
-      orientation,
-      activation: activationMode,
-      mounted,
-      registerPanel,
-    }),
-    [base, selected, select, orientation, activationMode, mounted, registerPanel],
-  );
+  const state = {
+    base,
+    selected,
+    select,
+    orientation,
+    activation: activationMode,
+    mounted,
+    registerPanel,
+  };
 
   const props = withProps(rest, { children });
 

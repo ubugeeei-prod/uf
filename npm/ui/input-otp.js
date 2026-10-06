@@ -57,7 +57,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useMemo, useState } from "@uniflowed/react";
+import { createContext, useContext, useState } from "@uniflowed/react";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { composeHandlers, withProps, withoutComposed } from "./internal/merge-props.js";
@@ -132,7 +132,7 @@ component InputOtpRoot(
   // `Field.Control` keeps the label the caller actually rendered.
   const named = rest["aria-labelledby"] != null;
 
-  const state = useMemo(() => ({ focused, length, value: code }), [focused, length, code]);
+  const state = { focused, length, value: code };
 
   return (
     <InputOtpContext.Provider value={state}>

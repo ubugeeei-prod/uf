@@ -114,7 +114,7 @@ component CarouselRoot(
   xstyle?       : StyleArgument,
   className?    : string,
   ...rest: Rest
-) {
+) renders Carousel.Root {
   return (
     <Carousel.Root
       {...forwarded(rest)}
@@ -139,7 +139,7 @@ component CarouselContent(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Carousel.Content {
   return (
     <Carousel.Content
       {...forwarded(rest)}
@@ -157,7 +157,7 @@ component CarouselItem(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Carousel.Item {
   return (
     <Carousel.Item
       {...forwarded(rest)}
@@ -184,7 +184,7 @@ component CarouselPrevious(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Carousel.Previous {
   return (
     <Carousel.Previous
       {...forwarded(rest)}
@@ -202,7 +202,7 @@ component CarouselNext(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Carousel.Next {
   return (
     <Carousel.Next
       {...forwarded(rest)}
@@ -221,7 +221,7 @@ component CarouselPause(
   xstyle?    : StyleArgument,
   className? : string,
   ...rest: Rest
-) {
+) renders Carousel.Pause {
   return (
     <Carousel.Pause
       {...forwarded(rest)}

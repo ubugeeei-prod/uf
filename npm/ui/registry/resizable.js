@@ -164,7 +164,7 @@ component ResizablePanel(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Resizable.Panel {
   return (
     <Resizable.Panel
       {...forwarded(rest)}
@@ -182,7 +182,7 @@ component ResizableHandle(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Resizable.Handle {
   const vertical = useContext(OrientationContext) === "vertical";
   return (
     <Resizable.Handle

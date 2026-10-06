@@ -73,7 +73,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useEffect, useMemo, useRef } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useRef } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
@@ -195,37 +195,21 @@ component SliderRoot(
     return at;
   });
 
-  const state = useMemo(
-    () => ({
-      values,
-      min,
-      max,
-      step,
-      largeStep,
-      orientation,
-      disabled,
-      valueText,
-      valuesNow,
-      valueAt,
-      setAt,
-      nearest,
-      trackRef,
-    }),
-    [
-      values,
-      min,
-      max,
-      step,
-      largeStep,
-      orientation,
-      disabled,
-      valueText,
-      valuesNow,
-      valueAt,
-      setAt,
-      nearest,
-    ],
-  );
+  const state = {
+    values,
+    min,
+    max,
+    step,
+    largeStep,
+    orientation,
+    disabled,
+    valueText,
+    valuesNow,
+    valueAt,
+    setAt,
+    nearest,
+    trackRef,
+  };
 
   return (
     <SliderContext.Provider value={state}>

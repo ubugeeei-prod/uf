@@ -491,28 +491,34 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
       };
       return (
         <div key={item.key} {...props}>
-          {grid ? (
-            <div role="gridcell">
-              {content}
-              {kind === "tags" && onRemove != null ? (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  disabled={disabled(item)}
-                  aria-label={`Remove ${item.textValue}`}
-                  onClick={(event: RowClick) => {
-                    event.stopPropagation();
-                    root.current?.focus();
-                    remove(item.key);
-                  }}
-                >
-                  ×
-                </button>
-              ) : null}
-            </div>
-          ) : (
-            content
-          )}
+          {
+            match (grid) {
+              true  =>
+                <div role="gridcell">
+                  {content}
+                  {
+                    match (kind === "tags" && onRemove != null) {
+                      true  =>
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          disabled={disabled(item)}
+                          aria-label={`Remove ${item.textValue}`}
+                          onClick={(event: RowClick) => {
+                            event.stopPropagation();
+                            root.current?.focus();
+                            remove(item.key);
+                          }}
+                        >
+                          ×
+                        </button>,
+                      false => null,
+                    }
+                  }
+                </div>,
+              false => content,
+            }
+          }
         </div>
       );
     });
@@ -544,13 +550,13 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
           position: "relative",
         }
       : style,
-    children: virtualized ? (
-      <div role="presentation" style={{ height: rows.length * rowHeight, position: "relative" }}>
-        {rowNodes}
-      </div>
-    ) : (
-      rowNodes
-    ),
+    children: match (virtualized) {
+      true  =>
+        <div role="presentation" style={{ height: rows.length * rowHeight, position: "relative" }}>
+          {rowNodes}
+        </div>,
+      false => rowNodes,
+    },
   });
   return (
     <>

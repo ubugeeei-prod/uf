@@ -60,7 +60,7 @@ export component Separator(
   xstyle?     : StyleArgument,
   className?  : string,
   ...rest: Rest
-) {
+) renders SeparatorPart {
   const styled = props(
     styles.base,
     match (orientation) {

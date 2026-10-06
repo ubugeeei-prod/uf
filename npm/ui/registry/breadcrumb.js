@@ -85,7 +85,7 @@ component BreadcrumbRoot(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Breadcrumb.Root {
   return (
     <Breadcrumb.Root
       {...forwarded(rest)}
@@ -103,7 +103,7 @@ component BreadcrumbList(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Breadcrumb.List {
   return (
     <Breadcrumb.List
       {...forwarded(rest)}
@@ -138,7 +138,7 @@ component BreadcrumbLink(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Breadcrumb.Link {
   return (
     <Breadcrumb.Link
       {...forwarded(rest)}
@@ -156,7 +156,7 @@ component BreadcrumbPage(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Breadcrumb.Page {
   return (
     <Breadcrumb.Page
       {...forwarded(rest)}
@@ -179,21 +179,25 @@ component BreadcrumbSeparator(
       {...forwarded(rest)}
       className={classNames(props(styles.separator, xstyle).className, className)}
     >
-      {children ?? (
-        <svg
-          fill="none"
-          focusable="false"
-          height="14"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2"
-          viewBox="0 0 24 24"
-          width="14"
-        >
-          <path d="m9 18 6-6-6-6" />
-        </svg>
-      )}
+      {
+        match (children) {
+          null | undefined =>
+            <svg
+              fill="none"
+              focusable="false"
+              height="14"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              width="14"
+            >
+              <path d="m9 18 6-6-6-6" />
+            </svg>,
+          const given      => given,
+        }
+      }
     </Breadcrumb.Separator>
   );
 }

@@ -42,15 +42,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "@uniflowed/react";
 
 import type { Rect } from "./anchor.js";
 import type { Direction } from "./roving-focus.js";
@@ -210,19 +202,16 @@ export component MenuLevel(
   const pendingFocusRef           = useRef<"first" | "last" | null>(null);
   const [triggered, setTriggered] = useState(false);
 
-  const state = useMemo(
-    () => ({
-      base,
-      open: isOpen,
-      setOpen,
-      triggerRef,
-      pendingFocusRef,
-      parent,
-      triggered,
-      registerTrigger: setTriggered,
-    }),
-    [base, isOpen, setOpen, parent, triggered],
-  );
+  const state = {
+    base,
+    open: isOpen,
+    setOpen,
+    triggerRef,
+    pendingFocusRef,
+    parent,
+    triggered,
+    registerTrigger: setTriggered,
+  };
 
   return <MenuContext.Provider value={state}>{children}</MenuContext.Provider>;
 }

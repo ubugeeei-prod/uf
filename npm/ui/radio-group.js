@@ -247,7 +247,7 @@ component RadioGroupItem(
   const group = useRadioGroup("RadioGroup.Item");
   const id    = useId();
   const checked = group.selected === value;
-  const item = useMemo(() => ({ checked }), [checked]);
+  const item = { checked };
   const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);
   const props = withProps(passed, {
     "aria-checked" : checked ? "true" : "false",

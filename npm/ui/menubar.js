@@ -216,10 +216,7 @@ component MenubarRoot(children: renders* MenubarMenu, render?: RenderProp, ...re
 component MenubarMenu(children: React.Node, value: string) {
   const bar = useMenubar("Menubar.Menu");
   const setOpen = bar.setOpen;
-  const onOpenChange = useCallback(
-    (next: boolean) => setOpen(next ? value : null),
-    [setOpen, value],
-  );
+  const onOpenChange = (next: boolean) => setOpen(next ? value : null);
 
   return (
     <MenubarMenuContext.Provider value={value}>

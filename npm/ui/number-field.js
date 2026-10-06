@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import { useControlled } from "./internal/controlled-state.js";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
@@ -116,9 +116,9 @@ component NumberFieldRoot(
           ),
         );
   const { locale } = useLocale();
-  const formatter = useMemo(() => numberFormatter(locale, formatOptions), [locale, formatOptions]);
+  const formatter = numberFormatter(locale, formatOptions);
   const [current, setCurrent] = useControlled(value, defaultValue, onValueChange);
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft,   setDraft]   = useState<string | null>(null);
   // The text as the last event handler left it, which can be ahead of the
   // `draft` and `current` this render read: two keystrokes can land before React
   // renders the first, and a handler installed by `useStableCallback` sees the

@@ -239,7 +239,7 @@ component CalendarRoot(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Calendar.Root {
   return (
     <Calendar.Root
       {...forwarded(rest)}
@@ -263,7 +263,7 @@ component CalendarPrevious(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Calendar.Previous {
   return (
     <Calendar.Previous
       {...forwarded(rest)}
@@ -281,7 +281,7 @@ component CalendarNext(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Calendar.Next {
   return (
     <Calendar.Next
       {...forwarded(rest)}
@@ -294,7 +294,11 @@ component CalendarNext(
 }
 
 /** The month shown: its caption, its weekday headings, and a cell for every day. */
-component CalendarMonth(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component CalendarMonth(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders Calendar.Month {
   const day = props(styles.day).className;
   return (
     <Calendar.Month

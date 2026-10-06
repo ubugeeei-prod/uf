@@ -54,15 +54,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import type { DateTimeFormatOptions, PlainDate } from "@uniflowed/core/temporal";
 import { Temporal } from "@uniflowed/core/temporal";
@@ -210,19 +202,10 @@ component CalendarRoot(
   // Read once. The header says why this is not the `Now`-in-a-render bug, and
   // why an application that server-renders a calendar wants the clock seam.
   const [clockToday] = useState<PlainDate>(() => Temporal.Now.plainDateISO());
-  const currentDate  = useMemo(
-    () => (today === undefined ? clockToday : toDate(today)),
-    [clockToday, today],
-  );
+  const currentDate = today === undefined ? clockToday : toDate(today);
 
-  const controlled   = useMemo(
-    () => (value === undefined ? undefined : value === null ? null : toDate(value)),
-    [value],
-  );
-  const initialValue = useMemo(
-    () => (defaultValue == null ? null : toDate(defaultValue)),
-    [defaultValue],
-  );
+  const controlled = value === undefined ? undefined : value === null ? null : toDate(value);
+  const initialValue = defaultValue == null ? null : toDate(defaultValue);
   // Narrowed on the way out rather than in the prop's type: the component never
   // clears a selection, so a caller's handler should not have to accept a `null`
   // it can never be given.
@@ -247,10 +230,7 @@ component CalendarRoot(
   });
   const focusedDate = useStableCallback((): PlainDate => focusedRef.current);
 
-  const weekStart = useMemo(
-    () => (weekStartsOn == null ? firstDayOfWeekFor(resolvedLocale) : weekStartsOn),
-    [resolvedLocale, weekStartsOn],
-  );
+  const weekStart = weekStartsOn == null ? firstDayOfWeekFor(resolvedLocale) : weekStartsOn;
 
   const isDisabled = useStableCallback((date: PlainDate) => isDateDisabled?.(date) === true);
 
@@ -278,10 +258,7 @@ component CalendarRoot(
     setFocused((current) => (current.equals(date) ? current : date));
   });
 
-  const caption = useMemo(
-    () => focused.toLocaleString(resolvedLocale, CAPTION_FORMAT),
-    [focused, resolvedLocale],
-  );
+  const caption = focused.toLocaleString(resolvedLocale, CAPTION_FORMAT);
 
   const [announcement, setAnnouncement] = useState("");
   const shown                           = useRef(`${focused.year}-${focused.month}`);
@@ -302,39 +279,22 @@ component CalendarRoot(
     monthChanged(Temporal.PlainDate.from({ day: 1, month: focused.month, year: focused.year }));
   }, [caption, focused, monthChanged]);
 
-  const state = useMemo(
-    () => ({
-      base,
-      caption,
-      focused,
-      focusedDate,
-      focusedDayRef: dayRef,
-      isDisabled,
-      isDateSelected,
-      locale: resolvedLocale,
-      moveFocus,
-      pendingFocusRef,
-      select,
-      selected,
-      today       : currentDate,
-      weekStartsOn: weekStart,
-    }),
-    [
-      base,
-      caption,
-      currentDate,
-      dayRef,
-      focused,
-      focusedDate,
-      isDisabled,
-      isDateSelected,
-      resolvedLocale,
-      moveFocus,
-      select,
-      selected,
-      weekStart,
-    ],
-  );
+  const state = {
+    base,
+    caption,
+    focused,
+    focusedDate,
+    focusedDayRef: dayRef,
+    isDisabled,
+    isDateSelected,
+    locale: resolvedLocale,
+    moveFocus,
+    pendingFocusRef,
+    select,
+    selected,
+    today       : currentDate,
+    weekStartsOn: weekStart,
+  };
 
   return (
     <CalendarContext.Provider value={state}>
@@ -384,11 +344,8 @@ component CalendarMonth(
   const { focused, focusedDate, focusedDayRef, moveFocus, pendingFocusRef, weekStartsOn } =
     calendar;
 
-  const weeks   = useMemo(
-    () => weeksOf(focused.year, focused.month, weekStartsOn),
-    [focused.month, focused.year, weekStartsOn],
-  );
-  const columns = useMemo(() => weekdaysFrom(weekStartsOn), [weekStartsOn]);
+  const weeks = weeksOf(focused.year, focused.month, weekStartsOn);
+  const columns = weekdaysFrom(weekStartsOn);
 
   // No dependency list, and guarded by what it reads rather than by one: the
   // cell it looks for may have been produced by a *caller's* render, which is a

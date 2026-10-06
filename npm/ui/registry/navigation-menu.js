@@ -172,7 +172,7 @@ component NavigationMenuRoot(
   xstyle?       : StyleArgument,
   className?    : string,
   ...rest: Rest
-) {
+) renders NavigationMenu.Root {
   return (
     <NavigationMenu.Root
       {...forwarded(rest)}
@@ -231,7 +231,7 @@ component NavigationMenuTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders NavigationMenu.Trigger {
   return (
     <NavigationMenu.Trigger
       {...forwarded(rest)}
@@ -263,7 +263,7 @@ component NavigationMenuContent(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders NavigationMenu.Body {
   return (
     <NavigationMenu.Body
       {...forwarded(rest)}

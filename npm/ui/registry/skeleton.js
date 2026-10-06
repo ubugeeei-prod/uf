@@ -73,7 +73,7 @@ component SkeletonRoot(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Skeleton.Root {
   return (
     <Skeleton.Root
       {...forwarded(rest)}
@@ -93,7 +93,7 @@ component SkeletonBox(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Skeleton.Box {
   const styled = props(
     styles.box,
     match (shape) {

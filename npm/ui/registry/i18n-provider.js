@@ -20,7 +20,7 @@ export component I18nProvider(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders HeadlessI18nProvider {
   return (
     <HeadlessI18nProvider
       {...forwarded(rest)}

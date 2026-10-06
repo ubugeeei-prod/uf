@@ -36,7 +36,11 @@ const styles = stylex.create({
     fontVariantNumeric: "tabular-nums",
   },
 });
-export component TimeField(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+export component TimeField(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders HeadlessTimeField {
   return (
     <HeadlessTimeField
       {...forwarded(rest)}

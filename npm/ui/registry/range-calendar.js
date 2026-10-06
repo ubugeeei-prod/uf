@@ -35,21 +35,25 @@ export component RangeCalendar(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders HeadlessRangeCalendar.Root {
   return (
     <HeadlessRangeCalendar.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
     >
-      {children ?? (
-        <>
-          <Calendar.Header>
-            <Calendar.Previous />
-            <Calendar.Next />
-          </Calendar.Header>
-          <Calendar.Month />
-        </>
-      )}
+      {
+        match (children) {
+          null | undefined =>
+            <>
+              <Calendar.Header>
+                <Calendar.Previous />
+                <Calendar.Next />
+              </Calendar.Header>
+              <Calendar.Month />
+            </>,
+          const given      => given,
+        }
+      }
     </HeadlessRangeCalendar.Root>
   );
 }

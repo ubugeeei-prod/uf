@@ -49,7 +49,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useRef, useState } from "@uniflowed/react";
 import { usePrefersReducedMotion } from "@uniflowed/hooks/browser";
 
 import type { Edge } from "./sheet.js";
@@ -149,19 +149,16 @@ component DrawerRoot(
   const closeCountRef             = useRef(0);
   const handleCountRef            = useRef(0);
 
-  const state = useMemo(
-    () => ({
-      bodyRef,
-      close: () => setOpen(false),
-      closeCountRef,
-      handleCountRef,
-      setSnapIndex,
-      side,
-      snapIndex,
-      snapPoints,
-    }),
-    [setOpen, setSnapIndex, side, snapIndex, snapPoints],
-  );
+  const state = {
+    bodyRef,
+    close: () => setOpen(false),
+    closeCountRef,
+    handleCountRef,
+    setSnapIndex,
+    side,
+    snapIndex,
+    snapPoints,
+  };
 
   return (
     <DrawerContext.Provider value={state}>

@@ -144,7 +144,7 @@ component CollapsibleTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Collapsible.Trigger {
   return (
     <Collapsible.Trigger
       {...forwarded(rest)}
@@ -177,7 +177,7 @@ component CollapsibleContent(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Collapsible.Content {
   return (
     <Collapsible.Content
       {...forwarded(rest)}

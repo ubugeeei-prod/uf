@@ -86,7 +86,7 @@ component AlertRoot(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Alert.Root {
   const styled = props(
     styles.root,
     match (tone) {
@@ -114,7 +114,7 @@ component AlertTitle(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Alert.Title {
   return (
     <Alert.Title
       {...forwarded(rest)}
@@ -132,7 +132,7 @@ component AlertDescription(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Alert.Description {
   return (
     <Alert.Description
       {...forwarded(rest)}

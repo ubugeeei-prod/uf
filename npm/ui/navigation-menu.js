@@ -55,7 +55,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useId, useMemo, useRef, useState } from "@uniflowed/react";
+import { createContext, useContext, useId, useRef, useState } from "@uniflowed/react";
 
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
@@ -119,7 +119,7 @@ component NavigationMenuRoot(
   ...rest: Rest
 ) {
   const [open, setOpen] = useControlled<string | null>(value, defaultValue, onValueChange);
-  const state           = useMemo(() => ({ open, setOpen }), [open, setOpen]);
+  const state = { open, setOpen };
   const passed = withoutComposed(rest, ["onKeyDown"]);
 
   return (
@@ -163,18 +163,15 @@ component NavigationMenuItem(value: string, children: React.Node, ...rest: Rest)
   const setOpen = menu.setOpen;
   const expanded = menu.open === value;
 
-  const state = useMemo(
-    () => ({
-      triggerId: `${base}-trigger`,
-      bodyId   : `${base}-body`,
-      expanded,
-      toggle: () => setOpen(expanded ? null : value),
-      close : () => setOpen(null),
-      present,
-      registerBody: setPresent,
-    }),
-    [base, expanded, setOpen, value, present],
-  );
+  const state = {
+    triggerId: `${base}-trigger`,
+    bodyId   : `${base}-body`,
+    expanded,
+    toggle: () => setOpen(expanded ? null : value),
+    close : () => setOpen(null),
+    present,
+    registerBody: setPresent,
+  };
 
   return (
     <NavigationMenuItemContext.Provider value={state}>

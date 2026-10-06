@@ -41,7 +41,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useMemo } from "@uniflowed/react";
+import { createContext, useContext } from "@uniflowed/react";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { forwarded } from "./internal/merge-props.js";
@@ -98,7 +98,7 @@ component SheetRoot(
   open?        : boolean,
   side?        : Edge = "right",
 ) {
-  const state = useMemo(() => ({ side }), [side]);
+  const state = { side };
 
   return (
     <SheetContext.Provider value={state}>

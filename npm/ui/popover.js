@@ -47,15 +47,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import { useInteractOutside } from "./interactions.js";
@@ -129,17 +121,14 @@ component PopoverRoot(
   const triggerRef                = useRef<HTMLElement | null>(null);
   const [triggered, setTriggered] = useState(false);
 
-  const state = useMemo(
-    () => ({
-      base,
-      open           : isOpen,
-      registerTrigger: setTriggered,
-      setOpen,
-      triggerRef,
-      triggered,
-    }),
-    [base, isOpen, setOpen, triggered],
-  );
+  const state = {
+    base,
+    open           : isOpen,
+    registerTrigger: setTriggered,
+    setOpen,
+    triggerRef,
+    triggered,
+  };
 
   return <PopoverContext.Provider value={state}>{children}</PopoverContext.Provider>;
 }

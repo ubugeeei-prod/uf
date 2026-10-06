@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useMemo } from "@uniflowed/react";
+import { createContext, useContext } from "@uniflowed/react";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { withProps } from "./internal/merge-props.js";
 
@@ -18,15 +18,13 @@ export component I18nProvider(
   ...rest: Rest
 ) {
   const parent = useLocale();
-  const state  = useMemo((): Locale => {
-    const resolved = new Intl.Locale(locale ?? parent.locale);
-    const script = resolved.maximize().script;
-    const rtl = ["Arab", "Hebr", "Thaa", "Nkoo", "Adlm", "Rohg"].includes(script ?? "");
-    return {
-      locale   : resolved.toString(),
-      direction: direction ?? (locale == null ? parent.direction : rtl ? "rtl" : "ltr"),
-    };
-  }, [locale, direction, parent]);
+  const resolved = new Intl.Locale(locale ?? parent.locale);
+  const script = resolved.maximize().script;
+  const rtl = ["Arab", "Hebr", "Thaa", "Nkoo", "Adlm", "Rohg"].includes(script ?? "");
+  const state: Locale = {
+    locale   : resolved.toString(),
+    direction: direction ?? (locale == null ? parent.direction : rtl ? "rtl" : "ltr"),
+  };
   const props = withProps(rest, { children, lang: state.locale, dir: state.direction });
   return (
     <LocaleContext.Provider value={state}>
@@ -47,7 +45,7 @@ export hook useLocale(): Locale {
 /** Share Intl's language-specific ordering with caller-owned collections. */
 export hook useCollator(options?: Intl$CollatorOptions): Intl$Collator {
   const { locale } = useLocale();
-  return useMemo(() => new Intl.Collator(locale, options), [locale, options]);
+  return new Intl.Collator(locale, options);
 }
 
 // Bound the cache when a long-lived server serves many requested locales.
@@ -78,17 +76,14 @@ export hook useFilter(): {
   contains  : (text: string, query: string) => boolean,
 } {
   const { locale } = useLocale();
-  return useMemo(
-    () => ({
-      startsWith: (text, query) => startsWithLocale(text, query, locale),
-      contains: (text, query) => {
-        const chars = Array.from(text.normalize("NFC"));
-        return (
-          query === "" ||
-          chars.some((_, index) => startsWithLocale(chars.slice(index).join(""), query, locale))
-        );
-      },
-    }),
-    [locale],
-  );
+  return {
+    startsWith: (text, query) => startsWithLocale(text, query, locale),
+    contains: (text, query) => {
+      const chars = Array.from(text.normalize("NFC"));
+      return (
+        query === "" ||
+        chars.some((_, index) => startsWithLocale(chars.slice(index).join(""), query, locale))
+      );
+    },
+  };
 }

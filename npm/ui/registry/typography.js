@@ -256,7 +256,10 @@ component TypographyList(
     ...rest,
     className: classNames(props(styles.prose, styles.list, xstyle).className, className),
   };
-  return ordered ? <ol {...shared}>{children}</ol> : <ul {...shared}>{children}</ul>;
+  return match (ordered) {
+    true  => <ol {...shared}>{children}</ol>,
+    false => <ul {...shared}>{children}</ul>,
+  };
 }
 
 /** Code inside a sentence: a name, a command, a value. */

@@ -62,7 +62,7 @@ export component ListBox(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders HeadlessListBox {
   return (
     <HeadlessListBox
       {...forwarded(rest)}

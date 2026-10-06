@@ -198,7 +198,7 @@ component DialogRoot(
   defaultOpen? : boolean = false,
   open?        : boolean,
   onOpenChange?: (open: boolean) => void,
-) {
+) renders Dialog.Root {
   return (
     <Dialog.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
@@ -217,7 +217,7 @@ component DialogTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Dialog.Trigger {
   return (
     <Dialog.Trigger
       {...forwarded(rest)}
@@ -258,11 +258,15 @@ component DialogContent(
         className={classNames(props(styles.panel, xstyle).className, className)}
       >
         {children}
-        {hideClose ? null : (
-          <Dialog.Close aria-label={closeLabel} className={props(styles.close).className}>
-            <CloseIcon />
-          </Dialog.Close>
-        )}
+        {
+          match (hideClose) {
+            true  => null,
+            false =>
+              <Dialog.Close aria-label={closeLabel} className={props(styles.close).className}>
+                <CloseIcon />
+              </Dialog.Close>,
+          }
+        }
       </Dialog.Body>
     </>
   );
@@ -274,7 +278,7 @@ component DialogHeader(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Dialog.Header {
   return (
     <Dialog.Header
       {...forwarded(rest)}
@@ -291,7 +295,7 @@ component DialogFooter(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Dialog.Footer {
   return (
     <Dialog.Footer
       {...forwarded(rest)}
@@ -311,7 +315,7 @@ component DialogTitle(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Dialog.Title {
   return (
     <Dialog.Title
       {...forwarded(rest)}
@@ -328,7 +332,7 @@ component DialogDescription(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Dialog.Description {
   return (
     <Dialog.Description
       {...forwarded(rest)}
@@ -347,7 +351,7 @@ component DialogClose(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders Dialog.Close {
   return (
     <Dialog.Close
       {...forwarded(rest)}

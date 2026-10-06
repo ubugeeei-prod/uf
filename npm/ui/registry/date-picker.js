@@ -129,7 +129,7 @@ const styles = stylex.create({
 });
 
 /** The date picker. Every prop of `DatePicker.Root` passes through. */
-component DatePickerRoot(children: React.Node, ...rest: Rest) {
+component DatePickerRoot(children: React.Node, ...rest: Rest) renders DatePicker.Root {
   return <DatePicker.Root {...forwarded(rest)}>{children}</DatePicker.Root>;
 }
 
@@ -141,7 +141,11 @@ component DatePickerGroup(children: React.Node, xstyle?: StyleArgument, classNam
 }
 
 /** The text field the date is typed into. Give it an `id` a `<label>` points at. */
-component DatePickerInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component DatePickerInput(
+  xstyle?   : StyleArgument,
+  className?: string,
+  ...rest: Rest
+) renders DatePicker.Input {
   return (
     <DatePicker.Input
       {...forwarded(rest)}
@@ -158,7 +162,7 @@ component DatePickerTrigger(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders DatePicker.Trigger {
   return (
     <DatePicker.Trigger
       {...forwarded(rest)}
@@ -202,22 +206,26 @@ component DatePickerContent(
   xstyle?    : StyleArgument,
   className? : string,
   ...rest: Rest
-) {
+) renders DatePicker.Calendar {
   return (
     <DatePicker.Calendar
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
       sideOffset={sideOffset}
     >
-      {children ?? (
-        <>
-          <Calendar.Header>
-            <Calendar.Previous />
-            <Calendar.Next />
-          </Calendar.Header>
-          <Calendar.Month />
-        </>
-      )}
+      {
+        match (children) {
+          null | undefined =>
+            <>
+              <Calendar.Header>
+                <Calendar.Previous />
+                <Calendar.Next />
+              </Calendar.Header>
+              <Calendar.Month />
+            </>,
+          const given      => given,
+        }
+      }
     </DatePicker.Calendar>
   );
 }

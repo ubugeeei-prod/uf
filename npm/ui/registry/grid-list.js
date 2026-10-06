@@ -62,7 +62,7 @@ export component GridList(
   xstyle?   : StyleArgument,
   className?: string,
   ...rest: Rest
-) {
+) renders HeadlessGridList {
   return (
     <HeadlessGridList
       {...forwarded(rest)}
