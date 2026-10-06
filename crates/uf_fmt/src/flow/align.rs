@@ -317,68 +317,82 @@ impl Collector<'_> {
     }
 
     fn function_param_stops(&self, params: &function::Params<Loc, Loc>) -> Vec<Option<Stop>> {
-        params
+        let mut stops: Vec<Option<Stop>> = params
             .params
             .iter()
             .map(|param| {
-                let function::Param::RegularParam {
-                    loc,
-                    argument: pattern::Pattern::Identifier { inner, .. },
-                    ..
-                } = param
-                else {
+                let function::Param::RegularParam { loc, argument, .. } = param else {
                     return None;
                 };
-                let types::AnnotationOrHint::Available(annotation) = &inner.annot else {
-                    return None;
-                };
-                let at = self.text.span(&annotation.loc).start;
-                (self.text.text().as_bytes().get(at) == Some(&b':'))
-                    .then(|| self.stop(self.text.span(loc), at))?
+                self.annotated_identifier_colon(self.text.span(loc), argument)
             })
-            .collect()
+            .collect();
+        // `...rest: T` is not one of `params`. Its colon shares their column.
+        if let Some(rest) = &params.rest {
+            stops.push(self.annotated_identifier_colon(self.text.span(&rest.loc), &rest.argument));
+        }
+        stops
     }
 
     fn component_param_stops(
         &self,
         params: &statement::component_params::Params<Loc, Loc>,
     ) -> Vec<Option<Stop>> {
-        params
+        let mut stops: Vec<Option<Stop>> = params
             .params
             .iter()
-            .map(|param| {
-                let pattern::Pattern::Identifier { inner, .. } = &param.local else {
-                    return None;
-                };
-                let types::AnnotationOrHint::Available(annotation) = &inner.annot else {
-                    return None;
-                };
-                let at = self.text.span(&annotation.loc).start;
-                (self.text.text().as_bytes().get(at) == Some(&b':'))
-                    .then(|| self.stop(self.text.span(&param.loc), at))?
-            })
-            .collect()
+            .map(|param| self.annotated_identifier_colon(self.text.span(&param.loc), &param.local))
+            .collect();
+        if let Some(rest) = &params.rest {
+            stops.push(self.annotated_identifier_colon(self.text.span(&rest.loc), &rest.argument));
+        }
+        stops
+    }
+
+    /// The `:` of `name: T` or `name?: T` when `pattern` is that identifier.
+    fn annotated_identifier_colon(
+        &self,
+        span: Span,
+        pattern: &pattern::Pattern<Loc, Loc>,
+    ) -> Option<Stop> {
+        let pattern::Pattern::Identifier { inner, .. } = pattern else {
+            return None;
+        };
+        let types::AnnotationOrHint::Available(annotation) = &inner.annot else {
+            return None;
+        };
+        let at = self.text.span(&annotation.loc).start;
+        if self.text.text().as_bytes().get(at) != Some(&b':') {
+            return None;
+        }
+        self.stop(span, at)
     }
 
     fn function_type_param_stops(&self, function: &types::Function<Loc, Loc>) -> Vec<Option<Stop>> {
-        function
+        let mut stops: Vec<Option<Stop>> = function
             .params
             .params
             .iter()
-            .map(|param| {
-                let types::function::ParamKind::Labeled { name, annot, .. } = &param.param else {
-                    return None;
-                };
-                let after_name = self.text.span(&name.loc).end;
-                let before_type = self.text.span(annot.loc()).start;
-                let gap = self.text.text().get(after_name..before_type)?;
-                let relative = gap.rfind(':')?;
-                if !gap[relative + 1..].trim().is_empty() {
-                    return None;
-                }
-                self.stop(self.text.span(&param.loc), after_name + relative)
-            })
-            .collect()
+            .map(|param| self.function_type_param_stop(param))
+            .collect();
+        if let Some(rest) = &function.params.rest {
+            stops.push(self.function_type_param_stop(&rest.argument));
+        }
+        stops
+    }
+
+    fn function_type_param_stop(&self, param: &types::function::Param<Loc, Loc>) -> Option<Stop> {
+        let types::function::ParamKind::Labeled { name, annot, .. } = &param.param else {
+            return None;
+        };
+        let after_name = self.text.span(&name.loc).end;
+        let before_type = self.text.span(annot.loc()).start;
+        let gap = self.text.text().get(after_name..before_type)?;
+        let relative = gap.rfind(':')?;
+        if !gap[relative + 1..].trim().is_empty() {
+            return None;
+        }
+        self.stop(self.text.span(&param.loc), after_name + relative)
     }
 
     fn use_entry(&self, statement: &statement::Statement<Loc, Loc>) -> Option<UseEntry> {
