@@ -267,6 +267,12 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `const { a: b = any } = obj` passes a value. `type T = { a: any }` stays
+    // a type.
+    if names_a_renamed_default(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -777,6 +783,26 @@ fn names_an_array_default(code: &str, at: usize) -> bool {
         return false;
     };
     enclosing_bracket(code, eq).is_some_and(|bracket| bracket_is_a_binding(code, bracket))
+}
+
+/// Whether the name is the default of a renamed binding.
+///
+/// `const { a: b = any } = obj` passes a value. `type T = { a: any }` stays a
+/// type, and so does `class C { x: string = any }`.
+fn names_a_renamed_default(code: &str, at: usize) -> bool {
+    let Some(eq) = single_equals_before(code, at) else {
+        return false;
+    };
+    let Some((name, _)) = previous_word(code, eq) else {
+        return false;
+    };
+    let Some((colon, b':')) = prev_non_space(code, name) else {
+        return false;
+    };
+    let Some((key, _)) = previous_word(code, colon) else {
+        return false;
+    };
+    brace_of_key(code, key).is_some_and(|brace| brace_is_a_binding_pattern(code, brace))
 }
 
 /// Whether the name is a function or arrow parameter's default.
@@ -2063,6 +2089,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_an_import_typeof(code, at)
                 || names_a_static_initializer(code, at)
                 || names_an_array_default(code, at)
+                || names_a_renamed_default(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)
