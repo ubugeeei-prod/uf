@@ -113,7 +113,7 @@ component CarouselRoot(
   orientation?  : "horizontal" | "vertical" = "horizontal",
   xstyle?       : StyleArgument,
   className?    : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) renders Carousel.Root {
   return (
     <Carousel.Root
@@ -138,7 +138,7 @@ component CarouselContent(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Carousel.Content {
   return (
     <Carousel.Content
@@ -156,7 +156,7 @@ component CarouselItem(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Carousel.Item {
   return (
     <Carousel.Item
@@ -183,7 +183,7 @@ component CarouselPrevious(
   label?    : string = "Previous slide",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Carousel.Previous {
   return (
     <Carousel.Previous
@@ -201,7 +201,7 @@ component CarouselNext(
   label?    : string = "Next slide",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Carousel.Next {
   return (
     <Carousel.Next
@@ -220,7 +220,7 @@ component CarouselPause(
   playLabel? : string = "Start the carousel",
   xstyle?    : StyleArgument,
   className? : string,
-  ...rest: Rest
+  ...rest    : Rest
 ) renders Carousel.Pause {
   return (
     <Carousel.Pause

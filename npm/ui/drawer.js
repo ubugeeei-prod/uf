@@ -173,7 +173,7 @@ component DrawerRoot(
 component DrawerTrigger(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders SheetTrigger {
   return (
     <SheetTrigger {...forwarded(rest)} render={render}>
@@ -264,7 +264,7 @@ component RequireCloseForTheDrag() {
 component DrawerHeader(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders SheetHeader {
   return (
     <SheetHeader {...forwarded(rest)} render={render}>
@@ -277,7 +277,7 @@ component DrawerHeader(
 component DrawerFooter(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders SheetFooter {
   return (
     <SheetFooter {...forwarded(rest)} render={render}>
@@ -299,7 +299,7 @@ component DrawerTitle(children: React.Node, render?: RenderProp, ...rest: Rest) 
 component DrawerDescription(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders SheetDescription {
   return (
     <SheetDescription {...forwarded(rest)} render={render}>

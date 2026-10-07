@@ -63,7 +63,7 @@ component ContextMenuTrigger(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders ContextMenu.Trigger {
   return (
     <ContextMenu.Trigger

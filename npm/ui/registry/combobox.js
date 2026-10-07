@@ -222,7 +222,7 @@ component ComboboxRoot(
   name?              : string,
   xstyle?            : StyleArgument,
   className?         : string,
-  ...rest: Rest
+  ...rest            : Rest
 ) renders Combobox.Root {
   return (
     <Combobox.Root
@@ -249,7 +249,7 @@ component ComboboxLabel(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Combobox.Label {
   return (
     <Combobox.Label
@@ -265,7 +265,7 @@ component ComboboxLabel(
 component ComboboxInput(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Combobox.Input {
   return (
     <Combobox.Input
@@ -286,7 +286,7 @@ component ComboboxList(
   sideOffset?      : number = 4,
   xstyle?          : StyleArgument,
   className?       : string,
-  ...rest: Rest
+  ...rest          : Rest
 ) renders Combobox.List {
   return (
     <Combobox.List
@@ -312,7 +312,7 @@ component ComboboxOption(
   disabled? : boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Combobox.Option {
   const styled = props(styles.option, disabled && styles.optionDisabled, xstyle);
   return (
@@ -348,7 +348,7 @@ component ComboboxGroup(
   children  : renders* (ComboboxOption | ComboboxGroupLabel),
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Combobox.Group {
   return (
     <Combobox.Group
@@ -365,7 +365,7 @@ component ComboboxGroupLabel(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Combobox.GroupLabel {
   return (
     <Combobox.GroupLabel
@@ -382,7 +382,7 @@ component ComboboxEmpty(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Combobox.Empty {
   return (
     <Combobox.Empty
@@ -399,7 +399,7 @@ component ComboboxStatus(
   children? : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Combobox.Status {
   return (
     <Combobox.Status

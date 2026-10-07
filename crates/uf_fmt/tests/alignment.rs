@@ -262,6 +262,93 @@ component Search(
     );
 }
 
+#[test]
+fn aligns_rest_parameter_colons() {
+    for source in [
+        r#"component Search(
+  query: string,
+  selectedProjectSymbol: number,
+  ...rest: Rest
+) {
+  return null;
+}
+"#,
+        r#"component Search(
+  query?: string,
+  selectedProjectSymbol: number,
+  ...rest: Rest
+) {
+  return null;
+}
+"#,
+        r#"function load(
+  id: number,
+  selectedProjectSymbol: string,
+  ...rest: Array<string>
+): void {}
+"#,
+        r#"type Resolver = (
+  id: number,
+  selectedProjectSymbol: string,
+  ...rest: Array<string>
+) => Promise<void>;
+"#,
+    ] {
+        let aligned = formatted_with_width(source, true, 60);
+        let lines: Vec<_> = aligned
+            .lines()
+            .filter(|line| {
+                let line = line.trim_start();
+                line.starts_with("query")
+                    || line.starts_with("id")
+                    || line.starts_with("selectedProjectSymbol")
+                    || line.starts_with("...")
+            })
+            .collect();
+        assert_eq!(lines.len(), 3, "{aligned}");
+        let columns: Vec<_> = lines.iter().map(|line| line.find(':').unwrap()).collect();
+        assert!(
+            columns.iter().all(|column| *column == columns[0]),
+            "{columns:?}\n{aligned}"
+        );
+        let plain = formatted_with_width(source, false, 60);
+        assert!(
+            plain.contains("...rest: Rest") || plain.contains("...rest: Array<string>"),
+            "{plain}"
+        );
+        assert!(!plain.contains("...rest "), "{plain}");
+    }
+}
+
+#[test]
+fn leaves_a_lone_or_unannotated_rest_tight() {
+    for source in [
+        r#"function load(
+  ...rest: Array<string>
+): void {}
+"#,
+        r#"function load(
+  id: number,
+  selectedProjectSymbol: string,
+  ...rest
+): void {}
+"#,
+        r#"component Search(
+  query: string,
+  ...items
+) {
+  return null;
+}
+"#,
+    ] {
+        let aligned = formatted_with_width(source, true, 60);
+        assert!(
+            !aligned.contains("...rest ") && !aligned.contains("...items "),
+            "{aligned}"
+        );
+    }
+}
+
 fn arrow_columns(source: &str, markers: &[&str]) -> Vec<usize> {
     let columns: Vec<_> = source
         .lines()

@@ -61,7 +61,7 @@ export component ListBox(
   children? : (item: CollectionItem, state: CollectionItemState) => React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders HeadlessListBox {
   return (
     <HeadlessListBox

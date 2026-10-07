@@ -118,7 +118,7 @@ export component Switch(
   disabled?       : boolean = false,
   xstyle?         : StyleArgument,
   className?      : string,
-  ...rest: Rest
+  ...rest         : Rest
 ) renders SwitchPart {
   return (
     <SwitchPart

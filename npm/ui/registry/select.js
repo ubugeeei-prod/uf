@@ -257,7 +257,7 @@ component SelectRoot(
   disabled?     : boolean = false,
   xstyle?       : StyleArgument,
   className?    : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) renders Select.Root {
   return (
     <Select.Root
@@ -282,7 +282,7 @@ component SelectLabel(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Select.Label {
   return (
     <Select.Label
@@ -299,7 +299,7 @@ component SelectTrigger(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Select.Trigger {
   return (
     <Select.Trigger
@@ -318,7 +318,7 @@ component SelectValue(
   children?   : React.Node,
   xstyle?     : StyleArgument,
   className?  : string,
-  ...rest: Rest
+  ...rest     : Rest
 ) renders Select.Value {
   return (
     <Select.Value
@@ -342,7 +342,7 @@ component SelectList(
   sideOffset?      : number = 4,
   xstyle?          : StyleArgument,
   className?       : string,
-  ...rest: Rest
+  ...rest          : Rest
 ) renders Select.List {
   return (
     <Select.List
@@ -368,7 +368,7 @@ component SelectOption(
   disabled? : boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Select.Option {
   const styled = props(styles.option, disabled && styles.optionDisabled, xstyle);
   return (
@@ -390,7 +390,7 @@ component SelectGroup(
   children  : renders* (SelectOption | SelectGroupLabel),
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Select.Group {
   return (
     <Select.Group
@@ -407,7 +407,7 @@ component SelectGroupLabel(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Select.GroupLabel {
   return (
     <Select.GroupLabel
@@ -423,7 +423,7 @@ component SelectGroupLabel(
 component SelectSeparator(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Select.Separator {
   return (
     <Select.Separator

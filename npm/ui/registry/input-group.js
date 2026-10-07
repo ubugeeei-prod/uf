@@ -121,7 +121,7 @@ component InputGroupRoot(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <div {...rest} className={classNames(props(styles.root, xstyle).className, className)}>
@@ -135,7 +135,7 @@ component InputGroupInput(
   type?     : string = "text",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <input
@@ -151,7 +151,7 @@ component InputGroupAddon(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <span {...rest} className={classNames(props(styles.addon, xstyle).className, className)}>

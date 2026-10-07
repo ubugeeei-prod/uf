@@ -102,7 +102,7 @@ component PaginationRoot(
   label?    : string = "Pagination",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Pagination.Root {
   return (
     <Pagination.Root
@@ -122,7 +122,7 @@ component PaginationContent(
   children  : renders* (PaginationItem | PaginationPrevious | PaginationNext),
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Pagination.Content {
   return (
     <Pagination.Content
@@ -142,7 +142,7 @@ component PaginationItem(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Pagination.Item {
   return (
     <Pagination.Item
@@ -164,7 +164,7 @@ component PaginationPrevious(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Pagination.Previous {
   return (
     <Pagination.Previous
@@ -199,7 +199,7 @@ component PaginationNext(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Pagination.Next {
   return (
     <Pagination.Next

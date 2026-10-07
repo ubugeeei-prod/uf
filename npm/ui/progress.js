@@ -69,7 +69,7 @@ export component Progress(
   valueText?: string,
   children? : React.Node,
   render?   : RenderProp,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   const known = value == null ? null : clamp(value, min, max);
   const props = withProps(rest, {

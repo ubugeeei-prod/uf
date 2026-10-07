@@ -98,7 +98,7 @@ component CardRoot(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <div {...rest} className={classNames(props(styles.card, xstyle).className, className)}>
@@ -112,7 +112,7 @@ component CardHeader(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <div {...rest} className={classNames(props(styles.header, xstyle).className, className)}>
@@ -127,7 +127,7 @@ component CardTitle(
   level?    : CardTitleLevel = 3,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   const shared = {
     ...rest,
@@ -148,7 +148,7 @@ component CardDescription(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <p {...rest} className={classNames(props(styles.description, xstyle).className, className)}>
@@ -162,7 +162,7 @@ component CardContent(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <div {...rest} className={classNames(props(styles.content, xstyle).className, className)}>
@@ -176,7 +176,7 @@ component CardFooter(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <div {...rest} className={classNames(props(styles.footer, xstyle).className, className)}>

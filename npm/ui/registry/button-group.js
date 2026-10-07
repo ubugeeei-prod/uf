@@ -109,7 +109,7 @@ component ButtonGroupRoot(
   label     : string,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <div
@@ -129,7 +129,7 @@ component ButtonGroupItem(
   type?     : "button" | "submit" | "reset" = "button",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <button

@@ -147,7 +147,7 @@ component TableRoot(
   announceSort?: (column: string, direction: "ascending" | "descending") => string,
   xstyle?      : StyleArgument,
   className?   : string,
-  ...rest: Rest
+  ...rest      : Rest
 ) {
   return (
     <div {...props(styles.frame)}>
@@ -172,7 +172,7 @@ component TableCaption(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Table.Caption {
   return (
     <Table.Caption
@@ -189,7 +189,7 @@ component TableHeader(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Table.Header {
   return (
     <Table.Header {...forwarded(rest)} className={classNames(props(xstyle).className, className)}>
@@ -203,7 +203,7 @@ component TableBody(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Table.Body {
   return (
     <Table.Body {...forwarded(rest)} className={classNames(props(xstyle).className, className)}>
@@ -218,7 +218,7 @@ component TableRow(
   index?    : number | null = null,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Table.Row {
   return (
     <Table.Row
@@ -240,7 +240,7 @@ component TableHead(
   column?   : string | null = null,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   const classes = classNames(props(styles.head, xstyle).className, className);
   if (column == null) {
@@ -282,7 +282,7 @@ component TableCell(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Table.Cell {
   return (
     <Table.Cell
@@ -299,7 +299,7 @@ component TableRowHeader(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Table.RowHeader {
   return (
     <Table.RowHeader

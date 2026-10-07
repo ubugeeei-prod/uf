@@ -153,7 +153,7 @@ component HoverCardTrigger(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders HoverCard.Trigger {
   return (
     <HoverCard.Trigger
@@ -187,7 +187,7 @@ component HoverCardContent(
   collisionPadding?: number = 8,
   xstyle?          : StyleArgument,
   className?       : string,
-  ...rest: Rest
+  ...rest          : Rest
 ) renders HoverCard.Body {
   return (
     <HoverCard.Body

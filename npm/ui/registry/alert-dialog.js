@@ -188,7 +188,7 @@ component AlertDialogTrigger(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders AlertDialog.Trigger {
   return (
     <AlertDialog.Trigger
@@ -219,7 +219,7 @@ component AlertDialogContent(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <>
@@ -239,7 +239,7 @@ component AlertDialogHeader(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders AlertDialog.Header {
   return (
     <AlertDialog.Header
@@ -256,7 +256,7 @@ component AlertDialogFooter(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders AlertDialog.Footer {
   return (
     <AlertDialog.Footer
@@ -273,7 +273,7 @@ component AlertDialogTitle(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders AlertDialog.Title {
   return (
     <AlertDialog.Title
@@ -290,7 +290,7 @@ component AlertDialogDescription(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders AlertDialog.Description {
   return (
     <AlertDialog.Description
@@ -310,7 +310,7 @@ component AlertDialogAction(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders AlertDialog.Action {
   return (
     <AlertDialog.Action
@@ -344,7 +344,7 @@ component AlertDialogCancel(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders AlertDialog.Cancel {
   return (
     <AlertDialog.Cancel

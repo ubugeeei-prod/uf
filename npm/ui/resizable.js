@@ -167,7 +167,7 @@ component ResizablePanelGroup(
   step?         : number = 10,
   orientation?  : Orientation = "horizontal",
   disabled?     : boolean = false,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const base                        = useId();
   const [share,      setShare]      = useControlled(value, defaultValue, onValueChange);

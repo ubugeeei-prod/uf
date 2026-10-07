@@ -148,7 +148,7 @@ component PopoverTrigger(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Popover.Trigger {
   return (
     <Popover.Trigger
@@ -184,7 +184,7 @@ component PopoverContent(
   collisionPadding?: number = 8,
   xstyle?          : StyleArgument,
   className?       : string,
-  ...rest: Rest
+  ...rest          : Rest
 ) renders Popover.Body {
   return (
     <Popover.Body

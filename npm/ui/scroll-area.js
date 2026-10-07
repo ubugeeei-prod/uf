@@ -207,7 +207,7 @@ component ScrollAreaViewport(children: React.Node, ...rest: Rest) {
 component ScrollAreaScrollbar(
   children?   : React.Node,
   orientation?: Orientation = "vertical",
-  ...rest: Rest
+  ...rest     : Rest
 ) {
   const area = useScrollArea("ScrollArea.Scrollbar");
   const { report, scrollbarsRef } = area;

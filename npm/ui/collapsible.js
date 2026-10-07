@@ -124,7 +124,7 @@ component CollapsibleTrigger(
   children : React.Node,
   disabled?: boolean = false,
   render?  : RenderProp,
-  ...rest: Rest
+  ...rest  : Rest
 ) {
   const collapsible = useCollapsible("Collapsible.Trigger");
   const props = withProps(withoutComposed(rest, ["onClick"]), {

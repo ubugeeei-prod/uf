@@ -167,12 +167,12 @@ declare module "vscode" {
     // Two overloads, as an intersection: an object type cannot name a
     // property twice.
     showInformationMessage: ((
-      message: string,
+      message : string,
       ...items: $ReadOnlyArray<string>
     ) => Promise<string | void>) &
       ((
-        message: string,
-        options: MessageOptions,
+        message : string,
+        options : MessageOptions,
         ...items: $ReadOnlyArray<string>
       ) => Promise<string | void>),
     showWarningMessage(message: string, ...items: $ReadOnlyArray<string>): Promise<string | void>,

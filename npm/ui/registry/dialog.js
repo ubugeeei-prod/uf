@@ -216,7 +216,7 @@ component DialogTrigger(
   size?     : ButtonSize = "md",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Dialog.Trigger {
   return (
     <Dialog.Trigger
@@ -248,7 +248,7 @@ component DialogContent(
   hideClose? : boolean = false,
   xstyle?    : StyleArgument,
   className? : string,
-  ...rest: Rest
+  ...rest    : Rest
 ) {
   return (
     <>
@@ -277,7 +277,7 @@ component DialogHeader(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Dialog.Header {
   return (
     <Dialog.Header
@@ -294,7 +294,7 @@ component DialogFooter(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Dialog.Footer {
   return (
     <Dialog.Footer
@@ -314,7 +314,7 @@ component DialogTitle(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Dialog.Title {
   return (
     <Dialog.Title
@@ -331,7 +331,7 @@ component DialogDescription(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Dialog.Description {
   return (
     <Dialog.Description
@@ -350,7 +350,7 @@ component DialogClose(
   size?     : ButtonSize = "md",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Dialog.Close {
   return (
     <Dialog.Close

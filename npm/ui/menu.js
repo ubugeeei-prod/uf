@@ -285,7 +285,7 @@ component MenuBody(
   side?            : LogicalSide,
   sideOffset?      : number = 0,
   render?          : RenderProp,
-  ...rest: Rest
+  ...rest          : Rest
 ) {
   const menu                    = useMenu("Menu.Body");
   const bodyRef                 = useRef<HTMLElement | null>(null);
@@ -563,7 +563,7 @@ component MenuItem(
   closeOnSelect?: boolean = true,
   onSelect?     : (event: MenuSelect) => mixed,
   render?       : RenderProp,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const item = useMenuItem("Menu.Item", disabled, closeOnSelect, onSelect, undefined);
   const props = withProps(withoutComposed(rest, ["onClick", "onFocus"]), {
@@ -610,7 +610,7 @@ component MenuCheckboxItem(
   closeOnSelect?: boolean = false,
   onSelect?     : (event: MenuSelect) => mixed,
   render?       : RenderProp,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
   const toggle = () => setOn(!on);
@@ -652,7 +652,7 @@ component MenuRadioGroup(
   value?        : string | null,
   onValueChange?: (value: string) => void,
   render?       : RenderProp,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const base                    = useId();
   const [labelled, setLabelled] = useState(false);
@@ -700,7 +700,7 @@ component MenuRadioItem(
   closeOnSelect?: boolean = false,
   onSelect?     : (event: MenuSelect) => mixed,
   render?       : RenderProp,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const group = useContext(MenuRadioContext);
   if (group == null) {

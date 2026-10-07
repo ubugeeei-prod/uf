@@ -195,7 +195,7 @@ component FieldRoot(
   field?   : FieldSource,
   group?   : boolean = false,
   render?  : RenderProp,
-  ...rest: Rest
+  ...rest  : Rest
 ) {
   const base                                = useId();
   const [hasDescription, setHasDescription] = useState(false);

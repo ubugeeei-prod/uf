@@ -95,7 +95,7 @@ component NumberFieldRoot(
   disabled?          : boolean = false,
   readOnly?          : boolean = false,
   render?            : RenderProp,
-  ...rest: Rest
+  ...rest            : Rest
 ) {
   const increment = step ?? (formatOptions?.style === "percent" ? 0.01 : 1);
   if (

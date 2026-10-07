@@ -144,7 +144,7 @@ component DatePickerGroup(children: React.Node, xstyle?: StyleArgument, classNam
 component DatePickerInput(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders DatePicker.Input {
   return (
     <DatePicker.Input
@@ -161,7 +161,7 @@ component DatePickerTrigger(
   size?     : ButtonSize = "md",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders DatePicker.Trigger {
   return (
     <DatePicker.Trigger
@@ -205,7 +205,7 @@ component DatePickerContent(
   sideOffset?: number = 4,
   xstyle?    : StyleArgument,
   className? : string,
-  ...rest: Rest
+  ...rest    : Rest
 ) renders DatePicker.Calendar {
   return (
     <DatePicker.Calendar

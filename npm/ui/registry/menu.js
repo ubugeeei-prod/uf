@@ -214,7 +214,7 @@ component MenuTrigger(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Menu.Trigger {
   return (
     <Menu.Trigger
@@ -259,7 +259,7 @@ component MenuContent(
   collisionPadding?: number = 8,
   xstyle?          : StyleArgument,
   className?       : string,
-  ...rest: Rest
+  ...rest          : Rest
 ) renders Menu.Body {
   return (
     <Menu.Body
@@ -283,7 +283,7 @@ component MenuItem(
   onSelect?     : (event: MenuSelect) => mixed,
   xstyle?       : StyleArgument,
   className?    : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) renders Menu.Item {
   return (
     <Menu.Item
@@ -309,7 +309,7 @@ component MenuCheckboxItem(
   onSelect?       : (event: MenuSelect) => mixed,
   xstyle?         : StyleArgument,
   className?      : string,
-  ...rest: Rest
+  ...rest         : Rest
 ) renders Menu.CheckboxItem {
   return (
     <Menu.CheckboxItem
@@ -351,7 +351,7 @@ component MenuRadioGroup(
   onValueChange?: (value: string) => void,
   xstyle?       : StyleArgument,
   className?    : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) renders Menu.RadioGroup {
   return (
     <Menu.RadioGroup
@@ -375,7 +375,7 @@ component MenuRadioItem(
   onSelect?     : (event: MenuSelect) => mixed,
   xstyle?       : StyleArgument,
   className?    : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) renders Menu.RadioItem {
   return (
     <Menu.RadioItem
@@ -401,7 +401,7 @@ component MenuGroup(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Menu.Group {
   return (
     <Menu.Group
@@ -418,7 +418,7 @@ component MenuLabel(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Menu.Label {
   return (
     <Menu.Label
@@ -434,7 +434,7 @@ component MenuLabel(
 component MenuSeparator(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Menu.Separator {
   return (
     <Menu.Separator
@@ -449,7 +449,7 @@ component MenuShortcut(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <span
@@ -481,7 +481,7 @@ component MenuSubTrigger(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Menu.SubTrigger {
   return (
     <Menu.SubTrigger

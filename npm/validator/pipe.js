@@ -132,7 +132,7 @@ export type Pipe = {
 };
 
 function applySteps<TInput>(
-  schema: Schema<mixed, TInput>,
+  schema  : Schema<mixed, TInput>,
   ...steps: $ReadOnlyArray<Step<mixed, mixed>>
 ): Schema<mixed, TInput> {
   let piped = schema;

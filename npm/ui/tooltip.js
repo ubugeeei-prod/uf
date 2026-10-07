@@ -327,7 +327,7 @@ component TooltipBody(
   render?          : RenderProp,
   side?            : LogicalSide = "top",
   sideOffset?      : number = 0,
-  ...rest: Rest
+  ...rest          : Rest
 ) {
   const tooltip = useTooltip("Tooltip.Body");
   const { closeDelay, dismissedRef, intent, open, triggerRef } = tooltip;

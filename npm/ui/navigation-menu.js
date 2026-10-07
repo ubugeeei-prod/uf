@@ -116,7 +116,7 @@ component NavigationMenuRoot(
   defaultValue? : string | null = null,
   value?        : string | null,
   onValueChange?: (value: string | null) => void,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const [open, setOpen] = useControlled<string | null>(value, defaultValue, onValueChange);
   const state = { open, setOpen };

@@ -48,7 +48,7 @@ export component Switch(
   disabled?       : boolean = false,
   children?       : React.Node,
   render?         : RenderProp,
-  ...rest: Rest
+  ...rest         : Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
   const props = withProps(withoutComposed(rest, ["onClick", "onKeyDown"]), {

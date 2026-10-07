@@ -242,7 +242,7 @@ component AvatarFallback(
   children: React.Node,
   delay?  : number = 300,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) {
   const avatar                = useAvatar("Avatar.Fallback");
   const [elapsed, setElapsed] = useState(false);

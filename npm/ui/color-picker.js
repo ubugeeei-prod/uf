@@ -33,7 +33,7 @@ component ColorPickerRoot(
   onValueChange?: (value: string) => void,
   disabled?     : boolean = false,
   render?       : RenderProp,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const [current, setCurrent] = useControlled(value, defaultValue, onValueChange);
   const normalized = parseColor(current);

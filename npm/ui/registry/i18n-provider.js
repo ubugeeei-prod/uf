@@ -19,7 +19,7 @@ export component I18nProvider(
   children? : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders HeadlessI18nProvider {
   return (
     <HeadlessI18nProvider

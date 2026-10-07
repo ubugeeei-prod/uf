@@ -255,7 +255,7 @@ component SelectRoot(
   onOpenChange? : (open: boolean) => void,
   name?         : string,
   disabled?     : boolean = false,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const base                    = useId();
   const [chosen,   setChosen]   = useControlled(value, defaultValue, onValueChange);
@@ -611,7 +611,7 @@ component SelectList(
   collisionPadding?: number = 0,
   side?            : LogicalSide = "bottom",
   sideOffset?      : number = 0,
-  ...rest: Rest
+  ...rest          : Rest
 ) {
   const select = useSelect("Select.List");
   const { activeId, listRef, pendingLandingRef, setActiveId, triggerRef, typeahead, value } =
@@ -734,7 +734,7 @@ component SelectOption(
   children : React.Node,
   label?   : string,
   disabled?: boolean = false,
-  ...rest: Rest
+  ...rest  : Rest
 ) {
   const select = useSelect("Select.Option");
   const id     = useId();

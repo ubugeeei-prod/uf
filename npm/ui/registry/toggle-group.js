@@ -120,7 +120,7 @@ component ToggleGroupRoot(
   orientation?  : ToggleGroupOrientation = "horizontal",
   xstyle?       : StyleArgument,
   className?    : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   return (
     <OrientationContext.Provider value={orientation}>
@@ -146,7 +146,7 @@ component ToggleGroupItem(
   disabled? : boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders ToggleGroup.Item {
   const orientation = useContext(OrientationContext);
   const styled = props(

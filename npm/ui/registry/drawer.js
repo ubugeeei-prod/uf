@@ -293,7 +293,7 @@ component DrawerTrigger(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Drawer.Trigger {
   return (
     <Drawer.Trigger
@@ -330,7 +330,7 @@ component DrawerContent(
   hideHandle? : boolean = false,
   xstyle?     : StyleArgument,
   className?  : string,
-  ...rest: Rest
+  ...rest     : Rest
 ) {
   const side = useContext(SideContext);
   return (
@@ -367,7 +367,7 @@ component DrawerHeader(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Drawer.Header {
   return (
     <Drawer.Header
@@ -384,7 +384,7 @@ component DrawerFooter(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Drawer.Footer {
   return (
     <Drawer.Footer
@@ -401,7 +401,7 @@ component DrawerTitle(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Drawer.Title {
   return (
     <Drawer.Title
@@ -418,7 +418,7 @@ component DrawerDescription(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Drawer.Description {
   return (
     <Drawer.Description
@@ -441,7 +441,7 @@ component DrawerClose(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Drawer.Close {
   return (
     <Drawer.Close

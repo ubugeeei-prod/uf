@@ -99,7 +99,7 @@ component DateRangePickerTrigger(children: React.Node, ...rest: Rest) renders Po
 }
 component DateRangePickerCalendar(
   children?: React.Node = <CalendarMonth />,
-  ...rest: Rest
+  ...rest  : Rest
 ) renders PopoverBody {
   const picker = usePicker();
   const dayRef = useRef<HTMLElement | null>(null);

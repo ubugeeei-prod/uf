@@ -120,7 +120,7 @@ component ItemGroup(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <ul {...rest} className={classNames(props(styles.group, xstyle).className, className)}>
@@ -136,7 +136,7 @@ component ItemRoot(
   variant?  : ItemVariant = "outline",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   const shared = {
     ...rest,
@@ -163,7 +163,7 @@ component ItemMedia(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <div {...rest} className={classNames(props(styles.media, xstyle).className, className)}>
@@ -177,7 +177,7 @@ component ItemContent(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <div {...rest} className={classNames(props(styles.content, xstyle).className, className)}>
@@ -191,7 +191,7 @@ component ItemTitle(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <p {...rest} className={classNames(props(styles.title, xstyle).className, className)}>
@@ -205,7 +205,7 @@ component ItemDescription(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <p {...rest} className={classNames(props(styles.description, xstyle).className, className)}>
@@ -219,7 +219,7 @@ component ItemActions(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <div {...rest} className={classNames(props(styles.actions, xstyle).className, className)}>

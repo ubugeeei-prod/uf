@@ -63,7 +63,7 @@ component PaginationRoot(
   pageCount?   : number | null = null,
   announcePage?: (page: number, pageCount: number) => string,
   render?      : RenderProp,
-  ...rest: Rest
+  ...rest      : Rest
 ) {
   const message =
     page == null || pageCount == null ? "" : (announcePage ?? defaultAnnouncement)(page, pageCount);
@@ -99,7 +99,7 @@ component PaginationRoot(
 component PaginationContent(
   children: renders* (PaginationItem | PaginationPrevious | PaginationNext),
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) {
   const props = withProps(rest, { children });
   return match (render) {
@@ -119,7 +119,7 @@ component PaginationItem(
   current? : boolean = false,
   disabled?: boolean = false,
   render?  : RenderProp,
-  ...rest: Rest
+  ...rest  : Rest
 ) renders PageLink {
   return (
     <PageLink current={current} disabled={disabled} render={render} rest={rest}>
@@ -141,7 +141,7 @@ component PaginationPrevious(
   label?   : string = "Previous page",
   disabled?: boolean = false,
   render?  : RenderProp,
-  ...rest: Rest
+  ...rest  : Rest
 ) renders PageLink {
   return (
     <PageLink disabled={disabled} label={label} render={render} rest={rest}>
@@ -156,7 +156,7 @@ component PaginationNext(
   label?   : string = "Next page",
   disabled?: boolean = false,
   render?  : RenderProp,
-  ...rest: Rest
+  ...rest  : Rest
 ) renders PageLink {
   return (
     <PageLink disabled={disabled} label={label} render={render} rest={rest}>

@@ -113,7 +113,7 @@ component SheetRoot(
 component SheetTrigger(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders DialogTrigger {
   return (
     <DialogTrigger {...forwarded(rest)} render={render}>
@@ -151,7 +151,7 @@ component SheetBody(children: React.Node, render?: RenderProp, ...rest: Rest) re
 component SheetHeader(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders DialogHeader {
   return (
     <DialogHeader {...forwarded(rest)} render={render}>
@@ -164,7 +164,7 @@ component SheetHeader(
 component SheetFooter(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders DialogFooter {
   return (
     <DialogFooter {...forwarded(rest)} render={render}>
@@ -186,7 +186,7 @@ component SheetTitle(children: React.Node, render?: RenderProp, ...rest: Rest) r
 component SheetDescription(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders DialogDescription {
   return (
     <DialogDescription {...forwarded(rest)} render={render}>

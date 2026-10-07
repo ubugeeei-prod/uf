@@ -175,7 +175,7 @@ component AccordionRoot(
   onValueChange?: (value: $ReadOnlyArray<string>) => void,
   measure?      : boolean = false,
   render?       : RenderProp,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const [open, setOpen] = useControlled<$ReadOnlyArray<string>>(value, defaultValue, onValueChange);
 
@@ -232,7 +232,7 @@ component AccordionItem(
   children : renders* (AccordionHeader | AccordionContent),
   disabled?: boolean = false,
   render?  : RenderProp,
-  ...rest: Rest
+  ...rest  : Rest
 ) {
   const accordion             = useAccordion("Accordion.Item");
   const base                  = useId();

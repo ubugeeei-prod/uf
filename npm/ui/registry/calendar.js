@@ -238,7 +238,7 @@ component CalendarRoot(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Calendar.Root {
   return (
     <Calendar.Root
@@ -262,7 +262,7 @@ component CalendarPrevious(
   label?    : string = "Previous month",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Calendar.Previous {
   return (
     <Calendar.Previous
@@ -280,7 +280,7 @@ component CalendarNext(
   label?    : string = "Next month",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Calendar.Next {
   return (
     <Calendar.Next
@@ -297,7 +297,7 @@ component CalendarNext(
 component CalendarMonth(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Calendar.Month {
   const day = props(styles.day).className;
   return (

@@ -188,7 +188,7 @@ component CalendarRoot(
   value?         : DateValue | null,
   /** ISO day numbers: 1 is Monday, 7 is Sunday. Defaults to the locale's own. */
   weekStartsOn?: number,
-  ...rest: Rest
+  ...rest      : Rest
 ) {
   const inherited = useLocale();
   const resolvedLocale = locale ?? inherited.locale;
@@ -337,7 +337,7 @@ component CalendarMonth(
   children?        : (date: PlainDate) => renders CalendarDay,
   /** A class for each weekday heading, which this part renders itself. */
   columnHeaderClassName?: string,
-  ...rest: Rest
+  ...rest               : Rest
 ) {
   const calendar = useCalendar("Calendar.Month");
   const gridRef  = useRef<HTMLElement | null>(null);

@@ -159,7 +159,7 @@ component TooltipTrigger(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Tooltip.Trigger {
   return (
     <Tooltip.Trigger
@@ -195,7 +195,7 @@ component TooltipContent(
   collisionPadding?: number = 8,
   xstyle?          : StyleArgument,
   className?       : string,
-  ...rest: Rest
+  ...rest          : Rest
 ) renders Tooltip.Body {
   return (
     <Tooltip.Body

@@ -247,7 +247,7 @@ component SheetTrigger(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Sheet.Trigger {
   return (
     <Sheet.Trigger
@@ -283,7 +283,7 @@ component SheetContent(
   hideClose? : boolean = false,
   xstyle?    : StyleArgument,
   className? : string,
-  ...rest: Rest
+  ...rest    : Rest
 ) {
   return (
     <>
@@ -312,7 +312,7 @@ component SheetHeader(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Sheet.Header {
   return (
     <Sheet.Header
@@ -329,7 +329,7 @@ component SheetFooter(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Sheet.Footer {
   return (
     <Sheet.Footer
@@ -346,7 +346,7 @@ component SheetTitle(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Sheet.Title {
   return (
     <Sheet.Title
@@ -363,7 +363,7 @@ component SheetDescription(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Sheet.Description {
   return (
     <Sheet.Description
@@ -383,7 +383,7 @@ component SheetClose(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Sheet.Close {
   return (
     <Sheet.Close

@@ -197,7 +197,7 @@ component PopoverBody(
   render?      : RenderProp,
   side?        : LogicalSide = "bottom",
   sideOffset?  : number = 0,
-  ...rest: Rest
+  ...rest      : Rest
 ) {
   const popover = usePopover("Popover.Body");
   const bodyRef = useRef<HTMLElement | null>(null);

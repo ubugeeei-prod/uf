@@ -141,7 +141,7 @@ component SkeletonRoot(
   label?    : string = "Loading…",
   doneLabel?: string = "Loaded",
   render?   : RenderProp,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   const [message,   setMessage]   = useState("");
   const [suspended, setSuspended] = useState(false);

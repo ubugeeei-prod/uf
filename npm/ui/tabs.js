@@ -132,7 +132,7 @@ component TabsRoot(
   activationMode?: ActivationMode = "automatic",
   orientation?   : Orientation = "horizontal",
   render?        : RenderProp,
-  ...rest: Rest
+  ...rest        : Rest
 ) {
   const base                    = useId();
   const [selected, selectValue] = useControlled(value, defaultValue, onValueChange);
@@ -336,7 +336,7 @@ component TabsTab(
   children : React.Node,
   disabled?: boolean = false,
   render?  : RenderProp,
-  ...rest: Rest
+  ...rest  : Rest
 ) {
   const tabs = useTabs("Tabs.Tab");
   const active = tabs.selected === value;
@@ -407,7 +407,7 @@ component TabsPanel(
   children : React.Node,
   fallback?: React.Node = null,
   render?  : RenderProp,
-  ...rest: Rest
+  ...rest  : Rest
 ) {
   const tabs = useTabs("Tabs.Panel");
   const register = tabs.registerPanel;

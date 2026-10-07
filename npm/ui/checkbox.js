@@ -219,7 +219,7 @@ export component Checkbox(
   disabled?       : boolean = false,
   children?       : React.Node,
   render?         : RenderProp,
-  ...rest: Rest
+  ...rest         : Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
   // A mixed checkbox moves to checked, not to "the opposite of the boolean

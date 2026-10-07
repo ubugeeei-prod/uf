@@ -121,7 +121,7 @@ export component NativeSelect(
   multiple? : boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <span {...props(styles.wrapper)}>

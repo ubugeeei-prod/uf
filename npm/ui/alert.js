@@ -92,7 +92,7 @@ component AlertRoot(
   children: React.Node,
   live?   : boolean = false,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) {
   const props = withProps(rest, { children, role: live ? "alert" : undefined });
   return match (render) {

@@ -63,7 +63,7 @@ export component Toggle(
   disabled?       : boolean = false,
   children?       : React.Node,
   render?         : RenderProp,
-  ...rest: Rest
+  ...rest         : Rest
 ) {
   const [on, setOn] = useControlled(pressed, defaultPressed, onPressedChange);
   const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);

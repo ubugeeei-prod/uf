@@ -121,7 +121,7 @@ component AlertDialogRoot(
 component AlertDialogTrigger(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders DialogTrigger {
   return (
     <DialogTrigger {...forwarded(rest)} render={render}>
@@ -147,7 +147,7 @@ component AlertDialogOverlay(render?: RenderProp, ...rest: Rest) renders DialogO
 component AlertDialogBody(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders DialogBody {
   const alert = useAlertDialog("AlertDialog.Body");
 
@@ -200,7 +200,7 @@ component RequireDescription() {
 component AlertDialogHeader(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders DialogHeader {
   return (
     <DialogHeader {...forwarded(rest)} render={render}>
@@ -213,7 +213,7 @@ component AlertDialogHeader(
 component AlertDialogFooter(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders DialogFooter {
   return (
     <DialogFooter {...forwarded(rest)} render={render}>
@@ -226,7 +226,7 @@ component AlertDialogFooter(
 component AlertDialogTitle(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders DialogTitle {
   return (
     <DialogTitle {...forwarded(rest)} render={render}>
@@ -245,7 +245,7 @@ component AlertDialogTitle(
 component AlertDialogDescription(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders DialogDescription {
   const alert = useAlertDialog("AlertDialog.Description");
   const describedBy = alert.describedBy;
@@ -277,7 +277,7 @@ component AlertDialogDescription(
 component AlertDialogAction(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders DialogClose {
   return (
     <DialogClose {...forwarded(rest)} render={render}>
@@ -296,7 +296,7 @@ component AlertDialogAction(
 component AlertDialogCancel(
   children: React.Node,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) renders DialogClose {
   const alert = useAlertDialog("AlertDialog.Cancel");
   const cancelRef = alert.cancelRef;

@@ -72,7 +72,7 @@ export component VisuallyHidden(
   /** Show the content while focus is inside it: the skip-link pattern. */
   focusable: boolean = false,
   render?  : RenderProp,
-  ...rest: Rest
+  ...rest  : Rest
 ) {
   const [focused, setFocused] = useState(false);
   const style = rest.style;
