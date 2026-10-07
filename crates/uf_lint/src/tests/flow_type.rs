@@ -2706,3 +2706,250 @@ fn internal_type_ignores_a_static_field() {
     assert_eq!((still[0].line, still[0].column), (2, 21), "{still:?}");
     assert_eq!((still[1].line, still[1].column), (3, 21), "{still:?}");
 }
+
+#[test]
+fn an_if_consequent_is_a_value() {
+    for (rule, body) in [
+        ("flow/unclear-type", "if (flag) any;\nif (flag) Object;\n"),
+        ("flow/deprecated-type", "if (flag) bool;\n"),
+        ("flow/internal-type", "if (ready) React$Node;\n"),
+    ] {
+        let diagnostics = lint_js(rule, &format!("// @flow\n{body}"));
+        assert!(diagnostics.is_empty(), "{rule} {diagnostics:?}");
+    }
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nif (flag) { const value: any = 1; }\nfunction f(): any {}\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 26), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 15), "{still:?}");
+}
+
+#[test]
+fn an_else_consequent_is_a_value() {
+    for (rule, body) in [
+        (
+            "flow/unclear-type",
+            "if (flag) {} else any;\nif (flag) any else Object;\n",
+        ),
+        ("flow/deprecated-type", "if (flag) {} else bool;\n"),
+        ("flow/internal-type", "if (ready) {} else React$Node;\n"),
+    ] {
+        let diagnostics = lint_js(rule, &format!("// @flow\n{body}"));
+        assert!(diagnostics.is_empty(), "{rule} {diagnostics:?}");
+    }
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nif (flag) {} else { const value: any = 1; }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 34), "{still:?}");
+}
+
+#[test]
+fn a_while_body_is_a_value() {
+    for (rule, body) in [
+        (
+            "flow/unclear-type",
+            "while (flag) any;\nwhile (flag) Object;\n",
+        ),
+        ("flow/deprecated-type", "while (flag) bool;\n"),
+        ("flow/internal-type", "while (ready) React$Node;\n"),
+    ] {
+        let diagnostics = lint_js(rule, &format!("// @flow\n{body}"));
+        assert!(diagnostics.is_empty(), "{rule} {diagnostics:?}");
+    }
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nwhile (flag) { const value: any = 1; }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 29), "{still:?}");
+}
+
+#[test]
+fn a_for_body_is_a_value() {
+    for (rule, body) in [
+        (
+            "flow/unclear-type",
+            "for (;;) any;\nfor (const item of items) Object;\nfor await (const item of items) any;\n",
+        ),
+        ("flow/deprecated-type", "for (;;) bool;\n"),
+        ("flow/internal-type", "for (;;) React$Node;\n"),
+    ] {
+        let diagnostics = lint_js(rule, &format!("// @flow\n{body}"));
+        assert!(diagnostics.is_empty(), "{rule} {diagnostics:?}");
+    }
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfor (const item of any) {}\nfor (;;) { const value: any = 1; }\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 25), "{still:?}");
+}
+
+#[test]
+fn a_do_body_is_a_value() {
+    for (rule, body) in [
+        (
+            "flow/unclear-type",
+            "do any; while (flag);\ndo Object; while (flag);\n",
+        ),
+        ("flow/deprecated-type", "do bool; while (flag);\n"),
+        ("flow/internal-type", "do React$Node; while (ready);\n"),
+    ] {
+        let diagnostics = lint_js(rule, &format!("// @flow\n{body}"));
+        assert!(diagnostics.is_empty(), "{rule} {diagnostics:?}");
+    }
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ndo { const value: any = 1; } while (flag);\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 19), "{still:?}");
+}
+
+#[test]
+fn a_compound_assignment_is_a_value() {
+    for (rule, body) in [
+        (
+            "flow/unclear-type",
+            "value += any;\nvalue -= Object;\nvalue *= any;\nvalue /= any;\nvalue %= any;\nvalue &= any;\nvalue |= any;\nvalue ^= any;\nvalue &&= any;\nvalue ||= Object;\nvalue ??= any;\n",
+        ),
+        ("flow/deprecated-type", "total += bool;\n"),
+        ("flow/internal-type", "node += React$Node;\n"),
+    ] {
+        let diagnostics = lint_js(rule, &format!("// @flow\n{body}"));
+        assert!(diagnostics.is_empty(), "{rule} {diagnostics:?}");
+    }
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype T = any;\nconst value: any = 1;\ntype Handler = () => any;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 10), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 14), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 22), "{still:?}");
+}
+
+#[test]
+fn a_mixin_is_a_value() {
+    for (rule, body) in [
+        (
+            "flow/unclear-type",
+            "declare class C mixins any {}\ndeclare class D mixins Box, Object {}\n",
+        ),
+        ("flow/deprecated-type", "declare class E mixins bool {}\n"),
+        (
+            "flow/internal-type",
+            "declare class F mixins React$Node {}\ndeclare class G mixins Box, React$Node {}\n",
+        ),
+    ] {
+        let diagnostics = lint_js(rule, &format!("// @flow\n{body}"));
+        assert!(diagnostics.is_empty(), "{rule} {diagnostics:?}");
+    }
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass C implements any {}\ntype T = Foo<any>;\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 14), "{still:?}");
+}
+
+#[test]
+fn a_jsx_attribute_name_is_a_value() {
+    for (rule, body) in [
+        (
+            "flow/unclear-type",
+            "const first = <div any></div>;\nconst second = <div Object bar={1}></div>;\nconst third = <Foo.Bar any></Foo.Bar>;\n",
+        ),
+        ("flow/deprecated-type", "const el = <div bool></div>;\n"),
+        (
+            "flow/internal-type",
+            "const el = <Foo.Bar React$Node></Foo.Bar>;\n",
+        ),
+    ] {
+        let diagnostics = lint_js(rule, &format!("// @flow\n{body}"));
+        assert!(diagnostics.is_empty(), "{rule} {diagnostics:?}");
+    }
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst tag = <any></any>;\nconst arg = Foo<any>;\nconst text = <p>{any}</p>;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 14), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 17), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 18), "{still:?}");
+}
+
+#[test]
+fn a_match_alias_is_a_value() {
+    for (rule, body) in [
+        (
+            "flow/unclear-type",
+            "const first = match (value) { any as name => name };\nconst second = match (value) { Object as name => name };\n",
+        ),
+        (
+            "flow/deprecated-type",
+            "const third = match (value) { bool as name => name };\n",
+        ),
+        (
+            "flow/internal-type",
+            "const fourth = match (value) { React$Node as name => name };\n",
+        ),
+    ] {
+        let diagnostics = lint_js(rule, &format!("// @flow\n{body}"));
+        assert!(diagnostics.is_empty(), "{rule} {diagnostics:?}");
+    }
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst cast = value as any;\nimport type { any as Local } from \"./mod\";\nimport type { x as any } from \"./mod\";\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 23), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 15), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 20), "{still:?}");
+}
+
+#[test]
+fn a_component_or_hook_type_parameter_is_a_value() {
+    for (rule, body) in [
+        (
+            "flow/unclear-type",
+            "component Box<any>() { return null; }\ncomponent Other<Object>() { return null; }\nhook useValue<any>() { return 1; }\n",
+        ),
+        (
+            "flow/deprecated-type",
+            "hook useFlag<bool>() { return true; }\n",
+        ),
+        (
+            "flow/internal-type",
+            "hook useNode<React$Node>() { return null; }\ncomponent View<React$Node>() { return null; }\n",
+        ),
+    ] {
+        let diagnostics = lint_js(rule, &format!("// @flow\n{body}"));
+        assert!(diagnostics.is_empty(), "{rule} {diagnostics:?}");
+    }
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ncomponent Box<T: any>() { return null; }\nhook useBox<T: any>() { return 1; }\nconst made = Box<any>(1);\nfunction f<T: any>() {}\n",
+    );
+    assert_eq!(still.len(), 4, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 18), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 16), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 18), "{still:?}");
+    assert_eq!((still[3].line, still[3].column), (5, 15), "{still:?}");
+}

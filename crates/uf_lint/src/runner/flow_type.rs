@@ -284,6 +284,41 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `if (flag) any`, `while (flag) any`, and `for (;;) any` are statements.
+    // An annotation inside the block stays a type.
+    if names_an_if_consequent(code, at)
+        || names_a_while_body(code, at)
+        || names_a_for_body(code, at)
+    {
+        return true;
+    }
+
+    // `else any` and `do any; while (flag)` are statements too.
+    if names_an_else_consequent(code, at) || names_a_do_body(code, at) {
+        return true;
+    }
+
+    // `value += any` passes a value. `type T = any` stays a type.
+    if names_a_compound_assignment(code, at) {
+        return true;
+    }
+
+    // `declare class C mixins any {}` names a value. `implements any` stays.
+    if names_a_mixin(code, at) {
+        return true;
+    }
+
+    // `<div any>` names an attribute. `Foo<any>` and `<p>{any}</p>` stay types.
+    if names_a_jsx_attribute(code, at) {
+        return true;
+    }
+
+    // `match (value) { any as name => name }` binds a pattern.
+    // `value as any` stays a type.
+    if names_a_match_alias(code, at, len) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -839,6 +874,221 @@ fn names_a_static_field(code: &str, at: usize) -> bool {
     previous_word(code, at).is_some_and(|(_, word)| word == "static")
 }
 
+/// Whether `if (…)` on this line introduces the statement at `at`.
+///
+/// `if (flag) any` is a value. `if (flag) { const value: any = 1 }` still
+/// names a type, and the scan reads one line at a time, so a consequent on
+/// the next line is not this shape.
+fn names_an_if_consequent(code: &str, at: usize) -> bool {
+    names_a_header_body(code, at, "if")
+}
+
+/// Whether `else` introduces the statement at `at`.
+///
+/// `if (flag) {} else any` is a value. `else { const value: any = 1 }` still
+/// names a type.
+fn names_an_else_consequent(code: &str, at: usize) -> bool {
+    previous_word(code, at).is_some_and(|(_, word)| word == "else")
+}
+
+/// Whether `while (…)` on this line introduces the statement at `at`.
+///
+/// `while (flag) any` is a value. `while (flag) { const value: any = 1 }`
+/// still names a type.
+fn names_a_while_body(code: &str, at: usize) -> bool {
+    names_a_header_body(code, at, "while")
+}
+
+/// Whether `for (…)` on this line introduces the statement at `at`.
+///
+/// `for (;;) any` and `for await (const item of items) any` are values.
+/// `for (const item of any)` still names a type after `of`, and
+/// `for (;; any)` is the update, which is a different shape.
+fn names_a_for_body(code: &str, at: usize) -> bool {
+    names_a_header_body(code, at, "for")
+}
+
+/// Whether `do` introduces the statement at `at`.
+///
+/// `do any; while (flag)` is a value. `do { const value: any = 1 } while
+/// (flag)` still names a type.
+fn names_a_do_body(code: &str, at: usize) -> bool {
+    previous_word(code, at).is_some_and(|(_, word)| word == "do")
+}
+
+/// Whether `)` at the end of `keyword (…)` stands immediately in front of `at`.
+///
+/// `for await (…)` counts as `for`: `await` sits between the keyword and the
+/// `(`.
+fn names_a_header_body(code: &str, at: usize, keyword: &str) -> bool {
+    let Some((close, b')')) = prev_non_space(code, at) else {
+        return false;
+    };
+    let Some(open) = matching_open_paren(code, close) else {
+        return false;
+    };
+    let Some((word_at, word)) = previous_word(code, open) else {
+        return false;
+    };
+    word == keyword
+        || (word == "await"
+            && previous_word(code, word_at).is_some_and(|(_, earlier)| earlier == keyword))
+}
+
+/// Whether this word is the right-hand side of a compound assignment.
+///
+/// `value += any`, `value ||= any`, and `value ??= any` pass a value.
+/// `type T = any`, `const value: any = 1`, and `type T = () => any` stay
+/// types. A comparison's `==` is not an assignment.
+fn names_a_compound_assignment(code: &str, at: usize) -> bool {
+    let Some((eq, b'=')) = prev_non_space(code, at) else {
+        return false;
+    };
+    if eq == 0 {
+        return false;
+    }
+    let operator = code.as_bytes()[eq - 1];
+    if matches!(operator, b'=' | b'!') {
+        return false;
+    }
+    if operator == b'>' && arrow_return_is_a_type(code, eq - 1) {
+        return false;
+    }
+    matches!(
+        operator,
+        b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'^' | b'<' | b'>' | b'?'
+    )
+}
+
+/// Whether `mixins` introduces this name as a value.
+///
+/// `declare class C mixins any {}` and `declare class C mixins Box, any {}`
+/// name values. `class C implements any` stays a type. The walk stops at `<`,
+/// so a type argument is left to the other checks.
+fn names_a_mixin(code: &str, at: usize) -> bool {
+    let mut cursor = at;
+    loop {
+        let Some((previous, byte)) = prev_non_space(code, cursor) else {
+            return false;
+        };
+        if byte == b',' {
+            let Some((name, _)) = previous_word(code, previous) else {
+                return false;
+            };
+            cursor = name;
+            continue;
+        }
+        return is_word_byte(byte)
+            && previous_word(code, cursor).is_some_and(|(_, word)| word == "mixins");
+    }
+}
+
+/// Whether this word is a JSX attribute name, not the tag and not a type.
+///
+/// `<div any>` and `<Foo.Bar any>` name an attribute. `Foo<any>` is a type
+/// argument and `<any>` is the tag, so both stay types, and so does
+/// `<p>{any}</p>`. `type Box<T = any>` is a type default: `=` sits in front
+/// of the name.
+fn names_a_jsx_attribute(code: &str, at: usize) -> bool {
+    let bytes = code.as_bytes();
+    let mut index = at;
+    let mut saw_name = false;
+    // `foo="bar"` on an earlier attribute puts `=` behind a value. `T = any`
+    // inside `<...>` does not: that `=` belongs to this word.
+    let mut saw_value = false;
+    while index > 0 {
+        index -= 1;
+        match bytes[index] {
+            b' ' | b'\t' | b'.' | b'/' => {}
+            b'=' => {
+                if !saw_value {
+                    return false;
+                }
+            }
+            b'<' => {
+                let comparison = bytes.get(index + 1) == Some(&b'=');
+                let shift = index > 0 && bytes[index - 1] == b'<';
+                if comparison || shift {
+                    return false;
+                }
+                return saw_name;
+            }
+            byte if is_word_byte(byte) => {
+                saw_name = true;
+                while index > 0 && is_word_byte(bytes[index - 1]) {
+                    index -= 1;
+                }
+            }
+            b'"' | b'\'' => {
+                let quote = bytes[index];
+                while index > 0 {
+                    index -= 1;
+                    if bytes[index] == b'\\' {
+                        if index == 0 {
+                            return false;
+                        }
+                        index -= 1;
+                        continue;
+                    }
+                    if bytes[index] == quote {
+                        break;
+                    }
+                }
+                if bytes.get(index) != Some(&quote) {
+                    return false;
+                }
+                saw_value = true;
+            }
+            b'}' => {
+                let mut depth = 1usize;
+                while index > 0 && depth > 0 {
+                    index -= 1;
+                    match bytes[index] {
+                        b'}' => depth += 1,
+                        b'{' => depth -= 1,
+                        _ => {}
+                    }
+                }
+                if depth != 0 {
+                    return false;
+                }
+                saw_value = true;
+            }
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// Whether `pattern as name =>` binds this word.
+///
+/// `match (value) { any as name => name }` is a pattern. `value as any` is a
+/// cast, and `import type { any as Local }` is a type: neither is followed by
+/// `=>`.
+fn names_a_match_alias(code: &str, at: usize, len: usize) -> bool {
+    let Some((as_at, _)) = next_non_space(code, at + len) else {
+        return false;
+    };
+    if !is_word_byte(code.as_bytes()[as_at]) {
+        return false;
+    }
+    let as_len = identifier_len(code, as_at);
+    if &code[as_at..as_at + as_len] != "as" {
+        return false;
+    }
+    let Some((name_at, _)) = next_non_space(code, as_at + as_len) else {
+        return false;
+    };
+    if !is_word_byte(code.as_bytes()[name_at]) {
+        return false;
+    }
+    let name_len = identifier_len(code, name_at);
+    let Some((arrow, byte)) = next_non_space(code, name_at + name_len) else {
+        return false;
+    };
+    byte == b'=' && code.as_bytes().get(arrow + 1) == Some(&b'>')
+}
+
 /// Whether the name is a function or arrow parameter's default.
 ///
 /// `function f(value = Object)` and `function f(value: string = React$Node)`
@@ -975,8 +1225,9 @@ fn names_a_type_parameter(code: &str, at: usize) -> bool {
 /// Whether `<` introduces type parameters rather than type arguments.
 ///
 /// The word in front of `<` belongs to `type`, `function`, `class`,
-/// `interface`, or `opaque`. `opaque type Box<` reads `type`. A `<` with no
-/// word in front is a generic function type when its `>` is glued to `(`.
+/// `interface`, `opaque`, `component`, or `hook`. `opaque type Box<` reads
+/// `type`. A `<` with no word in front is a generic function type when its
+/// `>` is glued to `(`.
 fn declares_type_parameters(code: &str, open: usize) -> bool {
     match prev_non_space(code, open) {
         Some((_, byte)) if is_word_byte(byte) => {
@@ -985,7 +1236,7 @@ fn declares_type_parameters(code: &str, open: usize) -> bool {
             };
             matches!(
                 previous_word(code, name).map(|(_, word)| word),
-                Some("type" | "function" | "class" | "interface" | "opaque")
+                Some("type" | "function" | "class" | "interface" | "opaque" | "component" | "hook")
             )
         }
         _ => generic_function_type(code, open),
@@ -2126,6 +2377,15 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_renamed_default(code, at)
                 || names_a_private_initializer(code, at)
                 || names_a_static_field(code, at)
+                || names_an_if_consequent(code, at)
+                || names_a_while_body(code, at)
+                || names_a_for_body(code, at)
+                || names_an_else_consequent(code, at)
+                || names_a_do_body(code, at)
+                || names_a_compound_assignment(code, at)
+                || names_a_mixin(code, at)
+                || names_a_jsx_attribute(code, at)
+                || names_a_match_alias(code, at, len)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)
