@@ -86,13 +86,13 @@ index 43beb9f2f..fe5bd3d44 100644
 +                        let elements = match t.deref() {
 +                            TypeInner::DefT(_, def_t) => match def_t.deref() {
 +                                DefTInner::ArrT(arr_t) => match arr_t.as_ref() {
-+                                    ArrType::TupleAT(box TupleATData { elements, .. }) => {
++                                    ArrType::TupleAT(deref!(TupleATData { elements, .. })) => {
 +                                        elements.clone()
 +                                    }
-+                                    ArrType::ArrayAT(box ArrayATData {
++                                    ArrType::ArrayAT(deref!(ArrayATData {
 +                                        tuple_view: Some(view),
 +                                        ..
-+                                    }) => view.elements.clone(),
++                                    })) => view.elements.clone(),
 +                                    _ => return None,
 +                                },
 +                                _ => return None,
@@ -113,10 +113,10 @@ index 43beb9f2f..fe5bd3d44 100644
 +                                let mut ts: Vec<Type> = resolved_rev
 +                                    .iter()
 +                                    .filter_map(|rp| match rp {
-+                                        ResolvedParam::ResolvedArg(box ResolvedArgData(
++                                        ResolvedParam::ResolvedArg(deref!(ResolvedArgData(
 +                                            element,
 +                                            _,
-+                                        )) => Some(element.t.dupe()),
++                                        ))) => Some(element.t.dupe()),
 +                                        _ => None,
 +                                    })
 +                                    .collect();

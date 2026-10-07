@@ -7,8 +7,8 @@
 # saying which a contributor should use; `.envrc` used one, `formal.yml` used
 # one, and `README.md` told you to run `nix develop`, which is the other. Both
 # named `rust-bin.stable."1.98.0"` for a workspace that `rust-toolchain.toml`
-# pins to `nightly-2026-08-01`, and the pin is not a preference: 23 crates in
-# Meta's Flow Rust port declare `#![feature(box_patterns)]`, which no stable
+# pins to `nightly-2026-10-07`, and the pin is not a preference: 23 crates in
+# Meta's Flow Rust port need `deref_patterns`, which no stable
 # compiler accepts at all. So `nix build .#uf` could not produce a binary, and
 # `nix develop` handed you a shell in which the very next line of the README —
 # `cargo build --release --bin uf` — cannot succeed.

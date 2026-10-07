@@ -185,23 +185,24 @@ C dependency with it, from the release binary.
 
 Measured against `rustc 1.100.0-nightly (5db7f4be8 2026-09-01)`:
 
-- **The parser's own nightly requirement is expiring.** `flow_parser`'s only
-  unstable feature is `never_type`, and that compiler already reports it as
-  *stable since 1.100.0-nightly*. The type checker below is what keeps the
-  whole workspace on a pinned nightly.
+- **The parser no longer needs a nightly of its own.** `never_type` has been
+  stable since 1.100, and
+  `tools/upstream/patches/flow/0018-deref-patterns.patch` drops that feature
+  gate together with the `box` patterns below. The type checker is what keeps
+  the whole workspace on a pinned nightly.
 - **The type checker builds and runs, on a pinned nightly.** 23 crates in the
-  port, including `flow_common` and everything under `flow_typing*`, declare
-  `#![feature(box_patterns)]`, and that feature was *removed* from the compiler
-  around the 2026-09-01 nightly — so the typing crates fail on the floating
-  `nightly` channel. They compile on `nightly-2026-08-01` (rustc 1.99.0-nightly),
-  which is what `rust-toolchain.toml` pins for the whole workspace. The pin is
-  not a preference: `uf` parses and type-checks Flow with the official port, and
-  no stable toolchain can build it. The `Upstream Flow` CI job builds the parser
-  on the floating channel as an early warning, so the pin moves deliberately
-  rather than being discovered when it breaks.
+  port, including `flow_common` and everything under `flow_typing*`, match
+  through `Box`. The compiler removed `box_patterns` around the 2026-09-01
+  nightly (rust-lang/rust#156749), and
+  `tools/upstream/patches/flow/0018-deref-patterns.patch` spells those patterns
+  as `deref!(...)`. `deref_patterns` is still unstable, so no stable toolchain
+  can build the port. `rust-toolchain.toml` pins the workspace to
+  `nightly-2026-10-07` (rustc 1.101.0-nightly), the current nightly, and the pin
+  moves when that nightly moves. The `Upstream Flow` CI job builds the parser
+  on the floating channel as an early warning.
 
-  Measured on that toolchain: Flow's builtin library definitions merge into a
-  master context in **68 ms** (once, then cached), and checking a file costs
+  Measured on `nightly-2026-08-01`: Flow's builtin library definitions merge
+  into a master context in **68 ms** (once, then cached), and checking a file costs
   about **4 ms**. Assigning a string to a `number`, passing a `string` where a
   `number` is declared, and dereferencing a `?string` are each reported; a
   well-typed file reports nothing.
@@ -415,7 +416,7 @@ weight.
 
 | Concern | Where it lands |
 | --- | --- |
-| Toolchain | `nightly-2026-08-01`, pinned by the `Upstream Flow Typecheck` CI job |
+| Toolchain | `nightly-2026-10-07` (rustc 1.101.0-nightly), the channel in `rust-toolchain.toml` |
 | Default build | feature off; `uf check` is the linter alone and `uf` still builds on 1.98.0 |
 | Diagnostics | typed: severity, Flow's error code, primary and root spans, message fragments, and every location the message references |
 | Bounds | `Options::recursion_limit`, `CheckBudget`, a 4 MiB source cap, and a 1 GiB check stack |

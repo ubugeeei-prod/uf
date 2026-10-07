@@ -473,8 +473,8 @@ impl InstallWatch {
         }
         // Everything before the new phase is finished too, including a phase
         // the manager skipped past without ever evidencing.
-        for index in 0..next {
-            self.phases[index].state = PhaseState::Done;
+        for phase in self.phases.iter_mut().take(next) {
+            phase.state = PhaseState::Done;
         }
         self.phases[next].state = PhaseState::Running;
         self.current = next;

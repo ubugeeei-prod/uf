@@ -103,7 +103,7 @@ FLAKE
 }
 LOCK
 
-  printf '[toolchain]\nchannel = "nightly-2026-08-01"\n' > "$root/rust-toolchain.toml"
+  printf '[toolchain]\nchannel = "nightly-2026-10-07"\n' > "$root/rust-toolchain.toml"
   printf 'use flake .\n' > "$root/.envrc"
   printf 'Enter it with `nix develop .` first.\n' > "$root/README.md"
 

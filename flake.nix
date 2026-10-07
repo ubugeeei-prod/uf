@@ -49,7 +49,7 @@
       # It used to say `rust-bin.stable."1.98.0"`, in both this file and the
       # `tools/nix` shell, and that was not a version that had fallen behind —
       # it was a channel this workspace cannot use at all. 23 crates in Meta's
-      # Flow Rust port declare `#![feature(box_patterns)]`, `uf_cli` reaches
+      # Flow Rust port need `deref_patterns`, `uf_cli` reaches
       # every one of them through `uf_check`, and an unstable feature attribute
       # is a hard error on any stable compiler. So `nix build .#uf` could not
       # have produced a binary on any day since it was written, and
