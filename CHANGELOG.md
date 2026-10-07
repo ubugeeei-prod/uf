@@ -1,5 +1,12 @@
 # Changelog
 
+## uf@0.35.0
+
+- fix(lint): statement and pattern value positions are not reported as types (#1874) (cd39a032)
+- fix(fmt): align the colon of a rest parameter (#1862) (ad1d1436)
+- refactor(ui): choose views with match and let the compiler memoize (#1861) (b501b24b)
+- style: format the repository with the default alignment (#1860) (6a01ead2)
+
 ## uf@0.34.0
 
 - fix(lint): class and loop value positions are not reported as types (#1858) (bfb2c764)
