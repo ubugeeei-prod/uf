@@ -10,7 +10,8 @@
 // PGlite parses and serialises values itself, by type. This adapter turns both
 // off — an identity parser and serialiser for every type it knows — so rows
 // arrive as the server's text and parameters leave as the codecs wrote them,
-// exactly as with every other PostgreSQL adapter.
+// exactly as with every other PostgreSQL adapter. `:copyfrom` uses PGlite's
+// `/dev/blob` device, which is how its `COPY FROM` reads a payload.
 
 import type { Queryable, SqlParam } from "../index.js";
 import { singleConnection } from "../index.js";
@@ -24,6 +25,7 @@ export interface PGliteDatabase {
       readonly rowMode    : "array",
       readonly parsers    : { readonly [string]: (value: string) => mixed },
       readonly serializers: { readonly [string]: (value: mixed) => mixed },
+      readonly blob?      : Blob,
     |},
   ): Promise<{ readonly rows: $ReadOnlyArray<mixed>, readonly affectedRows?: number, ... }>;
   readonly parsers    : { readonly [string]: mixed };
@@ -52,6 +54,27 @@ export function fromPGlite(database: PGliteDatabase): Queryable {
   return singleConnection({
     engine   : "postgresql",
     maxParams: 65535,
+    copy: async (statement, payload) => {
+      // `COPY … FROM STDIN` is the wire form. PGlite reads the payload from
+      // the virtual file named here instead of a frontend COPY stream.
+      const text = statement.replace(" FROM STDIN", " FROM '/dev/blob'");
+      const result = await database.query(text, [], {
+        rowMode    : "array",
+        parsers    : {},
+        serializers: {},
+        blob       : new Blob([payload]),
+      });
+      if (typeof result.affectedRows === "number") {
+        return result.affectedRows;
+      }
+      let rows = 0;
+      for (let i = 0; i < payload.length; i += 1) {
+        if (payload[i] === "\n") {
+          rows += 1;
+        }
+      }
+      return rows;
+    },
     run: async (text, params) => {
       const size = Object.keys(database.parsers).length + Object.keys(database.serializers).length;
       if (size !== known) {

@@ -196,10 +196,11 @@ has the full table and the reason for each row.
 - `:execrows` resolves to the number of rows changed, `:execresult` to
   `{ rowsAffected, lastInsertId }`, and `:execlastid` to the last id as a
   `bigint`.
-- `:copyfrom` takes an array of argument objects and inserts them with multi-row
-  `INSERT`s, split under the driver's parameter limit, in one transaction when
-  the adapter can open one. It works on every engine. PostgreSQL's `COPY`
-  protocol is not used yet.
+- `:copyfrom` takes an array of argument objects. PostgreSQL adapters send one
+  `COPY … FROM STDIN` in text format. MySQL, SQLite and the synchronous path
+  insert with multi-row `INSERT`s, split under the driver's parameter limit,
+  in one transaction when the adapter can open one. A `COPY` the server rejects
+  is that error; it is not retried as `INSERT`.
 - `:batchexec`, `:batchmany` and `:batchone` take an array of argument objects
   and resolve to one result per item, in order, in one transaction when the
   adapter can open one.
@@ -336,9 +337,6 @@ To rehearse it locally, add the Rust `wasm32-wasip1` target, run
 These are deliberately missing: migrations (sqlc reads a schema, and applying it
 is your migration tool's job), a connection pool, retries, and a query builder.
 The pool and retries belong to the driver you already chose.
-
-This is planned: PostgreSQL [`COPY` for `:copyfrom`](https://github.com/ubugeeei-prod/uf/issues/1670).
-
 
 ## Where to go next
 

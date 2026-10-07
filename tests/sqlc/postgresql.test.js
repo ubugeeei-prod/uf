@@ -350,6 +350,57 @@ for (const adapter of postgresAdapters) {
     );
 
     it(
+      "round-trips a COPY field that contains a tab, a backslash, a newline and a carriage return",
+      async () => {
+        const { db, close } = await adapter.open("types-postgresql");
+        await types.createPerson(db, { name: "A", tags: [], feeling: "ok" });
+        const name = "a\tb\\c\nd\r";
+        await expect(types.copyPets(db, [{ ownerId: 1n, name }])).resolves.toBe(1);
+        const embedded = await types.peopleWithPets(db);
+        expect(embedded.map((row) => row.pets.name)).toEqual([name]);
+        await close();
+      },
+      SLOW,
+    );
+
+    it(
+      "reports a foreign-key failure from COPY and inserts nothing",
+      async () => {
+        const { db, close } = await adapter.open("types-postgresql");
+        await expect(types.copyPets(db, [{ ownerId: 999n, name: "ghost" }])).rejects.toMatchObject({
+          code: "23503",
+        });
+        await expect(types.peopleWithPets(db)).resolves.toEqual([]);
+        await close();
+      },
+      SLOW,
+    );
+
+    it(
+      "copies inside the transaction that created the owner, and rolls both back",
+      async () => {
+        const { db, close } = await adapter.open("types-postgresql");
+        const transaction = db.transaction;
+        if (transaction === undefined) {
+          throw new Error(`${adapter.name} has transactions`);
+        }
+        const error = await transaction<void>(async (tx) => {
+          await types.createPerson(tx, { name: "A", tags: [], feeling: "ok" });
+          await expect(types.copyPets(tx, [{ ownerId: 1n, name: "Rex" }])).resolves.toBe(1);
+          throw new Error("undo");
+        }).then(
+          () => null,
+          (caught) => caught,
+        );
+        expect(error).toBeInstanceOf(Error);
+        expect(String(error?.message)).toBe("undo");
+        await expect(types.peopleWithPets(db)).resolves.toEqual([]);
+        await close();
+      },
+      SLOW,
+    );
+
+    it(
       "keeps a transaction's work together and a failed one's apart",
       async () => {
         const { db, close } = await adapter.open("types-postgresql");
