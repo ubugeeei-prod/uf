@@ -518,7 +518,9 @@ pub(crate) enum Commands {
     /// The project keeps a normal `sqlc.yaml` whose plugin is `cmd: uf`;
     /// `uf sqlc generate` runs sqlc with this `uf` first on `PATH`, so the
     /// plugin sqlc starts is the one that was asked. `uf sqlc diff` is the CI
-    /// check: it fails when the generated files are out of date.
+    /// check: it fails when the generated files are out of date. `uf sqlc
+    /// install` downloads a pinned sqlc into `.uf/sqlc` when the project does
+    /// not already have one.
     Sqlc {
         #[command(subcommand)]
         command: SqlcCommand,
@@ -1600,6 +1602,28 @@ pub(crate) enum SqlcCommand {
         /// `sqlc.json` in the project root.
         #[arg(short = 'f', long, value_name = "FILE")]
         file: Option<Utf8PathBuf>,
+    },
+    /// Download sqlc into `.uf/sqlc` and print its absolute path.
+    ///
+    /// The default release is the one this repository's sqlc fixtures were
+    /// captured with. Its archive is checked against the SHA-256 embedded for
+    /// this platform before it is unpacked. A different release needs
+    /// `--sha256`. Stdout is the path and nothing else, so
+    /// `SQLC=$(uf sqlc install)` selects it.
+    Install {
+        /// A sqlc release other than the pinned one, without a leading `v`.
+        #[arg(long, value_name = "VERSION")]
+        version: Option<String>,
+        /// SHA-256 of that release's `.tar.gz` for this platform.
+        ///
+        /// Required when `--version` is not the pinned release. When
+        /// `--version` is omitted or is the pin, this has to be that pin's
+        /// digest.
+        #[arg(long, value_name = "HEX")]
+        sha256: Option<String>,
+        /// Download again even when `.uf/sqlc` already holds this version.
+        #[arg(long)]
+        force: bool,
     },
 }
 

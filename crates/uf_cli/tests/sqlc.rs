@@ -283,3 +283,172 @@ fn says_how_to_get_sqlc_when_there_is_none() {
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("sqlc is not installed"));
 }
+
+#[test]
+fn generate_names_uf_sqlc_install_when_sqlc_is_nowhere() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let output = uf()
+        .args(["sqlc", "generate"])
+        .current_dir(dir.path())
+        .env_remove("SQLC")
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .expect("run uf");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("uf sqlc install"), "{stderr}");
+}
+
+#[test]
+fn install_refuses_an_unknown_version_without_a_digest() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let output = uf()
+        .args(["sqlc", "install", "--version", "9.9.9"])
+        .current_dir(dir.path())
+        .output()
+        .expect("run uf");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty(), "{}", String::from_utf8_lossy(&output.stdout));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("--sha256"), "{stderr}");
+    assert!(!dir.path().join(".uf/sqlc/sqlc").exists());
+}
+
+#[test]
+fn install_refuses_a_digest_that_is_not_the_pins() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let output = uf()
+        .args(["sqlc", "install", "--sha256"])
+        .arg("ab".repeat(32))
+        .current_dir(dir.path())
+        .output()
+        .expect("run uf");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Omit `--sha256`"), "{stderr}");
+    assert!(!dir.path().join(".uf/sqlc/sqlc").exists());
+}
+
+/// A stand-in sqlc at `.uf/sqlc/sqlc`, with `version` naming `version`.
+#[cfg(unix)]
+fn place_managed(dir: &Path, version: &str) -> PathBuf {
+    let managed = dir.join(".uf").join("sqlc");
+    fs::create_dir_all(&managed).expect("mkdir");
+    let script = fake_sqlc(&managed, 0);
+    let binary = managed.join("sqlc");
+    fs::rename(&script, &binary).expect("rename");
+    fs::write(managed.join("version"), format!("{version}\n")).expect("version");
+    binary
+}
+
+#[cfg(unix)]
+#[test]
+fn generate_uses_the_pinned_copy_under_dot_uf_when_nothing_else_is_installed() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    place_managed(dir.path(), "1.31.1");
+    let output = uf()
+        .args(["sqlc", "generate"])
+        .current_dir(dir.path())
+        .env_remove("SQLC")
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .expect("run uf");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let log = fs::read_to_string(dir.path().join(".uf/sqlc/log")).expect("log");
+    assert!(log.starts_with("generate\n"), "{log}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_managed_sqlc_of_another_version_is_not_used() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    place_managed(dir.path(), "1.30.0");
+    let output = uf()
+        .args(["sqlc", "generate"])
+        .current_dir(dir.path())
+        .env_remove("SQLC")
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .expect("run uf");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("uf sqlc install"), "{stderr}");
+    assert!(stderr.contains("1.30.0"), "{stderr}");
+    assert!(!dir.path().join(".uf/sqlc/log").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn sqlc_on_path_wins_over_the_pinned_copy() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    place_managed(dir.path(), "1.31.1");
+    let path_dir = dir.path().join("bin");
+    fs::create_dir_all(&path_dir).expect("mkdir");
+    let script = fake_sqlc(&path_dir, 0);
+    fs::rename(&script, path_dir.join("sqlc")).expect("rename");
+    let output = uf()
+        .args(["sqlc", "generate"])
+        .current_dir(dir.path())
+        .env_remove("SQLC")
+        .env("PATH", format!("{}:/usr/bin:/bin", path_dir.display()))
+        .output()
+        .expect("run uf");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let log = fs::read_to_string(path_dir.join("log")).expect("log");
+    assert!(log.starts_with("generate\n"), "{log}");
+    assert!(!dir.path().join(".uf/sqlc/log").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn sqlc_env_wins_even_when_the_pinned_copy_is_installed() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    place_managed(dir.path(), "1.31.1");
+    let output = uf()
+        .args(["sqlc", "generate"])
+        .current_dir(dir.path())
+        .env("SQLC", dir.path().join("missing-sqlc"))
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .expect("run uf");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("sqlc is not installed"), "{stderr}");
+    assert!(!stderr.contains("uf sqlc install"), "{stderr}");
+    assert!(!dir.path().join(".uf/sqlc/log").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn install_prints_the_path_and_skips_a_download_when_the_version_matches() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let binary = place_managed(dir.path(), "1.31.1");
+    let before = fs::read(&binary).expect("script");
+    let output = uf()
+        .args(["sqlc", "install"])
+        .current_dir(dir.path())
+        .env_remove("SQLC")
+        .output()
+        .expect("run uf");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("utf-8");
+    assert_eq!(stdout.lines().count(), 1, "{stdout:?}");
+    assert!(stdout.ends_with('\n'));
+    let printed = PathBuf::from(stdout.trim_end());
+    assert!(printed.is_absolute(), "{printed:?}");
+    assert_eq!(fs::read(&printed).expect("installed"), before);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("already installed"));
+}

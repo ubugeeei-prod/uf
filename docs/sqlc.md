@@ -18,8 +18,8 @@ documentation site (`/guide/sqlc`).
 **The generator and tested adapters are ready for use.** CI runs them against
 real SQLite, PostgreSQL and MySQL databases, and `@uniflowed/sql` is published
 to npm, including `better-sqlite3` with its prebuilt addon and D1 under workerd.
-The WASM plugin ships as a signed release asset. PostgreSQL COPY and managed
-sqlc installation remain Planned.
+The WASM plugin ships as a signed release asset. PostgreSQL COPY remains
+Planned. A project obtains the pinned sqlc with `uf sqlc install`.
 
 | Piece | Status | Checked by |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ sqlc installation remain Planned.
 | `@uniflowed/sql` on npm | Implemented | release registry verification |
 | WASM plugin (`wasm32-wasip1`) | Implemented | `tools/ci/sqlc-wasm.sh`; `tools/release/verify-sqlc-wasm.sh` reads the published signed artifact back and runs pinned sqlc |
 | PostgreSQL `COPY` for `:copyfrom` | Planned | `:copyfrom` is chunked multi-row `INSERT`s on every engine today ([#1670](https://github.com/ubugeeei-prod/uf/issues/1670)) |
-| Installing sqlc for a project | Planned | `uf sqlc` runs the project's own sqlc (`$SQLC` or `PATH`) ([#1671](https://github.com/ubugeeei-prod/uf/issues/1671)) |
+| Installing sqlc for a project | Implemented | `uf sqlc install` writes the pinned release to `.uf/sqlc` after checking its SHA-256. `$SQLC` and `sqlc` on `PATH` still win. `crates/uf_cli/tests/sqlc.rs` covers the resolver and a download refused before it starts; `tools/ci/sqlc.sh` runs the command for the real archive ([#1671](https://github.com/ubugeeei-prod/uf/issues/1671)) |
 
 "Implemented" means a test in this repository runs it. A row with no test is
 never above Experimental.
@@ -76,6 +76,25 @@ sqlc has two plugin transports, and both carry the same protobuf:
 - **wasm**: sqlc downloads a module by URL and checks its sha256. The crate
   has a `sqlc-gen-flow` binary for that target. Publishing it as a release
   asset belongs to the release pipeline and is Planned.
+
+`uf sqlc install` downloads sqlc 1.31.1 — the release the fixtures under
+`tests/sqlc` were captured with — into `.uf/sqlc`, checks the archive's
+SHA-256 against the digest embedded for this platform, and prints the
+absolute path of the binary on stdout with nothing else around it. Status
+goes to stderr. A second run that finds that version already there prints
+the path and does not download. `--force` downloads again. `--version` with
+`--sha256` installs a different release of the same archive layout; without
+`--sha256` that is refused, because a version uf does not know cannot be
+checked. Generate and diff do not download on their own.
+
+Those two commands find sqlc in this order: `$SQLC` when it is set, even if
+that path does not exist; otherwise `sqlc` on `PATH`; otherwise
+`.uf/sqlc/sqlc` when `.uf/sqlc/version` is the pinned release. A project that
+installed some other version with `--version` selects it by exporting the
+path `uf sqlc install` printed (`SQLC=$(uf sqlc install --version …)`). CI
+does the same with the default pin: `tools/ci/sqlc.sh` runs
+`SQLC=$(uf sqlc install)` unless `SQLC` is already set. `.uf/` is gitignored,
+so the binary stays out of the project.
 
 `uf sqlc generate` runs `sqlc generate` with the running `uf` first on `PATH`,
 so the plugin sqlc starts is the same `uf` that was asked. `uf sqlc diff` runs

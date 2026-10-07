@@ -25,9 +25,10 @@ D1 supports its own atomic `batch()` API and has no interactive transactions.
 queries, run them on SQLite, PostgreSQL or MySQL, use transactions, and fail CI
 when the generated files are stale.
 
-**What you need first:** a project ([Your first project](/guide/project)) and
-[sqlc](https://docs.sqlc.dev/en/latest/overview/install.html) on your `PATH`.
-uf does not install sqlc for you. uf's own tests use sqlc 1.31.1.
+**What you need first:** a project ([Your first project](/guide/project)).
+`uf sqlc install` downloads sqlc 1.31.1, the release uf's own tests use, into
+`.uf/sqlc` and checks the archive. A sqlc already on your `PATH`, or named by
+`$SQLC`, is used instead of that copy.
 
 ## Point sqlc at uf
 
@@ -59,13 +60,29 @@ keep your SQL.
 ## Generate
 
 ```sh
+uf sqlc install
 uf sqlc generate
 ```
 
-This runs `sqlc generate` with the running `uf` first on `PATH`, so the plugin
-sqlc starts is the same `uf` you asked. It looks for sqlc as `$SQLC`, then as
-`sqlc` on `PATH`. Pass `-f other.yaml` for a config that is not `sqlc.yaml`,
-`sqlc.yml` or `sqlc.json` in the project root.
+`uf sqlc install` downloads sqlc 1.31.1 into `.uf/sqlc`, checks the archive
+against the SHA-256 uf was built with for this platform, and prints the
+binary's absolute path. A later install of the same version prints the path
+and does not download. `SQLC=$(uf sqlc install)` is how a script takes that
+path. `--version 1.30.0 --sha256 <hex>` installs a different release; the
+digest is required, because uf only knows the pinned one. `--force` replaces
+a copy that is already there.
+
+`uf sqlc generate` runs `sqlc generate` with the running `uf` first on `PATH`,
+so the plugin sqlc starts is the same `uf` you asked. It looks for sqlc as
+`$SQLC` (even when that path is missing), then as `sqlc` on `PATH`, then as
+`.uf/sqlc/sqlc` when the version file there is 1.31.1. It does not download
+sqlc itself. A version you installed with `--version` is selected by exporting
+the path install printed. Pass `-f other.yaml` for a config that is not
+`sqlc.yaml`, `sqlc.yml` or `sqlc.json` in the project root.
+
+In CI, leave `SQLC` unset and run `uf sqlc install` before `uf sqlc diff`.
+`tools/ci/sqlc.sh` does that. `.uf/` is gitignored, so the binary is not
+committed.
 
 For this query file
 
@@ -320,8 +337,7 @@ These are deliberately missing: migrations (sqlc reads a schema, and applying it
 is your migration tool's job), a connection pool, retries, and a query builder.
 The pool and retries belong to the driver you already chose.
 
-These are planned: PostgreSQL [`COPY` for `:copyfrom`](https://github.com/ubugeeei-prod/uf/issues/1670),
-and [uf installing sqlc](https://github.com/ubugeeei-prod/uf/issues/1671) for you.
+This is planned: PostgreSQL [`COPY` for `:copyfrom`](https://github.com/ubugeeei-prod/uf/issues/1670).
 
 
 ## Where to go next

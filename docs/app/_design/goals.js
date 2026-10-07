@@ -172,7 +172,7 @@ export const goals: $ReadOnlyArray<Goal> = [
     outcome: "SQL you write, with Flow types generated from it.",
     status : "Experimental",
     caveat:
-      "The generator and SQLite, PostgreSQL, MySQL, better-sqlite3 and D1 adapters are tested; PostgreSQL COPY and managed sqlc installation remain planned.",
+      "The generator and SQLite, PostgreSQL, MySQL, better-sqlite3 and D1 adapters are tested. PostgreSQL COPY remains planned. `uf sqlc install` obtains the pinned sqlc.",
     steps: [
       {
         label: "SQL with sqlc",
