@@ -150,6 +150,11 @@ const RAW = { getTypeParser: () => (value: string) => value };
 function runOn(client: PgClient): Run {
   return async (text, params): Promise<QueryResult> => {
     const result = await client.query({ text, values: params, rowMode: "array", types: RAW });
+    // A `COPY` request returns void. This call is a normal query, which
+    // returns a result; the union is what `query` is declared as.
+    if (result == null) {
+      throw new Error("pg query returned no result");
+    }
     const rows: Array<$ReadOnlyArray<mixed>> = [];
     for (const row of result.rows) {
       if (Array.isArray(row)) {

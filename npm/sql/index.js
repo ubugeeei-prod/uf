@@ -533,7 +533,7 @@ function copyField(value: SqlParam): string {
   return escapeCopyText(copyText(value));
 }
 
-function copyText(value: SqlParam): string {
+function copyText(value: string | number | bigint | Uint8Array): string {
   if (typeof value === "string") {
     return value;
   }

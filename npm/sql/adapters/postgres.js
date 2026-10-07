@@ -39,7 +39,7 @@ type Unsafe = {
   raw(): RawRows,
   writable(): Promise<CopyWritable>,
   /** Rejects the query. postgres.js calls it for a server error during `COPY`. */
-  reject(error: mixed): mixed,
+  reject: (error: mixed) => mixed,
   ...
 };
 
