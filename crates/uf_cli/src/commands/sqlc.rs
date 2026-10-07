@@ -150,13 +150,7 @@ pub(crate) fn sqlc(cwd: &Utf8Path, ui: &mut Ui, command: SqlcCommand) -> Result<
             sha256,
             force,
         } => {
-            return install(
-                cwd,
-                ui,
-                version.as_deref(),
-                sha256.as_deref(),
-                force,
-            );
+            return install(cwd, ui, version.as_deref(), sha256.as_deref(), force);
         }
     };
     let sqlc = resolve_sqlc(cwd)?;
@@ -309,9 +303,9 @@ fn sqlc_on_path() -> Option<Utf8PathBuf> {
 }
 
 fn host_archive() -> Option<&'static PinnedArchive> {
-    PINNED_ARCHIVES
-        .iter()
-        .find(|archive| archive.os == std::env::consts::OS && archive.arch == std::env::consts::ARCH)
+    PINNED_ARCHIVES.iter().find(|archive| {
+        archive.os == std::env::consts::OS && archive.arch == std::env::consts::ARCH
+    })
 }
 
 /// Download sqlc into `.uf/sqlc` and print the absolute path on stdout.
@@ -347,9 +341,8 @@ fn install(
         let installed = std::fs::read_to_string(&version_path).unwrap_or_default();
         if installed.trim() == version {
             write_path(&binary)?;
-            let message = uf_infra::into_string(uf_infra::cstr!(
-                "sqlc {version} is already installed"
-            ));
+            let message =
+                uf_infra::into_string(uf_infra::cstr!("sqlc {version} is already installed"));
             ui.render_err(|renderer, out| renderer.status(out, Status::Success, &message));
             return Ok(());
         }
@@ -363,10 +356,10 @@ fn install(
         release.platform
     ));
     download(&url, &archive)?;
-    let bytes = std::fs::read(&archive).with_context(|| uf_infra::cstr!("could not read {archive}"))?;
-    verify_sha256(&bytes, &expected).map_err(|error| {
+    let bytes =
+        std::fs::read(&archive).with_context(|| uf_infra::cstr!("could not read {archive}"))?;
+    verify_sha256(&bytes, &expected).inspect_err(|_| {
         let _ = std::fs::remove_file(&archive);
-        error
     })?;
     extract_binary(&archive, &dir, release.binary)?;
     let _ = std::fs::remove_file(&archive);
@@ -413,13 +406,16 @@ fn valid_version(version: &str) -> bool {
         return false;
     };
     first.is_ascii_alphanumeric()
-        && version
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_'))
+        && version.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_')
+        })
 }
 
 fn is_sha256_hex(digest: &str) -> bool {
-    digest.len() == 64 && digest.chars().all(|character| character.is_ascii_hexdigit())
+    digest.len() == 64
+        && digest
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
 }
 
 /// The lower-case hex SHA-256 of `bytes`.
@@ -486,8 +482,12 @@ fn write_path(binary: &Utf8Path) -> Result<()> {
     let path = binary
         .canonicalize()
         .with_context(|| uf_infra::cstr!("could not resolve {binary}"))?;
-    let path = Utf8PathBuf::from_path_buf(path)
-        .map_err(|path| anyhow::anyhow!(uf_infra::cstr!("sqlc's path is not UTF-8: {}", path.display())))?;
+    let path = Utf8PathBuf::from_path_buf(path).map_err(|path| {
+        anyhow::anyhow!(uf_infra::cstr!(
+            "sqlc's path is not UTF-8: {}",
+            path.display()
+        ))
+    })?;
     writeln!(std::io::stdout(), "{}", path.as_str()).context("could not write sqlc's path")
 }
 

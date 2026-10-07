@@ -422,7 +422,7 @@ describe(":copyfrom", () => {
     const { db, statements } = recorder("postgresql");
     const copying: Queryable = {
       ...db,
-      copy: () => Promise.reject(Object.assign(new Error("fk"), { code: "23503" })),
+      copy: () => Promise.reject({ ...new Error("fk"), code: "23503" }),
     };
     await expect(copyFrom(copying, "Copy", plan, [["1", "a"]])).rejects.toMatchObject({
       code: "23503",

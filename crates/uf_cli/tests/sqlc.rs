@@ -308,7 +308,11 @@ fn install_refuses_an_unknown_version_without_a_digest() {
         .output()
         .expect("run uf");
     assert_eq!(output.status.code(), Some(1));
-    assert!(output.stdout.is_empty(), "{}", String::from_utf8_lossy(&output.stdout));
+    assert!(
+        output.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("--sha256"), "{stderr}");
     assert!(!dir.path().join(".uf/sqlc/sqlc").exists());
