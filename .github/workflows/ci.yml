@@ -38,7 +38,7 @@ jobs:
       native: ${{ steps.scope.outputs.native }}
       rust_tests: ${{ steps.scope.outputs.rust_tests }}
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -52,11 +52,11 @@ jobs:
     name: Toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
           toolchain: nightly-2026-10-07
       - uses: $/.github/actions/rust-cache
@@ -77,12 +77,12 @@ jobs:
     needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
         if: needs.changes.outputs.code == 'true'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly-2026-10-07
@@ -102,12 +102,12 @@ jobs:
     needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
         if: needs.changes.outputs.code == 'true'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly-2026-10-07
@@ -131,7 +131,7 @@ jobs:
     needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -142,7 +142,7 @@ jobs:
       # `crates/uf_transform/tests/react_compiler_conformance/baseline.tsv`.
       - run: tools/react-compiler/sync.sh
         if: needs.changes.outputs.code == 'true'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly-2026-10-07
@@ -159,7 +159,7 @@ jobs:
           node-version: 24
       - name: Mount npm cache
         if: needs.changes.outputs.code == 'true'
-        uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
+        uses: useblacksmith/stickydisk@3f6be1451e3cad893b778bc93495c80452a5da26 # v1.7.2
         with:
           key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
           path: ~/.npm
@@ -257,11 +257,11 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
           toolchain: nightly-2026-10-07
       # `uf fmt` hands the JSON and CSS to the non-Flow formatter, which is a
@@ -271,7 +271,7 @@ jobs:
         with:
           node-version: 24
       - name: Mount npm cache
-        uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
+        uses: useblacksmith/stickydisk@3f6be1451e3cad893b778bc93495c80452a5da26 # v1.7.2
         with:
           key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
           path: ~/.npm
@@ -292,11 +292,11 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
           toolchain: nightly-2026-10-07
       # `uf lint` reads `uf.config.js`, which imports `@uniflowed/config`, so
@@ -306,7 +306,7 @@ jobs:
         with:
           node-version: 24
       - name: Mount npm cache
-        uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
+        uses: useblacksmith/stickydisk@3f6be1451e3cad893b778bc93495c80452a5da26 # v1.7.2
         with:
           key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
           path: ~/.npm
@@ -329,18 +329,18 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
           toolchain: nightly-2026-10-07
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
       - name: Mount npm cache
-        uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
+        uses: useblacksmith/stickydisk@3f6be1451e3cad893b778bc93495c80452a5da26 # v1.7.2
         with:
           key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
           path: ~/.npm
@@ -387,12 +387,12 @@ jobs:
     needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
         if: needs.changes.outputs.code == 'true'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly-2026-10-07
@@ -402,7 +402,7 @@ jobs:
           node-version: 24
       - name: Mount npm cache
         if: needs.changes.outputs.code == 'true'
-        uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
+        uses: useblacksmith/stickydisk@3f6be1451e3cad893b778bc93495c80452a5da26 # v1.7.2
         with:
           key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
           path: ~/.npm
@@ -440,12 +440,12 @@ jobs:
     needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
         if: needs.changes.outputs.full == 'true'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-10-07
@@ -455,7 +455,7 @@ jobs:
           node-version: 26
       - name: Mount npm cache
         if: needs.changes.outputs.full == 'true'
-        uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
+        uses: useblacksmith/stickydisk@3f6be1451e3cad893b778bc93495c80452a5da26 # v1.7.2
         with:
           key: ${{ github.repository }}-npm-${{ runner.os }}-node-26
           path: ~/.npm
@@ -484,7 +484,7 @@ jobs:
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 20
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -519,12 +519,12 @@ jobs:
     needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
         if: needs.changes.outputs.full == 'true'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-10-07
@@ -558,7 +558,7 @@ jobs:
       - run: tools/upstream/sync.sh
         if: needs.changes.outputs.full == 'true'
         shell: bash
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-10-07
@@ -638,13 +638,13 @@ jobs:
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         if: needs.changes.outputs.code == 'true'
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
         if: needs.changes.outputs.code == 'true'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly-2026-10-07
@@ -685,12 +685,12 @@ jobs:
     needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
         if: needs.changes.outputs.code == 'true'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly-2026-10-07
@@ -732,7 +732,7 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           # Every commit and every tag, for `release:changelog` below. It
           # compares each released section with `git log <previous tag>..<tag>`,
@@ -743,7 +743,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - run: tools/upstream/sync.sh
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
           toolchain: nightly-2026-10-07
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -928,12 +928,12 @@ jobs:
       # overrides `rustup default`.
       RUSTUP_TOOLCHAIN: nightly-2026-10-07
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
         if: needs.changes.outputs.code == 'true'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly-2026-10-07
@@ -954,12 +954,12 @@ jobs:
       # `rustup default`, so the moving channel only takes effect through this.
       RUSTUP_TOOLCHAIN: nightly
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
         if: needs.changes.outputs.code == 'true'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly
@@ -1016,7 +1016,7 @@ jobs:
         bun:
           - latest
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       # Every cargo invocation in this workspace needs the Flow submodule
@@ -1024,7 +1024,7 @@ jobs:
       # that uses them is off.
       - run: tools/upstream/sync.sh
         if: needs.changes.outputs.full == 'true'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-10-07
@@ -1061,7 +1061,7 @@ jobs:
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -1121,7 +1121,7 @@ jobs:
           --health-timeout 5s
           --health-retries 30
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         if: needs.changes.outputs.code == 'true'
         with:
           persist-credentials: false
@@ -1133,7 +1133,7 @@ jobs:
         if: needs.changes.outputs.code == 'true'
       - run: tools/upstream/sync.sh
         if: needs.changes.outputs.code == 'true'
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly-2026-10-07
@@ -1172,7 +1172,7 @@ jobs:
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -1205,7 +1205,7 @@ jobs:
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 30
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -1259,7 +1259,7 @@ jobs:
       matrix:
         target: [node, bun, deno, container, edge, serverless, static]
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -1324,7 +1324,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         if: needs.changes.outputs.deploy == 'true'
         with:
           persist-credentials: false
@@ -1343,7 +1343,7 @@ jobs:
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 20
     steps:
-      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
