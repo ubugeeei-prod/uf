@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.36.0
+
+- feat(sqlc): install pinned sqlc and use COPY for copyfrom (#1876) (8aba3e96)
+
 ## uf@0.35.0
 
 - fix(lint): statement and pattern value positions are not reported as types (#1874) (cd39a032)
