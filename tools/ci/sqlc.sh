@@ -19,7 +19,11 @@ if [ ! -x "$uf" ]; then
   echo "sqlc.sh: no uf at $uf (set UF_BINARY)" >&2
   exit 2
 fi
-SQLC=${SQLC:-$(sh "$root/tools/ci/install-sqlc.sh" "$root/target/sqlc")}
+# The same pin `uf sqlc install` embeds. `SQLC` still wins, so a checkout
+# that already points at a binary keeps it. Stdout of install is the path.
+if [ -z "${SQLC:-}" ]; then
+  SQLC=$("$uf" --cwd "$root" sqlc install)
+fi
 export SQLC
 
 cd "$root/tests/sqlc"

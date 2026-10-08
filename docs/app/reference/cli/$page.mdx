@@ -1702,10 +1702,26 @@ sqlc starts `uf /plugin.CodegenService/Generate`, and `uf` answers that
 argument itself, before any command is parsed. [SQL with sqlc](/guide/sqlc)
 is the guide, and says what is still Experimental.
 
-uf does not install sqlc. Both commands run `$SQLC` when it is set and `sqlc`
-on `PATH` otherwise, with the directory of the running `uf` put first on
-`PATH`, so the plugin sqlc starts is this `uf` rather than an older one earlier
-on the path.
+`uf sqlc generate` and `uf sqlc diff` find sqlc as `$SQLC` when that is set
+(even when the path does not exist), then as `sqlc` on `PATH`, then as
+`.uf/sqlc/sqlc` when `uf sqlc install` wrote the pinned release there. The
+directory of the running `uf` is put first on `PATH` for the child, so the
+plugin sqlc starts is this `uf` rather than an older one earlier on the path.
+Neither command downloads sqlc.
+
+### uf sqlc install
+
+Downloads the pinned sqlc (1.31.1, the release uf's own fixtures were captured
+with) into `.uf/sqlc` and prints its absolute path on stdout, alone, so
+`SQLC=$(uf sqlc install)` works. The archive is checked against the SHA-256
+embedded for this platform before it is unpacked. A matching version already
+in `.uf/sqlc` is left in place; `--force` downloads it again. `--version` names
+another release and requires `--sha256`, the digest of that release's
+`.tar.gz` for this platform. The version file `.uf/sqlc/version` records what
+was installed. Generate and diff only pick that copy up automatically when the
+version file is the pinned release; point `SQLC` at the printed path for any
+other version. `.uf/` is gitignored. In CI, leave `SQLC` unset and run
+`uf sqlc install` before `uf sqlc diff`, which is what `tools/ci/sqlc.sh` does.
 
 ### uf sqlc generate
 

@@ -64,15 +64,16 @@ index 4b4237f22..97516f1c0 100644
 +        // itself, and a pattern binding needs the variable back afterwards.
 +        (
 +            TypeInner::GenericT(..),
-+            UseTInner::ConcretizeT(box ConcretizeTData {
++            UseTInner::ConcretizeT(deref!(ConcretizeTData {
 +                kind: ConcretizationKind::ConcretizeForMatchArg { .. },
 +                collector,
 +                ..
-+            }),
++            })),
 +        ) => {
 +            collector.add(l.dupe());
 +        }
-         (TypeInner::GenericT(box GenericTData { reason, bound, .. }), _) => {
+-        (TypeInner::GenericT(box GenericTData { reason, bound, .. }), _) => {
++        (TypeInner::GenericT(deref!(GenericTData { reason, bound, .. })), _) => {
              let repos = helpers::reposition_reason(cx, env, None, reason, false, bound)?;
              rec_flow(cx, env, trace, (&repos, u))?;
 diff --git a/rust_port/crates/flow_typing_loc_env/src/match_pattern_ir.rs b/rust_port/crates/flow_typing_loc_env/src/match_pattern_ir.rs
@@ -217,7 +218,7 @@ index 691e4baac..2463c81d6 100644
 +                // the analysis runs over its bound. The variable is recorded
 +                // rather than dropped: `ValueUnion::to_type` puts it back, and
 +                // without that a pattern binding comes out as the bound.
-+                TypeInner::GenericT(box generic) => {
++                TypeInner::GenericT(deref!(generic)) => {
 +                    value_union.generics.push(generic.clone());
 +                    let repositioned = flow_typing_type::type_util::mod_reason_of_t(
 +                        &|_| generic.reason.dupe(),

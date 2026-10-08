@@ -36,8 +36,9 @@
 - [x] Make Meta's Flow Rust port the only parser, and delete the QuickJS-hosted
       backend along with the source rewriting it required.
 - [x] Integrate Flow typecheck diagnostics without requiring `.flowconfig`.
-      The port's typing crates need `box_patterns`, removed from the floating
-      nightly channel, so `rust-toolchain.toml` pins `nightly-2026-08-01`.
+      The port's typing crates need `deref_patterns` (`box_patterns` was removed
+      around the 2026-09-01 nightly), so `rust-toolchain.toml` pins
+      `nightly-2026-10-07`.
       68 ms to merge builtins, ~4 ms per file. See docs/architecture.md.
 - [x] Read `.flowconfig`'s `[libs]` when a project has one, with Flow's own
       config parser, and merge what it names into the type environment.

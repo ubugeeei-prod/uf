@@ -16,8 +16,9 @@
 //     type. So an `int8` is a `bigint` under `pg` and under `postgres` alike,
 //     rather than whatever each driver's own parser decided.
 //   * **The parts of sqlc's semantics a driver does not have**: `sqlc.slice`
-//     expansion, `:copyfrom` as chunked multi-row inserts, `:batch*` in one
-//     transaction, and nested transactions as savepoints.
+//     expansion, `:copyfrom` (PostgreSQL `COPY` when the adapter can send it,
+//     otherwise chunked multi-row inserts), `:batch*` in one transaction, and
+//     nested transactions as savepoints.
 //   * **A synchronous path** for drivers that run a statement on the calling
 //     thread (`node:sqlite`, `better-sqlite3`, `bun:sqlite`). Generated code
 //     with `sync: true` calls it, so a transaction can stay inside `BEGIN`
@@ -65,12 +66,24 @@ export type QueryMode = "rows" | "exec";
  * `transaction` is absent where the platform has no interactive transactions
  * (Cloudflare D1). Inside a transaction it opens a savepoint.
  */
+/**
+ * Send one `COPY … FROM STDIN` payload and resolve to the number of rows the
+ * server accepted.
+ *
+ * Present on a PostgreSQL adapter that can speak `COPY`. Absent everywhere
+ * else, where `:copyfrom` stays a chunked `INSERT`. The payload is PostgreSQL
+ * text format: tab-separated fields, one row per line.
+ */
+export type CopyIn = (statement: string, payload: string) => Promise<number>;
+
 export type Queryable = {
   readonly engine: Engine,
   /** The most bound parameters one statement may carry; `:copyfrom` chunks under it. */
   readonly maxParams: number,
   query(text: string, params: $ReadOnlyArray<SqlParam>, mode: QueryMode): Promise<QueryResult>,
   readonly transaction?: <T>(body: (tx: Queryable) => Promise<T>) => Promise<T>,
+  /** PostgreSQL `COPY`, when this adapter can send one. */
+  readonly copy?: CopyIn,
   ...
 };
 
@@ -494,6 +507,96 @@ export type CopyPlan = {|
 /** The most rows one statement carries when a row has no parameters at all. */
 const COPY_ROWS_WITHOUT_PARAMS = 1000;
 
+/**
+ * `COPY <table> (<columns>) FROM STDIN` for an `INSERT … VALUES` plan, or
+ * `null` when the plan is not that shape.
+ *
+ * sqlc only accepts `INSERT INTO t (…) VALUES (…)` for `:copyfrom`, and the
+ * generator puts the table and the column list in `head`. Anything else keeps
+ * the chunked `INSERT`, which is the path every engine can run.
+ */
+function copyStatement(plan: CopyPlan): string | null {
+  const prefix = "INSERT INTO ";
+  const suffix = " VALUES ";
+  if (!plan.head.startsWith(prefix) || !plan.head.endsWith(suffix)) {
+    return null;
+  }
+  const target = plan.head.slice(prefix.length, plan.head.length - suffix.length);
+  return `COPY ${target} FROM STDIN WITH (FORMAT text)`;
+}
+
+/** One field of PostgreSQL's text `COPY` format. */
+function copyField(value: SqlParam): string {
+  if (value === null) {
+    return "\\N";
+  }
+  return escapeCopyText(copyText(value));
+}
+
+function copyText(value: string | number | bigint | Uint8Array): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "bigint") {
+    return String(value);
+  }
+  let hex = "\\x";
+  for (let i = 0; i < value.length; i += 1) {
+    hex += value[i].toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+/** `\`, newline, carriage return and tab, the four escapes text `COPY` requires. */
+function escapeCopyText(text: string): string {
+  let out = "";
+  for (let i = 0; i < text.length; i += 1) {
+    const character = text[i];
+    if (character === "\\") {
+      out += "\\\\";
+    } else if (character === "\n") {
+      out += "\\n";
+    } else if (character === "\r") {
+      out += "\\r";
+    } else if (character === "\t") {
+      out += "\\t";
+    } else {
+      out += character;
+    }
+  }
+  return out;
+}
+
+/**
+ * Every row of a `:copyfrom` as one text-format payload.
+ *
+ * A short row throws before anything is sent, the same way the `INSERT` path
+ * does. A null field is `\N`. The payload ends each row with a newline, which
+ * is the row terminator `COPY` counts.
+ */
+function copyPayload(
+  plan: CopyPlan,
+  rows: $ReadOnlyArray<$ReadOnlyArray<SqlParam>>,
+  name: string,
+): string {
+  const width = plan.refs.length;
+  let payload = "";
+  for (const row of rows) {
+    for (let i = 0; i < width; i += 1) {
+      const index = plan.refs[i];
+      if (index >= row.length) {
+        throw new SqlError({ kind: "row", index, length: row.length }, name);
+      }
+      if (i > 0) {
+        payload += "\t";
+      }
+      payload += copyField(row[index]);
+    }
+    payload += "\n";
+  }
+  return payload;
+}
+
 function copyChunk(
   engine: Engine,
   plan  : CopyPlan,
@@ -528,12 +631,15 @@ function copyWidth(db: { readonly maxParams: number, ... }, plan: CopyPlan, name
 }
 
 /**
- * `:copyfrom` — insert every row, as few statements as `maxParams` allows.
+ * `:copyfrom` — insert every row.
  *
- * Inside one transaction when the `Queryable` can open one, so a failure in
- * the third chunk does not leave the first two behind: pgx's `CopyFrom` is one
- * `COPY`, and a caller of the generated function should not have to know it is
- * now several statements. Resolves to the number of rows inserted.
+ * A PostgreSQL adapter that implements `copy` receives one `COPY … FROM STDIN`
+ * in text format, which is one statement and so one success or one failure.
+ * Every other adapter, and a plan that is not an `INSERT … VALUES`, stays on
+ * chunked multi-row `INSERT`s. Those run inside one transaction when the
+ * `Queryable` can open one and the rows do not fit in a single statement, so
+ * a failure in the third chunk does not leave the first two behind. Resolves
+ * to the number of rows inserted.
  */
 export async function copyFrom(
   db  : Queryable,
@@ -543,6 +649,13 @@ export async function copyFrom(
 ): Promise<number> {
   if (rows.length === 0) {
     return 0;
+  }
+  const copy = db.copy;
+  if (db.engine === "postgresql" && typeof copy === "function") {
+    const statement = copyStatement(plan);
+    if (statement !== null) {
+      return copy(statement, copyPayload(plan, rows, name));
+    }
   }
   const perStatement = copyWidth(db, plan, name);
   const insert = async (q: Queryable): Promise<number> => {
@@ -667,6 +780,8 @@ export type Connection = {|
   readonly runSync?: RunSync,
   /** The statement that opens a transaction; `BEGIN` unless the adapter knows better. */
   readonly begin?: string,
+  /** PostgreSQL `COPY` on this connection, when the driver can send one. */
+  readonly copy?: CopyIn,
 |};
 
 /**
@@ -701,10 +816,17 @@ async function scoped<T>(
     }
     return connection.run(text, params, mode);
   };
+  const copy = connection.copy;
+  const guardedCopy: CopyIn | void =
+    copy === undefined
+      ? undefined
+      : (statement, payload) =>
+          open ? copy(statement, payload) : Promise.reject(new SqlError({ kind: "closed" }));
   const tx: Queryable = {
     engine   : connection.engine,
     maxParams: connection.maxParams,
     query    : guarded,
+    ...(guardedCopy === undefined ? null : { copy: guardedCopy }),
     transaction: async <U>(inner: (tx: Queryable) => Promise<U>): Promise<U> => {
       const savepoint = `uf_sp_${depth + 1}`;
       await guarded(`SAVEPOINT ${savepoint}`, [], "exec");
@@ -910,6 +1032,19 @@ function connect(connection: Connection): Handle {
     }
     return run(text, params, mode);
   };
+  const rawCopy = connection.copy;
+  const copy =
+    rawCopy === undefined
+      ? undefined
+      : async (statement: string, payload: string): Promise<number> => {
+          if (syncOpen) {
+            unsupported("a COPY while a synchronous transaction is open");
+          }
+          while (gate !== null) {
+            await gate;
+          }
+          return rawCopy(statement, payload);
+        };
   const transactionSync = <T>(body: (tx: SyncQueryable) => T): T => {
     if (runSync == null) {
       unsupported("a synchronous transaction on an asynchronous connection");
@@ -936,6 +1071,7 @@ function connect(connection: Connection): Handle {
     transaction,
     querySync,
     transactionSync,
+    ...(copy === undefined ? null : { copy }),
   };
 }
 

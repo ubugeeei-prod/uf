@@ -19,11 +19,18 @@ git worktree add --detach "$baseline" "$BASE_SHA"
 # The example uses the same public lint API and is identical on both revisions.
 cp crates/uf_lint/examples/import_graph_alloc.rs "$baseline/crates/uf_lint/examples/import_graph_alloc.rs"
 (cd "$baseline" && tools/upstream/sync.sh)
-export CARGO_TARGET_DIR="$root/target"
-cargo run --manifest-path "$baseline/Cargo.toml" -p uf_lint --example import_graph_alloc --profile ci-opt --locked > "$report/import-before.txt"
-cargo build --manifest-path "$baseline/Cargo.toml" --bin uf --profile ci-opt --locked
+# Cargo started here would compile the base revision with this directory's
+# pin. That source still calls `u32::max_value()` inside index_vec, which
+# the newer nightly denies, so the build uses the toolchain the base names
+# and a target directory of its own.
+baseline_target="$baseline/target"
+(
+  cd "$baseline"
+  CARGO_TARGET_DIR="$baseline_target" cargo run -p uf_lint --example import_graph_alloc --profile ci-opt --locked > "$report/import-before.txt"
+  CARGO_TARGET_DIR="$baseline_target" cargo build --bin uf --profile ci-opt --locked
+)
 cp "$head_binary" "$report/uf-after"
-cp "$CARGO_TARGET_DIR/ci-opt/uf" "$report/uf-before"
+cp "$baseline_target/ci-opt/uf" "$report/uf-before"
 strip "$report/uf-before" "$report/uf-after"
 wc -c "$report/uf-before" "$report/uf-after" > "$report/binary-size.txt"
 size "$report/uf-before" "$report/uf-after" >> "$report/binary-size.txt"

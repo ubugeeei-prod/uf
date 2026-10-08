@@ -273,7 +273,7 @@ pub fn is_simple_call_argument(expression: &Expression, depth: usize) -> bool {
             expression::ArrayElement::Hole(_) => true,
         }),
         E::Import { inner, .. } => {
-            child(&inner.argument) && inner.options.as_ref().is_none_or(&child)
+            child(&inner.argument) && inner.options.as_ref().is_none_or(child)
         }
         E::Call { .. } | E::OptionalCall { .. } | E::New { .. } => {
             let (callee, arguments): (&Expression, &[expression::ExpressionOrSpread<Loc, Loc>]) =

@@ -296,10 +296,12 @@ linter read one syntax tree produced by Meta's own code. That is not an
 integration uf is proud of having assembled — it is the reason there is nothing
 to assemble.
 
-**What it costs, in the same paragraph.** 23 crates in the port declare
-`#![feature(box_patterns)]`, and that feature was removed from the compiler
-around the 2026-09-01 nightly, so `rust-toolchain.toml` pins the whole workspace
-to `nightly-2026-08-01`. **No stable Rust toolchain can build uf.** The
+**What it costs, in the same paragraph.** 23 crates in the port match through
+`Box` with `deref_patterns`, which is still unstable. The compiler removed
+`box_patterns` around the 2026-09-01 nightly, and
+`tools/upstream/patches/flow/0018-deref-patterns.patch` is the replacement, so
+`rust-toolchain.toml` pins the whole workspace to `nightly-2026-10-07`. **No
+stable Rust toolchain can build uf.** The
 `Upstream Flow` CI job builds the parser on the floating channel as an early
 warning, so the pin moves deliberately rather than being discovered when it
 breaks. Every number and every embedding hazard is in

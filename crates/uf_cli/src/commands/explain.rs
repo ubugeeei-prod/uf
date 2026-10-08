@@ -966,11 +966,11 @@ fn mcp_stages() -> Vec<Stage> {
 /// `uf sqlc`: sqlc reads the SQL, and uf, as the plugin sqlc starts, writes
 /// the Flow.
 ///
-/// sqlc is the project's own. uf finds it as `$SQLC` or `sqlc` on `PATH` and
-/// does not download it, so the first provider shows which one a run will use.
+/// sqlc is the project's, or the copy `uf sqlc install` wrote. `$SQLC` wins,
+/// then `sqlc` on `PATH`, then `.uf/sqlc` when that copy is the pinned release.
 fn sqlc_stages() -> Vec<Stage> {
     let sqlc = std::env::var("SQLC").map_or_else(
-        |_| "sqlc (on PATH)".to_string(),
+        |_| "sqlc ($SQLC, then PATH, then .uf/sqlc for the pinned release)".to_string(),
         |path| uf_infra::into_string(uf_infra::cstr!("sqlc ($SQLC = {path})")),
     );
     vec![

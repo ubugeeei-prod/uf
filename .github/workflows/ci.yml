@@ -58,7 +58,7 @@ jobs:
       - run: tools/upstream/sync.sh
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       - uses: $/.github/actions/rust-cache
         with:
           key: toolchain
@@ -85,7 +85,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         if: needs.changes.outputs.code == 'true'
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
           components: rustfmt
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: needs.changes.outputs.code == 'true'
@@ -110,7 +110,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         if: needs.changes.outputs.code == 'true'
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
           components: clippy
       - uses: $/.github/actions/rust-cache
         if: needs.changes.outputs.code == 'true'
@@ -145,7 +145,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         if: needs.changes.outputs.code == 'true'
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       - uses: $/.github/actions/rust-cache
         if: needs.changes.outputs.code == 'true'
         with:
@@ -263,7 +263,7 @@ jobs:
       - run: tools/upstream/sync.sh
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       # `uf fmt` hands the JSON and CSS to the non-Flow formatter, which is a
       # dependency rather than a global install — so the dependencies have to be
       # here even though nothing in this job runs JavaScript.
@@ -298,7 +298,7 @@ jobs:
       - run: tools/upstream/sync.sh
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       # `uf lint` reads `uf.config.js`, which imports `@uniflowed/config`, so
       # the dependencies have to be installed even though the linter does not
       # run a line of JavaScript.
@@ -335,7 +335,7 @@ jobs:
       - run: tools/upstream/sync.sh
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -395,7 +395,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         if: needs.changes.outputs.code == 'true'
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: needs.changes.outputs.code == 'true'
         with:
@@ -448,7 +448,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         if: needs.changes.outputs.full == 'true'
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: needs.changes.outputs.full == 'true'
         with:
@@ -527,7 +527,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         if: needs.changes.outputs.full == 'true'
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: needs.changes.outputs.full == 'true'
         with:
@@ -561,7 +561,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         if: needs.changes.outputs.full == 'true'
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         if: needs.changes.outputs.full == 'true'
         with:
@@ -647,7 +647,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         if: needs.changes.outputs.code == 'true'
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
           targets: wasm32-wasip2
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         if: needs.changes.outputs.code == 'true'
@@ -693,7 +693,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         if: needs.changes.outputs.code == 'true'
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       - uses: $/.github/actions/rust-cache
         if: needs.changes.outputs.code == 'true'
         with:
@@ -745,7 +745,7 @@ jobs:
       - run: tools/upstream/sync.sh
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -922,12 +922,11 @@ jobs:
     needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     env:
-      # Flow's typing crates declare `#![feature(box_patterns)]`, which the
-      # compiler removed around 2026-09-01. This date is the newest nightly
-      # that still accepts it, so the pin is not a preference — a floating
-      # `nightly` cannot build the type checker at all. `RUSTUP_TOOLCHAIN`
-      # because `rust-toolchain.toml` overrides `rustup default`.
-      RUSTUP_TOOLCHAIN: nightly-2026-08-01
+      # The typing crates use `deref_patterns`. `box_patterns` was removed
+      # around 2026-09-01, and a floating `nightly` is not the pin.
+      # `RUSTUP_TOOLCHAIN` repeats `rust-toolchain.toml` because that file
+      # overrides `rustup default`.
+      RUSTUP_TOOLCHAIN: nightly-2026-10-07
     steps:
       - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
         with:
@@ -937,7 +936,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         if: needs.changes.outputs.code == 'true'
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       - uses: $/.github/actions/rust-cache
         if: needs.changes.outputs.code == 'true'
         with:
@@ -969,11 +968,10 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         with:
           key: upstream-flow
-      # Early warning that the Flow port still builds on the moving channel, so
+      # Early warning that the parser still builds on the moving channel, so
       # the pin in `rust-toolchain.toml` can be advanced deliberately rather
-      # than discovered when it breaks. Only the parser: the typing crates need
-      # `box_patterns`, which the current nightly no longer has, which is
-      # exactly what this job is here to tell us about.
+      # than discovered when it breaks. Only the parser: the typing crates
+      # need `deref_patterns`, which is why the workspace stays on the pin.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: needs.changes.outputs.code == 'true'
         with:
@@ -1029,7 +1027,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         if: needs.changes.outputs.full == 'true'
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
       - uses: $/.github/actions/rust-cache
         if: needs.changes.outputs.full == 'true'
         with:
@@ -1138,7 +1136,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         if: needs.changes.outputs.code == 'true'
         with:
-          toolchain: nightly-2026-08-01
+          toolchain: nightly-2026-10-07
           targets: wasm32-wasip1
       - uses: $/.github/actions/rust-cache
         if: needs.changes.outputs.code == 'true'

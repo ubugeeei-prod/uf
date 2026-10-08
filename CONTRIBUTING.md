@@ -140,11 +140,12 @@ build, and is what the `Docs build` job runs. It touches no network:
 schedule runs it, because a check that fails when somebody else's host is slow
 is a check people learn to re-run until it goes green.
 
-`rust-toolchain.toml` pins `nightly-2026-08-01`, and every command above uses
+`rust-toolchain.toml` pins `nightly-2026-10-07`, and every command above uses
 it. The pin is a requirement, not a preference: `uf` parses and type-checks Flow
-with Meta's official Rust port, 23 of whose crates declare
-`#![feature(box_patterns)]` — a feature the compiler removed around the
-2026-09-01 nightly. That date is the newest nightly that still accepts it.
+with Meta's official Rust port. 23 of its crates match through `Box` with
+`deref_patterns`, which is still unstable. The compiler removed `box_patterns`
+around the 2026-09-01 nightly; `tools/upstream/patches/flow/0018-deref-patterns.patch`
+is the replacement, and the channel above is the current nightly that builds it.
 
 Run `uf run upstream:sync` before any cargo command; the port lives in the
 `upstream/flow` submodule and nothing builds without it.

@@ -262,3 +262,9 @@ inherits = "release"
 codegen-units = 64
 lto = false
 opt-level = 2
+
+# allocative 0.3.6 implements `Allocative` for both `Infallible` and `!`.
+# Rust 1.100 makes those the same type, and the upstream crate is archived.
+# `third-party/allocative` is that release with the duplicate impl removed.
+[patch.crates-io]
+allocative = { path = "third-party/allocative" }

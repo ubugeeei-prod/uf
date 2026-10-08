@@ -6,9 +6,9 @@ name: Nix
 # job, which enters the dev shell to run `why3` and never builds a crate — so
 # `nix build .#uf` had never been executed by anything, on any machine, since
 # it was written. It could not have worked: it pinned `rust-bin.stable."1.98.0"`
-# while `rust-toolchain.toml` pins `nightly-2026-08-01`, and 23 crates in the
-# Flow port declare `#![feature(box_patterns)]`, which no stable compiler
-# accepts. A flake nothing builds is a flake that is broken and nobody knows.
+# while `rust-toolchain.toml` pins `nightly-2026-10-07`, and 23 crates in the
+# Flow port need `deref_patterns`, which no stable compiler accepts. A flake
+# nothing builds is a flake that is broken and nobody knows.
 #
 # The split below is about cost. Evaluation is seconds and runs on every pull
 # request that touches anything Nix reads. The build compiles the whole
@@ -100,14 +100,14 @@ jobs:
           set -eu
           pinned="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
           version="$(nix develop . --command rustc --version)"
-          # The sysroot and not the version string. A `nightly-2026-08-01`
-          # toolchain reports `rustc 1.99.0-nightly (ad3d0bc14 2026-07-31)` —
+          # The sysroot and not the version string. A `nightly-2026-10-07`
+          # toolchain reports `rustc 1.101.0-nightly (8d1a76430 2026-10-06)` —
           # the *commit* date, which is the day before the channel date,
           # because a nightly is built from the previous day's commit. Matching
           # the pin against the version therefore fails on a shell that is
           # exactly right, which is what it did here. The sysroot is the
           # toolchain's own directory and carries its name:
-          # `/nix/store/<hash>-rust-...-nightly-2026-08-01`.
+          # `/nix/store/<hash>-rust-...-nightly-2026-10-07`.
           sysroot="$(nix develop . --command rustc --print sysroot)"
           printf 'pinned  %s\n' "$pinned"
           printf 'shell   %s\n' "$version"

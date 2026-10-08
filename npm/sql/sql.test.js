@@ -392,6 +392,143 @@ describe(":copyfrom", () => {
     expect(statements).toEqual([4, 4, 2]);
     expect(transactions).toBe(1);
   });
+
+  it("sends one PostgreSQL COPY in text format", async () => {
+    const copies: Array<{| statement: string, payload: string |}> = [];
+    const { db, statements } = recorder("postgresql");
+    const copying: Queryable = {
+      ...db,
+      copy: (statement, payload) => {
+        copies.push({ statement, payload });
+        return Promise.resolve(payload.split("\n").length - 1);
+      },
+    };
+    await expect(
+      copyFrom(copying, "Copy", plan, [
+        ["1", "a\tb\\c\nd\r"],
+        [null, new Uint8Array([0, 255])],
+      ]),
+    ).resolves.toBe(2);
+    expect(statements).toEqual([]);
+    expect(copies).toEqual([
+      {
+        statement: "COPY t (a, b) FROM STDIN WITH (FORMAT text)",
+        payload  : "1\ta\\tb\\\\c\\nd\\r\n\\N\t\\\\x00ff\n",
+      },
+    ]);
+  });
+
+  it("does not fall back to INSERT when COPY fails", async () => {
+    const { db, statements } = recorder("postgresql");
+    const copying: Queryable = {
+      ...db,
+      copy: () => Promise.reject({ ...new Error("fk"), code: "23503" }),
+    };
+    await expect(copyFrom(copying, "Copy", plan, [["1", "a"]])).rejects.toMatchObject({
+      code: "23503",
+    });
+    expect(statements).toEqual([]);
+  });
+
+  it("refuses a short row before it sends COPY", async () => {
+    let copies = 0;
+    const { db, statements } = recorder("postgresql");
+    const copying: Queryable = {
+      ...db,
+      copy: () => {
+        copies += 1;
+        return Promise.resolve(0);
+      },
+    };
+    await expect(copyFrom(copying, "Copy", plan, [["only"]])).rejects.toMatchObject({
+      failure: { kind: "row", index: 1, length: 1 },
+    });
+    expect(copies).toBe(0);
+    expect(statements).toEqual([]);
+  });
+
+  it("keeps INSERT when the plan is not INSERT … VALUES", async () => {
+    const odd = {
+      head : "INSERT INTO t (a, b) SELECT ",
+      tuple: plan.tuple,
+      refs : plan.refs,
+      tail : "",
+    };
+    let copies = 0;
+    const { db, statements } = recorder("postgresql");
+    const copying: Queryable = {
+      ...db,
+      copy: () => {
+        copies += 1;
+        return Promise.resolve(0);
+      },
+    };
+    await copyFrom(copying, "Copy", odd, [["1", "a"]]);
+    expect(copies).toBe(0);
+    expect(statements).toEqual([
+      { text: "INSERT INTO t (a, b) SELECT ($1, $2)", params: ["1", "a"] },
+    ]);
+  });
+
+  it("keeps chunked INSERT on MySQL and SQLite when copy is present", async () => {
+    const check = async (engine: "mysql" | "sqlite") => {
+      let copies = 0;
+      const { db, statements } = recorder(engine);
+      const copying: Queryable = {
+        ...db,
+        copy: () => {
+          copies += 1;
+          return Promise.resolve(0);
+        },
+      };
+      await copyFrom(copying, "Copy", plan, [["1", "a"]]);
+      expect(copies).toBe(0);
+      expect(statements).toEqual([
+        { text: "INSERT INTO t (a, b) VALUES (?, ?)", params: ["1", "a"] },
+      ]);
+    };
+    await check("mysql");
+    await check("sqlite");
+  });
+
+  it("returns 0 for no rows and does not call copy", async () => {
+    let copies = 0;
+    const { db, statements } = recorder("postgresql");
+    const copying: Queryable = {
+      ...db,
+      copy: () => {
+        copies += 1;
+        return Promise.resolve(1);
+      },
+    };
+    await expect(copyFrom(copying, "Copy", plan, [])).resolves.toBe(0);
+    expect(copies).toBe(0);
+    expect(statements).toEqual([]);
+  });
+
+  it("sends COPY on the transaction's connection", async () => {
+    const seen: Array<string> = [];
+    const db = singleConnection({
+      engine   : "postgresql",
+      maxParams: 100,
+      run: (text) => {
+        seen.push(text);
+        return Promise.resolve({ rows: [], rowsAffected: 0, lastInsertId: null });
+      },
+      copy: (statement) => {
+        seen.push(statement);
+        return Promise.resolve(1);
+      },
+    });
+    const transaction = db.transaction;
+    if (transaction === undefined) {
+      throw new Error("singleConnection has a transaction");
+    }
+    await transaction(async (tx) => {
+      expect(await copyFrom(tx, "Copy", plan, [["1", "a"]])).toBe(1);
+    });
+    expect(seen).toEqual(["BEGIN", "COPY t (a, b) FROM STDIN WITH (FORMAT text)", "COMMIT"]);
+  });
 });
 
 describe(":batch*", () => {

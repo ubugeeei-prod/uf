@@ -10,6 +10,10 @@
 # together, in one change.
 set -eu
 
+# Keep this pin and these two digests in lockstep with `PINNED_SQLC_VERSION`
+# and `PINNED_ARCHIVES` in `crates/uf_cli/src/commands/sqlc.rs`. A unit test
+# reads this file and fails when they diverge. `uf sqlc install` is the
+# command a project runs; this script remains for jobs that do not have uf yet.
 VERSION=1.31.1
 case "$(uname -s)-$(uname -m)" in
   Linux-x86_64) PLATFORM=linux_amd64 SHA256=497ae4fcdfa64c5b0c311ffe4c2bd991e43991e82e5367792ed78bc2dca27354 ;;

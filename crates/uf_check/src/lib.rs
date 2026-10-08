@@ -11,8 +11,9 @@
 //!
 //! `uf_flow` is the parser adapter, and `uf_lint` depends on it, so anything
 //! added there lands in every crate that lints. Inference needs sixteen path
-//! dependencies on the submodule and a nightly old enough to still accept
-//! `#![feature(box_patterns)]`; hanging that off `uf_flow` would put the whole
+//! dependencies on the submodule and `deref_patterns`, which is still
+//! unstable (`box_patterns` was removed around the 2026-09-01 nightly);
+//! hanging that off `uf_flow` would put the whole
 //! lint graph behind those constraints, and Cargo resolves path dependencies
 //! even for features that are off. Keeping it here means exactly one crate —
 //! and, through it, `uf_cli` — knows about the typing crates.

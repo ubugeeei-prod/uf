@@ -33,7 +33,7 @@ jobs:
       - uses: obi1kenobi/cargo-semver-checks-action@6b69fcf40e9b5fb17adeb57e4b6ecd020649a239 # v2
         with:
           baseline-rev: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
-          rust-toolchain: "nightly-2026-08-01"
+          rust-toolchain: "nightly-2026-10-07"
           # Two kinds of crate cannot be compared, and tools/ci/semver-exclude.sh
           # explains both: the ones whose baseline copy loses the relative path
           # to the `upstream/flow` submodule, and the ones that did not exist at

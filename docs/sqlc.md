@@ -18,8 +18,9 @@ documentation site (`/guide/sqlc`).
 **The generator and tested adapters are ready for use.** CI runs them against
 real SQLite, PostgreSQL and MySQL databases, and `@uniflowed/sql` is published
 to npm, including `better-sqlite3` with its prebuilt addon and D1 under workerd.
-The WASM plugin ships as a signed release asset. PostgreSQL COPY and managed
-sqlc installation remain Planned.
+The WASM plugin ships as a signed release asset. A PostgreSQL adapter that can
+send `COPY` uses it for `:copyfrom`; every other engine keeps chunked
+`INSERT`s. A project obtains the pinned sqlc with `uf sqlc install`.
 
 | Piece | Status | Checked by |
 | --- | --- | --- |
@@ -37,8 +38,8 @@ sqlc installation remain Planned.
 | `tools/ci/sqlc.sh` in CI | Implemented | the `sqlc Flow target` job in `.github/workflows/ci.yml` (`uf run test:sqlc`) |
 | `@uniflowed/sql` on npm | Implemented | release registry verification |
 | WASM plugin (`wasm32-wasip1`) | Implemented | `tools/ci/sqlc-wasm.sh`; `tools/release/verify-sqlc-wasm.sh` reads the published signed artifact back and runs pinned sqlc |
-| PostgreSQL `COPY` for `:copyfrom` | Planned | `:copyfrom` is chunked multi-row `INSERT`s on every engine today ([#1670](https://github.com/ubugeeei-prod/uf/issues/1670)) |
-| Installing sqlc for a project | Planned | `uf sqlc` runs the project's own sqlc (`$SQLC` or `PATH`) ([#1671](https://github.com/ubugeeei-prod/uf/issues/1671)) |
+| PostgreSQL `COPY` for `:copyfrom` | Implemented | One text-format `COPY` when the engine is PostgreSQL and the adapter implements `copy`. MySQL, SQLite and `copyFromSync` stay on chunked `INSERT`. `npm/sql/sql.test.js` records the statement and the escapes; `tests/sqlc/postgresql.test.js` checks encoding, a foreign-key error and the row count on PGlite, `pg`, a `pg` pool and postgres.js ([#1670](https://github.com/ubugeeei-prod/uf/issues/1670)) |
+| Installing sqlc for a project | Implemented | `uf sqlc install` writes the pinned release to `.uf/sqlc` after checking its SHA-256. `$SQLC` and `sqlc` on `PATH` still win. `crates/uf_cli/tests/sqlc.rs` covers the resolver and a download refused before it starts; `tools/ci/sqlc.sh` runs the command for the real archive ([#1671](https://github.com/ubugeeei-prod/uf/issues/1671)) |
 
 "Implemented" means a test in this repository runs it. A row with no test is
 never above Experimental.
@@ -76,6 +77,25 @@ sqlc has two plugin transports, and both carry the same protobuf:
 - **wasm**: sqlc downloads a module by URL and checks its sha256. The crate
   has a `sqlc-gen-flow` binary for that target. Publishing it as a release
   asset belongs to the release pipeline and is Planned.
+
+`uf sqlc install` downloads sqlc 1.31.1 — the release the fixtures under
+`tests/sqlc` were captured with — into `.uf/sqlc`, checks the archive's
+SHA-256 against the digest embedded for this platform, and prints the
+absolute path of the binary on stdout with nothing else around it. Status
+goes to stderr. A second run that finds that version already there prints
+the path and does not download. `--force` downloads again. `--version` with
+`--sha256` installs a different release of the same archive layout; without
+`--sha256` that is refused, because a version uf does not know cannot be
+checked. Generate and diff do not download on their own.
+
+Those two commands find sqlc in this order: `$SQLC` when it is set, even if
+that path does not exist; otherwise `sqlc` on `PATH`; otherwise
+`.uf/sqlc/sqlc` when `.uf/sqlc/version` is the pinned release. A project that
+installed some other version with `--version` selects it by exporting the
+path `uf sqlc install` printed (`SQLC=$(uf sqlc install --version …)`). CI
+does the same with the default pin: `tools/ci/sqlc.sh` runs
+`SQLC=$(uf sqlc install)` unless `SQLC` is already set. `.uf/` is gitignored,
+so the binary stays out of the project.
 
 `uf sqlc generate` runs `sqlc generate` with the running `uf` first on `PATH`,
 so the plugin sqlc starts is the same `uf` that was asked. `uf sqlc diff` runs
@@ -155,13 +175,18 @@ would also admit `undefined`, which nothing produces.
 - `:one` resolves to the row or `null`; `:many` to an `Array` of rows;
   `:exec` to `void`; `:execrows` to the affected row count; `:execresult` to
   `{ rowsAffected, lastInsertId }`; `:execlastid` to the last id as a `bigint`.
-- `:copyfrom` inserts an array of argument objects with multi-row `INSERT`s,
-  chunked under the adapter's `maxParams` (PostgreSQL and MySQL 65,535, SQLite
-  32,766, D1 100). A row that binds more parameters than `maxParams` throws
-  rather than being sent. A row shorter than an index the statement reads
-  throws; fields past the ones it reads are ignored, and `null` is a SQL null.
-  It works on every engine; PostgreSQL's `COPY` protocol is
-  Planned as an adapter fast path.
+- `:copyfrom` inserts an array of argument objects. On PostgreSQL, an adapter
+  that implements `copy` receives one `COPY … FROM STDIN WITH (FORMAT text)`
+  for the whole array: a null field is `\N`, and backslash, newline, carriage
+  return and tab are escaped. A plan that is not `INSERT … VALUES`, and every
+  other engine, stays on multi-row `INSERT`s chunked under the adapter's
+  `maxParams` (PostgreSQL and MySQL 65,535, SQLite 32,766, D1 100).
+  `copyFromSync` is that `INSERT` path, because the synchronous drivers are
+  SQLite. A row that would bind more parameters than `maxParams` throws on the
+  `INSERT` path rather than being sent; `COPY` has no parameter limit. A row
+  shorter than an index the statement reads throws before anything is sent.
+  Fields past the ones it reads are ignored, and `null` is a SQL null. A
+  `COPY` the server rejects is that error: it is not retried as `INSERT`.
 - `:batchexec`, `:batchmany` and `:batchone` take an array of argument objects
   and return one result per item, in order, inside one transaction when the
   `Queryable` can open one — the semantics of pgx's implicit batch
@@ -189,7 +214,8 @@ the same connection in between.
 `sql.copyFromSync` and `sql.batchSync`. `:copyfrom` and `:batch*` run on that
 same thread, in one `transactionSync` when the handle has one and the work
 does not fit in a single statement (one statement, or a single batch item,
-does not open a transaction it does not need).
+does not open a transaction it does not need). `copyFromSync` stays on chunked
+`INSERT`: those drivers are SQLite and have no `COPY`.
 
 `fromNodeSqlite`, `fromBetterSqlite3` and `fromBunSqlite` return one handle
 with both `query` / `transaction` and `querySync` / `transactionSync`. The

@@ -1036,9 +1036,10 @@ export default defineConfig({
     //
     // Nix was present here long before it worked. Two flakes disagreed about
     // the dev shell; both named `rust-bin.stable."1.98.0"` for a workspace
-    // `rust-toolchain.toml` pins to `nightly-2026-08-01`, which is not a
+    // `rust-toolchain.toml` pins to `nightly-2026-10-07`, which is not a
     // version that fell behind but a channel that cannot compile 23 of the
-    // crates at all; the build symlinked the pinned Flow commit without
+    // crates at all (`deref_patterns` is still unstable); the build symlinked
+    // the pinned Flow commit without
     // `tools/upstream/patches/flow` on top; and `README.md` pointed at an
     // install page that had no Nix on it. None of it was noticed because the
     // only Nix in CI was `Formal` entering a shell to run `why3`.

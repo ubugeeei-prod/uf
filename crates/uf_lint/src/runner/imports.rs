@@ -1254,8 +1254,11 @@ impl Default for ExportSymbols {
     }
 }
 
+// The macro's default bound is `u32::max_value()`, which this nightly denies.
+// `u32::MAX` is that same bound.
 index_vec::define_index_type! {
     struct ModuleId = u32;
+    MAX_INDEX = u32::MAX as usize;
 }
 
 /// Relative import graph over the source batch available to lint rules.

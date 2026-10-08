@@ -18,14 +18,30 @@
 // `bytea`, `x === true ? "t" : "f"` for `bool` — each of which would corrupt a
 // value the codecs already wrote as text. Declaring every parameter as
 // `unknown` (OID 705) leaves the server to infer the type, as an undeclared
-// one would, and leaves postgres.js nothing to serialise.
+// one would, and leaves postgres.js nothing to serialise. `:copyfrom` writes
+// the text-format payload to the stream `unsafe(statement, []).writable()`
+// opens for `COPY FROM STDIN`.
 
 import { SqlError } from "../index.js";
-import type { Queryable, SqlParam } from "../index.js";
+import type { CopyIn, Queryable, SqlParam } from "../index.js";
 
 type RawRows = Promise<$ReadOnlyArray<mixed> & { readonly count?: number | null, ... }>;
 
-type Unsafe = { raw(): RawRows, ... };
+/** The Node writable postgres.js resolves `COPY FROM STDIN` to. */
+type CopyWritable = {
+  write(chunk: string, callback: (error?: mixed) => mixed): mixed,
+  end(callback: (error?: mixed) => mixed): mixed,
+  once(event: "error", listener: (error: mixed) => mixed): mixed,
+  ...
+};
+
+type Unsafe = {
+  raw(): RawRows,
+  writable(): Promise<CopyWritable>,
+  /** Rejects the query. postgres.js calls it for a server error during `COPY`. */
+  reject: (error: mixed) => mixed,
+  ...
+};
 
 /** What postgres.js's `Sql` and its transaction handles have in common. */
 export interface PostgresQueries {
@@ -55,6 +71,78 @@ function text(value: mixed): mixed {
 
 /** `unknown`: a parameter whose type the server decides. */
 const UNKNOWN = 705;
+
+function rowCount(payload: string): number {
+  let rows = 0;
+  for (let i = 0; i < payload.length; i += 1) {
+    if (payload[i] === "\n") {
+      rows += 1;
+    }
+  }
+  return rows;
+}
+
+/** Write `payload` and wait until the server finishes the `COPY`. */
+function writeCopy(writable: CopyWritable, payload: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (error: mixed) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    const succeed = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve();
+    };
+    writable.once("error", fail);
+    writable.write(payload, (error) => {
+      if (error != null) {
+        fail(error);
+        return;
+      }
+      writable.end((endError) => {
+        if (endError != null) {
+          fail(endError);
+        } else {
+          succeed();
+        }
+      });
+    });
+  });
+}
+
+function copyOn(sql: PostgresQueries): CopyIn {
+  return async (statement, payload) => {
+    const query = sql.unsafe(statement, []);
+    // CopyInResponse resolves the query with the writable, and sending
+    // CopyDone clears that stream before the server answers. A failure after
+    // the data is in (a foreign key) calls `query.reject` and never reaches
+    // the writable, so its end callback would wait forever.
+    let fail: (error: mixed) => void = () => {};
+    const failed = new Promise((resolve, reject) => {
+      void resolve;
+      fail = reject;
+    });
+    failed.catch(() => {});
+    const rejectQuery = query.reject.bind(query);
+    query.reject = (error) => {
+      fail(error);
+      return rejectQuery(error);
+    };
+    const writable = await query.writable();
+    await Promise.race([writeCopy(writable, payload), failed]);
+    // CommandComplete carries `COPY n`, and postgres.js keeps that count on
+    // its internal result. A `COPY` without `WHERE` accepts every row or
+    // fails, so the number of lines written is the number the server copied.
+    return rowCount(payload);
+  };
+}
 
 function run(sql: PostgresQueries): Queryable["query"] {
   return async (statement, params) => {
@@ -87,6 +175,8 @@ async function scoped<T>(tx: PostgresTransaction, body: (tx: Queryable) => Promi
     maxParams: 65535,
     query: (statement, params, mode) =>
       open ? query(statement, params, mode) : Promise.reject(new SqlError({ kind: "closed" })),
+    copy: (statement, payload) =>
+      open ? copyOn(tx)(statement, payload) : Promise.reject(new SqlError({ kind: "closed" })),
     transaction: <U>(inner: (tx: Queryable) => Promise<U>): Promise<U> =>
       open
         ? tx.savepoint((savepoint) => scoped(savepoint, inner))
@@ -105,6 +195,7 @@ export function fromPostgres(sql: PostgresSql): Queryable {
     engine   : "postgresql",
     maxParams: 65535,
     query    : run(sql),
+    copy     : copyOn(sql),
     transaction: <T>(body: (tx: Queryable) => Promise<T>): Promise<T> =>
       sql.begin((tx) => scoped(tx, body)),
   };
