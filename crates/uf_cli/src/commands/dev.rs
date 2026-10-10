@@ -641,6 +641,7 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                 | "textDocument/prepareRename"
                 | "textDocument/rename"
                 | "textDocument/documentSymbol"
+                | "textDocument/signatureHelp"
         );
         let config_document = document_uri(&message).is_some_and(|uri| {
             Utf8Path::new(&document_path(&uri)).file_name() == Some("uf.config.js")
@@ -796,6 +797,12 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                     });
                 answer_request(&mut stdout, id, answer)?;
             }
+            "textDocument/signatureHelp" if cfg!(feature = "upstream-typecheck") => {
+                let answer = position_params(&message, method).map(|(uri, line, requested)| {
+                    types.signature_help(&documents, &uri, line, requested)
+                });
+                answer_request(&mut stdout, id, answer)?;
+            }
             "textDocument/documentSymbol" if cfg!(feature = "upstream-typecheck") => {
                 let answer = document_uri(&message)
                     .map(|uri| types.symbols(&documents, &uri))
@@ -852,6 +859,12 @@ fn capabilities(typed: bool) -> Value {
         capabilities["documentHighlightProvider"] = json!(true);
         capabilities["renameProvider"] = json!({ "prepareProvider": true });
         capabilities["documentSymbolProvider"] = json!(true);
+        // `(` opens a call, `,` moves to the next argument, `<` opens a
+        // component whose props are the parameters.
+        capabilities["signatureHelpProvider"] = json!({
+            "triggerCharacters": ["(", ",", "<"],
+            "retriggerCharacters": [","],
+        });
     }
     capabilities
 }

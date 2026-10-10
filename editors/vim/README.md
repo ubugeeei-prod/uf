@@ -40,6 +40,7 @@ server and asserts each of these.
 | Definition | `:LspDefinition`: across files, into `node_modules` and into `flow-typed/`. |
 | Type definition | `:LspTypeDefinition`: the declaration of the named types in the type under the cursor. |
 | Completion | `<C-x><C-o>` with `setlocal omnifunc=lsp#complete`, or asyncomplete.vim and asyncomplete-lsp.vim to have it as you type. In `uf.config.js`, the keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. In any other Flow file, after `.` the members of the value's type with their types, and elsewhere the names in scope. |
+| Signature help | `:LspSignatureHelp`, inside a call or a component. `(` opens it, `,` moves to the next argument. |
 
 Format on save is off; the one-line autocommand is at the bottom of `uf.vim`.
 
@@ -56,9 +57,9 @@ That is vim-lsp-settings' documented option, and not checked here.
 
 ## What you do not get
 
-`:LspSignatureHelp` has no server behind it — `uf lsp` does not advertise it.
-`:LspHover`, `:LspDefinition`, `:LspReferences` and `:LspRename` answer nothing
-while the file does not parse, since there is no inference to ask.
+`:LspHover`, `:LspDefinition`, `:LspReferences`, `:LspRename` and
+`:LspSignatureHelp` answer nothing while the file does not parse, since there
+is no inference to ask.
 
 ## Working directory
 

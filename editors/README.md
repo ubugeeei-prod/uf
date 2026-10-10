@@ -56,11 +56,13 @@ to eighty lines long, or an editor plugin configured to start `uf lsp`.
   included. A rename edits every one of those files, and is refused for a name
   a package under `node_modules` or a library definition declares.
 * **Document symbols** — the file's outline, nested, from Flow's own provider.
+* **Signature help** — the call or component the cursor is inside, and which
+  argument it is on. Flow's signature-help service. `(` opens a call, `,`
+  moves to the next argument, and `<` opens a component.
 
-Not signature help, workspace symbols, inlay hints, organize imports or
-auto-imports. The server advertises none of them;
-`tests/library/lsp.test.js` asserts that it does not, so a README here cannot
-quietly start over-claiming.
+Not workspace symbols, inlay hints, organize imports or auto-imports. The
+server advertises none of them; `tests/library/lsp.test.js` asserts that it
+does not, so a README here cannot quietly start over-claiming.
 
 ## Keeping TypeScript's server off Flow files
 

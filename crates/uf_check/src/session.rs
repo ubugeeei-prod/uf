@@ -33,6 +33,7 @@
 //! | [`Session::definition`] | `flow_services_get_def::get_def_js::get_def` |
 //! | [`Session::type_definition`] | the symbols `type_at_pos_type` reports for the type it printed |
 //! | [`Session::completion`] | `flow_services_autocomplete::autocomplete_service_js` |
+//! | [`Session::signature_help`] | `flow_services_type_info::signature_help::find_signatures` |
 //! | [`Session::diagnostics`] | the context's own errors, filtered and printed as `uf check` does |
 //! | [`Session::references`] | `flow_services_references::find_refs_js`, over the file asked about and every file that reaches the definition through an import |
 //! | [`Session::highlights`] | `find_refs_js::find_local_refs`, over the one file |
@@ -150,6 +151,42 @@ pub struct Completions {
     /// Whether the service says the list is not everything, so that an editor
     /// should ask again as the word grows rather than filter this one.
     pub incomplete: bool,
+}
+
+/// The call or component the cursor is inside.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignatureHelp {
+    /// Each signature the callee can be called with, in the service's order.
+    pub signatures: Vec<Signature>,
+    /// Which signature [`Self::signatures`] is showing. Flow's service
+    /// reports one callee, so this is that callee's first signature.
+    pub active_signature: u32,
+    /// Which parameter of the active signature the cursor is in, counting
+    /// from zero.
+    pub active_parameter: u32,
+}
+
+/// One way to call the callee.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Signature {
+    /// The whole signature, printed as Flow: `(user: User): string`.
+    ///
+    /// Each [`Parameter::label`] is a substring of this, which is what the
+    /// protocol uses to highlight the active parameter.
+    pub label: String,
+    /// The documentation the declaration carried, when it had any.
+    pub documentation: Option<String>,
+    /// The parameters, in source order. A rest parameter is the last one.
+    pub parameters: Vec<Parameter>,
+}
+
+/// One parameter of a [`Signature`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Parameter {
+    /// `name: Type`, exactly as it appears inside [`Signature::label`].
+    pub label: String,
+    /// The documentation that parameter's declaration carried, when it had any.
+    pub documentation: Option<String>,
 }
 
 /// Every place a name is written: its declarations and each use.
@@ -389,6 +426,34 @@ impl Session {
         {
             let path = path.to_owned();
             self.ask(move |worker| worker.completion(&path, at))
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = (path, at);
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// The signature of the call or JSX component the cursor is inside, and
+    /// which argument it is on.
+    ///
+    /// [`None`] when `at` is not inside a call or a component, the file is
+    /// not in the batch, or it does not parse. A component's props are the
+    /// parameters: the cursor after `<Menu ` is on that component's first
+    /// unset prop.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::type_at`].
+    pub fn signature_help(
+        &self,
+        path: &str,
+        at: Position,
+    ) -> Result<Option<SignatureHelp>, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let path = path.to_owned();
+            self.ask(move |worker| worker.signature_help(&path, at))
         }
         #[cfg(not(feature = "upstream-typecheck"))]
         {

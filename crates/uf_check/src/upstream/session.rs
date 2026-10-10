@@ -20,6 +20,7 @@ use flow_parser::file_key::{FileKey, FileKeyInner};
 use flow_parser::loc::Loc;
 use flow_parser_utils::flow_ast_differ;
 use flow_parser_utils_output::{js_layout_generator, replacement_printer};
+use flow_server_env::server_prot::response::{FuncDetailsResult, FuncParamResult};
 use flow_services_autocomplete::autocomplete_service_js::{
     self, AcOptions, AutocompleteServiceResultGeneric, ac_completion,
 };
@@ -32,6 +33,7 @@ use flow_services_get_def::get_def_utils;
 use flow_services_references::find_refs_js;
 use flow_services_references::find_refs_types::{FindRefsOk, Kind, RefKind, Request, SingleRef};
 use flow_services_references::{prepare_rename_searcher, rename_mapper};
+use flow_services_type_info::signature_help::find_signatures;
 use flow_typing::{query_types, type_inference};
 use flow_typing_context::Context;
 use flow_typing_utils::typed_ast_utils::AvailableAst;
@@ -44,8 +46,8 @@ use super::{
 };
 use crate::limits::CHECK_STACK_BYTES;
 use crate::session::{
-    Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, References, Rename,
-    Symbol, TextEdit, TypeAt,
+    Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, Parameter,
+    References, Rename, Signature, SignatureHelp, Symbol, TextEdit, TypeAt,
 };
 use crate::{CheckError, CheckLimits, Position, Source, Span, TypeDiagnostic};
 
@@ -568,6 +570,43 @@ impl Worker {
         answer
     }
 
+    /// The call or JSX component `at` sits inside, from the inference
+    /// [`Self::checked`] already has.
+    pub(crate) fn signature_help(
+        &mut self,
+        path: &str,
+        at: Position,
+    ) -> Result<Option<SignatureHelp>, CheckError> {
+        let Some(checked) = self.checked(path)?.filter(|found| within(&found.text, at)) else {
+            return Ok(None);
+        };
+        let loc_of_aloc = self.loc_of_aloc();
+        let found = find_signatures(
+            &loc_of_aloc,
+            &|_| None,
+            &checked.inferred.cx,
+            checked.parsed.file_sig.dupe(),
+            checked.parsed.ast.as_ref(),
+            &checked.inferred.typed_ast,
+            cursor(&checked.parsed.file_key, at),
+        )
+        .map_err(|error| job_error(path, error))?;
+        // A normalizer that cannot print the callee is the same answer as a
+        // cursor that is not inside a call: nothing to show.
+        let Ok(Some((details, active))) = found else {
+            return Ok(None);
+        };
+        let signatures: Vec<Signature> = details.iter().map(signature_of).collect();
+        if signatures.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(SignatureHelp {
+            signatures,
+            active_signature: 0,
+            active_parameter: u32::try_from(active).unwrap_or(0),
+        }))
+    }
+
     /// Find references from `at` in `path`: the definition the name leads to,
     /// and every reference to it in `path` and in the files that can see it.
     ///
@@ -902,6 +941,60 @@ fn symbol(found: &lsp_types::DocumentSymbol, path: &str) -> Option<Symbol> {
             .filter_map(|child| symbol(child, path))
             .collect(),
     })
+}
+
+/// One of Flow's signature-help results, as the label the protocol highlights.
+fn signature_of(detail: &FuncDetailsResult) -> Signature {
+    match detail {
+        FuncDetailsResult::SigHelpFunc {
+            func_documentation,
+            param_tys,
+            return_ty,
+        } => {
+            let mut label = String::from("(");
+            let mut parameters = Vec::with_capacity(param_tys.len());
+            for (index, param) in param_tys.iter().enumerate() {
+                let text = parameter_label(param);
+                if index > 0 {
+                    label.push_str(", ");
+                }
+                label.push_str(&text);
+                parameters.push(Parameter {
+                    label: text,
+                    documentation: param.param_documentation.clone(),
+                });
+            }
+            label.push_str("): ");
+            label.push_str(return_ty);
+            Signature {
+                label,
+                documentation: func_documentation.clone(),
+                parameters,
+            }
+        }
+        FuncDetailsResult::SigHelpJsxAttr {
+            documentation,
+            name,
+            ty,
+            optional,
+        } => {
+            let mark = if *optional { "?" } else { "" };
+            let label = format!("{name}{mark}: {ty}");
+            Signature {
+                label: label.clone(),
+                documentation: None,
+                parameters: vec![Parameter {
+                    label,
+                    documentation: documentation.clone(),
+                }],
+            }
+        }
+    }
+}
+
+/// `name: Type`, the same spelling the signature's label is built from.
+fn parameter_label(param: &FuncParamResult) -> String {
+    format!("{}: {}", param.param_name, param.param_ty)
 }
 
 /// `type_at_pos_type` at `at`, when it found something it could normalize.

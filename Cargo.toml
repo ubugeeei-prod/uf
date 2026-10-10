@@ -98,6 +98,8 @@ flow_services_autocomplete = { path = "upstream/flow/rust_port/crates/flow_servi
 flow_services_export = { path = "upstream/flow/rust_port/crates/flow_services_export" }
 flow_services_get_def = { path = "upstream/flow/rust_port/crates/flow_services_get_def" }
 flow_services_references = { path = "upstream/flow/rust_port/crates/flow_services_references", default-features = false }
+flow_services_type_info = { path = "upstream/flow/rust_port/crates/flow_services_type_info" }
+flow_server_env = { path = "upstream/flow/rust_port/crates/flow_server_env" }
 flow_type_sig = { path = "upstream/flow/rust_port/crates/flow_type_sig" }
 flow_typing = { path = "upstream/flow/rust_port/crates/flow_typing" }
 flow_typing_builtins = { path = "upstream/flow/rust_port/crates/flow_typing_builtins" }

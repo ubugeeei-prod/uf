@@ -73,6 +73,7 @@ they are in `uf run ci`.
 | **Go to Definition** | `textDocument/definition`, from Flow's inference | F12. Across files, into a package under `node_modules`, and into the project's `flow-typed/`. |
 | **Go to Type Definition** | `textDocument/typeDefinition`, from Flow's inference | The declaration of the named types in the type under the cursor: for `const user: User`, `type User`. |
 | **Completion** | `textDocument/completion` | In `uf.config.js`: the keys valid where you are typing, each with its documentation and type; after `"`, the values of a key whose type is a fixed set (`quotes: "single" \| "double"`); `true` and `false` for a boolean; in a tool spec (`runtime: "node@26"`), the names its key takes and, after `@`, that tool's versions, newest first. In any other Flow file, from Flow's inference: after `value.`, the members of `value`'s type with their types, and elsewhere the names in scope. |
+| **Signature help** | `textDocument/signatureHelp` | The call or component the cursor is inside, and which argument it is on. VS Code asks when `(`, `,` or `<` is typed, because the server advertises those trigger characters. |
 
 Completion reads `@uniflowed/config`'s own Flow type — the declaration
 `defineConfig` checks the file against — compiled into `uf`, so it needs nothing
@@ -108,12 +109,10 @@ hierarchical, and asking for the parent selects uf's child kind.
 
 ## What does not work, and will not until the server serves it
 
-Rename, find references, document highlights and the outline are the server's
-(Flow's own services), across the project's files. **Signature help** is not:
-`uf lsp` advertises no provider for it, and this extension does not add one; a
-language client cannot invent what the server does not answer. A rename of a
-name declared under `node_modules` or in a library definition is refused
-rather than half made.
+Workspace symbols, inlay hints, organize imports and auto-imports are not
+advertised. The extension does not invent them. A rename of a name declared
+under `node_modules` or in a library definition is refused rather than half
+made.
 
 **Types need the file to parse.** Hover and go to definition answer nothing
 while the file has a syntax error, because there is no inference to ask;
