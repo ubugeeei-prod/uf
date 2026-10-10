@@ -301,7 +301,10 @@ Each component is one file in `app/components/ui/`, or in the directory
 dialog dressed in `@uniflowed/stylex`'s tokens, and from then on the file is the
 project's to change. The behaviour stays imported from
 `@uniflowed/ui`, so a fix to a focus trap still arrives by upgrading it; what
-the file owns is the look.
+the file owns is the look. The text is StyleX — `stylex.create` and the
+tokens — not a plain-CSS translation of the same component. A project that
+does not use StyleX imports `@uniflowed/ui` and styles the parts itself.
+[Owned or headless](/guide/ui#owned-or-headless) is that choice.
 
 The components are part of the uf binary, so adding one needs no network and
 writes the version that matches the uf running it. A package a component
