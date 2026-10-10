@@ -1,6 +1,6 @@
 ---
 title: "UI components · uf"
-description: "Styled components you own, from uf ui add, on headless parts that own the keyboard and ARIA."
+description: "StyleX components you own, from uf ui add, on headless parts that own the keyboard and ARIA."
 readiness: "Implemented"
 ---
 
@@ -129,9 +129,19 @@ person means by "our dialog". The composition constraints hold in the copy
 too: the owned `Tabs.List` takes `renders*` the owned `Tabs.Tab`, so a
 `<button>` dropped into it is a Flow error in your own file.
 
-Every owned component is styled with the tokens `@uniflowed/stylex` compiles,
-so [dark mode](/guide/styling#dark-mode) is one spread on the document, and a
-`stylex.createTheme` of your own restyles all of them at once.
+Every file `uf ui add` writes is StyleX. It calls `stylex.create` and reads
+the tokens `@uniflowed/stylex` compiles, so
+[dark mode](/guide/styling#dark-mode) is one spread on the document, and a
+`stylex.createTheme` of your own restyles every copy at once. The command
+copies that source. It does not translate a copy into plain CSS, a CSS
+Module, or a string of class names, and nothing you set asks it to. The style
+engine is StyleX. A registry copy is a file written in it.
+
+A project that does not compile StyleX does not start from those copies. It
+imports the parts and puts its own class on them, which is the rest of this
+page. Importing a part does not import StyleX.
+`npm/ui/headless-consumer.test.js` is that project: a `Switch` from
+`@uniflowed/ui`, a `className` the file wrote, and no `@uniflowed/stylex`.
 
 ## The headless parts: `@uniflowed/ui`
 

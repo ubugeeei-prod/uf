@@ -225,6 +225,16 @@ Getting uf's look means the preset functions plus the tokens; getting uf's
 behaviour means [`@uniflowed/ui`](/guide/ui); and either can be replaced without
 the other noticing.
 
+### What `uf ui add` does not rewrite
+
+`uf ui add` writes components in this StyleX. Each file calls `stylex.create`
+and reads these tokens, and the command copies that file. It does not rewrite
+the copy into plain CSS. A project that does not use the StyleX integration
+styles the headless parts itself —
+[owned or headless](/guide/ui#owned-or-headless). Those parts take a
+`className` and do not import `@uniflowed/stylex`.
+`npm/ui/headless-consumer.test.js` renders one that way.
+
 ## Markdown and MDX
 
 A `$page.mdx` is a page. Markdown is GitHub-flavoured, front matter is
@@ -310,5 +320,6 @@ and the whole thing is one route in a table nobody wrote.
 
 ## Where to go next
 
-[UI components](/guide/ui) is next: `uf ui add` writes components styled with
-these tokens, built on parts that own the keyboard, ARIA and composition.
+[UI components](/guide/ui) is next: `uf ui add` writes components in this
+StyleX, built on parts that own the keyboard, ARIA and composition. The
+command does not rewrite a copy into plain CSS.

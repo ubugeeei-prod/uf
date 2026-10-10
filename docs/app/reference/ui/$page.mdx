@@ -1,6 +1,6 @@
 ---
 title: "Components · uf"
-description: "Every component uf ui add writes, then the headless parts and the keys each one owns."
+description: "Every StyleX component uf ui add writes, then the headless parts and the keys each one owns."
 readiness: "Implemented"
 ---
 
@@ -62,7 +62,11 @@ it. The list is `npm/ui/registry/` itself, read when this site is built from the
 same directory `uf` embeds, so every component `uf ui list` offers is shown
 here. The examples render in the tokens' default theme, whatever this site's
 theme is, because that is what a project sees before it applies a theme of its
-own.
+own. Each file under an example is that StyleX source, which is what
+`uf ui add` writes. The command does not rewrite it into plain CSS. Styling a
+part yourself is the headless package in the next section, and
+[owned or headless](/guide/ui#owned-or-headless) is the boundary between the
+two.
 
 <Registry />
 
