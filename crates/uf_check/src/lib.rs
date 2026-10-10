@@ -40,6 +40,7 @@ mod diagnostic;
 mod error;
 mod flowconfig;
 mod limits;
+mod lints;
 mod report;
 mod resolution;
 mod session;
@@ -54,6 +55,7 @@ pub use crate::diagnostic::{
 pub use crate::error::CheckError;
 pub use crate::flowconfig::{LibPaths, lib_paths};
 pub use crate::limits::{CHECK_STACK_BYTES, CheckLimits};
+pub use crate::lints::{FlowLint, FlowLintLevel};
 pub use crate::report::{BuiltinsTiming, CheckReport, ModuleClosure, Source, UnresolvedImport};
 pub use crate::resolution::{EXPORT_CONDITIONS, MAIN_FIELDS};
 pub use crate::session::{
@@ -267,13 +269,32 @@ pub fn check_sources_cached(
     limits: &CheckLimits,
     cache: Option<&CheckCache>,
 ) -> Result<CheckReport, CheckError> {
+    check_sources_with_lints(sources, libs, limits, cache, &[])
+}
+
+/// Type check a batch, running `lints` at the levels a project configured.
+///
+/// An empty `lints` is [`check_sources_cached`]: Flow's inference lints stay
+/// off. A name Flow does not know is ignored. A shorter name is applied
+/// before a longer one, so `sketchy-null` sets every member and
+/// `sketchy-null-number` can say otherwise afterwards.
+///
+/// The cache key includes the levels. A warm record written with them off is
+/// not an answer for a run that turned them on.
+pub fn check_sources_with_lints(
+    sources: &[Source<'_>],
+    libs: &[Source<'_>],
+    limits: &CheckLimits,
+    cache: Option<&CheckCache>,
+    lints: &[FlowLint],
+) -> Result<CheckReport, CheckError> {
     #[cfg(feature = "upstream-typecheck")]
     {
-        upstream::check_sources(sources, libs, limits, cache)
+        upstream::check_sources(sources, libs, limits, cache, lints)
     }
     #[cfg(not(feature = "upstream-typecheck"))]
     {
-        let _ = (sources, libs, limits, cache);
+        let _ = (sources, libs, limits, cache, lints);
         Err(CheckError::Unavailable)
     }
 }

@@ -77,7 +77,6 @@ lib/summary.js  1 error
     - react-dom
 
 ✗ 1 error · 10 files checked · 412.3ms
-  › 16 enabled rules skipped: they need Flow type inference, which uf does not have yet; `uf lint --rules` marks them
 error: uf check failed with 1 error
 ```
 
@@ -244,7 +243,7 @@ parse fails the check rather than being skipped.
   "errors": 1,
   "warnings": 0,
   "diagnostics": [],
-  "unavailableRules": [ … ],
+  "unavailableRules": [],
   "typeCheck": {
     "backend": "upstream-flow-rust-port",
     "status": "checked",
@@ -259,8 +258,10 @@ parse fails the check rather than being skipped.
 It is `uf lint --json`'s report with `typeCheck` added, and one field is a trap:
 **`errors` counts both halves, and `diagnostics` holds only the lint findings.**
 The type errors are in `typeCheck.diagnostics`, so a project can fail with
-`diagnostics` empty, as this one does. `typeCheck.status` is `checked`,
-`unavailable` or `failed`, with the reason in `typeCheck.error` when it failed.
+`diagnostics` empty, as this one does. `unavailableRules` is empty once
+inference has run, because those rules ran during the check; `uf lint` is what
+still names them. `typeCheck.status` is `checked`, `unavailable` or `failed`,
+with the reason in `typeCheck.error` when it failed.
 [The command reference](/reference/cli#uf-check) lists every field.
 
 ## Speed

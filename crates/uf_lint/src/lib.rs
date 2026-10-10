@@ -11,9 +11,9 @@
 //!
 //! [`rules`] enumerates every rule with its category, default level, one-line
 //! description, and whether it can run without a type checker. Rules that need
-//! type inference are declared with [`RuleRequirement::TypeChecker`]; because uf
-//! has no checker yet, enabling one of those puts it in
-//! [`LintReport::unavailable`] instead of silently passing.
+//! type inference are declared with [`RuleRequirement::TypeChecker`]. `uf lint`
+//! does not run them, so enabling one puts it in [`LintReport::unavailable`]
+//! instead of silently passing. `uf check` runs them during inference.
 //!
 //! The `react-compiler/*` rules are the official React Compiler's own
 //! diagnostics. `uf_transform` runs the compiler — the one `uf build` runs —
@@ -115,7 +115,7 @@ impl UnavailableRule {
     pub fn reason(&self) -> &'static str {
         match self.requirement {
             RuleRequirement::TypeChecker => {
-                "requires Flow type inference, which uf does not implement yet; the rule did not run"
+                "requires Flow type inference, which runs during `uf check`; `uf lint` does not run the rule"
             }
             RuleRequirement::SourceText => "available",
         }
@@ -453,7 +453,7 @@ const PROJECT_RULES: [&str; 5] = [
 /// it silences nothing at all.
 ///
 /// Only when the rule ran, and ran with everything it needs. A rule that is
-/// off, or that needs type inference uf has not built, reported nothing
+/// off, or that needs type inference `uf lint` does not run, reported nothing
 /// because it did not look; and a single file linted without its project
 /// cannot see the cycle or the manifest a project rule would have found.
 /// Saying "unused" in any of those cases would be the linter mistaking its

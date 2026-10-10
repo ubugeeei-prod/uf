@@ -17,9 +17,9 @@ use camino::Utf8Path;
 use serde_json::{Value, json};
 #[cfg(feature = "upstream-typecheck")]
 use uf_check::{
-    BuiltinsTiming, CheckCache, CheckError, CheckLimits, CheckReport, ModuleRequires, Source,
-    TypeDiagnostic, active_backend, backend_name, check_sources_cached, lib_paths,
-    module_closure_cached,
+    BuiltinsTiming, CheckCache, CheckError, CheckLimits, CheckReport, FlowLint, FlowLintLevel,
+    ModuleRequires, Source, TypeDiagnostic, active_backend, backend_name, check_sources_with_lints,
+    lib_paths, module_closure_cached,
 };
 #[cfg(feature = "upstream-typecheck")]
 use uf_infra::FxHashSet;
@@ -280,13 +280,27 @@ pub(crate) fn check(
         ignore_deprecation,
         project_rules,
     } = collect_and_lint(cwd, paths, lint)?;
+    // Mutable only once inference has run those rules, so a build without a
+    // checker does not carry an unused `mut`.
+    #[cfg(feature = "upstream-typecheck")]
+    let mut lint = lint;
     progress.draw("type checking");
     let config = uf_config::load_config(&root)?.config;
     #[cfg(feature = "upstream-typecheck")]
     let types = if config.flow.version.is_some() {
+        // Official Flow reports its own `[lints]`. This path does not translate
+        // `uf.config.js` into that file.
         official_check(&sources, &available, &root, &config)?
     } else {
-        type_check(&sources, &available, &root, explain_any)
+        let flow_lints = configured_flow_lints(&config);
+        let types = type_check(&sources, &available, &root, explain_any, &flow_lints);
+        if matches!(types, TypeCheck::Checked(..)) {
+            // Inference ran these. Leaving them on the lint report would say
+            // `uf check` skipped rules it just ran. `uf lint` still lists them.
+            lint.unavailable
+                .retain(|skipped| skipped.requirement != uf_lint::RuleRequirement::TypeChecker);
+        }
+        types
     };
     #[cfg(not(feature = "upstream-typecheck"))]
     let types = {
@@ -357,6 +371,34 @@ pub(crate) fn check(
     Ok(())
 }
 
+/// Flow inference lints `config` turned on, in the shape the checker takes.
+///
+/// A rule `uf lint` decides from source text stays out: that half already ran
+/// it, and handing it to inference would report the same finding twice. `off`
+/// stays out too, so an umbrella such as `sketchy-null` keeps the members a
+/// project did not name.
+#[cfg(feature = "upstream-typecheck")]
+pub(crate) fn configured_flow_lints(config: &uf_config::UniflowedConfig) -> Vec<FlowLint> {
+    uf_lint::rules()
+        .iter()
+        .filter_map(|descriptor| {
+            if descriptor.requirement != uf_lint::RuleRequirement::TypeChecker {
+                return None;
+            }
+            let name = descriptor.id.strip_prefix("flow/")?;
+            let level = match uf_lint::rule_level(config, descriptor.id) {
+                uf_config::RuleLevel::Off => return None,
+                uf_config::RuleLevel::Warn => FlowLintLevel::Warn,
+                uf_config::RuleLevel::Error => FlowLintLevel::Error,
+            };
+            Some(FlowLint {
+                name: name.into(),
+                level,
+            })
+        })
+        .collect()
+}
+
 /// Run inference over the sources the linter collected, and the modules those
 /// sources import.
 ///
@@ -366,12 +408,16 @@ pub(crate) fn check(
 /// caller needs to know why inference did not run. And **anything about a file
 /// nobody asked about**, because a dependency is in the batch to be typed
 /// against, not to be reported on.
+///
+/// `lints` are the levels [`configured_flow_lints`] read. An empty slice leaves
+/// Flow's inference lints off.
 #[cfg(feature = "upstream-typecheck")]
 fn type_check(
     sources: &[SourceFile],
     available: &[SourceFile],
     root: &Utf8Path,
     explain_any: Option<&str>,
+    lints: &[FlowLint],
 ) -> TypeCheck {
     let limits = CheckLimits::default();
     // The project's own library definitions, before anything is merged: they
@@ -464,7 +510,7 @@ fn type_check(
         uf_profiler::profile_span!("cli::cache_sweep");
         cache.sweep();
     }
-    match check_sources_cached(&batch, &libs, &limits, cache.as_ref()) {
+    match check_sources_with_lints(&batch, &libs, &limits, cache.as_ref(), lints) {
         Ok(mut report) => {
             // Before the filter below, which drops every diagnostic about a
             // file nobody asked about — and a translation is such a file.

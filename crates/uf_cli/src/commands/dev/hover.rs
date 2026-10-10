@@ -189,7 +189,7 @@ fn catalogue_entry(descriptor: &RuleDescriptor, said: Option<&str>) -> String {
     let requirement = match descriptor.requirement {
         RuleRequirement::SourceText => "decided from the source text",
         RuleRequirement::TypeChecker => {
-            "needs Flow type inference, which `uf lint` does not run yet"
+            "needs Flow type inference, which `uf check` runs and `uf lint` does not"
         }
     };
     let summary = uf_infra::into_string(uf_infra::cstr!(

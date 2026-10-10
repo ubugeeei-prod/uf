@@ -60,9 +60,9 @@ pub enum RuleCategory {
 pub enum RuleRequirement {
     /// Decidable from the source text alone; the rule runs today.
     SourceText,
-    /// Needs type inference. uf has no type checker yet, so an enabled rule of
-    /// this kind is reported through [`crate::LintReport::unavailable`] rather
-    /// than silently passing.
+    /// Needs type inference. `uf lint` does not run an enabled rule of this
+    /// kind and reports it through [`crate::LintReport::unavailable`] rather
+    /// than silently passing. `uf check` runs it.
     TypeChecker,
 }
 

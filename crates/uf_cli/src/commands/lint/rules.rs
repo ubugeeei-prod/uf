@@ -52,8 +52,9 @@ pub(crate) struct ListedRule {
 }
 
 impl ListedRule {
-    /// Enabled, and waiting on type inference uf does not have — so a lint run
-    /// names it under `unavailableRules` rather than running it.
+    /// Enabled, and waiting on type inference `uf lint` does not run — so a lint
+    /// run names it under `unavailableRules` rather than running it. `uf check`
+    /// runs it.
     fn skipped(&self) -> bool {
         self.level.is_enabled() && !self.descriptor.requirement.is_available()
     }
@@ -141,7 +142,7 @@ fn render_rules(ui: &mut Ui, listed: &[ListedRule]) {
             renderer.status(
                 out,
                 Status::Info,
-                "* enabled, and needs Flow type inference, which uf does not implement yet: a lint run names it instead of running it",
+                "* enabled, and needs Flow type inference, which `uf check` runs; `uf lint` names it instead of running it",
             );
         }
         renderer.status(out, Status::Info, &summary);

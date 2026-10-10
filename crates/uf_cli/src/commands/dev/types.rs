@@ -782,8 +782,12 @@ fn assemble(root: &Utf8Path, config: &UniflowedConfig) -> Result<Prepared, Strin
             .map(|file| OwnedSource::new(file.path, file.source))
             .collect()
     };
-    let session = Session::start(owned(project.libs), CheckLimits::default())
-        .map_err(|error| error.to_string())?;
+    let session = Session::start_with_lints(
+        owned(project.libs),
+        CheckLimits::default(),
+        crate::commands::check::configured_flow_lints(config),
+    )
+    .map_err(|error| error.to_string())?;
     let batch = owned(project.sources);
     session
         .load(batch.clone())
