@@ -128,11 +128,34 @@ fn an_inline_closure_action_is_registered_separately() {
 
     assert_eq!(registry.len(), 1);
     assert_eq!(registry.actions()[0].kind, ServerActionKind::InlineClosure);
-    assert_eq!(registry.actions()[0].export, "save");
+    assert_eq!(registry.actions()[0].export, "$$ufAction0");
     assert_eq!(
         registry.actions()[0].exposure,
         ActionExposure::CallableEndpoint
     );
+}
+
+#[test]
+fn an_inline_closure_in_a_client_module_is_not_callable() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/page.js",
+        "import Form from \"./Form.js\";\nexport default function Page() {\n return null;\n}\n",
+    );
+    builder.add_source(
+        "app/Form.js",
+        "\"use client\";\nexport default function Form() {\n const save = async () => {\n  \"use server\";\n };\n return save;\n}\n",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let registry = ServerActionRegistry::from_graph(&builder.build(), &build_id());
+
+    assert_eq!(registry.len(), 1);
+    assert_eq!(registry.actions()[0].export, "$$ufAction0");
+    assert_eq!(
+        registry.actions()[0].exposure,
+        ActionExposure::UnreachableFromClient
+    );
+    assert_eq!(registry.callable_actions().count(), 0);
 }
 
 #[test]

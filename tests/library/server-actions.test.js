@@ -748,6 +748,12 @@ describe("the two tables the manifest becomes", () => {
         export: "onClick",
         kind  : "inline-closure",
       },
+      {
+        id    : idOf("eeeeeeee"),
+        module: "app/_actions/tally.js",
+        export: "<anonymous#0>",
+        kind  : "inline-closure",
+      },
       { id: "not-an-id", module: "app/_actions/tally.js", export: "forged", kind: "module-export" },
       {
         id    : idOf("dddddddd"),
@@ -781,9 +787,11 @@ describe("the two tables the manifest becomes", () => {
   it("leaves out what has no name to import and what is not an id", () => {
     const rows = serverActionModules(manifest, root).get("/project/app/_actions/tally.js") ?? [];
     const names = rows.map((row) => row.export);
-    // An inline `"use server"` closure is an action and is not an export, so
-    // there is nothing to write a reference for; it stays in the manifest.
+    // The browser's module is only `"use server"` exports. An inline closure
+    // stays out of it: the reference stub replaces the whole file, and a
+    // server component that also contains a closure is not that file.
     expect(names).not.toContain("onClick");
+    expect(names).not.toContain("<anonymous#0>");
     // And a row whose id is not the canonical spelling is not a row: a table
     // built from a file uf wrote is still a file, and a forged one must not
     // become an endpoint.
@@ -797,10 +805,15 @@ describe("the two tables the manifest becomes", () => {
   });
 
   it("gives the server one import per file, however many actions are in it", () => {
-    const source = actionsModuleSource(serverActionTable(manifest, root));
+    const table = serverActionTable(manifest, root);
+    const source = actionsModuleSource(table);
     expect(source.split('() => import("/project/app/_actions/tally.js")').length - 1).toBe(1);
     expect(source).toContain(`id: ${JSON.stringify(RECORD)}`);
     expect(source).toContain('export: "recordCount"');
+    // The server calls the hoisted export. A name that is not an identifier
+    // is not a row, because the dispatcher reads `module[export]`.
+    expect(table.map((row) => row.export)).toContain("onClick");
+    expect(table.map((row) => row.export)).not.toContain("<anonymous#0>");
   });
 
   it("builds no table at all from a manifest it cannot read", () => {

@@ -546,7 +546,9 @@ directory `$middleware.js`. `uf install`, `uf fmt --check`, `uf check`,
   platform by uf's own pipeline
   ([#956](https://github.com/ubugeeei-prod/uf/issues/956)), `serverless` buffers
   a streamed document, and there is no adapter for Vercel or Netlify.
-- **Server functions.** An inline `"use server"` closure and a file upload do
+- **Server functions.** An inline `"use server"` closure in a server module is
+  callable and its captures are sealed; one written in a `"use client"` module
+  is not an endpoint. A file upload does
   not work, and a form bound to an action passed down as a prop posts only after
   hydration (one bound to an imported action posts before it); an action's arguments are JSON data plus
   at most one form ([What is not here](/guide/server-actions#what-is-not-here),

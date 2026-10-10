@@ -178,8 +178,10 @@ in `uf`.
   it. **Done for a form**: `<form action={fn}>`, `useActionState` and
   `useFormStatus` reach the same endpoint, because a reference is an ordinary
   async function and the grammar carries one `FormData` per call beside the
-  values. **Not done**: an inline `"use server"` closure, which has no export
-  name to refer to; a file upload, which wants a multipart read this endpoint
+  values. **Done for an inline `"use server"` closure in a server module**: it
+  is hoisted to `$$ufActionN` and the variables it captured are sealed with the
+  build id. A closure written in a `"use client"` module is not an endpoint.
+  **Not done**: a file upload, which wants a multipart read this endpoint
   deliberately does not have. **Done for a form before hydration**
   (ubugeeei-prod/uf#1358): a server action answers React's `$$FORM_ACTION`,
   so the form is a urlencoded native post, answered by a second, narrower door

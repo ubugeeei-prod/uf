@@ -44,6 +44,8 @@
 // in this graph, and a boundary module without the directive is refused here,
 // with its file named, rather than by React with a sentence about functions.
 
+import { decodeActionArguments, encodeActionArguments } from "./internal/action-wire.js";
+import { openCaptures, sealCaptures } from "./internal/closure-seal.js";
 import { traceLoader } from "./internal/server-instrumentation.js";
 
 import * as React from "react";
@@ -117,6 +119,67 @@ export function registerServerFunction<T>(fn: T, id: string, name: string): T {
   // Keep typed calls checked; reflection is for this runtime-narrowed value.
   Reflect.apply(registerServerReference, undefined, [fn, id, name]);
   return fn;
+}
+
+/**
+ * Bind an inline `"use server"` closure to the captures it closed over.
+ *
+ * The rewrite in `uf_rsc` hoists the closure to `$$ufActionN` and leaves this
+ * call where the closure was written. The values are sealed with the build id
+ * before the function is handed to a Client Component, and the hoisted export
+ * opens them. What the browser receives is the sealed blob, as a bound
+ * argument, never the values and never the build id.
+ *
+ * The return is untyped on purpose. The captured names keep whatever type the
+ * body already had only after `unsealServerCaptures`, and this call cannot
+ * see those types: they are not arguments of the closure.
+ */
+function closureBuildId(): string {
+  // A Worker has no `process` until the generated entry installs one. Reading
+  // the global unconditionally throws before the seal can say the id is missing.
+  if (typeof process === "undefined") return "";
+  const named = process.env.UF_BUILD_ID;
+  return typeof named === "string" ? named : "";
+}
+
+export function bindServerClosure(
+  fn      : (...args: $ReadOnlyArray<mixed>) => mixed,
+  id      : string,
+  captures: $ReadOnlyArray<mixed>,
+): $FlowFixMe {
+  if (typeof fn !== "function") return fn;
+  const buildId = closureBuildId();
+  const sealed = sealCaptures(buildId, id, encodeActionArguments(captures));
+  // Register first. React's server-reference `bind` records the sealed blob on
+  // `$$bound`, which is what Flight sends and the client posts back. A native
+  // bind made before registration leaves `$$bound` null, so the hoisted export
+  // is called without the blob.
+  const registered = registerServerFunction(fn, id, id);
+  return registered.bind(null, sealed);
+}
+
+/**
+ * Open the blob `bindServerClosure` sealed for this action.
+ *
+ * Called from the hoisted export, including when the closure captured
+ * nothing, so a tampered blob is refused before the body runs. A missing
+ * build id is reported as itself. Every other failure is one sentence that
+ * contains neither the blob nor a captured value.
+ */
+export function unsealServerCaptures(sealed: string, actionId: string): $FlowFixMe {
+  const buildId = closureBuildId();
+  let plaintext;
+  try {
+    plaintext = openCaptures(buildId, actionId, sealed);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("UF_BUILD_ID")) throw error;
+    throw new Error("server action closure was refused");
+  }
+  try {
+    return decodeActionArguments(plaintext);
+  } catch {
+    throw new Error("server action closure was refused");
+  }
 }
 
 /** What a host may tell the renderer about one render. */

@@ -37,8 +37,8 @@ use uf_router::{
     write_router_manifest_for_target,
 };
 use uf_rsc::{
-    BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscAnalysis,
-    RscDiagnostic, RscSeverity, analyze_project,
+    BUILD_ID_ENV, BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV,
+    RscAnalysis, RscDiagnostic, RscSeverity, analyze_project,
 };
 use uf_term::{
     Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, PhaseTimer, Status, Table, Tone, Tree,
@@ -272,12 +272,20 @@ pub(crate) fn build(
     fs::create_dir_all(&out_dir).with_context(|| uf_infra::cstr!("failed to create {out_dir}"))?;
 
     progress.tick("analysing server components");
+    // `production` unless the project or the command line said another mode,
+    // which is what selects `.env.production` over `.env.development` — the
+    // half of ubugeeei-prod/uf#259 that made a build and a dev server disagree
+    // about the same variable. Read here, before the analysis: the build id
+    // keys every action id and, once the driver is up, every sealed closure,
+    // and a file is what a project that never exported the variable still has.
+    // The process environment wins over that file, which is the cascade's own
+    // rule. The rewrite bakes the ids, so the driver has to be handed the
+    // same secret.
+    let project_environment = project_env(&resolved, requested_mode, PRODUCTION)?;
+    let build_id =
+        BuildId::from_env_file_or_generate(project_environment.values().get(BUILD_ID_ENV).cloned());
     let rsc = timer.measure("rsc analysis", || {
-        analyze_project(
-            &resolved.root,
-            &BuildId::from_env_or_generate(),
-            &ProjectScanOptions::default(),
-        )
+        analyze_project(&resolved.root, &build_id, &ProjectScanOptions::default())
     })?;
 
     // Before Vite, not after: a module that breaks the RSC contract is not
@@ -328,7 +336,11 @@ pub(crate) fn build(
     // copy in [`BUILD_META_DIR`] is written when the build is over and is the
     // one a reader should trust, because `uf dev` rewrites this one on every
     // edit. The path is handed to the driver as `UF_RSC_MANIFEST`.
-    let rsc_input = uf_rsc::write_manifest(&root.join(RSC_MANIFEST_BUILD_DIR), &rsc.manifest())?;
+    let rsc_dir = root.join(RSC_MANIFEST_BUILD_DIR);
+    // Before the manifest: a bundler that sees the new manifest and the old
+    // rewrite would seal a capture list the hoisted function does not open.
+    uf_rsc::write_inline_closures(&rsc_dir, &root, &rsc.registry)?;
+    let rsc_input = uf_rsc::write_manifest(&rsc_dir, &rsc.manifest())?;
 
     progress.tick("resolving the JavaScript host");
     // The progress line is finished before anything is said, or the sentence
@@ -339,11 +351,7 @@ pub(crate) fn build(
     })?;
     let host = build_runtime.host.clone();
     let builder = builder::resolve(&root, &resolved.config)?;
-    // `production` unless the project or the command line said another mode,
-    // which is what selects `.env.production` over `.env.development` — the
-    // half of ubugeeei-prod/uf#259 that made a build and a dev server disagree
-    // about the same variable.
-    let env = build_runtime.environment(project_env(&resolved, requested_mode, PRODUCTION)?);
+    let env = build_runtime.environment(project_environment);
 
     // Asked for before anything is built. `--compile` on a machine with no
     // usable backend fails either way; failing now costs the user nothing, and
@@ -493,7 +501,10 @@ pub(crate) fn build(
                 analyze,
             ),
             &env,
-            &[(RSC_MANIFEST_ENV, rsc_input.as_str())],
+            &[
+                (RSC_MANIFEST_ENV, rsc_input.as_str()),
+                (BUILD_ID_ENV, build_id.secret()),
+            ],
         )?;
         let mut report = ViteBuild::default();
         while let Some(event) = driver.next_event()? {
@@ -629,6 +640,7 @@ pub(crate) fn build(
     });
     timer.measure("manifest", || write_json_file(&build_manifest, &payload))?;
     let rsc_manifest = timer.measure("rsc manifest", || {
+        uf_rsc::write_inline_closures(&meta_dir, &root, &rsc.registry)?;
         uf_rsc::write_manifest(&meta_dir, &rsc.manifest())
     })?;
 

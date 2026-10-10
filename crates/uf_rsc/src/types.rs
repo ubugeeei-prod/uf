@@ -40,9 +40,10 @@
 //! * **Action ids.** [`ActionId`](crate::ActionId) is keyed on the build id,
 //!   which changes per build, so an id written into a checked-in file would be
 //!   wrong by the next one. The key here is `module#export`, which is stable.
-//! * **Inline closures.** A `"use server"` closure inside a component is an
-//!   action, but it is not an export, so there is no name to `import typeof`.
-//!   It is in the manifest and not here.
+//! * **Inline closures.** A `"use server"` closure inside a server module is
+//!   hoisted to `$$ufActionN` in the rewritten server source. That name is not
+//!   on disk, so `import typeof` cannot see it. The closure is in the manifest
+//!   and not here.
 //! * **Actions no client boundary reaches.** Same rule the manifest applies,
 //!   for the same reason: something that is not a callable endpoint should not
 //!   be given a call-site type that says it is one.
@@ -116,7 +117,8 @@ pub const SERVER_ACTION_TYPES_HEADER: &str = "\
 // An action is here when some module that can hand it across a client
 // boundary reaches it, which is the same rule `uf-rsc-manifest.json`
 // applies to what it publishes. An inline `\"use server\"` closure is not here:
-// it has no export name to refer to.
+// its hoisted export exists only in the rewritten server module, so there is
+// nothing on disk for `import typeof` to name.
 //
 // The last two lines are the only ones that assert rather than describe: they
 // hold every action's arguments and result against what a server action's

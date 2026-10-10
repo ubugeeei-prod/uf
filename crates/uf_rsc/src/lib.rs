@@ -45,9 +45,9 @@ pub mod scan;
 pub mod types;
 
 pub use action::{
-    ACTION_ID_HEX_LEN, ActionExposure, ActionId, ActionIdError, BuildId, BuildIdError,
-    MAX_BUILD_ID_BYTES, MIN_BUILD_ID_BYTES, ServerAction, ServerActionKind, ServerActionRegistry,
-    UnknownAction,
+    ACTION_ID_HEX_LEN, ActionExposure, ActionId, ActionIdError, BUILD_ID_ENV, BuildId,
+    BuildIdError, INLINE_CLOSURES_FILE_NAME, MAX_BUILD_ID_BYTES, MIN_BUILD_ID_BYTES, ServerAction,
+    ServerActionKind, ServerActionRegistry, UnknownAction, write_inline_closures,
 };
 pub use directive::{
     DirectiveIssue, DirectiveKind, DirectiveScan, FileDirective, FunctionDirective, FunctionOwner,

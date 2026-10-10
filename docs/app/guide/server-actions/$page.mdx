@@ -150,7 +150,10 @@ reference and its bound arguments, and React's browser client turns it into a
 function that makes the same call an imported reference makes: the same JSON
 wire, grammar, `Origin` check and deployment header, with the bound arguments
 first. A function that is not a callable export of a `"use server"` module is
-not registered, and Flight still refuses to send it.
+not registered, and Flight still refuses to send it — except an inline
+`"use server"` closure in a server module, which the build rewrites into a
+hoisted export and registers through `bindServerClosure`. A closure written in
+a `"use client"` module is not registered.
 
 **Bound arguments are the visitor's to change.** They travel to the browser in
 the payload and come back in the call, in plain text. `deleteNote.bind(null,
@@ -516,13 +519,12 @@ imports the action already has its type.
 - **Uploads.** A `File` entry is refused by name at the call site. Multipart
   parsing is its own attack surface and is deliberately absent; use a route
   handler.
-- **Inline `"use server"` closures.** A closure whose body opens with the
-  directive is recognised, keyed and written into the manifest, but it has no
-  export name to import. So it gets no reference in the client bundle, no row in
-  the server's table and no server reference, and nothing can call it
-  ([#1360](https://github.com/ubugeeei-prod/uf/issues/1360)). Until then, write a
-  module export. A Server Component can pass that export to a client component
-  as a prop ([Handed down by a Server Component](#handed-down-by-a-server-component)).
+- **An inline `"use server"` closure in a `"use client"` module.** One written
+  in a server module is hoisted to `$$ufActionN`, its captured variables are
+  sealed with the build id, and a Client Component can call it. One written in
+  a client module cannot be sealed without sending the key, so it is not an
+  endpoint. Write it in the server module, or export an async function from a
+  `"use server"` file.
 - **A form before hydration, with an action that arrived as a prop.** The form
   fields a form writes for a pre-hydration post come from the imported
   reference. An action handed down as a prop is React's own stub on the server
