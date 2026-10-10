@@ -87,6 +87,68 @@ fn an_unavailable_checker_contributes_no_counts() {
     assert!(types.report().is_none());
 }
 
+/// Inference lints are the enabled `flow/` rules that need a type checker.
+/// Source-text Flow rules stay out, and so does anything set to `off`.
+#[cfg(feature = "upstream-typecheck")]
+#[test]
+fn configured_flow_lints_follow_the_type_checker_rules_a_project_enabled() {
+    use uf_check::FlowLintLevel;
+    use uf_config::{RuleLevel, UniflowedConfig};
+    use uf_lint::RuleRequirement;
+
+    let defaults = UniflowedConfig::default();
+    let lints = configured_flow_lints(&defaults);
+    let level_of = |name: &str| {
+        lints
+            .iter()
+            .find(|lint| lint.name.as_str() == name)
+            .map(|lint| lint.level)
+    };
+
+    assert_eq!(level_of("sketchy-null"), Some(FlowLintLevel::Error));
+    assert_eq!(level_of("unused-promise"), Some(FlowLintLevel::Error));
+    assert_eq!(level_of("nonstrict-import"), Some(FlowLintLevel::Warn));
+    assert_eq!(level_of("sketchy-null-number"), None);
+    assert_eq!(level_of("unclear-type"), None);
+    assert_eq!(level_of("deprecated-type"), None);
+    assert!(lints.iter().all(|lint| !lint.name.contains('/')));
+
+    for descriptor in uf_lint::rules() {
+        let present = descriptor
+            .id
+            .strip_prefix("flow/")
+            .is_some_and(|name| level_of(name).is_some());
+        let wanted = descriptor.requirement == RuleRequirement::TypeChecker
+            && descriptor.id.starts_with("flow/")
+            && uf_lint::rule_level(&defaults, descriptor.id).is_enabled()
+            && uf_lint::checker_runs(descriptor.id);
+        assert_eq!(present, wanted, "{}", descriptor.id);
+    }
+    assert_eq!(level_of("untyped-import"), None);
+    assert_eq!(level_of("untyped-type-import"), None);
+
+    let mut quiet = defaults;
+    quiet
+        .lint
+        .rules
+        .insert("flow/sketchy-null".into(), RuleLevel::Off);
+    quiet
+        .lint
+        .rules
+        .insert("flow/unclear-type".into(), RuleLevel::Error);
+    let quiet_lints = configured_flow_lints(&quiet);
+    assert!(
+        quiet_lints
+            .iter()
+            .all(|lint| lint.name.as_str() != "sketchy-null")
+    );
+    assert!(
+        quiet_lints
+            .iter()
+            .all(|lint| lint.name.as_str() != "unclear-type")
+    );
+}
+
 #[test]
 fn statuses_are_stable() {
     assert_eq!(TypeCheck::Unavailable.status(), "unavailable");
@@ -99,6 +161,9 @@ fn statuses_are_stable() {
 
 #[test]
 fn a_build_with_a_checker_reports_it_and_one_without_says_so() {
+    #[cfg(feature = "upstream-typecheck")]
+    let types = type_check(&[], &[], Utf8Path::new("."), None, &[]);
+    #[cfg(not(feature = "upstream-typecheck"))]
     let types = type_check(&[], &[], Utf8Path::new("."), None);
 
     #[cfg(feature = "upstream-typecheck")]
@@ -183,6 +248,7 @@ fn a_file_checked_with_nothing_else_cannot_see_the_package_it_imports() {
         &[],
         Utf8Path::from_path(root.path()).expect("a UTF-8 path"),
         None,
+        &[],
     );
 
     assert_eq!(codes(&types), ["value-as-type"]);
@@ -202,6 +268,7 @@ fn a_narrowed_check_types_the_file_against_what_it_imports() {
         &project,
         Utf8Path::from_path(root.path()).expect("a UTF-8 path"),
         None,
+        &[],
     );
 
     assert_eq!(codes(&types), Vec::<&str>::new());
@@ -232,6 +299,7 @@ fn a_narrowed_check_reports_only_the_files_it_was_asked_about() {
         &project,
         Utf8Path::from_path(root.path()).expect("a UTF-8 path"),
         None,
+        &[],
     );
 
     assert_eq!(
@@ -262,6 +330,7 @@ fn an_unnarrowed_check_reports_every_file_it_was_given() {
         &[],
         Utf8Path::from_path(root.path()).expect("a UTF-8 path"),
         None,
+        &[],
     );
 
     assert_eq!(codes(&types), ["incompatible-type"]);
@@ -303,6 +372,7 @@ fn checked_in(root: &tempfile::TempDir, sources: &[SourceFile]) -> TypeCheck {
         &[],
         Utf8Path::from_path(root.path()).expect("a UTF-8 path"),
         None,
+        &[],
     )
 }
 

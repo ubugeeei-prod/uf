@@ -11,8 +11,9 @@
 use std::time::Duration;
 
 use uf_check::{
-    CheckError, CheckLimits, DiagnosticKind, Severity, Source, TypeDiagnostic, check_source,
-    check_sources, prepare_builtins,
+    CheckError, CheckLimits, DiagnosticKind, FlowLint, FlowLintLevel, Severity, Source,
+    TypeDiagnostic, check_source, check_sources, check_sources_cached, check_sources_with_lints,
+    prepare_builtins,
 };
 
 const CLEAN_COMPONENT: &str = include_str!("fixtures/clean_component.js");
@@ -539,5 +540,55 @@ fn a_suppression_for_the_wrong_code_leaves_the_error_and_is_itself_unused() {
         found,
         [(Severity::Warning, 2), (Severity::Error, 3)],
         "{diagnostics:#?}"
+    );
+}
+
+/// `if (count)` on a `?number` is Flow's sketchy-null lint. It stays silent
+/// until a project asks for it, and `check_sources` is that silent path.
+#[test]
+fn a_configured_sketchy_null_is_reported_and_an_unconfigured_check_is_not() {
+    const SOURCE: &str = "\
+// @flow
+function f(count: ?number): boolean {
+  if (count) {
+    return true;
+  }
+  return false;
+}
+";
+    let source = Source::new("sketchy_null.js", SOURCE);
+    let limits = limits();
+    let lints = [FlowLint {
+        name: "sketchy-null".into(),
+        level: FlowLintLevel::Error,
+    }];
+
+    let configured =
+        check_sources_with_lints(&[source], &[], &limits, None, &lints).expect("the checker runs");
+    assert!(
+        configured
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == Some("sketchy-null-number")),
+        "expected sketchy-null-number, got {:?}",
+        codes(&configured.diagnostics)
+    );
+
+    let plain = check_sources(&[source], &[], &limits).expect("the checker runs");
+    assert!(
+        plain.diagnostics.iter().all(|diagnostic| !diagnostic
+            .code
+            .is_some_and(|code| code.starts_with("sketchy-null"))),
+        "check_sources must not report sketchy-null, got {:?}",
+        codes(&plain.diagnostics)
+    );
+
+    let cached = check_sources_cached(&[source], &[], &limits, None).expect("the checker runs");
+    assert!(
+        cached.diagnostics.iter().all(|diagnostic| !diagnostic
+            .code
+            .is_some_and(|code| code.starts_with("sketchy-null"))),
+        "check_sources_cached must not report sketchy-null, got {:?}",
+        codes(&cached.diagnostics)
     );
 }

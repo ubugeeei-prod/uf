@@ -680,8 +680,8 @@ pub(crate) fn render_verdict(
     let skipped = report.unavailable.len();
     let skipped = (skipped > 0).then(|| {
         uf_infra::into_string(uf_infra::cstr!(
-            "{} skipped: they need Flow type inference, which uf does not have yet; \
-             `uf lint --rules` marks them",
+            "{} skipped: they need Flow type inference, which `uf check` runs and \
+             `uf lint` does not; `uf lint --rules` marks them",
             plural(skipped, "enabled rule")
         ))
     });

@@ -18,8 +18,8 @@ under a Bad example are the findings `uf lint` prints for it.
 
 The level is the default. `uf lint --rules` prints the level each rule runs
 at in your project, and whether a fix applies. Rules marked *needs type
-inference* are listed but do not run yet: uf reports them as unavailable,
-and their examples show what they will check.
+inference* run during `uf check`. `uf lint` does not run them and reports
+them as unavailable, and their examples show what they check.
 
 ## Flow
 
@@ -293,7 +293,7 @@ export type Open = { id: string, ... };
 
 ### flow/default-import-access
 
-Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Do not read named exports off a default import.
+Default: `error` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Do not read named exports off a default import.
 
 Reading a named export off a default import, as in `React.useState` where `React` is the default export, only works when the default export happens to be an object that also carries that property. Import the named export itself.
 
@@ -405,7 +405,7 @@ export type Slot = Node;
 
 ### flow/invalid-import-star-use
 
-Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Namespace imports may only be used for member access.
+Default: `error` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Namespace imports may only be used for member access.
 
 A namespace import (`import * as ns`) is a module object that Flow can only check when you read members off it. Passing the namespace around as a value loses those checks.
 
@@ -429,7 +429,7 @@ export const total: number = math.sum([1, 2, 3]);
 
 ### flow/invalid-this-arg
 
-Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Do not rebind a method to an incompatible receiver.
+Default: `error` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Do not rebind a method to an incompatible receiver.
 
 Calling a method through `.call`, `.apply` or `.bind` with a receiver of the wrong type runs the method with a `this` it was never written for.
 
@@ -465,7 +465,7 @@ counter.increment.call(counter);
 
 ### flow/libdef-override
 
-Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Library definitions must not override built-in declarations.
+Default: `error` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Library definitions must not override built-in declarations.
 
 A library definition that redeclares something Flow's built-in libraries already define, such as `Array` or `Promise`, silently replaces the real type for the whole project.
 
@@ -640,7 +640,7 @@ export function increment(): number {
 
 ### flow/nonstrict-import
 
-Default: `warn` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. `@flow strict` modules may only import other strict modules.
+Default: `warn` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. `@flow strict` modules may only import other strict modules.
 
 A `@flow strict` module promises that everything it touches is checked strictly. Importing a module that is not strict breaks that promise at the import.
 
@@ -664,7 +664,7 @@ export const label: string = format(3);
 
 ### flow/react-intrinsic-overlap
 
-Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. A value used as a component must not overlap a JSX intrinsic.
+Default: `error` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. A value used as a component must not overlap a JSX intrinsic.
 
 A value used as a JSX component whose type overlaps an intrinsic element's name, such as a string `"div"`, renders a DOM element where you meant a component. Give JSX a component, not a string that may be a tag.
 
@@ -689,7 +689,7 @@ export component Box(as: "section" | "article") {
 
 ### flow/require-explicit-enum-checks
 
-Default: `warn` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Compare Flow enum values explicitly instead of testing truthiness.
+Default: `warn` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Compare Flow enum values explicitly instead of testing truthiness.
 
 Testing a Flow enum value for truthiness hides which members you meant, and a member added later passes silently. Compare against the members explicitly.
 
@@ -723,7 +723,7 @@ export function isOn(status: ?Status): boolean {
 
 ### flow/require-explicit-enum-switch-cases
 
-Default: `warn` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. List Flow enum switch cases explicitly instead of relying on `default`.
+Default: `warn` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. List Flow enum switch cases explicitly instead of relying on `default`.
 
 A `default` branch in a `switch` over a Flow enum catches members added later without anyone deciding what they should do. List every member, so that adding one is a type error until it is handled. `match` gives the same exhaustiveness check.
 
@@ -768,7 +768,7 @@ export function label(status: Status): string {
 
 ### flow/sketchy-null
 
-Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Existence check on a value that may be both nullish and falsey.
+Default: `error` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Existence check on a value that may be both nullish and falsey.
 
 An existence check such as `if (value)` on a `?number` is false both when the value is missing and when it is `0`, and the code usually meant only one of them. Compare with `null` explicitly. This rule covers every such type; the `sketchy-null-*` rules name one type each.
 
@@ -798,7 +798,7 @@ export function describe(value: ?number): string {
 
 ### flow/sketchy-null-bigint
 
-Default: `off` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Existence check on a `?bigint` (covered by `flow/sketchy-null`).
+Default: `off` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Existence check on a `?bigint` (covered by `flow/sketchy-null`).
 
 An existence check such as `if (value)` on a `?bigint` is false both when the value is missing and when it is `0n`, and the code usually meant only one of them. Compare with `null` explicitly. Off by default: `flow/sketchy-null` covers it.
 
@@ -828,7 +828,7 @@ export function describe(value: ?bigint): string {
 
 ### flow/sketchy-null-bool
 
-Default: `off` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Existence check on a `?boolean` (covered by `flow/sketchy-null`).
+Default: `off` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Existence check on a `?boolean` (covered by `flow/sketchy-null`).
 
 An existence check such as `if (value)` on a `?boolean` is false both when the value is missing and when it is `false`, and the code usually meant only one of them. Compare with `null` explicitly. Off by default: `flow/sketchy-null` covers it.
 
@@ -858,7 +858,7 @@ export function describe(value: ?boolean): string {
 
 ### flow/sketchy-null-mixed
 
-Default: `off` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Existence check on a `mixed` value (covered by `flow/sketchy-null`).
+Default: `off` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Existence check on a `mixed` value (covered by `flow/sketchy-null`).
 
 An existence check such as `if (value)` on a `mixed` value is false for `null` and `undefined`, and also for `0`, `""` and `false`, which the code usually did not mean to reject. Compare with `null` explicitly. Off by default: `flow/sketchy-null` covers it.
 
@@ -885,7 +885,7 @@ export function present(value: mixed): boolean {
 
 ### flow/sketchy-null-number
 
-Default: `off` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Existence check on a `?number` (covered by `flow/sketchy-null`).
+Default: `off` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Existence check on a `?number` (covered by `flow/sketchy-null`).
 
 An existence check such as `if (value)` on a `?number` is false both when the value is missing and when it is `0`, and the code usually meant only one of them. Compare with `null` explicitly. Off by default: `flow/sketchy-null` covers it.
 
@@ -915,7 +915,7 @@ export function describe(value: ?number): string {
 
 ### flow/sketchy-null-string
 
-Default: `off` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Existence check on a `?string` (covered by `flow/sketchy-null`).
+Default: `off` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Existence check on a `?string` (covered by `flow/sketchy-null`).
 
 An existence check such as `if (value)` on a `?string` is false both when the value is missing and when it is `""`, and the code usually meant only one of them. Compare with `null` explicitly. Off by default: `flow/sketchy-null` covers it.
 
@@ -945,7 +945,7 @@ export function describe(value: ?string): string {
 
 ### flow/sketchy-number
 
-Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. A number in a boolean position renders or branches on `0`.
+Default: `error` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. A number in a boolean position renders or branches on `0`.
 
 A number on the left of `&&` in JSX renders `0` when it is zero, instead of rendering nothing. Turn it into a boolean first.
 
@@ -995,7 +995,7 @@ export type Row = { id: string };
 
 ### flow/this-in-exported-function
 
-Default: `warn` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Avoid `this` inside an exported standalone function.
+Default: `warn` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Avoid `this` inside an exported standalone function.
 
 `this` in an exported standalone function depends on how each caller happens to call it, and it is `undefined` in a plain call from another module. Take the value as a parameter.
 
@@ -1045,7 +1045,7 @@ export type Props = { value: mixed };
 
 ### flow/uninitialized-instance-property
 
-Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Do not read an instance property before the constructor initializes it.
+Default: `error` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Do not read an instance property before the constructor initializes it.
 
 Reading an instance property in the constructor before it has been assigned reads `undefined`, whatever its declared type says.
 
@@ -1081,7 +1081,7 @@ export class Cache {
 
 ### flow/unnecessary-invariant
 
-Default: `warn` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. `invariant` on a condition already known to be truthy.
+Default: `warn` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. `invariant` on a condition already known to be truthy.
 
 An `invariant` whose condition Flow already knows is true checks nothing, and suggests to a reader that the value could be missing when it cannot.
 
@@ -1215,7 +1215,7 @@ export function withDefaults(options: { readonly size?: number }): { readonly si
 
 ### flow/untyped-import
 
-Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Importing from an untyped module produces `any`.
+Default: `error` · needs Flow type inference of the imported module; `uf check` types a dependency outside the batch as `any` and lists the specifier with the untyped modules instead of running this rule, so the examples below are not checked. Importing from an untyped module produces `any`.
 
 Importing a value from a module Flow has no types for gives you `any`, which switches off checking for everything that value flows into. Add types for the module, or import from one that has them.
 
@@ -1237,7 +1237,7 @@ export const padded: string = "7".padStart(3, "0");
 
 ### flow/untyped-type-import
 
-Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Importing a type from an untyped module produces an `any` alias.
+Default: `error` · needs Flow type inference of the imported module; `uf check` types a dependency outside the batch as `any` and lists the specifier with the untyped modules instead of running this rule, so the examples below are not checked. Importing a type from an untyped module produces an `any` alias.
 
 Importing a type from a module Flow has no types for gives you an `any` alias, which checks nothing wherever you use it. Add types for the module, or declare the type yourself.
 
@@ -1261,7 +1261,7 @@ export const defaults: Options = { size: 10 };
 
 ### flow/unused-promise
 
-Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Do not ignore a `Promise`; await it or handle its rejection.
+Default: `error` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Do not ignore a `Promise`; await it or handle its rejection.
 
 A `Promise` that nobody awaits or handles fails silently: its rejection becomes an unhandled rejection, and whatever comes next runs before it has settled. Await it, return it, or attach a handler.
 

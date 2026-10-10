@@ -53,13 +53,16 @@ fn generated_handler_client_checks_paths_and_required_parameters() {
         .unwrap();
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
     let errors = report["typeCheck"]["diagnostics"].as_array().unwrap();
+    // Every `api.request` returns a Promise, so `unused-promise` marks the
+    // correct call too. The lines below are the path and the parameters.
     let lines: Vec<_> = errors
         .iter()
         .filter(|error| {
-            error["primary"]["path"]
-                .as_str()
-                .unwrap_or("")
-                .ends_with("consumer.js")
+            error["code"].as_str() != Some("unused-promise")
+                && error["primary"]["path"]
+                    .as_str()
+                    .unwrap_or("")
+                    .ends_with("consumer.js")
         })
         .filter_map(|error| error["primary"]["start"]["line"].as_u64())
         .collect();

@@ -1224,7 +1224,7 @@ type errors are**:
 | `typeCheck.backend`, `.filesChecked`, `.filesFromCache`, `.elapsedMs` | What inference did and how long it took |
 | `typeCheck.translatedPackages` | Each dependency typed from its TypeScript declarations, with its `holes` and `findings` counts |
 | `typeCheck.explainAny` | With `--explain-any`, that package's `holes` and `findings`, each with `path`, `line` and `declaration` |
-| `unavailableRules` | Lint rules that need inference uf does not implement yet, and did not run |
+| `unavailableRules` | Lint rules that need Flow type inference. `uf lint` does not run them; `uf check` does, and then drops them from this list |
 
 A reader who counts `diagnostics` and reports that gets zero for a project with
 twenty type errors, because a project can fail `uf check` on inference alone
@@ -1257,8 +1257,8 @@ this project would use — `uf.config.js` over the defaults, deprecated rule
 names included, so a rule the project turned off says `off` — the command that
 fixes its findings (`--fix`, `--fix-unsafe`, `uf fmt`, or nothing) and what it
 checks. A level marked `*` belongs to a rule that needs Flow type inference,
-which uf does not implement yet, so a run names it under `unavailableRules`
-instead of running it. With `--json` each entry is the one `uf inspect --json`
+which `uf check` runs and `uf lint` does not, so a lint run names it under
+`unavailableRules` instead of running it. With `--json` each entry is the one `uf inspect --json`
 prints under `lintRules`, plus `level` and `fix`, where `fix` is `"safe"`,
 `"unsafe"`, `"formatter"` or `null`. It exits `0`, and it cannot be combined
 with `--fix`, `--fix-unsafe` or a path.

@@ -66,14 +66,15 @@
 //! A rule that looks across files, such as `import/no-cycle`, gets its second
 //! file this way.
 //!
-//! # Rules that do not run yet
+//! # Rules `uf lint` does not run
 //!
 //! A rule that needs Flow type inference ([`crate::rules::RuleRequirement::TypeChecker`])
-//! is reported as unavailable instead of running. Its examples are still
-//! required, because they are the documentation, but they cannot be executed.
-//! So a Bad example of such a rule must not carry a `diagnostics` block: uf
-//! would be claiming output it has never produced. The page says the examples
-//! are not checked yet.
+//! runs during `uf check`. `uf lint` reports it as unavailable instead of
+//! running it, so this harness does not execute its examples. They are still
+//! required, because they are the documentation. A Bad example of such a rule
+//! must not carry a `diagnostics` block: the harness would be claiming output
+//! `uf lint` has never produced. The page says `uf lint` does not check the
+//! examples.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -516,8 +517,8 @@ fn checked() -> (Vec<(&'static RuleDescriptor, RuleDoc)>, Vec<String>) {
             if !runs {
                 if example.expected.is_some() {
                     problems.push(format!(
-                        "{label}: the rule needs type inference and does not run, so it cannot \
-                         have a `diagnostics` block"
+                        "{label}: the rule needs type inference and `uf lint` does not run it, so it \
+                         cannot have a `diagnostics` block"
                     ));
                 }
                 continue;
@@ -787,8 +788,8 @@ fn render_pages(docs: &[(&'static RuleDescriptor, RuleDoc)]) -> BTreeMap<String,
          </div>\n\n\
          The level is the default. `uf lint --rules` prints the level each rule runs\n\
          at in your project, and whether a fix applies. Rules marked *needs type\n\
-         inference* are listed but do not run yet: uf reports them as unavailable,\n\
-         and their examples show what they will check.\n\n",
+         inference* run during `uf check`. `uf lint` does not run them and reports\n\
+         them as unavailable, and their examples show what they check.\n\n",
     );
 
     // The contents: one table per namespace.
@@ -833,15 +834,19 @@ fn render_pages(docs: &[(&'static RuleDescriptor, RuleDoc)]) -> BTreeMap<String,
                      below is what the category is about.\n"
                 );
             }
+            let note = if runs {
+                ""
+            } else if crate::checker_runs(rule.id) {
+                " · needs Flow type inference, which `uf check` runs; `uf lint` does not run \
+                 the rule, so the examples below are not checked"
+            } else {
+                " · needs Flow type inference of the imported module; `uf check` types a \
+                 dependency outside the batch as `any` and lists the specifier with the untyped \
+                 modules instead of running this rule, so the examples below are not checked"
+            };
             let _ = writeln!(
                 page,
-                "Default: `{level}`{}. {}\n",
-                if runs {
-                    ""
-                } else {
-                    " · needs Flow type inference, which uf does not implement yet, so the rule \
-                     does not run and the examples below are not checked"
-                },
+                "Default: `{level}`{note}. {}\n",
                 sentence(rule.description)
             );
             page.push_str(&doc.intro);

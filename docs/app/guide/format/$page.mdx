@@ -512,9 +512,9 @@ other answers:
   ([#974](https://github.com/ubugeeei-prod/uf/issues/974)).
 - **Not yet** — a defect uf does not catch today, tracked in the linked issue.
 
-"Needs inference" marks a uf rule that waits on Flow type inference, which uf
-does not implement yet: a run names it under `unavailableRules` instead of
-running it.
+"Needs inference" marks a uf rule that needs Flow type inference. `uf check`
+runs it. `uf lint` does not: a lint run names it under `unavailableRules`
+instead of running it.
 
 #### eslint-plugin-react
 

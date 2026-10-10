@@ -50,6 +50,22 @@ export default defineConfig({
       "import/no-cycle"                  : "warn",
       "import/no-extraneous-dependencies": "warn",
       "import/no-relative-packages"      : "warn",
+      // Inference lints default to error. `check:root` fails on errors, and
+      // this repository still trips these, so they are warnings here. A user
+      // project keeps the defaults. The `sketchy-null-*` leaves stay off:
+      // naming them `off` would not override the umbrella.
+      // `flow/untyped-import` and `flow/untyped-type-import` are not forwarded:
+      // a dependency outside the batch is `any` and listed with the untyped
+      // modules, so a level here would not change the report.
+      "flow/default-import-access"          : "warn",
+      "flow/invalid-import-star-use"        : "warn",
+      "flow/invalid-this-arg"               : "warn",
+      "flow/libdef-override"                : "warn",
+      "flow/react-intrinsic-overlap"        : "warn",
+      "flow/sketchy-null"                   : "warn",
+      "flow/sketchy-number"                 : "warn",
+      "flow/uninitialized-instance-property": "warn",
+      "flow/unused-promise"                 : "warn",
     },
   },
 

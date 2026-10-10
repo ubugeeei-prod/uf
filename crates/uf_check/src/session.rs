@@ -265,9 +265,26 @@ impl Session {
     /// [`CheckError::Unavailable`] without a checker, and
     /// [`CheckError::Worker`] when the worker thread cannot be started.
     pub fn start(libs: Vec<OwnedSource>, limits: CheckLimits) -> Result<Self, CheckError> {
+        Self::start_with_lints(libs, limits, Vec::new())
+    }
+
+    /// [`Self::start`], running `lints` during inference.
+    ///
+    /// The same levels [`crate::check_sources_with_lints`] takes, so an editor
+    /// and `uf check` report one project's Flow lints.
+    ///
+    /// # Errors
+    ///
+    /// [`CheckError::Unavailable`] without a checker, and
+    /// [`CheckError::Worker`] when the worker thread cannot be started.
+    pub fn start_with_lints(
+        libs: Vec<OwnedSource>,
+        limits: CheckLimits,
+        lints: Vec<crate::FlowLint>,
+    ) -> Result<Self, CheckError> {
         #[cfg(feature = "upstream-typecheck")]
         {
-            let (jobs, worker) = crate::upstream::session::spawn(libs, limits)?;
+            let (jobs, worker) = crate::upstream::session::spawn(libs, limits, lints)?;
             Ok(Self {
                 jobs: Some(jobs),
                 worker: Some(worker),
@@ -275,7 +292,7 @@ impl Session {
         }
         #[cfg(not(feature = "upstream-typecheck"))]
         {
-            let _ = (libs, limits);
+            let _ = (libs, limits, lints);
             Err(CheckError::Unavailable)
         }
     }

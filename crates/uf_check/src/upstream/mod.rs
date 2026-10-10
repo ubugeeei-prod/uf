@@ -160,9 +160,10 @@ pub(crate) fn check_sources(
     libs: &[Source<'_>],
     limits: &CheckLimits,
     cache: Option<&CheckCache>,
+    lints: &[crate::FlowLint],
 ) -> Result<CheckReport, CheckError> {
     let path = sources.first().map_or("<empty>", |source| source.path);
-    on_check_thread(path, || check_batch(sources, libs, limits, cache))?
+    on_check_thread(path, || check_batch(sources, libs, limits, cache, lints))?
 }
 
 /// The closure of `seeds` over `available`, by the batch's own rules.
@@ -316,6 +317,7 @@ fn check_batch(
     libs: &[Source<'_>],
     limits: &CheckLimits,
     cache: Option<&CheckCache>,
+    lints: &[crate::FlowLint],
 ) -> Result<CheckReport, CheckError> {
     profile_span!("check::batch");
     // Before anything reads a source, including the pass that only wants its
@@ -345,7 +347,7 @@ fn check_batch(
     builtins::ensure_roots();
     let options = {
         profile_span!("check::options");
-        options::options(limits)
+        options::options_with(limits, lints)
     };
     // One builtin environment for the batch, made from the metadata a file has
     // before its own docblock is applied — `mk_check_file` keeps exactly this
@@ -366,7 +368,7 @@ fn check_batch(
     let keys: Vec<Digest> = match cache {
         Some(cache) => {
             let libdefs = builtins::digest(libs);
-            let limits_field = limits_field(limits);
+            let limits_field = report_field(limits, lints);
             sources
                 .iter()
                 .map(|source| file_key(cache, &limits_field, &libdefs, source))
@@ -543,6 +545,31 @@ fn limits_field(limits: &CheckLimits) -> String {
         limits.recursion_limit,
         limits.type_expansion_recursion_limit,
     ))
+}
+
+/// [`limits_field`] plus the inference-lint levels, which change the report.
+///
+/// No lints keeps the historical field, so a record written before they could
+/// be set still answers a run that sets none.
+fn report_field(limits: &CheckLimits, lints: &[crate::FlowLint]) -> String {
+    let mut field = limits_field(limits);
+    if lints.is_empty() {
+        return field;
+    }
+    let mut ordered: Vec<&crate::FlowLint> = lints.iter().collect();
+    ordered.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then(left.level.as_str().cmp(right.level.as_str()))
+    });
+    field.push_str(";flow-lints=");
+    for lint in ordered {
+        field.push_str(&lint.name);
+        field.push('=');
+        field.push_str(lint.level.as_str());
+        field.push(',');
+    }
+    field
 }
 
 /// What a record says about the file, or [`None`] when it does not say it in a

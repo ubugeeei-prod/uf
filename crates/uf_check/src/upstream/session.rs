@@ -73,13 +73,14 @@ const MAX_PRINT_SIZE: usize = 100;
 pub(crate) fn spawn(
     libs: Vec<OwnedSource>,
     limits: CheckLimits,
+    lints: Vec<crate::FlowLint>,
 ) -> Result<(mpsc::Sender<Job>, JoinHandle<()>), CheckError> {
     let (jobs, queue) = mpsc::channel::<Job>();
     let worker = std::thread::Builder::new()
         .name("uf-typecheck-session".to_owned())
         .stack_size(CHECK_STACK_BYTES)
         .spawn(move || {
-            let mut worker = Worker::new(libs, limits);
+            let mut worker = Worker::new(libs, limits, &lints);
             while let Ok(job) = queue.recv() {
                 let answered = std::panic::catch_unwind(AssertUnwindSafe(|| job(&mut worker)));
                 if answered.is_err() {
@@ -137,9 +138,9 @@ pub(crate) struct Worker {
 }
 
 impl Worker {
-    fn new(libs: Vec<OwnedSource>, limits: CheckLimits) -> Self {
+    fn new(libs: Vec<OwnedSource>, limits: CheckLimits, lints: &[crate::FlowLint]) -> Self {
         Self {
-            options: options::options(&limits),
+            options: options::options_with(&limits, lints),
             limits,
             libs,
             environment: None,
@@ -1105,7 +1106,7 @@ mod tests {
     /// Driven directly rather than through [`crate::Session`], so the test can
     /// look at what the worker kept; on the check thread, for its stack.
     fn worker() -> Worker {
-        let mut worker = Worker::new(Vec::new(), CheckLimits::default());
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
         worker
             .load(vec![
                 OwnedSource::new(
@@ -1175,7 +1176,7 @@ mod tests {
     /// A worker over `model.js`, which declares `n`, and `app.js`, which
     /// imports it and uses it twice — once in a shorthand property.
     fn project() -> Worker {
-        let mut worker = Worker::new(Vec::new(), CheckLimits::default());
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
         worker
             .load(vec![
                 OwnedSource::new(
@@ -1255,7 +1256,7 @@ mod tests {
     }
 
     fn property_references() {
-        let mut worker = Worker::new(Vec::new(), CheckLimits::default());
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
         worker
             .load(vec![
                 OwnedSource::new(
@@ -1371,7 +1372,7 @@ mod tests {
     }
 
     fn outline() {
-        let mut worker = Worker::new(Vec::new(), CheckLimits::default());
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
         worker
             .load(vec![OwnedSource::new(
                 "shapes.js",

@@ -21,6 +21,7 @@ use flow_parser_utils::file_sig::FileSigOptions;
 use flow_type_sig::type_sig_options::TypeSigOptions;
 
 use crate::CheckLimits;
+use crate::lints::{FlowLint, FlowLintLevel};
 
 /// The React rules Flow enforces during inference.
 ///
@@ -36,12 +37,22 @@ const REACT_RULES: [ReactRule; 4] = [
 /// How many tokens of a file's header are scanned for a docblock.
 const MAX_HEADER_TOKENS: i32 = 10;
 
-/// Build the checker options for one run.
+/// Build the checker options for one run, with Flow's inference lints off.
 ///
-/// Flow lints are left entirely off: `uf_lint` owns lint rules and reports them
-/// with its own ids, so turning Flow's on here would double-report and give the
-/// same finding two different names.
+/// The rules `uf lint` runs from source text stay off here, so a finding is
+/// not printed twice. [`options_with`] is what turns on the rules only
+/// inference can decide.
 pub(super) fn options(limits: &CheckLimits) -> Options {
+    options_with(limits, &[])
+}
+
+/// [`options`], with `lints` applied.
+///
+/// Names are applied shortest first. `sketchy-null` expands to every member,
+/// and a longer name such as `sketchy-null-number` replaces those members.
+/// [`FlowLintLevel::Off`] writes nothing, so a leaf left off keeps whatever
+/// its umbrella set.
+pub(super) fn options_with(limits: &CheckLimits, lints: &[FlowLint]) -> Options {
     Options {
         all: true,
         component_syntax: true,
@@ -49,7 +60,7 @@ pub(super) fn options(limits: &CheckLimits) -> Options {
         enable_records: true,
         enums: true,
         hook_compatibility: true,
-        lint_severities: LintSettings::<Severity>::empty_severities(),
+        lint_severities: lint_settings(lints),
         max_header_tokens: MAX_HEADER_TOKENS,
         node_main_fields: crate::MAIN_FIELDS
             .iter()
@@ -80,6 +91,27 @@ pub(super) fn options(limits: &CheckLimits) -> Options {
 /// express instead of a negative one that disables the guard entirely.
 fn recursion_limit(limit: u32) -> i32 {
     i32::try_from(limit).unwrap_or(i32::MAX)
+}
+
+/// `lints` as Flow's severity table. An unknown name is skipped.
+fn lint_settings(lints: &[FlowLint]) -> LintSettings<Severity> {
+    let mut settings = LintSettings::<Severity>::empty_severities();
+    let mut ordered: Vec<&FlowLint> = lints.iter().collect();
+    ordered.sort_by_key(|lint| lint.name.len());
+    for lint in ordered {
+        let severity = match lint.level {
+            FlowLintLevel::Off => continue,
+            FlowLintLevel::Warn => Severity::Warn,
+            FlowLintLevel::Error => Severity::Err,
+        };
+        let Some(kinds) = flow_lint_settings::lints::LintKind::parse_from_str(&lint.name) else {
+            continue;
+        };
+        for kind in kinds {
+            settings.set_value(kind, (severity, None));
+        }
+    }
+    settings
 }
 
 /// Signature options for the builtin library definitions.
@@ -140,12 +172,46 @@ mod tests {
     }
 
     #[test]
-    fn flow_lints_are_left_to_uf_lint() {
-        use flow_lint_settings::lints::LintKind;
+    fn flow_lints_stay_off_until_a_project_sets_them() {
+        use flow_lint_settings::lints::{LintKind, SketchyNullKind};
 
         let options = options(&CheckLimits::default());
 
         assert_eq!(*options.lint_severities.get_default(), Severity::Off);
+        assert!(!options.lint_severities.is_enabled(LintKind::UnclearType));
+        assert!(!options.lint_severities.is_enabled(LintKind::UntypedImport));
+        assert!(
+            !options
+                .lint_severities
+                .is_enabled(LintKind::SketchyNull(SketchyNullKind::Number))
+        );
+    }
+
+    #[test]
+    fn a_configured_sketchy_null_enables_its_members_and_nothing_else() {
+        use compact_str::CompactString;
+        use flow_lint_settings::lints::{LintKind, SketchyNullKind};
+
+        use crate::{FlowLint, FlowLintLevel};
+
+        let options = options_with(
+            &CheckLimits::default(),
+            &[FlowLint {
+                name: CompactString::const_new("sketchy-null"),
+                level: FlowLintLevel::Error,
+            }],
+        );
+
+        assert!(
+            options
+                .lint_severities
+                .is_enabled(LintKind::SketchyNull(SketchyNullKind::Number))
+        );
+        assert!(
+            options
+                .lint_severities
+                .is_enabled(LintKind::SketchyNull(SketchyNullKind::String))
+        );
         assert!(!options.lint_severities.is_enabled(LintKind::UnclearType));
         assert!(!options.lint_severities.is_enabled(LintKind::UntypedImport));
     }

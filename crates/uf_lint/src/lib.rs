@@ -11,9 +11,11 @@
 //!
 //! [`rules`] enumerates every rule with its category, default level, one-line
 //! description, and whether it can run without a type checker. Rules that need
-//! type inference are declared with [`RuleRequirement::TypeChecker`]; because uf
-//! has no checker yet, enabling one of those puts it in
-//! [`LintReport::unavailable`] instead of silently passing.
+//! type inference are declared with [`RuleRequirement::TypeChecker`]. `uf lint`
+//! does not run them, so enabling one puts it in [`LintReport::unavailable`]
+//! instead of silently passing. `uf check` runs them during inference, except
+//! [`rules::checker_runs`], which leaves the untyped-import rules on the
+//! untyped-module list.
 //!
 //! The `react-compiler/*` rules are the official React Compiler's own
 //! diagnostics. `uf_transform` runs the compiler — the one `uf build` runs —
@@ -37,7 +39,7 @@ use uf_config::{RuleLevel, UniflowedConfig};
 pub use crate::cache::LintCache;
 pub use crate::flow_builtin::{FLOW_NAMESPACE, FlowBuiltinLint, FlowLintParseError};
 pub use crate::rules::{
-    RuleCategory, RuleDescriptor, RuleRequirement, canonical_rule_id, rule, rules,
+    RuleCategory, RuleDescriptor, RuleRequirement, canonical_rule_id, checker_runs, rule, rules,
 };
 
 use crate::rules::deprecated_aliases_for;
@@ -114,8 +116,11 @@ impl UnavailableRule {
     /// Why the rule did not run.
     pub fn reason(&self) -> &'static str {
         match self.requirement {
+            RuleRequirement::TypeChecker if !crate::checker_runs(self.rule) => {
+                "requires Flow type inference of the imported module; `uf check` types a dependency outside the batch as `any` and lists the specifier with the untyped modules instead of running the rule"
+            }
             RuleRequirement::TypeChecker => {
-                "requires Flow type inference, which uf does not implement yet; the rule did not run"
+                "requires Flow type inference, which runs during `uf check`; `uf lint` does not run the rule"
             }
             RuleRequirement::SourceText => "available",
         }
@@ -453,7 +458,7 @@ const PROJECT_RULES: [&str; 5] = [
 /// it silences nothing at all.
 ///
 /// Only when the rule ran, and ran with everything it needs. A rule that is
-/// off, or that needs type inference uf has not built, reported nothing
+/// off, or that needs type inference `uf lint` does not run, reported nothing
 /// because it did not look; and a single file linted without its project
 /// cannot see the cycle or the manifest a project rule would have found.
 /// Saying "unused" in any of those cases would be the linter mistaking its
