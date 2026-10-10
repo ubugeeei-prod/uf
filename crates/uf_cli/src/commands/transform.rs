@@ -123,6 +123,7 @@ struct Reply {
 pub(crate) struct ProjectTransform {
     react_compiler: ReactCompilerMode,
     jsx_import_source: String,
+    style: uf_config::StyleEngine,
 }
 
 impl ProjectTransform {
@@ -135,6 +136,7 @@ impl ProjectTransform {
                 ReactCompilerMode::Off
             },
             jsx_import_source: String::from("react"),
+            style: config.app.builtins.style,
         }
     }
 
@@ -405,19 +407,24 @@ fn handle(request: &Request, project: &ProjectTransform, cache: &mut TransformCa
             // names its stylesheet declares, so it wants the code in the shape
             // the browser will see it — after the types are gone and after the
             // React Compiler has had its pass.
-            let styled = if request.options.native_styles {
-                match uf_stylex::native::compile_native_module(&transformed.code) {
-                    Ok(code) => Styled { code, css: None },
-                    Err(error) => {
-                        return Reply {
-                            id: request.id.clone(),
-                            error: Some(error.to_string()),
-                            ..Reply::default()
-                        };
+            let styled = match (project.style, request.options.native_styles) {
+                (uf_config::StyleEngine::Off, _) => Styled {
+                    code: transformed.code,
+                    css: None,
+                },
+                (uf_config::StyleEngine::StyleX, true) => {
+                    match uf_stylex::native::compile_native_module(&transformed.code) {
+                        Ok(code) => Styled { code, css: None },
+                        Err(error) => {
+                            return Reply {
+                                id: request.id.clone(),
+                                error: Some(error.to_string()),
+                                ..Reply::default()
+                            };
+                        }
                     }
                 }
-            } else {
-                compile_styles(&transformed.code)
+                (uf_config::StyleEngine::StyleX, false) => compile_styles(&transformed.code),
             };
             Reply {
                 id: request.id.clone(),
@@ -471,6 +478,22 @@ mod tests {
             code: code.to_owned(),
             options: RequestOptions::default(),
         }
+    }
+
+    const STYLEX_MODULE: &str = "// @flow\nimport { stylex } from \"@uniflowed/stylex\";\n\
+         const styles = stylex.create({ root: { color: \"red\" } });\n\
+         export const used: mixed = stylex.props(styles.root);\n";
+
+    fn assert_style_left_uncompiled(project: &ProjectTransform) {
+        let reply = handle(
+            &request("/app/box.js", STYLEX_MODULE),
+            project,
+            &mut TransformCache::default(),
+        );
+        assert!(reply.error.is_none(), "{reply:?}");
+        assert!(reply.css.is_none(), "{reply:?}");
+        let code = reply.code.unwrap_or_default();
+        assert!(code.contains("stylex.create"), "{code}");
     }
 
     #[test]
@@ -570,6 +593,36 @@ mod tests {
             !code.contains("stylex.create"),
             "the call must be compiled away, got {code}"
         );
+    }
+
+    /// `"none"` is a styling choice, not a second compiler. The call stays in
+    /// the module, including the native request, and no stylesheet comes back.
+    #[test]
+    fn style_off_leaves_a_stylex_call_uncompiled() {
+        let mut project = project();
+        project.style = uf_config::StyleEngine::Off;
+        let mut cache = TransformCache::default();
+        let web = handle(&request("/app/box.js", STYLEX_MODULE), &project, &mut cache);
+        assert!(web.error.is_none(), "{web:?}");
+        assert!(web.css.is_none(), "{web:?}");
+        let code = web.code.unwrap_or_default();
+        assert!(code.contains("stylex.create"), "{code}");
+
+        let native = handle(
+            &Request {
+                options: RequestOptions {
+                    native_styles: true,
+                    ..RequestOptions::default()
+                },
+                ..request("/app/box.js", STYLEX_MODULE)
+            },
+            &project,
+            &mut cache,
+        );
+        assert!(native.css.is_none(), "{native:?}");
+        let native_code = native.code.unwrap_or_default();
+        assert!(native_code.contains("stylex.create"), "{native_code}");
+        assert!(!native_code.contains("$$native"), "{native_code}");
     }
 
     /// A module with no styles must not carry an empty CSS payload: the caller
@@ -697,6 +750,46 @@ mod tests {
         );
         let config = service_config(&root, false, None).unwrap();
         assert!(!config.app.builtins.react_compiler.enabled);
+    }
+
+    /// `uf.config.js` is what a project writes. The service has to read
+    /// `"none"` from that file, not only from a field a test assigned.
+    #[test]
+    fn style_none_in_the_config_file_reaches_the_transform() {
+        let (_dir, root) =
+            configured("export default { app: { builtins: { style: \"none\" } } };\n");
+        let project = ProjectTransform::from_config(&service_config(&root, false, None).unwrap());
+        assert_eq!(project.style, uf_config::StyleEngine::Off);
+        assert_style_left_uncompiled(&project);
+    }
+
+    /// Vite passes the evaluated config as JSON. `"none"` has to survive that
+    /// projection, which is the path `uf dev` and `uf build` actually take.
+    #[test]
+    fn the_hosts_style_projection_reaches_the_transform() {
+        let (_dir, root) = configured("export default {};\n");
+        let project = ProjectTransform::from_config(
+            &service_config(
+                &root,
+                false,
+                Some(r#"{"app":{"builtins":{"style":"none"}}}"#),
+            )
+            .unwrap(),
+        );
+        assert_eq!(project.style, uf_config::StyleEngine::Off);
+        assert_style_left_uncompiled(&project);
+    }
+
+    #[test]
+    fn an_unknown_style_engine_is_not_silently_the_default() {
+        let (_dir, root) = configured("export default {};\n");
+        let error = service_config(
+            &root,
+            false,
+            Some(r#"{"app":{"builtins":{"style":"tailwind"}}}"#),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("tailwind"), "{error}");
     }
 
     #[test]

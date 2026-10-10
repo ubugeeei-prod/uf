@@ -186,6 +186,17 @@ fn the_style_engine_selects_the_style_plugin() {
 }
 
 #[test]
+fn turning_style_off_drops_its_plugin() {
+    let mut config = UniflowedConfig::default();
+    config.app.builtins.style = StyleEngine::Off;
+
+    let set = BuiltinSet::from_config(&config);
+
+    assert!(!set.contains(BuiltinPlugin::Style));
+    assert!(set.contains(BuiltinPlugin::Flow), "the rest stay");
+}
+
+#[test]
 fn flow_mdx_and_asset_handling_are_default_builtins() {
     let mut config = UniflowedConfig::default();
     config.app.router.enabled = false;

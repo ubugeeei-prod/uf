@@ -307,6 +307,43 @@ fn extracts_plain_export_default_object_with_satisfies_tail() {
 }
 
 #[test]
+fn style_none_is_a_project_choice() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
+    fs::write(
+        &path,
+        r#"
+            export default defineConfig({
+              app: { builtins: { style: "none" } },
+            });
+        "#,
+    )
+    .unwrap();
+
+    let config = load_config_file(&path).unwrap();
+
+    assert_eq!(config.app.builtins.style, StyleEngine::Off);
+    assert_eq!(config.app.builtins.style.as_config(), "none");
+}
+
+#[test]
+fn style_names_round_trip_and_an_unknown_engine_is_refused() {
+    for (token, engine) in [("style-x", StyleEngine::StyleX), ("none", StyleEngine::Off)] {
+        let parsed: StyleEngine = serde_json::from_str(&format!("\"{token}\"")).unwrap();
+        assert_eq!(parsed, engine, "{token}");
+        assert_eq!(
+            serde_json::to_string(&engine).unwrap(),
+            format!("\"{token}\"")
+        );
+        assert_eq!(engine.as_config(), token);
+    }
+
+    let source = r#"export default defineConfig({ app: { builtins: { style: "tailwind" } } });"#;
+    let object = extract_config_object(source).expect("object");
+    assert!(json5::from_str::<UniflowedConfig>(&object).is_err());
+}
+
+#[test]
 fn parses_flow_config() {
     let dir = tempfile::tempdir().unwrap();
     let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
