@@ -382,7 +382,9 @@ export type UniflowedConfig = {
     readonly targets?: $ReadOnlyArray<"web" | "react-native" | "server" | "hermes">,
     readonly builtins?: {
       readonly relay?: boolean,
-      readonly style?: "style-x",
+      // `"style-x"` compiles StyleX. `"none"` leaves plain CSS and CSS modules
+      // to the bundler and does not compile `stylex.create`.
+      readonly style?: "style-x" | "none",
       readonly reactCompiler?: {
         readonly enabled?: boolean,
         readonly mode?   : "syntax",

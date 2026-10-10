@@ -245,10 +245,32 @@ impl Default for BuiltinConfig {
     }
 }
 
+/// Which styling compiler a project asks uf to run.
+///
+/// `"style-x"` is the default. `"none"` leaves plain CSS and CSS modules to
+/// the bundler and does not compile StyleX. It does not translate
+/// StyleX-authored source into another styling language: a `stylex.create`
+/// call stays in the module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum StyleEngine {
     StyleX,
+    /// No uf styling compiler. Written `"none"` in `uf.config.js`.
+    #[serde(rename = "none")]
+    Off,
+}
+
+impl StyleEngine {
+    /// The token `uf.config.js` writes and `uf inspect` prints.
+    ///
+    /// Debug is the Rust variant (`Off`), which is not a value a project can
+    /// write. The two spellings have to stay the ones serde accepts.
+    pub const fn as_config(self) -> &'static str {
+        match self {
+            Self::StyleX => "style-x",
+            Self::Off => "none",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -36,7 +36,7 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
         .unwrap_or_else(|| "zero-config defaults".to_string());
     let root = resolved.root.as_str().to_string();
     let router_root = resolved.config.app.router.root.to_string();
-    let style = uf_infra::into_string(uf_infra::cstr!("{:?}", resolved.config.app.builtins.style));
+    let style = resolved.config.app.builtins.style.as_config();
     let compiler = uf_infra::into_string(uf_infra::cstr!(
         "{:?}",
         resolved.config.app.builtins.react_compiler.mode
@@ -144,7 +144,7 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
                     "server actions",
                     enabled(resolved.config.app.server_actions),
                 ),
-                KeyValue::new("style", &style),
+                KeyValue::new("style", style),
                 KeyValue::new("react compiler", &compiler),
             ],
         );

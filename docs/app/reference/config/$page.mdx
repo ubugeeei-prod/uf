@@ -182,7 +182,7 @@ Wrangler; they are not valid `test.runtime` values.
 | `builtins.reactCompiler.enabled` | `true` | `false` compiles every module without the React Compiler, and switches off `react/no-redundant-memo`, which only makes sense with it on |
 | `builtins.reactCompiler.mode` | `"syntax"` | The only value |
 | `builtins.relay` | `true` | `false` skips the Relay `graphql` tag transform |
-| `builtins.style` | — | The style engine |
+| `builtins.style` | `"style-x"` | `"style-x"` compiles StyleX into class names and a stylesheet. `"none"` leaves plain CSS and CSS modules to Vite and does not compile `stylex.create`; it does not rewrite StyleX source into CSS |
 | `rendering.modes` | `["ppr", "ssr", "ssg", "isr"]` | Which rendering strategies this project will deploy — see below |
 | `rendering.navigation` | `"client"` | What a link does: the client router takes it over, or the browser fetches a document — see below |
 | `rendering.staleTime` | `0` | Seconds the client router shows a page it already fetched without asking again; `0` keeps nothing — see [the guide](/guide/routing#keeping-what-a-navigation-fetched) |

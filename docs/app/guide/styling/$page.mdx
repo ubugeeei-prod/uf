@@ -43,6 +43,11 @@ of your project is compiled by `uf transform` — the same pass that handles Flo
 and the React Compiler — into class names, with the rules extracted as CSS.
 There is no Babel plugin to add and no PostCSS step.
 
+`"none"` turns that compiler off. Plain CSS and CSS modules keep going through
+Vite, which is the non-StyleX path. `"none"` does not rewrite a StyleX file
+into CSS: a `stylex.create` call stays in the module, and the runtime stub
+throws if that call runs.
+
 ```js
 // @flow
 import * as React from "@uniflowed/react";
