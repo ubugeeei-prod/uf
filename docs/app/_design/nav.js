@@ -280,7 +280,7 @@ export const sections: $ReadOnlyArray<Section> = [
         href : "/guide/ui",
         title: "UI components",
         blurb:
-          "Styled components you own, from uf ui add, on headless parts that own the keyboard and ARIA.",
+          "StyleX components you own, from uf ui add, on headless parts that own the keyboard and ARIA.",
       },
       {
         href : "/guide/rendering",
@@ -435,7 +435,7 @@ export const sections: $ReadOnlyArray<Section> = [
         href : "/reference/ui",
         title: "Components",
         blurb:
-          "Every component uf ui add writes, then the headless parts and the keys each one owns.",
+          "Every StyleX component uf ui add writes, then the headless parts and the keys each one owns.",
       },
       {
         href : "/reference/std",
