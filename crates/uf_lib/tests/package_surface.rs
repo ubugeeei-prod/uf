@@ -34,8 +34,7 @@
 //! entry points (`register.js`, `bun-preload.js`, `driver.js`) run at import
 //! time by design. Everything else about it is held to the same bar.
 //!
-//! One module inside a Flow package is exempt the same way: `@uniflowed/test`'s
-//! `bun/index.js`, which only a `bun test` that `uf test` started ever loads.
+//! Named modules inside an otherwise Flow package are exempt the same way.
 //! See [`PLAIN_JAVASCRIPT_MODULES`].
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -112,10 +111,26 @@ const PLAIN_JAVASCRIPT_PACKAGES: &[&str] = &["host", "vite"];
 ///   `bun test` that `uf test` started ever resolves it: the package's
 ///   `exports` send the `uniflowed-bun-test` condition here, and neither Node
 ///   nor Flow sets that condition. Like the plain JavaScript packages, it does
-///   work when it loads (see [`runs_at_import`]): it extends Bun's `expect`
-///   with a refusal for each of uf's matchers Bun has no counterpart for, and
-///   that has to be in place before the first test file calls `expect`.
-const PLAIN_JAVASCRIPT_MODULES: &[&str] = &["test/bun/index.js"];
+///   work when it loads (see [`PLAIN_JAVASCRIPT_WITH_IMPORT_WORK`]): it extends
+///   Bun's `expect` with a refusal for each of uf's matchers Bun has no
+///   counterpart for, and that has to be in place before the first test file
+///   calls `expect`.
+/// * `router/internal/closure-seal.js` — the synchronous ChaCha20-Poly1305 that
+///   seals an inline server closure. WebCrypto's `subtle` is async, so awaiting
+///   it would make `bindServerClosure` a promise a component cannot return as a
+///   prop, and `node:crypto` is not there on a worker. The cipher imports
+///   nothing. It is plain JavaScript on purpose: `@noflow` is what tells
+///   `uf check` to leave the arithmetic alone. Its top level only declares, so
+///   the import-time rule still applies to it.
+const PLAIN_JAVASCRIPT_MODULES: &[&str] = &["router/internal/closure-seal.js", "test/bun/index.js"];
+
+/// Named plain-JavaScript modules that also do work when they load.
+///
+/// The rest of [`PLAIN_JAVASCRIPT_MODULES`] only declare, and stay under
+/// [`shipped_modules_have_no_import_time_side_effects`]. A plain-JavaScript
+/// *package* is not in this list: [`PLAIN_JAVASCRIPT_PACKAGES`] run before a
+/// transform exists, and [`runs_at_import`] covers those packages whole.
+const PLAIN_JAVASCRIPT_WITH_IMPORT_WORK: &[&str] = &["test/bun/index.js"];
 
 /// Individual modules that are entry points, and so run when they are loaded
 /// because that is what running them means. Everything else in their package is
@@ -158,7 +173,12 @@ fn is_plain_javascript(module: &Utf8Path) -> bool {
 
 /// Whether `module` is allowed to run something when it is imported.
 fn runs_at_import(module: &Utf8Path) -> bool {
-    ENTRY_POINT_MODULES.contains(&module.as_str()) || is_plain_javascript(module)
+    ENTRY_POINT_MODULES.contains(&module.as_str())
+        || PLAIN_JAVASCRIPT_WITH_IMPORT_WORK.contains(&module.as_str())
+        || module
+            .iter()
+            .next()
+            .is_some_and(|package| PLAIN_JAVASCRIPT_PACKAGES.contains(&package))
 }
 
 /// Packages that exist to hand back somebody else's library under uf's name.

@@ -1,5 +1,10 @@
 # Changelog
 
+## uf@0.38.0
+
+- feat(rsc): seal inline server closures (#1884) (a07ce381)
+- feat(style): let a project turn the StyleX compiler off (#1883) (5272322b)
+
 ## uf@0.37.0
 
 - feat(check): run Flow inference lints during uf check (#1880) (7b1ef3da)
