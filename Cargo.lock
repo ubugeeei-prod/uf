@@ -1008,6 +1008,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow_check_cache"
+version = "0.0.0"
+dependencies = [
+ "dupe",
+ "flow_parser",
+ "flow_typing_context",
+ "flow_typing_utils",
+ "linked-hash-map",
+]
+
+[[package]]
 name = "flow_common"
 version = "0.0.0"
 dependencies = [
@@ -1396,6 +1407,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow_server_env"
+version = "0.0.0"
+dependencies = [
+ "crossbeam",
+ "dupe",
+ "flow_aloc",
+ "flow_check_cache",
+ "flow_common",
+ "flow_common_errors",
+ "flow_common_exit_status",
+ "flow_common_utils",
+ "flow_config",
+ "flow_data_structure_wrapper",
+ "flow_event_logger",
+ "flow_heap",
+ "flow_hh_logger",
+ "flow_lint_settings",
+ "flow_lsp",
+ "flow_monitor_rpc",
+ "flow_parser",
+ "flow_parser_utils_output",
+ "flow_server_utils",
+ "flow_services_coverage",
+ "flow_services_export",
+ "flow_typing_context",
+ "flow_typing_errors",
+ "flow_utils_concurrency",
+ "flow_utils_tty",
+ "lsp-types",
+ "murmur3",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+ "vec1",
+]
+
+[[package]]
 name = "flow_server_utils"
 version = "0.0.0"
 dependencies = [
@@ -1538,6 +1587,34 @@ dependencies = [
  "flow_utils_concurrency",
  "lsp-types",
  "vec1",
+]
+
+[[package]]
+name = "flow_services_type_info"
+version = "0.0.0"
+dependencies = [
+ "dupe",
+ "flow_aloc",
+ "flow_common",
+ "flow_common_ty",
+ "flow_data_structure_wrapper",
+ "flow_parser",
+ "flow_parser_utils",
+ "flow_parsing",
+ "flow_server_env",
+ "flow_services_autocomplete",
+ "flow_services_coverage",
+ "flow_services_get_def",
+ "flow_typing",
+ "flow_typing_context",
+ "flow_typing_flow_js",
+ "flow_typing_tvar",
+ "flow_typing_ty_normalizer",
+ "flow_typing_type",
+ "flow_typing_utils",
+ "flow_utils_concurrency",
+ "regex",
+ "serde_json",
 ]
 
 [[package]]
@@ -2484,6 +2561,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39c29a617ce3df32c08497bdc1ab6e2376e0b17948ac166a2fbe5977c5954cd9"
 
 [[package]]
+name = "linked-hash-map"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "linktime-proc-macro"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2688,6 +2774,12 @@ dependencies = [
  "num-traits",
  "pxfm",
 ]
+
+[[package]]
+name = "murmur3"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9252111cf132ba0929b6f8e030cac2a24b507f3a4d6db6fb2896f27b354c714b"
 
 [[package]]
 name = "new_debug_unreachable"
@@ -4102,6 +4194,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
+name = "signal-hook-registry"
+version = "1.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b"
+dependencies = [
+ "errno",
+ "libc",
+]
+
+[[package]]
 name = "simd-adler32"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4209,6 +4311,16 @@ checksum = "4aaa7368fcf4852a4c2dd92df0cace6a71f2091ca0a23391ce7f3a31833f1523"
 dependencies = [
  "borsh",
  "serde_core",
+]
+
+[[package]]
+name = "socket2"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4485,6 +4597,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio"
+version = "1.53.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
+dependencies = [
+ "bytes",
+ "libc",
+ "mio",
+ "parking_lot",
+ "pin-project-lite",
+ "signal-hook-registry",
+ "socket2",
+ "tokio-macros",
+ "tracing",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "2.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78773a2a397f451582ce068015985c33193cf6dea8b74d2a639fe457b2f07b0e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.4",
+]
+
+[[package]]
 name = "toml"
 version = "1.1.4+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4652,10 +4793,12 @@ dependencies = [
  "flow_parser_utils",
  "flow_parser_utils_output",
  "flow_parsing",
+ "flow_server_env",
  "flow_services_autocomplete",
  "flow_services_export",
  "flow_services_get_def",
  "flow_services_references",
+ "flow_services_type_info",
  "flow_type_sig",
  "flow_typing",
  "flow_typing_builtins",

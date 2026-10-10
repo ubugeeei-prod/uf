@@ -39,6 +39,8 @@ upstream-typecheck = [
   "dep:flow_services_export",
   "dep:flow_services_get_def",
   "dep:flow_services_references",
+  "dep:flow_services_type_info",
+  "dep:flow_server_env",
   "dep:flow_type_sig",
   "dep:flow_typing",
   "dep:flow_typing_builtins",
@@ -85,6 +87,13 @@ flow_services_get_def = { workspace = true, optional = true }
 # `Session::rename`, `Session::highlights`), with the module-rename half that
 # needs Flow's server heap left out. See `tools/upstream/patches/flow/0015-*`.
 flow_services_references = { workspace = true, optional = true }
+# Signature help (`Session::signature_help`): Flow's own
+# `flow_services_type_info::signature_help`, the service its language server
+# calls. The result type lives in `flow_server_env`, which this crate pulls in.
+flow_services_type_info = { workspace = true, optional = true }
+# `FuncDetailsResult`, the shape `find_signatures` returns. Not used for the
+# server itself.
+flow_server_env = { workspace = true, optional = true }
 # Only its `document_symbol_provider`: the server half, and the tokio runtime
 # it brings, stay out behind its `server` feature. Same patch.
 flow_lsp_server = { workspace = true, optional = true }

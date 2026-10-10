@@ -219,6 +219,40 @@ fn a_definition_in_a_library_definition_says_which_kind() {
 }
 
 #[test]
+fn signature_help_names_the_argument_the_cursor_is_in() {
+    require_checker!();
+    let session = session();
+    // `const greeting = greet(user);` — the cursor is on `user`, the first
+    // argument. Columns are one-based bytes: `(` is column 23.
+    let found = session
+        .signature_help("src/app.js", at(4, 24))
+        .expect("the query runs")
+        .expect("the cursor is inside a call");
+
+    assert_eq!(found.active_signature, 0);
+    assert_eq!(found.active_parameter, 0);
+    let signature = &found.signatures[0];
+    assert!(
+        signature.label.contains("user") && signature.label.contains("string"),
+        "{signature:?}"
+    );
+    assert!(
+        signature.parameters.iter().any(|parameter| {
+            parameter.label.contains("user") && signature.label.contains(&parameter.label)
+        }),
+        "{signature:?}"
+    );
+
+    assert!(
+        session
+            .signature_help("src/app.js", at(5, 8))
+            .expect("runs")
+            .is_none(),
+        "a binding that is not a call has no signature"
+    );
+}
+
+#[test]
 fn a_member_completion_offers_the_properties_with_their_types() {
     require_checker!();
     let session = session();

@@ -108,8 +108,10 @@
       `documentSymbol` are Flow's `flow_services_references` and
       `document_symbol_provider` over the same session (ubugeeei-prod/uf#1381):
       references cross into every project file that reaches the definition
-      through its imports. Not yet: that target, `signatureHelp`, and answers
-      in a file that does not parse.
+      through its imports. `textDocument/signatureHelp` is Flow's
+      `flow_services_type_info::signature_help` over the same session: a call,
+      and a component's props. Not yet: that 200 ms target on the largest
+      files, and answers in a file that does not parse.
 - [x] Add editor integration directories for VS Code, Neovim, Emacs, Vim, Helix, Zed, and Cursor.
 - [x] Implement editor extension packages on top of `uf lsp`.
       `editors/vscode` is a working VS Code extension: JavaScript with Flow

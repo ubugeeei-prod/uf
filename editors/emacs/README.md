@@ -74,15 +74,15 @@ server and asserts each of these.
 | Definition | `M-.` (`xref-find-definitions`): across files, into `node_modules` and into `flow-typed/`. |
 | Type definition | `M-x eglot-find-typeDefinition`: the declaration of the named types in the type at point. |
 | Completion | `completion-at-point` (`C-M-i`), which Eglot feeds from the server, or Company or Corfu on top of it. In `uf.config.js`, the keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. In any other Flow file, after `.` the members of the value's type with their types, and elsewhere the names in scope. |
+| Signature help | ElDoc shows it inside a call or a component once the server advertises the provider. `(` opens a call, `,` moves to the next argument, and `<` opens a component. |
 
 Format on save is off unless `uf-format-on-save` is set.
 
 ## What you do not get
 
-Signature help has nothing behind it: `uf lsp` advertises no provider for it.
-`eglot-rename`, `xref-find-references` and Imenu's outline are the server's,
-and need the file to parse, as ElDoc and `M-.` do, since there is no inference
-to ask otherwise.
+ElDoc, `M-.`, signature help, `eglot-rename`, `xref-find-references` and
+Imenu's outline answer nothing while the file does not parse, since there is
+no inference to ask.
 
 ## Working directory
 

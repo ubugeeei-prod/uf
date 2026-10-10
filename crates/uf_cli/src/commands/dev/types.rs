@@ -1,6 +1,7 @@
 //! Types in the editor: type errors, hover, go to definition, go to type
-//! definition, completion, find references, document highlights, rename and
-//! the document outline, answered by Flow's own inference and services.
+//! definition, completion, signature help, find references, document
+//! highlights, rename and the document outline, answered by Flow's own
+//! inference and services.
 //!
 //! Every answer here comes from a [`uf_check::Session`] — the project checked
 //! the way `uf check` checks it, kept warm for the life of the server. The
@@ -713,6 +714,56 @@ impl Types {
             })
             .collect();
         json!({ "isIncomplete": found.incomplete, "items": items })
+    }
+
+    /// `textDocument/signatureHelp`: the call or component the cursor is
+    /// inside, and which argument it is on.
+    pub(super) fn signature_help(
+        &mut self,
+        documents: &FxHashMap<String, Document>,
+        uri: &str,
+        line: usize,
+        requested: usize,
+    ) -> Value {
+        let Some((path, position, _)) = self.locate(documents, uri, line, requested) else {
+            return Value::Null;
+        };
+        let Some(session) = self.session(documents) else {
+            return Value::Null;
+        };
+        let found = match session.signature_help(&path, position) {
+            Ok(Some(found)) => found,
+            Ok(None) => return Value::Null,
+            Err(error) => {
+                eprintln!("uf lsp: signature help: {error}");
+                return Value::Null;
+            }
+        };
+        let signatures: Vec<Value> = found
+            .signatures
+            .iter()
+            .map(|signature| {
+                let mut encoded = json!({
+                    "label": signature.label,
+                    "parameters": signature.parameters.iter().map(|parameter| {
+                        let mut encoded = json!({ "label": parameter.label });
+                        if let Some(documentation) = &parameter.documentation {
+                            encoded["documentation"] = json!(documentation);
+                        }
+                        encoded
+                    }).collect::<Vec<_>>(),
+                });
+                if let Some(documentation) = &signature.documentation {
+                    encoded["documentation"] = json!(documentation);
+                }
+                encoded
+            })
+            .collect();
+        json!({
+            "signatures": signatures,
+            "activeSignature": found.active_signature,
+            "activeParameter": found.active_parameter,
+        })
     }
 }
 

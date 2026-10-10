@@ -46,13 +46,12 @@ server and asserts each of these.
 | Symbols | `Space + s`, the file's outline. |
 | Type definition | `gy`: the declaration of the named types in the type under the cursor. |
 | Completion | As you type, after `"` and after `.`; `Ctrl + x` in insert mode asks for it. In `uf.config.js`, the keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. In any other Flow file, after `.` the members of the value's type with their types, and elsewhere the names in scope. |
+| Signature help | Inside a call or a component. `(` opens it, `,` moves to the next argument, and `<` opens a component. |
 
 ## What you do not get
 
-Signature help has no server behind it — `uf lsp` does not advertise it, and
-Helix will say the language server does not support the request. Hover, `gd`,
-`gr` and rename answer nothing while the file does not parse, since there is no
-inference to ask.
+Hover, `gd`, `gr`, rename and signature help answer nothing while the file does
+not parse, since there is no inference to ask.
 
 The `language-servers = ["uf"]` lines **replace** Helix's defaults for
 JavaScript and JSX, which are `typescript-language-server` alone — the server

@@ -141,8 +141,8 @@ server and asserts each one:
   in scope.
 * **References, rename and the outline**, from Flow's services, across the
   project's files.
-
-Not signature help. `uf lsp` does not advertise it.
+* **Signature help**, inside a call or a component. Zed asks when the server's
+  trigger characters are typed.
 
 ## What is tested, and what is not
 

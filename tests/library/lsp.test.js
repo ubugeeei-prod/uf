@@ -97,13 +97,23 @@ type Answer = {
     referencesProvider?        : boolean,
     documentHighlightProvider? : boolean,
     documentSymbolProvider?    : boolean,
+    signatureHelpProvider?: {|
+      triggerCharacters  : Array<string>,
+      retriggerCharacters: Array<string>,
+    |},
     // Not advertised; named so a test can say so.
-    signatureHelpProvider?  : mixed,
     workspaceSymbolProvider?: mixed,
     inlayHintProvider?      : mixed,
   },
   contents?: { kind: string, value: string },
   range?   : Range,
+  // `textDocument/signatureHelp`.
+  signatures?: Array<{|
+    label      : string,
+    parameters?: Array<{| label: string |}>,
+  |}>,
+  activeSignature?: number,
+  activeParameter?: number,
   // A `Range` itself, which is what `prepareRename` answers with.
   start?: Position,
   end?  : Position,
@@ -303,19 +313,22 @@ describe("what uf lsp tells an editor it can do", () => {
     expect(capabilities.documentHighlightProvider).toBe(true);
     expect(capabilities.renameProvider).toEqual({ prepareProvider: true });
     expect(capabilities.documentSymbolProvider).toBe(true);
+    expect(capabilities.signatureHelpProvider).toEqual({
+      triggerCharacters  : ["(", ",", "<"],
+      retriggerCharacters: [","],
+    });
   });
 
   it("does not advertise what it cannot do", () => {
     // The READMEs are written from this list. `source.organizeImports` is
-    // absent because uf has no import-order opinion; signature help and
-    // workspace symbols because nothing serves them yet.
+    // absent because uf has no import-order opinion; workspace symbols and
+    // inlay hints because nothing serves them yet.
     const messages = session([
       { jsonrpc: "2.0", id: 1, method: "initialize", params: { capabilities: {} } },
       EXIT,
     ]);
     const capabilities = answered(messages, 1).capabilities ?? {};
 
-    expect(capabilities.signatureHelpProvider).toBe(undefined);
     expect(capabilities.workspaceSymbolProvider).toBe(undefined);
     expect(capabilities.inlayHintProvider).toBe(undefined);
     expect(
@@ -325,7 +338,7 @@ describe("what uf lsp tells an editor it can do", () => {
 
   it("answers a request it does not serve instead of leaving the editor waiting", () => {
     const messages = session([
-      { jsonrpc: "2.0", id: 2, method: "textDocument/signatureHelp", params: {} },
+      { jsonrpc: "2.0", id: 2, method: "workspace/symbol", params: {} },
       EXIT,
     ]);
 
@@ -678,6 +691,28 @@ describe("types", () => {
       );
 
       expect(answered(messages, 1).contents?.value).toContain("(user: User) => string");
+    });
+  });
+
+  it("names the argument the cursor is inside", () => {
+    withProject((root, uri) => {
+      const messages = session(
+        [
+          open(uri("src/app.js"), app),
+          // `const greeting = greet(user);` — `(` is character 22.
+          at(1, "textDocument/signatureHelp", uri("src/app.js"), 4, 23),
+          EXIT,
+        ],
+        root,
+      );
+      const result = answered(messages, 1);
+      const signature = result.signatures?.[0];
+
+      expect(result.activeSignature).toBe(0);
+      expect(result.activeParameter).toBe(0);
+      expect(signature?.label).toContain("user");
+      expect(signature?.label).toContain("string");
+      expect(signature?.parameters?.[0]?.label).toContain("user");
     });
   });
 

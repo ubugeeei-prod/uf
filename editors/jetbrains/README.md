@@ -91,8 +91,10 @@ inference. `tests/library/lsp.test.js` drives the real server and asserts each
 of them, including that `--cwd` is the directory the configuration is read
 from.
 
-What does not work is the same too: signature help is not advertised by
-`uf lsp`. Rename, find usages, highlighting and the structure view are.
+Signature help is advertised by `uf lsp`, the same as the other editors.
+Rename, find usages, highlighting and the structure view are advertised by
+that server too. This template does not configure them: LSP4IJ takes what the
+server advertises, and no test here opens an IDE to check that it does.
 
 ## What no test here covers
 
