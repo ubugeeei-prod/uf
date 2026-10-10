@@ -138,6 +138,16 @@ mod types {
             Ok(Value::Null)
         }
 
+        pub(super) fn signature_help(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _line: usize,
+            _requested: usize,
+        ) -> Value {
+            Value::Null
+        }
+
         pub(super) fn symbols(
             &mut self,
             _documents: &FxHashMap<String, Document>,

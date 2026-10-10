@@ -979,7 +979,7 @@ fn signature_of(detail: &FuncDetailsResult) -> Signature {
             optional,
         } => {
             let mark = if *optional { "?" } else { "" };
-            let label = format!("{name}{mark}: {ty}");
+            let label = uf_infra::into_string(uf_infra::cstr!("{name}{mark}: {ty}"));
             Signature {
                 label: label.clone(),
                 documentation: None,
@@ -994,7 +994,7 @@ fn signature_of(detail: &FuncDetailsResult) -> Signature {
 
 /// `name: Type`, the same spelling the signature's label is built from.
 fn parameter_label(param: &FuncParamResult) -> String {
-    format!("{}: {}", param.param_name, param.param_ty)
+    uf_infra::into_string(uf_infra::cstr!("{}: {}", param.param_name, param.param_ty))
 }
 
 /// `type_at_pos_type` at `at`, when it found something it could normalize.
