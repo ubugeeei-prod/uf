@@ -822,11 +822,11 @@ async function build() {
     },
   });
   // What this build is, beside the bundle it is about. One line, written by
-  // every build and read by nothing unless a project turned a durable cache on
-  // — at which point it is the thing that stops a deploy answering the new
-  // build's URLs with the previous build's documents. See
-  // `npm/server/internal/cache-key.js`, which argues the whole of it, and
-  // `internal/serve.js`'s `buildIdentity`, which is what reads this.
+  // every build. A durable cache reads it so a deploy cannot answer the new
+  // build's URLs with the previous build's documents — see
+  // `npm/server/internal/cache-key.js` — and `loadBuild` copies it into
+  // `UF_BUILD_ID` when that variable is unset, because an inline server
+  // closure was sealed with this same value.
   writeFileSync(path.join(serverDir, BUILD_ID_FILE), `${buildId}\n`);
 
   // Every bundle is built by here, and the prerender below builds none.

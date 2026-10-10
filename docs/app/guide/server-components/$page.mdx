@@ -325,8 +325,9 @@ example in a service that the handler calls.
   Passing an action down works once the page has hydrated. A form that has to
   work before that imports the action instead
   ([Server actions](/guide/server-actions#what-is-not-here)).
-- **Inline `"use server"` closures**, which have no export name to reference
-  ([#1360](https://github.com/ubugeeei-prod/uf/issues/1360)).
+- **An inline `"use server"` closure written in a `"use client"` module.**
+  Sealing its captures would mean shipping the build id. Write the closure in
+  a server module, or export an async function from a `"use server"` module.
 
 [What uf does not do](/guide/scope) lists these beside every other gap.
 

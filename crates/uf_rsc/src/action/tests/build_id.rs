@@ -53,7 +53,9 @@ fn an_unset_or_out_of_range_build_id_is_generated() {
 
 #[test]
 fn a_build_id_never_prints_itself() {
-    let formatted = format!("{:?}", build_id());
+    let id = build_id();
+    let formatted = format!("{id:?}");
     assert_eq!(formatted, "BuildId(<redacted>)");
     assert!(!formatted.contains("build-id-for-tests"));
+    assert_eq!(id.secret(), "build-id-for-tests");
 }

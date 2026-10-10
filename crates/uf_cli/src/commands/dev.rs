@@ -169,7 +169,7 @@ use uf_config::{FmtConfig, QuoteStyle, UniflowedConfig, env_files, load_config};
 use uf_infra::FxHashMap;
 use uf_lib::NativeModule;
 use uf_router::{RouteTarget, write_router_manifest};
-use uf_rsc::RSC_MANIFEST_ENV;
+use uf_rsc::{BUILD_ID_ENV, RSC_MANIFEST_ENV};
 use uf_term::{KeyValue, Status, Tone};
 
 use crate::commands::build::application_target;
@@ -274,7 +274,8 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     // manifest written afterwards would leave the first page load splitting
     // nothing while every later one split, and a dev server that disagrees with
     // itself is worse than one that never splits.
-    let mut server_components = RscReport::new(&root);
+    let mut server_components =
+        RscReport::with_file_build_id(&root, env.values().get(BUILD_ID_ENV).map(String::as_str));
     server_components.prime();
 
     let host_name = host.name();
@@ -329,7 +330,10 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
             "dev",
             &driver_args(args.host.as_deref(), args.port, &watched),
             &env,
-            &[(RSC_MANIFEST_ENV, server_components.manifest_path().as_str())],
+            &[
+                (RSC_MANIFEST_ENV, server_components.manifest_path().as_str()),
+                (BUILD_ID_ENV, server_components.build_id().secret()),
+            ],
         )?;
 
         let Some(changed) = serve(ui, &root, &mut driver, &mut server_components)? else {

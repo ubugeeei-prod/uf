@@ -39,7 +39,8 @@ use std::collections::BTreeSet;
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_rsc::{
     BuildId, ClientBundleReason, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR,
-    RSC_MANIFEST_FILE_NAME, RscDiagnostic, RscGraph, RscSeverity, analyze_project, write_manifest,
+    RSC_MANIFEST_FILE_NAME, RscDiagnostic, RscGraph, RscSeverity, analyze_project,
+    write_inline_closures, write_manifest,
 };
 use uf_term::{CodeFrame, DiagnosticLevel, Status};
 
@@ -183,14 +184,26 @@ pub(crate) struct RscReport {
 }
 
 impl RscReport {
-    /// A report for the project at `root`.
+    /// A report for a test, with no project file naming a build id.
+    #[cfg(test)]
     pub(crate) fn new(root: &Utf8Path) -> Self {
+        Self::with_file_build_id(root, None)
+    }
+
+    /// A report that keys its action ids with `file_build_id` when the process
+    /// itself did not set one.
+    ///
+    /// The dev server has already loaded the project's `.env` cascade by the
+    /// time it builds this, and an id chosen later would disagree with the
+    /// rewrite this report is about to write. `None` reads the process
+    /// environment and otherwise generates one.
+    pub(crate) fn with_file_build_id(root: &Utf8Path, file_build_id: Option<&str>) -> Self {
         Self {
             root: root.to_path_buf(),
             manifest: root
                 .join(RSC_MANIFEST_BUILD_DIR)
                 .join(RSC_MANIFEST_FILE_NAME),
-            build_id: BuildId::from_env_or_generate(),
+            build_id: BuildId::from_env_file_or_generate(file_build_id.map(str::to_owned)),
             options: ProjectScanOptions::default(),
             last: None,
             displayed: false,
@@ -209,6 +222,15 @@ impl RscReport {
     /// not yet there.
     pub(crate) fn manifest_path(&self) -> &Utf8Path {
         &self.manifest
+    }
+
+    /// The build id this report's action ids were derived from.
+    ///
+    /// The dev server puts [`BuildId::secret`] into the driver's `UF_BUILD_ID`
+    /// so a render and a later action call seal with the same key. It is not
+    /// a value for a log line.
+    pub(crate) fn build_id(&self) -> &BuildId {
+        &self.build_id
     }
 
     /// Scan once and write the manifest, before the bundler starts.
@@ -261,10 +283,17 @@ impl RscReport {
         let Ok(json) = manifest.to_json() else {
             return false;
         };
+        let dir = self.root.join(RSC_MANIFEST_BUILD_DIR);
+        // A closure body can change without the manifest's ids changing, so
+        // the rewrite is written even when the manifest bytes already match.
+        // `write_inline_closures` leaves an identical file untouched.
+        if write_inline_closures(&dir, &self.root, &analysis.registry).is_err() {
+            return false;
+        }
         if std::fs::read_to_string(&self.manifest).is_ok_and(|current| current == json) {
             return true;
         }
-        write_manifest(&self.root.join(RSC_MANIFEST_BUILD_DIR), &manifest).is_ok()
+        write_manifest(&dir, &manifest).is_ok()
     }
 
     /// Rescan the project and decide whether there is anything new to say.

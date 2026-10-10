@@ -5,6 +5,7 @@ use crate::scan::ExportKind;
 
 mod action_id;
 mod build_id;
+mod closure;
 mod crypto;
 mod registry;
 

@@ -25,7 +25,7 @@ pub struct ServerAction {
     pub id: ActionId,
     /// Declaring module, relative to the project root.
     pub module: Utf8PathBuf,
-    /// Export name, or the binding of an inline closure.
+    /// Export name, or `$$ufActionN` for an inline closure.
     pub export: CompactString,
     /// Where the action was declared.
     pub kind: ServerActionKind,
@@ -79,8 +79,18 @@ impl ServerActionRegistry {
                 }
             }
 
-            for directive in &module.function_actions {
-                let export = CompactString::from(directive.owner.to_string());
+            for index in 0..module.function_actions.len() {
+                // The owner's name is not an export, and two closures can share
+                // one. `$$ufActionN` is the name the rewrite hoists, in scan
+                // order, and it is what the id is mixed from. A client module
+                // cannot seal: the key would have to ship with it.
+                let export = uf_infra::cstr!("$$ufAction{index}");
+                let inline_exposure = if hands_off[position] && module.environment.runs_on_server()
+                {
+                    ActionExposure::CallableEndpoint
+                } else {
+                    ActionExposure::UnreachableFromClient
+                };
                 actions.push(ServerAction {
                     id: ActionId::derive(
                         build_id,
@@ -91,7 +101,7 @@ impl ServerActionRegistry {
                     module: module.path.clone(),
                     export,
                     kind: ServerActionKind::InlineClosure,
-                    exposure,
+                    exposure: inline_exposure,
                 });
             }
         }

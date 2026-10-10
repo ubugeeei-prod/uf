@@ -88,7 +88,7 @@ dropped.
 | `useActionState`, `useFormStatus`, `useOptimistic` | React's own | Implemented |
 | A `<form action={serverFunction}>` that submits before hydration | a urlencoded native post to the page, answered with the page rendered with `useActionState`'s new state, behind `Origin` and `Sec-Fetch-Site` ([Before the page hydrates](/guide/server-actions#before-the-page-hydrates)) | Implemented; no multipart, so no file fields |
 | A server function passed to a client component as a prop | the same: a server reference under the action's id, `.bind` included, called over the JSON wire ([Handed down by a Server Component](/guide/server-actions#handed-down-by-a-server-component)) | Implemented; a form bound to one posts only after hydration, and bound arguments are not encrypted |
-| Inline `"use server"` closures, with their captured variables encrypted | recognised and keyed, not callable | Planned, [#1360](https://github.com/ubugeeei-prod/uf/issues/1360) |
+| Inline `"use server"` closures, with their captured variables encrypted | a closure in a server module is hoisted and its captures are sealed with the build id; a closure written in a `"use client"` module is not an endpoint | Implemented for server modules |
 | A file upload through an action | refused at the call site; use a route handler | Refused |
 | Caching an action's result | `rendering.cache.actions` is refused when the config loads | Refused |
 

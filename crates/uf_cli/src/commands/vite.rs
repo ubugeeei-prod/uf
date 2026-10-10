@@ -546,10 +546,13 @@ impl Driver {
     /// `extra` is what *this command* knows and neither the driver nor a `.env`
     /// file can work out for itself. It is deliberately not a general escape
     /// hatch: today it carries [`uf_rsc::RSC_MANIFEST_ENV`], the path to the
-    /// server-component analysis the bundler splits the route table by, because
-    /// that analysis is Rust's and runs before Vite starts. It is set after the
-    /// project's files for the same reason `UF_BINARY` is: it is uf's own, and
-    /// a file that names it must not be able to answer it.
+    /// server-component analysis the bundler splits the route table by, and
+    /// [`uf_rsc::BUILD_ID_ENV`], the secret that analysis keyed its action ids
+    /// with, because that analysis is Rust's and runs before Vite starts. A
+    /// render in this process seals closures with the same secret. Both are
+    /// set after the project's files for the same reason `UF_BINARY` is: they
+    /// are uf's own, and a file that names one must not be able to answer it
+    /// with a different value than the analysis already used.
     pub(crate) fn spawn(
         host: &Host,
         builder: &Builder,

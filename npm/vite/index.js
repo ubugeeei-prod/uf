@@ -82,11 +82,13 @@ import {
 } from "./internal/refresh.js";
 import {
   RSC_MANIFEST_ENV,
+  SERVER_ACTION_IMPL_QUERY,
   actionReferenceSource,
   declaresDefaultExport,
   serverActionSource,
   actionsModuleSource,
   clientRouteFilter,
+  inlineClosureSources,
   readRscManifest,
   rscManifestKey,
   serverActionModules,
@@ -546,8 +548,9 @@ function flowPlugin({
       const manifest = readRscManifest(file);
       actionMemo = {
         key,
-        modules: serverActionModules(manifest, root),
-        table  : serverActionTable(manifest, root),
+        modules : serverActionModules(manifest, root),
+        table   : serverActionTable(manifest, root),
+        closures: inlineClosureSources(file, root),
       };
     }
     return actionMemo;
@@ -839,6 +842,18 @@ function flowPlugin({
             flightState != null && this.environment?.name === RSC_ENVIRONMENT,
           );
         }
+      }
+      // The rewritten server module: hoisted `$$ufActionN` exports and the
+      // `bindServerClosure` call. The client graph returned above, and a
+      // `"use server"` file's plain id returned the reference wrapper. What
+      // remains is a server component, or the `?uf-server-impl` module the
+      // wrapper imports. A client module is never in the sidecar.
+      const rewritten = actionTables().closures.get(cleanId(id));
+      if (
+        rewritten != null &&
+        (id.includes(SERVER_ACTION_IMPL_QUERY) || !id.includes("?"))
+      ) {
+        return rewritten;
       }
       return null;
     },
@@ -1158,6 +1173,29 @@ function flowPlugin({
         };
         devServer.watcher.on("add", onManifest);
         devServer.watcher.on("change", onManifest);
+
+        // A closure body can change without the manifest's ids changing, so
+        // the rewrite is a second file. Invalidating the modules it names is
+        // what makes the next server render the function that was just saved.
+        const sidecarPath = path.resolve(path.dirname(manifestPath), "inline-closures.json");
+        devServer.watcher.add(sidecarPath);
+        const onSidecar = (file) => {
+          if (path.resolve(file) !== sidecarPath) return;
+          const previous = actionTables().closures;
+          forgetActions();
+          const next = actionTables().closures;
+          const graphs = [
+            devServer.moduleGraph,
+            devServer.environments?.ssr?.moduleGraph,
+            devServer.environments?.[RSC_ENVIRONMENT]?.moduleGraph,
+          ].filter((graph) => graph != null);
+          for (const graph of graphs) {
+            invalidateActionModules(graph, previous);
+            invalidateActionModules(graph, next);
+          }
+        };
+        devServer.watcher.on("add", onSidecar);
+        devServer.watcher.on("change", onSidecar);
       }
 
       // After Vite's own middlewares, so `/@vite/client`, `/@id/...` and

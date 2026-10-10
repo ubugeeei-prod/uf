@@ -34,7 +34,7 @@
 //!         key     = build id bytes,
 //!         message = "uf-rsc-action-v1"
 //!                || u32be(len(module)) || module   // path relative to the project root
-//!                || u32be(len(export)) || export   // export name, or the closure's binding
+//!                || u32be(len(export)) || export   // export name, or `$$ufActionN`
 //!                || kind                           // 0x01 module export, 0x02 inline closure
 //!      )
 //! ```
@@ -54,9 +54,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod closure;
 mod crypto;
 mod registry;
 
+pub use closure::{INLINE_CLOSURES_FILE_NAME, write_inline_closures};
 pub use registry::{ServerAction, ServerActionRegistry};
 
 use crypto::{constant_time_eq, hex, hex_value, hmac_sha256, os_entropy};
@@ -75,6 +77,16 @@ pub const MIN_BUILD_ID_BYTES: usize = 8;
 
 /// Longest accepted build id, in bytes.
 pub const MAX_BUILD_ID_BYTES: usize = 256;
+
+/// Environment variable holding the build id the server seals closures with.
+///
+/// `uf dev` and `uf build` set it on the driver from [`BuildId::secret`] after
+/// the project's `.env` files, so the process that renders uses the same secret
+/// the action ids were derived from. A file that names a different one does not
+/// get to answer it. Absent from both the process and the files, a secret is
+/// generated and handed across the same way; `uf start` later reads the copy
+/// `uf build` wrote beside the server bundle.
+pub const BUILD_ID_ENV: &str = "UF_BUILD_ID";
 
 /// Length of an action id in hexadecimal characters.
 pub const ACTION_ID_HEX_LEN: usize = 64;
@@ -168,15 +180,38 @@ impl BuildId {
         }
     }
 
-    /// Read `UF_BUILD_ID` when it is set and usable, otherwise generate one.
+    /// Read [`BUILD_ID_ENV`] when it is set and usable, otherwise generate one.
     pub fn from_env_or_generate() -> Self {
-        Self::from_supplied_or_generate(std::env::var("UF_BUILD_ID").ok())
+        Self::from_env_file_or_generate(None)
+    }
+
+    /// Read [`BUILD_ID_ENV`] from the process, then from a project file, then generate one.
+    ///
+    /// `file_value` is what the project's `.env` cascade named, and it is used
+    /// only when the process has not set the variable at all. A value the
+    /// process did set is the caller's, including one outside
+    /// [`MIN_BUILD_ID_BYTES`] and [`MAX_BUILD_ID_BYTES`]: that one is rejected
+    /// and a secret is generated, rather than quietly taking the file's. A file
+    /// value outside that range is rejected the same way.
+    pub fn from_env_file_or_generate(file_value: Option<String>) -> Self {
+        let from_process = std::env::var(BUILD_ID_ENV).ok();
+        Self::from_supplied_or_generate(from_process.or(file_value))
     }
 
     fn from_supplied_or_generate(value: Option<String>) -> Self {
         value
             .and_then(|value| Self::new(value).ok())
             .unwrap_or_else(Self::generate)
+    }
+
+    /// The secret, for the server process that seals and opens closures.
+    ///
+    /// Hand it to that process as [`BUILD_ID_ENV`] and nowhere else. Logging it,
+    /// writing it into a manifest, or sending it to the browser publishes the
+    /// key the action ids are an HMAC under. [`Debug`] stays redacted; this is
+    /// the explicit read.
+    pub fn secret(&self) -> &str {
+        self.value.as_str()
     }
 
     /// The build id bytes, used as the HMAC key.

@@ -244,11 +244,14 @@ function slotPredicate(needed) {
 // Two tables come out of it, for the two graphs:
 //
 // * `serverActionModules` is the browser's. It says, for each `"use server"`
-//   file, which exports become `createServerReference` calls — and the plugin
-//   answers that source *instead of the file*, so the module's body never
-//   enters the client graph and neither does anything only it imported.
+//   file, which *module exports* become `createServerReference` calls — and
+//   the plugin answers that source *instead of the file*, so the module's
+//   body never enters the client graph and neither does anything only it
+//   imported. An inline closure is not in this table: replacing the whole
+//   server component with a reference stub would drop the component.
 // * `serverActionTable` is the server's. It is what `virtual:uf/actions`
-//   emits and what `createActionDispatcher` dials into.
+//   emits and what `createActionDispatcher` dials into. A callable inline
+//   closure is a row here, under the `$$ufActionN` export the rewrite hoists.
 //
 // Both are keyed on the id and nothing else. No request-derived value ever
 // becomes a path, a specifier or an export name here or downstream; see the
@@ -305,21 +308,37 @@ function isExportableName(name) {
   return true;
 }
 
-/** Every callable action of the manifest, in the manifest's own order. */
+/**
+ * A manifest row the tables can emit.
+ *
+ * Module exports are the browser's references. Inline closures are callable
+ * on the server only: the browser holds the sealed function `bindServerClosure`
+ * already returned, and the dispatcher imports `$$ufActionN` from the rewritten
+ * module. `<anonymous#0>` is not an export name and is left out of both.
+ *
+ * @param {object} action
+ * @param {boolean} inline
+ */
+function isListedAction(action, wantInline) {
+  if (action == null || !isActionId(action.id)) return false;
+  if (typeof action.module !== "string" || action.module === "") return false;
+  const inline = action.kind === "inline-closure";
+  const moduleExport = action.kind === "module-export";
+  if (wantInline ? !inline : !moduleExport) return false;
+  return isExportableName(action.export === "default" ? "default_" : action.export);
+}
+
+/** Callable module exports, in the manifest's own order. The browser's table. */
 function callableActions(manifest) {
   if (manifest == null || !Array.isArray(manifest.serverActions)) return [];
+  return manifest.serverActions.filter((action) => isListedAction(action, false));
+}
+
+/** Module exports and inline closures the server's dispatcher can call. */
+function dispatchActions(manifest) {
+  if (manifest == null || !Array.isArray(manifest.serverActions)) return [];
   return manifest.serverActions.filter(
-    (action) =>
-      action != null &&
-      isActionId(action.id) &&
-      typeof action.module === "string" &&
-      action.module !== "" &&
-      // An inline `"use server"` closure has no export name to import, so it
-      // has no reference in the client bundle and no row in the server's
-      // table. It is in the manifest, and reaching it needs the payload
-      // ubugeeei-prod/uf#252 is about.
-      action.kind === "module-export" &&
-      isExportableName(action.export === "default" ? "default_" : action.export),
+    (action) => isListedAction(action, false) || isListedAction(action, true),
   );
 }
 
@@ -373,7 +392,7 @@ export function serverActionModules(manifest, root) {
  */
 export function serverActionTable(manifest, root) {
   const rows = [];
-  for (const action of callableActions(manifest)) {
+  for (const action of dispatchActions(manifest)) {
     const file = moduleFile(root, action.module);
     if (file == null) continue;
     rows.push({ id: action.id, module: action.module, export: action.export, file });
@@ -539,10 +558,50 @@ export default actions;
  */
 export function rscManifestKey(file) {
   if (file == null || file === "") return "";
+  const sidecar = path.join(path.dirname(file), "inline-closures.json");
+  return `${fileStamp(file)}|${fileStamp(sidecar)}`;
+}
+
+/** @param {string} file */
+function fileStamp(file) {
   try {
     const stats = statSync(file);
     return `${String(stats.size)}:${String(stats.mtimeMs)}`;
   } catch {
     return "";
   }
+}
+
+/**
+ * Rewritten server modules, keyed by absolute path.
+ *
+ * Sibling of the manifest. Empty when the file is missing: a build with no
+ * inline closure still writes it, and a build that predates it has none.
+ * A path that leaves the project is dropped, same as {@link moduleFile}.
+ *
+ * @param {string | undefined} manifestFile
+ * @param {string} root absolute project root
+ * @returns {Map<string, string>}
+ */
+export function inlineClosureSources(manifestFile, root) {
+  const sources = new Map();
+  if (manifestFile == null || manifestFile === "") return sources;
+  let parsed;
+  try {
+    parsed = JSON.parse(
+      readFileSync(path.join(path.dirname(manifestFile), "inline-closures.json"), "utf8"),
+    );
+  } catch {
+    return sources;
+  }
+  if (parsed == null || parsed.version !== 1 || parsed.modules == null || typeof parsed.modules !== "object") {
+    return sources;
+  }
+  for (const [relative, source] of Object.entries(parsed.modules)) {
+    if (typeof relative !== "string" || typeof source !== "string") continue;
+    const file = moduleFile(root, relative);
+    if (file == null) continue;
+    sources.set(file, source);
+  }
+  return sources;
 }

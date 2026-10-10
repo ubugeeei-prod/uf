@@ -178,7 +178,7 @@ fn an_action_no_client_can_reach_is_not_in_the_table() {
     );
 }
 
-/// An inline `"use server"` closure has no export name to point at.
+/// An inline `"use server"` closure's hoisted export is not a name on disk.
 #[test]
 fn an_inline_closure_is_left_to_the_manifest() {
     let registry = registry(

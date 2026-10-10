@@ -242,9 +242,18 @@ export async function loadBuild({ root, outDir, serverDir }) {
   await readable(manifestFile, `the client manifest is missing at ${manifestFile}`);
 
   const manifest = JSON.parse(await readFile(manifestFile, "utf8"));
+  const build = await buildIdentity(root, serverDir);
+  // Before the bundle is imported. A rewritten server module calls
+  // `bindServerClosure` while it evaluates, and that reads `UF_BUILD_ID`.
+  // The file beside the server bundle is the secret `uf build` sealed with;
+  // a server that was not handed the variable still has to open those
+  // closures. An environment that already names one is left alone, which is
+  // how two artefacts say they are one build.
+  if ((process.env.UF_BUILD_ID == null || process.env.UF_BUILD_ID === "") && build != null) {
+    process.env.UF_BUILD_ID = build;
+  }
   const entry = await import(pathToFileURL(entryFile).href);
   await deployment();
-  const build = await buildIdentity(root, serverDir);
   const regeneration = await readRegeneration(path.resolve(root, serverDir));
   const partial = await readPartialPrerenders(path.resolve(root, serverDir));
   return {
@@ -377,10 +386,14 @@ export const BUILD_ID_FILE = "uf-build-id";
 /**
  * The identity of the build being served, or `null`.
  *
- * Only a durable cache reads it, and only a durable cache needs it: an entry
- * that cannot outlive the process cannot outlive the build either, so every
- * command that keeps its cache in memory is entitled to `null` here and never
- * looks. `npm/server/internal/cache-key.js` argues the rest.
+ * A durable cache reads it, and only a durable cache needs it for its own
+ * key: an entry that cannot outlive the process cannot outlive the build
+ * either, so a command that keeps its cache in memory and never seals is
+ * entitled to `null` here. `npm/server/internal/cache-key.js` argues the
+ * rest. [`loadBuild`] also reads it, for a different reason: the value is the
+ * secret an inline server closure was sealed with, and a server started
+ * without `UF_BUILD_ID` copies the file into that variable before importing
+ * the bundle.
  *
  * `UF_BUILD_ID` first, then the file `uf build` wrote. The environment wins for
  * the reason it wins in `crates/uf_rsc`'s `BuildId::from_env_or_generate`,
