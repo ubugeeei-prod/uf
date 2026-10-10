@@ -201,7 +201,8 @@ function chachaXor(key, counter, nonce, data) {
   while (offset < data.length) {
     const stream = chachaBlock(key, block, nonce);
     const take = Math.min(64, data.length - offset);
-    for (let index = 0; index < take; index += 1) out[offset + index] = data[offset + index] ^ stream[index];
+    for (let index = 0; index < take; index += 1)
+      out[offset + index] = data[offset + index] ^ stream[index];
     offset += take;
     block = (block + 1) >>> 0;
   }
@@ -275,8 +276,10 @@ function sha256(bytes) {
   for (let offset = 0; offset < padded.length; offset += 64) {
     for (let index = 0; index < 16; index += 1) words[index] = view.getUint32(offset + index * 4);
     for (let index = 16; index < 64; index += 1) {
-      const s0 = rotr(words[index - 15], 7) ^ rotr(words[index - 15], 18) ^ (words[index - 15] >>> 3);
-      const s1 = rotr(words[index - 2], 17) ^ rotr(words[index - 2], 19) ^ (words[index - 2] >>> 10);
+      const s0 =
+        rotr(words[index - 15], 7) ^ rotr(words[index - 15], 18) ^ (words[index - 15] >>> 3);
+      const s1 =
+        rotr(words[index - 2], 17) ^ rotr(words[index - 2], 19) ^ (words[index - 2] >>> 10);
       words[index] = (words[index - 16] + s0 + words[index - 7] + s1) >>> 0;
     }
     let a = hash[0];
@@ -325,7 +328,13 @@ function rotr(value, bits) {
 
 /** @param {Uint8Array} bytes @param {number} offset */
 function readU32(bytes, offset) {
-  return (bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)) >>> 0;
+  return (
+    (bytes[offset] |
+      (bytes[offset + 1] << 8) |
+      (bytes[offset + 2] << 16) |
+      (bytes[offset + 3] << 24)) >>>
+    0
+  );
 }
 
 /** @param {Uint8Array} bytes @param {number} offset @param {number} value */

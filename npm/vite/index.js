@@ -849,10 +849,7 @@ function flowPlugin({
       // remains is a server component, or the `?uf-server-impl` module the
       // wrapper imports. A client module is never in the sidecar.
       const rewritten = actionTables().closures.get(cleanId(id));
-      if (
-        rewritten != null &&
-        (id.includes(SERVER_ACTION_IMPL_QUERY) || !id.includes("?"))
-      ) {
+      if (rewritten != null && (id.includes(SERVER_ACTION_IMPL_QUERY) || !id.includes("?"))) {
         return rewritten;
       }
       return null;
@@ -1134,8 +1131,29 @@ function flowPlugin({
       if (manifestFile != null && manifestFile !== "") {
         const manifestPath = path.resolve(manifestFile);
         devServer.watcher.add(manifestPath);
+        // A closure body can change without the manifest's ids changing, so
+        // the rewrite is a second file beside it. The same listener reads
+        // both, and a change to either drops the memo.
+        const sidecarPath = path.resolve(path.dirname(manifestPath), "inline-closures.json");
+        devServer.watcher.add(sidecarPath);
         const onManifest = (file) => {
-          if (path.resolve(file) !== manifestPath) return;
+          const resolvedFile = path.resolve(file);
+          if (resolvedFile === sidecarPath) {
+            const previous = actionTables().closures;
+            forgetActions();
+            const next = actionTables().closures;
+            const graphs = [
+              devServer.moduleGraph,
+              devServer.environments?.ssr?.moduleGraph,
+              devServer.environments?.[RSC_ENVIRONMENT]?.moduleGraph,
+            ].filter((graph) => graph != null);
+            for (const graph of graphs) {
+              invalidateActionModules(graph, previous);
+              invalidateActionModules(graph, next);
+            }
+            return;
+          }
+          if (resolvedFile !== manifestPath) return;
           const previousActions = actionTables().modules;
           // The action tables are read from the same file and are memoised on
           // its size and modification time, which is a pair two writes inside
@@ -1173,29 +1191,6 @@ function flowPlugin({
         };
         devServer.watcher.on("add", onManifest);
         devServer.watcher.on("change", onManifest);
-
-        // A closure body can change without the manifest's ids changing, so
-        // the rewrite is a second file. Invalidating the modules it names is
-        // what makes the next server render the function that was just saved.
-        const sidecarPath = path.resolve(path.dirname(manifestPath), "inline-closures.json");
-        devServer.watcher.add(sidecarPath);
-        const onSidecar = (file) => {
-          if (path.resolve(file) !== sidecarPath) return;
-          const previous = actionTables().closures;
-          forgetActions();
-          const next = actionTables().closures;
-          const graphs = [
-            devServer.moduleGraph,
-            devServer.environments?.ssr?.moduleGraph,
-            devServer.environments?.[RSC_ENVIRONMENT]?.moduleGraph,
-          ].filter((graph) => graph != null);
-          for (const graph of graphs) {
-            invalidateActionModules(graph, previous);
-            invalidateActionModules(graph, next);
-          }
-        };
-        devServer.watcher.on("add", onSidecar);
-        devServer.watcher.on("change", onSidecar);
       }
 
       // After Vite's own middlewares, so `/@vite/client`, `/@id/...` and

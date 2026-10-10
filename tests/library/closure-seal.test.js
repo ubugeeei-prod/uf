@@ -12,11 +12,14 @@
 import { createCipheriv, createHash } from "node:crypto";
 import { describe, expect, it } from "@uniflowed/test";
 
-import { aeadSeal, openCaptures, sealCaptures, sealWithNonce } from "../../npm/router/internal/closure-seal.js";
+import {
+  aeadSeal,
+  openCaptures,
+  sealCaptures,
+  sealWithNonce,
+} from "../../npm/router/internal/closure-seal.js";
 
-const RFC_KEY = hex(
-  "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
-);
+const RFC_KEY = hex("808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f");
 const RFC_NONCE = hex("070000004041424344454647");
 const RFC_AAD = hex("50515253c0c1c2c3c4c5c6c7");
 const RFC_PLAIN = new TextEncoder().encode(
@@ -59,12 +62,12 @@ describe("an inline closure's captures", () => {
 
   it("matches node:crypto for the same key, nonce and action id", () => {
     const plaintext = JSON.stringify({ args: [SECRET] });
-    const nonce = Uint8Array.from({ length: 12 }, (_, index) => index + 1);
+    const nonce = new Uint8Array(12);
+    for (let index = 0; index < nonce.length; index += 1) nonce[index] = index + 1;
     const sealed = sealWithNonce(BUILD_ID, ACTION_ID, plaintext, nonce);
     const key = createHash("sha256").update(BUILD_ID).digest();
-    const cipher = createCipheriv("chacha20-poly1305", key, Buffer.from(nonce), {
-      authTagLength: 16,
-    });
+    // authTagLength defaults to 16 for chacha20-poly1305, which is the tag this seal writes.
+    const cipher = createCipheriv("chacha20-poly1305", key, Buffer.from(nonce));
     cipher.setAAD(Buffer.from(ACTION_ID));
     const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
     const tag = cipher.getAuthTag();

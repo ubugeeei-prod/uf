@@ -134,16 +134,28 @@ export function registerServerFunction<T>(fn: T, id: string, name: string): T {
  * body already had only after `unsealServerCaptures`, and this call cannot
  * see those types: they are not arguments of the closure.
  */
+function closureBuildId(): string {
+  // A Worker has no `process` until the generated entry installs one. Reading
+  // the global unconditionally throws before the seal can say the id is missing.
+  if (typeof process === "undefined") return "";
+  const named = process.env.UF_BUILD_ID;
+  return typeof named === "string" ? named : "";
+}
+
 export function bindServerClosure(
-  fn: (...args: $ReadOnlyArray<mixed>) => mixed,
-  id: string,
+  fn      : (...args: $ReadOnlyArray<mixed>) => mixed,
+  id      : string,
   captures: $ReadOnlyArray<mixed>,
 ): $FlowFixMe {
   if (typeof fn !== "function") return fn;
-  const buildId = process.env.UF_BUILD_ID ?? "";
+  const buildId = closureBuildId();
   const sealed = sealCaptures(buildId, id, encodeActionArguments(captures));
-  const bound = fn.bind(null, sealed);
-  return registerServerFunction(bound, id, id);
+  // Register first. React's server-reference `bind` records the sealed blob on
+  // `$$bound`, which is what Flight sends and the client posts back. A native
+  // bind made before registration leaves `$$bound` null, so the hoisted export
+  // is called without the blob.
+  const registered = registerServerFunction(fn, id, id);
+  return registered.bind(null, sealed);
 }
 
 /**
@@ -155,7 +167,7 @@ export function bindServerClosure(
  * contains neither the blob nor a captured value.
  */
 export function unsealServerCaptures(sealed: string, actionId: string): $FlowFixMe {
-  const buildId = process.env.UF_BUILD_ID ?? "";
+  const buildId = closureBuildId();
   let plaintext;
   try {
     plaintext = openCaptures(buildId, actionId, sealed);

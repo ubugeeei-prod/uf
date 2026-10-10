@@ -594,7 +594,12 @@ export function inlineClosureSources(manifestFile, root) {
   } catch {
     return sources;
   }
-  if (parsed == null || parsed.version !== 1 || parsed.modules == null || typeof parsed.modules !== "object") {
+  if (
+    parsed == null ||
+    parsed.version !== 1 ||
+    parsed.modules == null ||
+    typeof parsed.modules !== "object"
+  ) {
     return sources;
   }
   for (const [relative, source] of Object.entries(parsed.modules)) {

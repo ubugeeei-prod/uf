@@ -97,7 +97,82 @@ export default function Page(text) {
     let rewritten = rewrite_module(source, &[closure(0)]).expect("rewrite");
     assert!(rewritten.contains(", [text])"));
     assert!(rewritten.contains("const [text] = unsealServerCaptures"));
-    assert!(rewritten.contains("$$ufSealed, other = text"));
+    assert!(rewritten.contains("$$ufSealed, other)"));
+    assert!(!rewritten.contains("other = text)"));
+    let unseal = rewritten.find("unsealServerCaptures").expect("unseal");
+    let defaulted = rewritten
+        .find("if (other === undefined) other = text;")
+        .expect("default");
+    assert!(unseal < defaulted);
+}
+
+#[test]
+fn a_ternary_a_cast_and_a_case_seal_the_read_and_an_object_key_does_not() {
+    let source = "\
+export default function Page(post) {
+  const postId = post.id;
+  const save = async (mode) => {
+    \"use server\";
+    const keyed = { postId: 1 };
+    switch (mode) {
+      case postId:
+        return (postId: number);
+    }
+    return mode ? postId : keyed;
+  };
+  return save;
+}
+";
+    let rewritten = rewrite_module(source, &[closure(0)]).expect("rewrite");
+    assert!(rewritten.contains(", [postId])"));
+    assert!(!rewritten.contains("[postId,"));
+}
+
+#[test]
+fn an_object_method_keeps_its_key() {
+    let source = "\
+export default function Page(post) {
+  const postId = post.id;
+  const api = {
+    async save(text) {
+      \"use server\";
+      return postId + text;
+    },
+  };
+  return api.save;
+}
+";
+    let rewritten = rewrite_module(source, &[closure(0)]).expect("rewrite");
+    assert!(rewritten.contains("save: bindServerClosure($$ufAction0,"));
+    assert!(rewritten.contains(", [postId])"));
+    assert!(!rewritten.contains("const save"));
+}
+
+#[test]
+fn a_class_method_is_refused() {
+    let source = "\
+class Store {
+  async save() {
+    \"use server\";
+    return 1;
+  }
+}
+";
+    assert!(rewrite_module(source, &[closure(0)]).is_err());
+}
+
+#[test]
+fn a_pattern_default_that_reads_a_capture_is_refused() {
+    let source = "\
+export default function Page(post) {
+  const save = async ({ id } = post) => {
+    \"use server\";
+    return id;
+  };
+  return save;
+}
+";
+    assert!(rewrite_module(source, &[closure(0)]).is_err());
 }
 
 #[test]

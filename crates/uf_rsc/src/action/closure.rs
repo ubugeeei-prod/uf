@@ -204,6 +204,9 @@ struct Place {
     params: String,
     statement: bool,
     name: Option<CompactString>,
+    /// Set when the closure is an object-literal method. The call site keeps
+    /// `name:` so the object stays an object. Class methods are refused.
+    object_key: Option<CompactString>,
 }
 
 struct Rendered {
@@ -249,7 +252,8 @@ fn render_one(
         place.body_start,
         &child_edits,
     );
-    let hoisted = hoist(place, closure, &captures, &body)?;
+    let (params, prelude) = signature_and_prelude(source, tokens, place, &captures, scopes)?;
+    let hoisted = hoist(place, closure, &captures, &params, &prelude, &body)?;
     Ok(Rendered {
         replacement,
         hoisted,
@@ -260,6 +264,8 @@ fn hoist(
     place: &Place,
     closure: &ClosureId,
     captures: &[CompactString],
+    params: &str,
+    prelude: &str,
     body: &str,
 ) -> Result<String, RewriteFailure> {
     let export = export_name(place.index);
@@ -268,9 +274,9 @@ fn hoist(
     hoisted.push_str(&export);
     hoisted.push('(');
     hoisted.push_str(SEALED_PARAM);
-    if !place.params.is_empty() {
+    if !params.is_empty() {
         hoisted.push_str(", ");
-        hoisted.push_str(place.params.trim());
+        hoisted.push_str(params.trim());
     }
     hoisted.push_str(") {\n  ");
     if captures.is_empty() {
@@ -293,6 +299,7 @@ fn hoist(
         hoisted.push_str(&id);
         hoisted.push_str(");\n");
     }
+    hoisted.push_str(prelude);
     hoisted.push_str(body);
     if !body.ends_with('\n') {
         hoisted.push('\n');
@@ -341,7 +348,10 @@ fn render_replacement(
     let export = export_name(place.index);
     let id = json_hex(&closure.id)?;
     let mut replacement = String::new();
-    if place.statement {
+    if let Some(name) = place.object_key.as_deref() {
+        replacement.push_str(name);
+        replacement.push_str(": ");
+    } else if place.statement {
         let Some(name) = place.name.as_deref() else {
             return Err(fail("a statement closure has no binding to keep"));
         };
@@ -396,11 +406,13 @@ fn locate(
         };
         let expr = expression_start(source, tokens, head)?;
         let (stmt, export_default) = statement_start(source, tokens, expr);
-        let expression = export_default || is_expression(source, tokens, expr);
+        let name = function_name(source, tokens, head);
+        let object_key = object_method_key(source, tokens, expr, name.as_ref())?;
+        let expression =
+            object_key.is_some() || export_default || is_expression(source, tokens, expr);
         let replace_token = if expression { expr } else { stmt };
         let params = param_source(source, tokens, head);
         let body_start = directive_end(tokens, directive_at);
-        let name = function_name(source, tokens, head);
         places.push(Place {
             index: ordinal,
             brace,
@@ -413,6 +425,7 @@ fn locate(
             params,
             statement: !expression,
             name,
+            object_key,
         });
     }
     Ok(places)
@@ -582,7 +595,9 @@ fn is_use(source: &str, tokens: &[Token], analysis: &Analysis, position: usize) 
     if position > 0 && tokens[position - 1].is_punct(b'.') {
         return false;
     }
-    if position + 1 < tokens.len() && tokens[position + 1].is_punct(b':') {
+    // An identifier followed by `:` is an object key or a label. A ternary, a
+    // `case`, and a Flow cast also write `:`, and those are reads.
+    if is_object_key(tokens, position) {
         return false;
     }
     let text = tokens[position].text(source);
@@ -727,6 +742,273 @@ fn statement_start(source: &str, tokens: &[Token], expr: usize) -> (usize, bool)
         return (previous, false);
     }
     (expr, false)
+}
+
+fn is_object_key(tokens: &[Token], position: usize) -> bool {
+    position > 0
+        && position + 1 < tokens.len()
+        && tokens[position + 1].is_punct(b':')
+        && (tokens[position - 1].is_punct(b'{') || tokens[position - 1].is_punct(b','))
+}
+
+/// `name:` for an object method. A class method and a getter or setter are
+/// refused: neither stays valid source if only the function is replaced.
+fn object_method_key(
+    source: &str,
+    tokens: &[Token],
+    start: usize,
+    name: Option<&CompactString>,
+) -> Result<Option<CompactString>, RewriteFailure> {
+    let Some(previous) = start.checked_sub(1) else {
+        return Ok(None);
+    };
+    let at = if is_word(source, tokens, previous, "get") || is_word(source, tokens, previous, "set")
+    {
+        let Some(before) = previous.checked_sub(1) else {
+            return Ok(None);
+        };
+        if !method_separator(tokens, before) {
+            return Ok(None);
+        }
+        return Err(fail(
+            "a getter or setter cannot be an inline server closure",
+        ));
+    } else {
+        previous
+    };
+    if !method_separator(tokens, at) {
+        return Ok(None);
+    }
+    let Some(opener) = enclosing_brace(tokens, at) else {
+        return Ok(None);
+    };
+    if is_class_body(source, tokens, opener) {
+        return Err(fail("a class method cannot be an inline server closure"));
+    }
+    let Some(name) = name else {
+        return Err(fail("an object method has no name"));
+    };
+    Ok(Some(name.clone()))
+}
+
+fn method_separator(tokens: &[Token], position: usize) -> bool {
+    tokens
+        .get(position)
+        .is_some_and(|token| token.is_punct(b'{') || token.is_punct(b',') || token.is_punct(b'}'))
+}
+
+fn enclosing_brace(tokens: &[Token], from: usize) -> Option<usize> {
+    if tokens.get(from).is_some_and(|token| token.is_punct(b'{')) {
+        return Some(from);
+    }
+    let mut depth = i32::from(tokens.get(from).is_some_and(|token| token.is_punct(b'}')));
+    let mut at = from;
+    while let Some(previous) = at.checked_sub(1) {
+        at = previous;
+        let token = tokens.get(at)?;
+        if token.is_punct(b'}') || token.is_punct(b']') || token.is_punct(b')') {
+            depth += 1;
+            continue;
+        }
+        if token.is_punct(b'{') || token.is_punct(b'[') || token.is_punct(b'(') {
+            if depth == 0 && token.is_punct(b'{') {
+                return Some(at);
+            }
+            depth -= 1;
+        }
+    }
+    None
+}
+
+fn is_class_body(source: &str, tokens: &[Token], brace: usize) -> bool {
+    let Some(mut at) = brace.checked_sub(1) else {
+        return false;
+    };
+    let mut depth = 0i32;
+    for _ in 0..12 {
+        if is_word(source, tokens, at, "class") || is_word(source, tokens, at, "extends") {
+            return depth == 0;
+        }
+        if depth == 0
+            && (tokens[at].is_punct(b'=') || tokens[at].is_punct(b';') || tokens[at].is_punct(b'{'))
+        {
+            return false;
+        }
+        if tokens[at].is_punct(b'>') || tokens[at].is_punct(b')') {
+            depth += 1;
+        } else if tokens[at].is_punct(b'<') || tokens[at].is_punct(b'(') {
+            depth -= 1;
+        }
+        at = match at.checked_sub(1) {
+            Some(previous) => previous,
+            None => return false,
+        };
+    }
+    false
+}
+
+/// Parameter text for the hoisted signature, and assignments that have to run
+/// after the captures are unsealed.
+///
+/// A default in the signature runs before the body, so it cannot see a capture
+/// unsealed there. Defaults from the first one that reads a capture onward move
+/// into the body. Earlier defaults stay, because they do not depend on one.
+fn signature_and_prelude(
+    source: &str,
+    tokens: &[Token],
+    place: &Place,
+    captures: &[CompactString],
+    analysis: &Analysis,
+) -> Result<(String, String), RewriteFailure> {
+    let open = place.use_start;
+    if open >= tokens.len() || !tokens[open].is_punct(b'(') {
+        return Ok((place.params.clone(), String::new()));
+    }
+    let Some(close) = matching_close(tokens, open, b'(', b')') else {
+        return Ok((place.params.clone(), String::new()));
+    };
+    let segments = split_params(tokens, open + 1, close);
+    let mut first_moved = None;
+    for (index, (start, end)) in segments.iter().copied().enumerate() {
+        if let Some(eq) = top_level_eq(tokens, start, end)
+            && default_reads_capture(source, tokens, analysis, eq + 1, end, captures)
+        {
+            first_moved = Some(index);
+            break;
+        }
+    }
+    let Some(first_moved) = first_moved else {
+        return Ok((place.params.clone(), String::new()));
+    };
+    let mut signature = String::new();
+    let mut prelude = String::new();
+    for (index, (start, end)) in segments.iter().copied().enumerate() {
+        if !signature.is_empty() {
+            signature.push_str(", ");
+        }
+        let eq = top_level_eq(tokens, start, end);
+        if index >= first_moved
+            && let Some(eq) = eq
+        {
+            let name = simple_param_name(source, tokens, start, eq)?;
+            signature.push_str(source[tokens[start].start..tokens[eq].start].trim());
+            prelude.push_str("if (");
+            prelude.push_str(&name);
+            prelude.push_str(" === undefined) ");
+            prelude.push_str(&name);
+            prelude.push_str(" = ");
+            prelude.push_str(source[tokens[eq].end..tokens[end].start].trim());
+            prelude.push_str(";\n  ");
+        } else {
+            signature.push_str(source[tokens[start].start..tokens[end].start].trim());
+        }
+    }
+    Ok((signature, prelude))
+}
+
+fn split_params(tokens: &[Token], start: usize, end: usize) -> Vec<(usize, usize)> {
+    let mut segments = Vec::new();
+    let mut from = start;
+    let mut depth = 0i32;
+    let mut position = start;
+    while position < end {
+        let token = &tokens[position];
+        if token.is_punct(b'(')
+            || token.is_punct(b'{')
+            || token.is_punct(b'[')
+            || token.is_punct(b'<')
+        {
+            depth += 1;
+        } else if token.is_punct(b')')
+            || token.is_punct(b'}')
+            || token.is_punct(b']')
+            || token.is_punct(b'>')
+        {
+            depth -= 1;
+        } else if depth == 0 && token.is_punct(b',') {
+            if from < position {
+                segments.push((from, position));
+            }
+            from = position + 1;
+        }
+        position += 1;
+    }
+    if from < end {
+        segments.push((from, end));
+    }
+    segments
+}
+
+fn top_level_eq(tokens: &[Token], start: usize, end: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut position = start;
+    while position < end {
+        let token = &tokens[position];
+        if token.is_punct(b'(')
+            || token.is_punct(b'{')
+            || token.is_punct(b'[')
+            || token.is_punct(b'<')
+        {
+            depth += 1;
+        } else if token.is_punct(b')')
+            || token.is_punct(b'}')
+            || token.is_punct(b']')
+            || token.is_punct(b'>')
+        {
+            depth -= 1;
+        } else if depth == 0 && token.is_punct(b'=') {
+            return Some(position);
+        }
+        position += 1;
+    }
+    None
+}
+
+fn default_reads_capture(
+    source: &str,
+    tokens: &[Token],
+    analysis: &Analysis,
+    start: usize,
+    end: usize,
+    captures: &[CompactString],
+) -> bool {
+    (start..end).any(|position| {
+        is_use(source, tokens, analysis, position)
+            && captures
+                .iter()
+                .any(|name| name == tokens[position].text(source))
+    })
+}
+
+fn simple_param_name(
+    source: &str,
+    tokens: &[Token],
+    start: usize,
+    eq: usize,
+) -> Result<String, RewriteFailure> {
+    if tokens[start].is_punct(b'.')
+        || tokens[start].is_punct(b'{')
+        || tokens[start].is_punct(b'[')
+        || tokens[start].kind != TokenKind::Ident
+    {
+        return Err(fail(
+            "a parameter default that reads a capture must name one binding",
+        ));
+    }
+    let name = tokens[start].text(source).to_owned();
+    let mut position = start + 1;
+    if tokens
+        .get(position)
+        .is_some_and(|token| token.is_punct(b'?'))
+    {
+        position += 1;
+    }
+    if position == eq || (position < eq && tokens[position].is_punct(b':')) {
+        return Ok(name);
+    }
+    Err(fail(
+        "a parameter default that reads a capture must name one binding",
+    ))
 }
 
 fn is_expression(source: &str, tokens: &[Token], start: usize) -> bool {
