@@ -54,6 +54,9 @@ export default defineConfig({
       // this repository still trips these, so they are warnings here. A user
       // project keeps the defaults. The `sketchy-null-*` leaves stay off:
       // naming them `off` would not override the umbrella.
+      // `flow/untyped-import` and `flow/untyped-type-import` are not forwarded:
+      // a dependency outside the batch is `any` and listed with the untyped
+      // modules, so a level here would not change the report.
       "flow/default-import-access"          : "warn",
       "flow/invalid-import-star-use"        : "warn",
       "flow/invalid-this-arg"               : "warn",
@@ -62,8 +65,6 @@ export default defineConfig({
       "flow/sketchy-null"                   : "warn",
       "flow/sketchy-number"                 : "warn",
       "flow/uninitialized-instance-property": "warn",
-      "flow/untyped-import"                 : "warn",
-      "flow/untyped-type-import"            : "warn",
       "flow/unused-promise"                 : "warn",
     },
   },

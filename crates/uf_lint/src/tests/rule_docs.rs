@@ -834,15 +834,19 @@ fn render_pages(docs: &[(&'static RuleDescriptor, RuleDoc)]) -> BTreeMap<String,
                      below is what the category is about.\n"
                 );
             }
+            let note = if runs {
+                ""
+            } else if crate::checker_runs(rule.id) {
+                " · needs Flow type inference, which `uf check` runs; `uf lint` does not run \
+                 the rule, so the examples below are not checked"
+            } else {
+                " · needs Flow type inference of the imported module; `uf check` types a \
+                 dependency outside the batch as `any` and lists the specifier with the untyped \
+                 modules instead of running this rule, so the examples below are not checked"
+            };
             let _ = writeln!(
                 page,
-                "Default: `{level}`{}. {}\n",
-                if runs {
-                    ""
-                } else {
-                    " · needs Flow type inference, which `uf check` runs; `uf lint` does not run \
-                     the rule, so the examples below are not checked"
-                },
+                "Default: `{level}`{note}. {}\n",
                 sentence(rule.description)
             );
             page.push_str(&doc.intro);

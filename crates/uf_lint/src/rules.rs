@@ -62,8 +62,21 @@ pub enum RuleRequirement {
     SourceText,
     /// Needs type inference. `uf lint` does not run an enabled rule of this
     /// kind and reports it through [`crate::LintReport::unavailable`] rather
-    /// than silently passing. `uf check` runs it.
+    /// than silently passing. `uf check` runs it, except the two import rules
+    /// [`checker_runs`] leaves with the untyped-module list.
     TypeChecker,
+}
+
+/// Whether `uf check` forwards `rule_id` to Flow's inference.
+///
+/// `flow/untyped-import` and `flow/untyped-type-import` stay out. The checker
+/// types a dependency it was not handed a signature for as `any` — a package
+/// in `node_modules`, a file this run did not collect, a `@noflow` file — and
+/// lists the specifier with the untyped modules. Flow would report that same
+/// hole as one of these rules, which turns every such import into an error,
+/// including a scaffold whose dependencies are not installed yet.
+pub fn checker_runs(rule_id: &str) -> bool {
+    !matches!(rule_id, "flow/untyped-import" | "flow/untyped-type-import")
 }
 
 impl RuleRequirement {

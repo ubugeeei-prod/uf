@@ -13,7 +13,9 @@
 //! description, and whether it can run without a type checker. Rules that need
 //! type inference are declared with [`RuleRequirement::TypeChecker`]. `uf lint`
 //! does not run them, so enabling one puts it in [`LintReport::unavailable`]
-//! instead of silently passing. `uf check` runs them during inference.
+//! instead of silently passing. `uf check` runs them during inference, except
+//! [`rules::checker_runs`], which leaves the untyped-import rules on the
+//! untyped-module list.
 //!
 //! The `react-compiler/*` rules are the official React Compiler's own
 //! diagnostics. `uf_transform` runs the compiler — the one `uf build` runs —
@@ -37,7 +39,7 @@ use uf_config::{RuleLevel, UniflowedConfig};
 pub use crate::cache::LintCache;
 pub use crate::flow_builtin::{FLOW_NAMESPACE, FlowBuiltinLint, FlowLintParseError};
 pub use crate::rules::{
-    RuleCategory, RuleDescriptor, RuleRequirement, canonical_rule_id, rule, rules,
+    RuleCategory, RuleDescriptor, RuleRequirement, canonical_rule_id, checker_runs, rule, rules,
 };
 
 use crate::rules::deprecated_aliases_for;
@@ -114,6 +116,9 @@ impl UnavailableRule {
     /// Why the rule did not run.
     pub fn reason(&self) -> &'static str {
         match self.requirement {
+            RuleRequirement::TypeChecker if !crate::checker_runs(self.rule) => {
+                "requires Flow type inference of the imported module; `uf check` types a dependency outside the batch as `any` and lists the specifier with the untyped modules instead of running the rule"
+            }
             RuleRequirement::TypeChecker => {
                 "requires Flow type inference, which runs during `uf check`; `uf lint` does not run the rule"
             }

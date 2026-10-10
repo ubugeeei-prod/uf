@@ -20,8 +20,8 @@ use flow_lint_settings::severity::Severity;
 use flow_parser_utils::file_sig::FileSigOptions;
 use flow_type_sig::type_sig_options::TypeSigOptions;
 
-use crate::lints::{FlowLint, FlowLintLevel};
 use crate::CheckLimits;
+use crate::lints::{FlowLint, FlowLintLevel};
 
 /// The React rules Flow enforces during inference.
 ///
@@ -180,9 +180,11 @@ mod tests {
         assert_eq!(*options.lint_severities.get_default(), Severity::Off);
         assert!(!options.lint_severities.is_enabled(LintKind::UnclearType));
         assert!(!options.lint_severities.is_enabled(LintKind::UntypedImport));
-        assert!(!options
-            .lint_severities
-            .is_enabled(LintKind::SketchyNull(SketchyNullKind::Number)));
+        assert!(
+            !options
+                .lint_severities
+                .is_enabled(LintKind::SketchyNull(SketchyNullKind::Number))
+        );
     }
 
     #[test]
@@ -200,12 +202,16 @@ mod tests {
             }],
         );
 
-        assert!(options
-            .lint_severities
-            .is_enabled(LintKind::SketchyNull(SketchyNullKind::Number)));
-        assert!(options
-            .lint_severities
-            .is_enabled(LintKind::SketchyNull(SketchyNullKind::String)));
+        assert!(
+            options
+                .lint_severities
+                .is_enabled(LintKind::SketchyNull(SketchyNullKind::Number))
+        );
+        assert!(
+            options
+                .lint_severities
+                .is_enabled(LintKind::SketchyNull(SketchyNullKind::String))
+        );
         assert!(!options.lint_severities.is_enabled(LintKind::UnclearType));
         assert!(!options.lint_severities.is_enabled(LintKind::UntypedImport));
     }

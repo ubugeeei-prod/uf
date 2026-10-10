@@ -120,9 +120,12 @@ fn configured_flow_lints_follow_the_type_checker_rules_a_project_enabled() {
             .is_some_and(|name| level_of(name).is_some());
         let wanted = descriptor.requirement == RuleRequirement::TypeChecker
             && descriptor.id.starts_with("flow/")
-            && uf_lint::rule_level(&defaults, descriptor.id).is_enabled();
+            && uf_lint::rule_level(&defaults, descriptor.id).is_enabled()
+            && uf_lint::checker_runs(descriptor.id);
         assert_eq!(present, wanted, "{}", descriptor.id);
     }
+    assert_eq!(level_of("untyped-import"), None);
+    assert_eq!(level_of("untyped-type-import"), None);
 
     let mut quiet = defaults;
     quiet

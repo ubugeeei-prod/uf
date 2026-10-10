@@ -1215,7 +1215,7 @@ export function withDefaults(options: { readonly size?: number }): { readonly si
 
 ### flow/untyped-import
 
-Default: `error` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Importing from an untyped module produces `any`.
+Default: `error` · needs Flow type inference of the imported module; `uf check` types a dependency outside the batch as `any` and lists the specifier with the untyped modules instead of running this rule, so the examples below are not checked. Importing from an untyped module produces `any`.
 
 Importing a value from a module Flow has no types for gives you `any`, which switches off checking for everything that value flows into. Add types for the module, or import from one that has them.
 
@@ -1237,7 +1237,7 @@ export const padded: string = "7".padStart(3, "0");
 
 ### flow/untyped-type-import
 
-Default: `error` · needs Flow type inference, which `uf check` runs; `uf lint` does not run the rule, so the examples below are not checked. Importing a type from an untyped module produces an `any` alias.
+Default: `error` · needs Flow type inference of the imported module; `uf check` types a dependency outside the batch as `any` and lists the specifier with the untyped modules instead of running this rule, so the examples below are not checked. Importing a type from an untyped module produces an `any` alias.
 
 Importing a type from a module Flow has no types for gives you an `any` alias, which checks nothing wherever you use it. Add types for the module, or declare the type yourself.
 

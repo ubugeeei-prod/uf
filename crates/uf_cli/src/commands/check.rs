@@ -297,8 +297,10 @@ pub(crate) fn check(
         if matches!(types, TypeCheck::Checked(..)) {
             // Inference ran these. Leaving them on the lint report would say
             // `uf check` skipped rules it just ran. `uf lint` still lists them.
-            lint.unavailable
-                .retain(|skipped| skipped.requirement != uf_lint::RuleRequirement::TypeChecker);
+            lint.unavailable.retain(|skipped| {
+                skipped.requirement != uf_lint::RuleRequirement::TypeChecker
+                    || !uf_lint::checker_runs(skipped.rule)
+            });
         }
         types
     };
@@ -376,13 +378,16 @@ pub(crate) fn check(
 /// A rule `uf lint` decides from source text stays out: that half already ran
 /// it, and handing it to inference would report the same finding twice. `off`
 /// stays out too, so an umbrella such as `sketchy-null` keeps the members a
-/// project did not name.
+/// project did not name. [`uf_lint::checker_runs`] also stays out: those two
+/// rules would report the untyped-module hole as an error.
 #[cfg(feature = "upstream-typecheck")]
 pub(crate) fn configured_flow_lints(config: &uf_config::UniflowedConfig) -> Vec<FlowLint> {
     uf_lint::rules()
         .iter()
         .filter_map(|descriptor| {
-            if descriptor.requirement != uf_lint::RuleRequirement::TypeChecker {
+            if descriptor.requirement != uf_lint::RuleRequirement::TypeChecker
+                || !uf_lint::checker_runs(descriptor.id)
+            {
                 return None;
             }
             let name = descriptor.id.strip_prefix("flow/")?;
