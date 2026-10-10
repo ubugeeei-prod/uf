@@ -1,5 +1,11 @@
 # Changelog
 
+## uf@0.37.0
+
+- feat(check): run Flow inference lints during uf check (#1880) (7b1ef3da)
+- docs(ui): say registry copies are StyleX (#1879) (b09494af)
+- feat(lsp): answer signature help from Flow's type service (#1878) (9e7d2d52)
+
 ## uf@0.36.0
 
 - feat(sqlc): install pinned sqlc and use COPY for copyfrom (#1876) (8aba3e96)
