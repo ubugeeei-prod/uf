@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.39.0
+
+- feat(lsp): import a name exported by another project file (#1886) (0bc6a1a1)
+
 ## uf@0.38.0
 
 - feat(rsc): seal inline server closures (#1884) (a07ce381)
