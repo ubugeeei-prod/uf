@@ -11,6 +11,8 @@
 //! too — the first has no names of its own, and the second's binding is not
 //! the exported name a one-line import can name.
 
+use std::rc::Rc;
+
 use compact_str::CompactString;
 use dupe::Dupe;
 use flow_common::options::Options;
@@ -19,34 +21,130 @@ use flow_parser::file_key::{FileKey, FileKeyInner};
 use flow_parser::loc::Loc;
 use flow_services_export::export_index::{self, Kind, Source};
 use flow_services_export::export_search::{self, ExportSearch};
+use uf_infra::FxHashMap;
 
 use super::parse;
+
+/// One exported name, the kind it was exported as, and how many times that
+/// pair was written.
+struct RecordedExport {
+    name: CompactString,
+    kind: Kind,
+    count: i32,
+}
+
+/// One file's exported names, kept so an edit re-parses only that file.
+///
+/// The assembled [`ExportSearch`] is cheap to rebuild from these records.
+/// Parsing every file again is not, and a completion follows most keystrokes.
+pub(super) struct FileExports {
+    records: FxHashMap<usize, Rc<[RecordedExport]>>,
+}
+
+impl FileExports {
+    pub(super) fn new() -> Self {
+        Self {
+            records: FxHashMap::default(),
+        }
+    }
+
+    pub(super) fn clear(&mut self) {
+        self.records.clear();
+    }
+
+    pub(super) fn invalidate(&mut self, index: usize) {
+        self.records.remove(&index);
+    }
+
+    #[cfg(test)]
+    pub(super) fn has(&self, index: usize) -> bool {
+        self.records.contains_key(&index)
+    }
+
+    /// Records for every file, parsing only the ones [`Self::invalidate`]
+    /// dropped, then one search over all of them.
+    pub(super) fn search<'a>(
+        &mut self,
+        files: impl Iterator<Item = (usize, &'a str, &'a str)>,
+        options: &Options,
+    ) -> ExportSearch {
+        let mut index = export_index::empty();
+        for (at, path, text) in files {
+            let records = match self.records.get(&at) {
+                Some(cached) => Rc::clone(cached),
+                None => {
+                    let recorded: Rc<[RecordedExport]> = file_records(path, text, options).into();
+                    self.records.insert(at, Rc::clone(&recorded));
+                    recorded
+                }
+            };
+            contribute(path, &records, &mut index);
+        }
+        export_search::init(index)
+    }
+}
 
 /// One search over the names `sources` export.
 ///
 /// `sources` is `(path, text)` in the batch's own path spelling. A file that
 /// does not parse, or that opted out of Flow, contributes nothing: there is
 /// no export list to trust then.
-pub(super) fn project_search<'a>(
+#[cfg(test)]
+fn project_search<'a>(
     sources: impl IntoIterator<Item = (&'a str, &'a str)>,
     options: &Options,
 ) -> ExportSearch {
     let mut index = export_index::empty();
     for (path, text) in sources {
-        if !is_indexed_source(path) {
-            continue;
-        }
-        let file_key = FileKey::new(FileKeyInner::SourceFile(path.to_owned()));
-        let parsed = parse::parse_file(file_key.dupe(), text, options, false);
-        if !parsed.is_parseable() || !parsed.is_checked() {
-            continue;
-        }
-        let source = Source::FileKey(file_key);
-        for statement in parsed.ast.statements.iter() {
-            record_statement(statement, &source, &mut index);
-        }
+        contribute(path, &file_records(path, text, options), &mut index);
     }
     export_search::init(index)
+}
+
+/// The names `path` exports: the exported spelling, its kind, and how many
+/// times that pair was written.
+///
+/// Empty when the file is not a project source, does not parse, or opted out
+/// of Flow. The path is not stored here; [`contribute`] attaches it, so a
+/// cached list stays valid until this file's own text changes.
+fn file_records(path: &str, text: &str, options: &Options) -> Vec<RecordedExport> {
+    if !is_indexed_source(path) {
+        return Vec::new();
+    }
+    let file_key = FileKey::new(FileKeyInner::SourceFile(path.to_owned()));
+    let parsed = parse::parse_file(file_key.dupe(), text, options, false);
+    if !parsed.is_parseable() || !parsed.is_checked() {
+        return Vec::new();
+    }
+    let mut index = export_index::empty();
+    let source = Source::FileKey(file_key);
+    for statement in parsed.ast.statements.iter() {
+        record_statement(statement, &source, &mut index);
+    }
+    let mut found = Vec::new();
+    for (name, exports) in index.iter() {
+        for (export_index::Export(_source, kind), count) in exports.iter() {
+            found.push(RecordedExport {
+                name: CompactString::from(name.as_str()),
+                kind: kind.clone(),
+                count: *count,
+            });
+        }
+    }
+    found
+}
+
+/// Add `records` to `index` as exports of `path`.
+fn contribute(path: &str, records: &[RecordedExport], index: &mut export_index::ExportIndex) {
+    if records.is_empty() {
+        return;
+    }
+    let source = Source::FileKey(FileKey::new(FileKeyInner::SourceFile(path.to_owned())));
+    for record in records {
+        for _ in 0..record.count {
+            export_index::add(&record.name, source.clone(), record.kind.clone(), index);
+        }
+    }
 }
 
 /// Write `.js` or `.jsx` back onto a relative specifier in `text`.

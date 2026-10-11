@@ -135,11 +135,14 @@ pub(crate) struct Worker {
     /// the ones nobody has asked about yet. Parsed once per file and dropped
     /// when that file is edited.
     imports: HashMap<usize, Rc<[usize]>>,
-    /// Names the project's own files export, for completion's auto-imports.
+    /// Exported names of each batch file. Parsed once and dropped when that
+    /// file is edited, the same way [`Self::imports`] is.
+    file_exports: super::exports::FileExports,
+    /// The search assembled from [`Self::file_exports`].
     ///
-    /// Built on the first completion and dropped by [`Self::release`] and
-    /// [`Self::edit`]: an export is a fact about source text, and either of
-    /// those is the moment that text changes.
+    /// Dropped when any file's records change, then rebuilt from the records
+    /// still cached. Re-parsing the project on every keystroke is the cost
+    /// this split exists to avoid.
     exports: Option<flow_services_export::export_search::ExportSearch>,
 }
 
@@ -155,6 +158,7 @@ impl Worker {
             checked: Vec::new(),
             diagnosed: HashMap::new(),
             imports: HashMap::new(),
+            file_exports: super::exports::FileExports::new(),
             exports: None,
         }
     }
@@ -164,6 +168,7 @@ impl Worker {
         self.checked.clear();
         self.diagnosed.clear();
         self.imports.clear();
+        self.file_exports.clear();
         self.exports = None;
         if let Some(modules) = self.modules.take() {
             modules.release();
@@ -235,10 +240,11 @@ impl Worker {
                 limit: self.limits.max_source_bytes,
             });
         }
-        // The export index is a fact about every file's text. A manifest
-        // reloads the batch, which drops it via [`Self::release`]; any other
-        // edit changes one file and has to drop it here.
+        // Only this file's exports can have changed. The search is rebuilt
+        // from the records still cached for every other file. A manifest
+        // reloads the batch, and [`Self::release`] drops the records too.
         self.exports = None;
+        self.file_exports.invalidate(index);
         // A manifest is read once, into the batch's package table, so there is
         // nothing smaller than the batch to invalidate.
         if path == "package.json" || path.ends_with("/package.json") {
@@ -263,22 +269,28 @@ impl Worker {
         Ok(true)
     }
 
-    /// The export index, built on the first completion and kept until the
-    /// batch's text changes.
+    /// The export search, rebuilt from cached per-file records.
+    ///
+    /// A completion that follows an edit parses the edited file again and
+    /// reuses the records of every file that did not change.
     fn project_exports(&mut self) -> flow_services_export::export_search::ExportSearch {
         if let Some(ready) = &self.exports {
             return ready.dupe();
         }
-        let built = match &self.modules {
+        let built = match self.modules.clone() {
             Some(modules) => {
-                let count = modules.len();
-                let sources: Vec<(CompactString, Rc<str>)> =
-                    (0..count).map(|index| modules.source(index)).collect();
-                super::exports::project_search(
+                let sources: Vec<(usize, CompactString, Rc<str>)> = (0..modules.len())
+                    .map(|index| {
+                        let (path, text) = modules.source(index);
+                        (index, path, text)
+                    })
+                    .collect();
+                let options = self.options.clone();
+                self.file_exports.search(
                     sources
                         .iter()
-                        .map(|(path, text)| (path.as_str(), text.as_ref())),
-                    &self.options,
+                        .map(|(index, path, text)| (*index, path.as_str(), text.as_ref())),
+                    &options,
                 )
             }
             None => flow_services_export::export_search::init(
@@ -1529,8 +1541,23 @@ mod tests {
             value.contains("{ name }") || value.contains("{name}"),
             "{value}"
         );
+        let app = worker
+            .modules
+            .as_ref()
+            .expect("loaded")
+            .index_of("app.js")
+            .expect("app");
+        let model = worker
+            .modules
+            .as_ref()
+            .expect("loaded")
+            .index_of("model.js")
+            .expect("model");
+        assert!(worker.exports.is_some());
+        assert!(worker.file_exports.has(app));
+        assert!(worker.file_exports.has(model));
 
-        // The index is still the one built for the first completion.
+        // The assembled search is still the one built for the first completion.
         let again = import_text(&mut worker, "app.js", at(2, 3), "name");
         assert_eq!(again, value);
 
@@ -1540,6 +1567,9 @@ mod tests {
                 "// @flow\nexport type User = { name: string };\nconst name = 1;\n".to_owned(),
             )
             .expect("the edit applies");
+        assert!(worker.exports.is_none());
+        assert!(worker.file_exports.has(app));
+        assert!(!worker.file_exports.has(model));
         let found = worker
             .completion("app.js", at(2, 3))
             .expect("runs")
@@ -1566,6 +1596,9 @@ mod tests {
                 "// @flow\nfunction f(user: Us): void { return; }\n".to_owned(),
             )
             .expect("the edit applies");
+        // `model.js` was not the file this edit changed, so its records stay.
+        assert!(worker.file_exports.has(model));
+        assert!(!worker.file_exports.has(app));
         // The cursor is just after `Us` in `function f(user: Us)`.
         let typed = import_text(&mut worker, "app.js", at(2, 20), "User");
         assert!(typed.contains("import type"), "{typed}");
