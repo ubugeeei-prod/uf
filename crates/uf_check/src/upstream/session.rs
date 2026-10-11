@@ -135,6 +135,15 @@ pub(crate) struct Worker {
     /// the ones nobody has asked about yet. Parsed once per file and dropped
     /// when that file is edited.
     imports: HashMap<usize, Rc<[usize]>>,
+    /// Exported names of each batch file. Parsed once and dropped when that
+    /// file is edited, the same way [`Self::imports`] is.
+    file_exports: super::exports::FileExports,
+    /// The search assembled from [`Self::file_exports`].
+    ///
+    /// Dropped when any file's records change, then rebuilt from the records
+    /// still cached. Re-parsing the project on every keystroke is the cost
+    /// this split exists to avoid.
+    exports: Option<flow_services_export::export_search::ExportSearch>,
 }
 
 impl Worker {
@@ -149,6 +158,8 @@ impl Worker {
             checked: Vec::new(),
             diagnosed: HashMap::new(),
             imports: HashMap::new(),
+            file_exports: super::exports::FileExports::new(),
+            exports: None,
         }
     }
 
@@ -157,6 +168,8 @@ impl Worker {
         self.checked.clear();
         self.diagnosed.clear();
         self.imports.clear();
+        self.file_exports.clear();
+        self.exports = None;
         if let Some(modules) = self.modules.take() {
             modules.release();
         }
@@ -227,6 +240,11 @@ impl Worker {
                 limit: self.limits.max_source_bytes,
             });
         }
+        // Only this file's exports can have changed. The search is rebuilt
+        // from the records still cached for every other file. A manifest
+        // reloads the batch, and [`Self::release`] drops the records too.
+        self.exports = None;
+        self.file_exports.invalidate(index);
         // A manifest is read once, into the batch's package table, so there is
         // nothing smaller than the batch to invalidate.
         if path == "package.json" || path.ends_with("/package.json") {
@@ -249,6 +267,38 @@ impl Worker {
         // Only the edited file's own imports can have changed.
         self.imports.remove(&index);
         Ok(true)
+    }
+
+    /// The export search, rebuilt from cached per-file records.
+    ///
+    /// A completion that follows an edit parses the edited file again and
+    /// reuses the records of every file that did not change.
+    fn project_exports(&mut self) -> flow_services_export::export_search::ExportSearch {
+        if let Some(ready) = &self.exports {
+            return ready.dupe();
+        }
+        let built = match self.modules.clone() {
+            Some(modules) => {
+                let sources: Vec<(usize, CompactString, Rc<str>)> = (0..modules.len())
+                    .map(|index| {
+                        let (path, text) = modules.source(index);
+                        (index, path, text)
+                    })
+                    .collect();
+                let options = self.options.clone();
+                self.file_exports.search(
+                    sources
+                        .iter()
+                        .map(|(index, path, text)| (*index, path.as_str(), text.as_ref())),
+                    &options,
+                )
+            }
+            None => flow_services_export::export_search::init(
+                flow_services_export::export_index::empty(),
+            ),
+        };
+        self.exports = Some(built.dupe());
+        built
     }
 
     /// The inference of the batch's file at `path`, from the session when it
@@ -521,20 +571,30 @@ impl Worker {
                 node_resolver_root_relative_dirnames: Vec::new(),
                 resolves_to_real_path: Box::new(|_, _| false),
             };
-            // No export index: auto-imports are not offered.
-            let nothing = flow_services_export::export_search_types::SearchResults {
-                results: Vec::new(),
-                is_incomplete: false,
+            // Project files only. A package import needs `get_package_info`,
+            // which this session does not answer, so the index never contains
+            // `node_modules` and the inserted specifier stays relative.
+            let exports = self.project_exports();
+            let values = |_: &AcOptions, query: &str| {
+                without_current_file(
+                    flow_services_export::export_search::search_values(None, query, &exports),
+                    &file_key,
+                )
             };
-            let search = |_: &AcOptions, _: &str| nothing.clone();
+            let types = |_: &AcOptions, query: &str| {
+                without_current_file(
+                    flow_services_export::export_search::search_types(None, query, &exports),
+                    &file_key,
+                )
+            };
             let layout = flow_parser_utils_output::js_layout_generator::default_opts();
             let typing = autocomplete_service_js::mk_typing_artifacts(
                 &layout,
                 Box::new(loc_of_aloc),
                 Box::new(|_| None),
                 &module_system_info,
-                &search,
-                &search,
+                &values,
+                &types,
                 &cx,
                 parsed.file_sig.dupe(),
                 parsed.ast.dupe(),
@@ -543,8 +603,10 @@ impl Worker {
             let (_, _, _, found) = autocomplete_service_js::autocomplete_get_results(
                 &typing,
                 &AcOptions {
-                    imports: false,
-                    imports_min_characters: 0,
+                    imports: true,
+                    // One character matches too much of a project to insert an
+                    // import for. Two is the shortest prefix the test types.
+                    imports_min_characters: 2,
                     imports_ranked_usage: true,
                     imports_ranked_usage_boost_exact_match_min_length: 5,
                     show_ranking_info: false,
@@ -553,13 +615,26 @@ impl Worker {
                 &cursor,
             )
             .map_err(|error| job_error(path, error))?;
+            let paths: Vec<CompactString> = (0..modules.len())
+                .map(|index| modules.source(index).0)
+                .collect();
             Ok(match found {
                 AutocompleteServiceResultGeneric::AcResult(found) => Some(Completions {
                     items: found
                         .result
                         .items
                         .iter()
-                        .map(|item| completion(item, path))
+                        .map(|item| {
+                            let mut item = completion(item, path);
+                            for edit in &mut item.additional_edits {
+                                edit.new_text = super::exports::restore_explicit_extensions(
+                                    &edit.new_text,
+                                    path,
+                                    &paths,
+                                );
+                            }
+                            item
+                        })
                         .collect(),
                     incomplete: found.result.is_incomplete,
                 }),
@@ -1093,7 +1168,33 @@ fn completion(item: &ac_completion::CompletionItem, path: &str) -> Completion {
             })
         }),
         sort_text: item.sort_text.clone(),
+        additional_edits: item
+            .additional_text_edits
+            .iter()
+            .filter_map(|(loc, text)| {
+                Some(TextEdit {
+                    span: span_of(loc, path)?,
+                    new_text: text.clone(),
+                })
+            })
+            .collect(),
     }
+}
+
+/// Drop exports of the file being completed, so it is not offered an import
+/// of itself.
+fn without_current_file(
+    mut found: flow_services_export::export_search_types::SearchResults,
+    file: &FileKey,
+) -> flow_services_export::export_search_types::SearchResults {
+    let here = file.as_str();
+    found
+        .results
+        .retain(|scored| match &scored.search_result.source {
+            flow_services_export::export_index::Source::FileKey(key) => key.as_str() != here,
+            _ => true,
+        });
+    found
 }
 
 #[cfg(test)]
@@ -1393,6 +1494,115 @@ mod tests {
             [("shapes.js", 3, 3, 7)]
         );
         assert!(worker.symbols("missing.js").is_none());
+        worker.release();
+    }
+
+    #[test]
+    fn completion_imports_a_project_export_and_forgets_it_when_the_file_changes() {
+        super::super::on_check_thread("app.js", import_a_project_export).expect("runs");
+    }
+
+    /// The import edits of the completion labelled `label`, joined.
+    fn import_text(worker: &mut Worker, path: &str, at: Position, label: &str) -> String {
+        let found = worker
+            .completion(path, at)
+            .expect("runs")
+            .expect("completed");
+        let item = found
+            .items
+            .iter()
+            .find(|item| item.label == label)
+            .unwrap_or_else(|| {
+                let labels: Vec<&str> =
+                    found.items.iter().map(|item| item.label.as_str()).collect();
+                panic!("{label} missing from {labels:?}");
+            });
+        item.additional_edits
+            .iter()
+            .map(|edit| edit.new_text.as_str())
+            .collect()
+    }
+
+    fn import_a_project_export() {
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
+        worker
+            .load(vec![
+                OwnedSource::new("app.js", "// @flow\nna\n"),
+                OwnedSource::new(
+                    "model.js",
+                    "// @flow\nexport type User = { name: string };\nexport function name(user: User): string {\n  return user.name;\n}\n",
+                ),
+            ])
+            .expect("the batch loads");
+
+        let value = import_text(&mut worker, "app.js", at(2, 3), "name");
+        assert!(value.contains("./model.js"), "{value}");
+        assert!(
+            value.contains("{ name }") || value.contains("{name}"),
+            "{value}"
+        );
+        let app = worker
+            .modules
+            .as_ref()
+            .expect("loaded")
+            .index_of("app.js")
+            .expect("app");
+        let model = worker
+            .modules
+            .as_ref()
+            .expect("loaded")
+            .index_of("model.js")
+            .expect("model");
+        assert!(worker.exports.is_some());
+        assert!(worker.file_exports.has(app));
+        assert!(worker.file_exports.has(model));
+
+        // The assembled search is still the one built for the first completion.
+        let again = import_text(&mut worker, "app.js", at(2, 3), "name");
+        assert_eq!(again, value);
+
+        worker
+            .edit(
+                "model.js",
+                "// @flow\nexport type User = { name: string };\nconst name = 1;\n".to_owned(),
+            )
+            .expect("the edit applies");
+        assert!(worker.exports.is_none());
+        assert!(worker.file_exports.has(app));
+        assert!(!worker.file_exports.has(model));
+        let found = worker
+            .completion("app.js", at(2, 3))
+            .expect("runs")
+            .expect("completed");
+        assert!(
+            found.items.iter().all(|item| {
+                item.label != "name"
+                    || item
+                        .additional_edits
+                        .iter()
+                        .all(|edit| !edit.new_text.contains("model.js"))
+            }),
+            "{:?}",
+            found
+                .items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+
+        worker
+            .edit(
+                "app.js",
+                "// @flow\nfunction f(user: Us): void { return; }\n".to_owned(),
+            )
+            .expect("the edit applies");
+        // `model.js` was not the file this edit changed, so its records stay.
+        assert!(worker.file_exports.has(model));
+        assert!(!worker.file_exports.has(app));
+        // The cursor is just after `Us` in `function f(user: Us)`.
+        let typed = import_text(&mut worker, "app.js", at(2, 20), "User");
+        assert!(typed.contains("import type"), "{typed}");
+        assert!(typed.contains("./model.js"), "{typed}");
         worker.release();
     }
 }

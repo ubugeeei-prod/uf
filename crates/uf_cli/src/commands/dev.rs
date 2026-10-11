@@ -479,7 +479,8 @@ fn serve(
 /// `uf_env` caches; a list is fetched on a thread of its own and never waited
 /// for. A hover over one of those keys says what its completion said. In every
 /// other Flow file, from [`types`]: after `value.` the members of `value`'s
-/// type with their types, and elsewhere the names in scope.
+/// type with their types, elsewhere the names in scope, and a name exported
+/// by another file of the project together with the import that brings it in.
 ///
 /// [`types`] is only there when the checker is compiled in, and the
 /// capabilities say so: a build without it advertises neither definition

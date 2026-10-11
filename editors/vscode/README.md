@@ -109,10 +109,13 @@ hierarchical, and asking for the parent selects uf's child kind.
 
 ## What does not work, and will not until the server serves it
 
-Workspace symbols, inlay hints, organize imports and auto-imports are not
-advertised. The extension does not invent them. A rename of a name declared
-under `node_modules` or in a library definition is refused rather than half
-made.
+Workspace symbols, inlay hints and organize imports are not advertised. The
+extension does not invent them. Completion does offer a name exported by
+another file of the project, and accepting it inserts the import — a relative
+specifier with `.js` or `.jsx` written out. A package under `node_modules`, an
+`export *`, and a name bound by destructuring are not offered that way. A
+rename of a name declared under `node_modules` or in a library definition is
+refused rather than half made.
 
 **Types need the file to parse.** Hover and go to definition answer nothing
 while the file has a syntax error, because there is no inference to ask;

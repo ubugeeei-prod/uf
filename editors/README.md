@@ -49,7 +49,11 @@ to eighty lines long, or an editor plugin configured to start `uf lsp`.
   reads is compiled into `uf`, and versions come from release lists uf caches
   and refreshes in the background, never on a request's time. In any other
   Flow file, Flow's completion service: after `value.` the members of
-  `value`'s type with their types, and elsewhere the names in scope.
+  `value`'s type with their types, elsewhere the names in scope, and a name
+  exported by another file of this project. Accepting that last one inserts
+  the import, a relative specifier with `.js` or `.jsx` written out. A package
+  under `node_modules`, an `export *`, and a name bound by destructuring are
+  not in that index.
 * **Find references**, **document highlights** and **rename** (with
   `prepareRename`) — Flow's references service, in the file and in every
   project file that reaches the definition through its imports, properties
@@ -60,9 +64,10 @@ to eighty lines long, or an editor plugin configured to start `uf lsp`.
   argument it is on. Flow's signature-help service. `(` opens a call, `,`
   moves to the next argument, and `<` opens a component.
 
-Not workspace symbols, inlay hints, organize imports or auto-imports. The
-server advertises none of them; `tests/library/lsp.test.js` asserts that it
-does not, so a README here cannot quietly start over-claiming.
+Not workspace symbols, inlay hints or organize imports. The server advertises
+none of them; `tests/library/lsp.test.js` asserts that it does not, so a
+README here cannot quietly start over-claiming. Auto-import of a project
+export is part of completion, above, and is not a separate capability.
 
 ## Keeping TypeScript's server off Flow files
 

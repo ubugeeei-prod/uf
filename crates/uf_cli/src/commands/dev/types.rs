@@ -44,6 +44,10 @@
 //!   open, so a definition that lands only there is `null`.
 //! * **A package installed after the batch was assembled.** The batch is read
 //!   once; a restart picks the new package up.
+//! * **An auto-import from a package, an `export *`, or a destructured
+//!   binding.** Completion inserts a relative import of a named or default
+//!   export of another project file, with `.js` or `.jsx` written out. Those
+//!   three are not names this index can honestly import.
 //! * **References inside `node_modules`.** A search covers the project's own
 //!   files; a package's uses of a project name are not the project's to find
 //!   or rename. A rename of a name a package or a library definition declares
@@ -709,6 +713,19 @@ impl Types {
                         "range": range_in(text, &edit.replace),
                         "newText": edit.new_text,
                     });
+                }
+                if !item.additional_edits.is_empty() {
+                    encoded["additionalTextEdits"] = Value::Array(
+                        item.additional_edits
+                            .iter()
+                            .map(|edit| {
+                                json!({
+                                    "range": range_in(text, &edit.span),
+                                    "newText": edit.new_text,
+                                })
+                            })
+                            .collect(),
+                    );
                 }
                 encoded
             })

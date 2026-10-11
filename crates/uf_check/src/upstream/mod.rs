@@ -28,6 +28,7 @@ mod builtins;
 pub(crate) mod closure;
 mod convert;
 mod environments;
+mod exports;
 mod graph;
 mod options;
 mod packages;

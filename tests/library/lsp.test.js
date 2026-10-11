@@ -63,19 +63,20 @@ type Diagnostic = {
 // `textDocument/definition` with `Location`s (`uri`, `range`); the tests tell
 // them apart by which fields are set, which is itself part of what they check.
 type Entry = {
-  uri?          : string,
-  range?        : Range,
-  newText?      : string,
-  title?        : string,
-  kind?         : string | number,
-  diagnostics?  : Array<Diagnostic>,
-  edit?         : { changes: { [uri: string]: Array<Entry> } },
-  label?        : string,
-  detail?       : string,
-  documentation?: { kind: string, value: string },
-  textEdit?     : Entry,
-  filterText?   : string,
-  sortText?     : string,
+  uri?                : string,
+  range?              : Range,
+  newText?            : string,
+  title?              : string,
+  kind?               : string | number,
+  diagnostics?        : Array<Diagnostic>,
+  edit?               : { changes: { [uri: string]: Array<Entry> } },
+  label?              : string,
+  detail?             : string,
+  documentation?      : { kind: string, value: string },
+  textEdit?           : Entry,
+  additionalTextEdits?: Array<Entry>,
+  filterText?         : string,
+  sortText?           : string,
   // A `DocumentSymbol`.
   name?          : string,
   selectionRange?: Range,
@@ -871,6 +872,34 @@ describe("types", () => {
       expect(offered).toContainEqual(["name", "string"]);
       // `user.` offers what `User` has, and nothing that is merely in scope.
       expect(offered.map(([label]) => label)).not.toContain("greeting");
+    });
+  });
+
+  it("offers an export from another project file, with the import that brings it in", () => {
+    withProject((root, uri) => {
+      const typing = "// @flow\ngre";
+      const messages = session(
+        [
+          open(uri("src/app.js"), typing),
+          at(1, "textDocument/completion", uri("src/app.js"), 1, 3),
+          EXIT,
+        ],
+        root,
+      );
+      const result = answered(messages, 1);
+      const greet = (result.items ?? []).find((item) => item.label === "greet");
+      if (greet == null) {
+        throw new Error(`no greet among ${JSON.stringify(result.items ?? [])}`);
+      }
+      const imported = apply(typing, [
+        present(greet.textEdit, "textEdit"),
+        ...present(greet.additionalTextEdits, "additionalTextEdits"),
+      ]);
+
+      // The prefix becomes the exported name, and the import names the file
+      // with the extension uf's modules use.
+      expect(imported).toContain("greet");
+      expect(imported).toContain('from "./user.js"');
     });
   });
 

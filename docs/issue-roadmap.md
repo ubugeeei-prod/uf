@@ -96,8 +96,10 @@
       files, into `node_modules` and into `flow-typed/`), the symbols of the
       hovered type for `textDocument/typeDefinition`, and the autocomplete
       service for `textDocument/completion` (members after `.`, with their
-      types). An edit invalidates the edited file and what imports it, and is
-      re-inferred when next asked about. Measured on this repository with the
+      types, and a name exported by another project file with the relative
+      import that brings it in; packages, `export *` and destructured bindings
+      stay out of that index). An edit invalidates the edited file and what
+      imports it, and is re-inferred when next asked about. Measured on this repository with the
       `ci-opt` build: warm hover p95 0.2–4.6 ms across four files, inside the
       50 ms target; the first hover after an edit p95 7 ms on a 155-line file
       and 153 ms on a 2,375-line one, but 355 ms on

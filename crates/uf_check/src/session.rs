@@ -32,7 +32,7 @@
 //! | [`Session::type_at`] | `flow_typing::query_types::type_at_pos_type`, printed by `ty_printer::string_of_type_at_pos_result` |
 //! | [`Session::definition`] | `flow_services_get_def::get_def_js::get_def` |
 //! | [`Session::type_definition`] | the symbols `type_at_pos_type` reports for the type it printed |
-//! | [`Session::completion`] | `flow_services_autocomplete::autocomplete_service_js` |
+//! | [`Session::completion`] | `flow_services_autocomplete::autocomplete_service_js`, over an index of the project's own exports so a name from another file can be imported |
 //! | [`Session::signature_help`] | `flow_services_type_info::signature_help::find_signatures` |
 //! | [`Session::diagnostics`] | the context's own errors, filtered and printed as `uf check` does |
 //! | [`Session::references`] | `flow_services_references::find_refs_js`, over the file asked about and every file that reaches the definition through an import |
@@ -130,6 +130,9 @@ pub struct Completion {
     pub edit: Option<CompletionEdit>,
     /// The key an editor sorts by, when the service ranked the items.
     pub sort_text: Option<String>,
+    /// Edits besides the insertion. The import that brings a project export
+    /// into this file, when the name is not already in scope.
+    pub additional_edits: Vec<TextEdit>,
 }
 
 /// The text a completion inserts and the range it covers.
