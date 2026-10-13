@@ -112,7 +112,10 @@
       references cross into every project file that reaches the definition
       through its imports. `textDocument/signatureHelp` is Flow's
       `flow_services_type_info::signature_help` over the same session: a call,
-      and a component's props. Not yet: that 200 ms target on the largest
+      and a component's props. A type error whose rewrite Flow can make inside
+      the file is a `quickfix` from `ast_transforms_of_error`; a fix that needs
+      another file's signature is not, and `source.fixAll` stays the linter's.
+      Not yet: that 200 ms target on the largest
       files, and answers in a file that does not parse.
 - [x] Add editor integration directories for VS Code, Neovim, Emacs, Vim, Helix, Zed, and Cursor.
 - [x] Implement editor extension packages on top of `uf lsp`.

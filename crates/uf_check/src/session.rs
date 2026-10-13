@@ -34,6 +34,7 @@
 //! | [`Session::type_definition`] | the symbols `type_at_pos_type` reports for the type it printed |
 //! | [`Session::completion`] | `flow_services_autocomplete::autocomplete_service_js`, over an index of the project's own exports so a name from another file can be imported |
 //! | [`Session::signature_help`] | `flow_services_type_info::signature_help::find_signatures` |
+//! | [`Session::quick_fixes`] | `flow_services_code_action::code_action_service::ast_transforms_of_error`, for a type error whose rewrite stays in the file |
 //! | [`Session::diagnostics`] | the context's own errors, filtered and printed as `uf check` does |
 //! | [`Session::references`] | `flow_services_references::find_refs_js`, over the file asked about and every file that reaches the definition through an import |
 //! | [`Session::highlights`] | `find_refs_js::find_local_refs`, over the one file |
@@ -202,7 +203,7 @@ pub struct References {
     pub declarations: Vec<Span>,
 }
 
-/// One replacement a rename makes.
+/// One replacement a rename or a type-error quick fix makes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextEdit {
     /// The text replaced.
@@ -211,6 +212,22 @@ pub struct TextEdit {
     /// behind a shorthand property `{ user }` writes `{ user: account }`, so
     /// the property keeps its name.
     pub new_text: String,
+}
+
+/// A rewrite Flow can make for one type error in the file that was asked about.
+///
+/// The title is Flow's. [`Self::safe`] is Flow's judgement that the rewrite
+/// fixes the error and can run on save. A caller that applies fixes unattended
+/// uses that bit; this session does not apply anything itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuickFix {
+    /// What an editor shows on the lightbulb, in Flow's words.
+    pub title: String,
+    /// The replacements, in the order Flow's printer emitted them. Every span
+    /// is in the file that was asked about.
+    pub edits: Vec<TextEdit>,
+    /// Flow's `WillFixErrorAndSafeForRunningOnSave`.
+    pub safe: bool,
 }
 
 /// What renaming the name under a position would do.
@@ -435,8 +452,9 @@ impl Session {
     /// What may be written at `at`: after `value.`, the members of `value`'s
     /// type with their types; elsewhere, the names in scope.
     ///
-    /// Auto-imports are not offered: the session has no index of what the
-    /// project exports.
+    /// A name exported by another file of the project is offered with the
+    /// relative import that brings it in. A package, an `export *`, and a
+    /// destructured binding are not in that index.
     ///
     /// # Errors
     ///
@@ -478,6 +496,32 @@ impl Session {
         #[cfg(not(feature = "upstream-typecheck"))]
         {
             let _ = (path, at);
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// The rewrites Flow can make for type errors in `path` whose locations
+    /// meet `span`.
+    ///
+    /// Each one is a diff of this file against the program
+    /// `ast_transforms_of_error` returns. A rewrite that needs another file's
+    /// typed signature, Flow's heap, or a package index is not offered: those
+    /// lookups have nothing to read here. A suppressed error is not offered
+    /// either, and neither is organize-imports. [`QuickFix::safe`] is Flow's
+    /// own judgement; nothing here applies a fix on save.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::type_at`].
+    pub fn quick_fixes(&self, path: &str, span: Span) -> Result<Vec<QuickFix>, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let path = path.to_owned();
+            self.ask(move |worker| worker.quick_fixes(&path, span))
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = (path, span);
             Err(CheckError::Unavailable)
         }
     }

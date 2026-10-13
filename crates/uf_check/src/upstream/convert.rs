@@ -170,15 +170,36 @@ fn diagnostic(
     let code = code_of_printable_error(error).map(ErrorCode::as_str);
     let mut message = segments(value.get("messageMarkup"));
     strip_code_suffix(&mut message, code, error_kind);
+    let mut primary = primary;
+    restore_asked_path(&mut primary, fallback_path);
+    let mut root = span(value.get("rootLoc"));
+    if let Some(root) = root.as_mut() {
+        restore_asked_path(root, fallback_path);
+    }
+    let mut related = related(value.get("referenceLocs"));
+    for location in &mut related {
+        restore_asked_path(&mut location.span, fallback_path);
+    }
 
     TypeDiagnostic {
         severity,
         kind: kind(error_kind),
         code,
         primary,
-        root: span(value.get("rootLoc")),
+        root,
         message,
-        related: related(value.get("referenceLocs")),
+        related,
+    }
+}
+
+/// Flow's error printer writes an absolute path as `../` plus that path when
+/// the path is outside the virtual project root, which is `..//project/a.js`
+/// for `/project/a.js`. The batch's own path is the one a caller asked about.
+fn restore_asked_path(span: &mut Span, fallback: &str) {
+    let rewritten =
+        fallback.starts_with('/') && span.path.as_str().strip_prefix("../") == Some(fallback);
+    if rewritten {
+        span.path = CompactString::new(fallback);
     }
 }
 

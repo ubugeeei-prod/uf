@@ -49,8 +49,11 @@ cursor, where a name or a type is declared — across files and into `node_modul
 — the members of a value after `.`, and a name exported by another file of the
 project, with the relative import that brings it in. A package under
 `node_modules`, an `export *`, and a name bound by destructuring are outside
-that import. There are no inlay hints and no workspace symbols, and
-`source.organizeImports` is not advertised. Against TypeScript 7's own server,
+that import. A type error whose rewrite Flow can make inside the file is a
+`quickfix`. A fix that needs another file's signature, or a package, is not,
+and `source.fixAll` stays the linter's. There are no inlay hints and no
+workspace symbols, and `source.organizeImports` is not advertised. Against
+TypeScript 7's own server,
 which advertises those and a broader auto-import, that is still most of the gap.
 `tests/library/lsp.test.js` drives the real binary and asserts both the
 capabilities the READMEs claim and the absence of the ones they disclaim.

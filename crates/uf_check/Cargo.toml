@@ -40,6 +40,7 @@ upstream-typecheck = [
   "dep:flow_services_get_def",
   "dep:flow_services_references",
   "dep:flow_services_type_info",
+  "dep:flow_services_code_action",
   "dep:flow_server_env",
   "dep:flow_type_sig",
   "dep:flow_typing",
@@ -91,6 +92,10 @@ flow_services_references = { workspace = true, optional = true }
 # `flow_services_type_info::signature_help`, the service its language server
 # calls. The result type lives in `flow_server_env`, which this crate pulls in.
 flow_services_type_info = { workspace = true, optional = true }
+# Type-error quick fixes (`Session::quick_fixes`): Flow's
+# `ast_transforms_of_error`. The server heap stays unread; a rewrite that
+# needs another file's signature is not offered. See `session`.
+flow_services_code_action = { workspace = true, optional = true }
 # `FuncDetailsResult`, the shape `find_signatures` returns. Not used for the
 # server itself.
 flow_server_env = { workspace = true, optional = true }

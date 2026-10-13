@@ -34,8 +34,11 @@ to eighty lines long, or an editor plugin configured to start `uf lsp`.
   information.
 * **Formatting** — `textDocument/formatting`, from `uf_fmt`. One edit over the
   whole document, because the printer reprints from the syntax tree.
-* **Code actions** — `quickfix` for the diagnostics with a mechanical answer,
-  and `source.fixAll.uf` for all of them at once.
+* **Code actions** — `quickfix` for a lint diagnostic with a mechanical answer,
+  and for a type error whose rewrite Flow can make inside this file. A rewrite
+  that needs another file's typed signature, or a package, is not offered.
+  `source.fixAll.uf` is every safe lint fix at once, and does not apply type
+  rewrites.
 * **Hover** — the rule behind a diagnostic, what an import specifier names,
   what a rule id in a suppression comment means, a key of `uf.config.js`, and
   anywhere else in a Flow file the type under the cursor as Flow infers it.

@@ -26,6 +26,7 @@ use flow_services_autocomplete::autocomplete_service_js::{
 };
 use flow_services_autocomplete::module_system_info::LspModuleSystemInfo;
 use flow_services_autocomplete::{autocomplete_js, autocomplete_sigil};
+use flow_services_code_action::code_action_service::{QuickfixConfidence, ast_transforms_of_error};
 use flow_services_get_def::find_refs_utils::AstInfo;
 use flow_services_get_def::get_def_js::{self, GetDefResult};
 use flow_services_get_def::get_def_types::{DefInfo, PropertyDefInfo, Purpose};
@@ -36,6 +37,7 @@ use flow_services_references::{prepare_rename_searcher, rename_mapper};
 use flow_services_type_info::signature_help::find_signatures;
 use flow_typing::{query_types, type_inference};
 use flow_typing_context::Context;
+use flow_typing_errors::error_message::ErrorMessage;
 use flow_typing_utils::typed_ast_utils::AvailableAst;
 use flow_utils_concurrency::check_budget::CheckBudget;
 
@@ -46,7 +48,7 @@ use super::{
 };
 use crate::limits::CHECK_STACK_BYTES;
 use crate::session::{
-    Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, Parameter,
+    Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, Parameter, QuickFix,
     References, Rename, Signature, SignatureHelp, Symbol, TextEdit, TypeAt,
 };
 use crate::{CheckError, CheckLimits, Position, Source, Span, TypeDiagnostic};
@@ -683,6 +685,105 @@ impl Worker {
         }))
     }
 
+    /// Rewrites Flow can make for type errors in `path` that meet `span`.
+    ///
+    /// [`Self::diagnostics`] runs first, which is what applies suppressions.
+    /// An error that did not survive that — a `$FlowFixMe`, a silenced lint —
+    /// is not offered a fix. The transform itself is Flow's
+    /// `ast_transforms_of_error`. The heap, a haste name and another file's
+    /// type signature are passed as lookups that find nothing, so a rewrite
+    /// that needs one of them comes back empty and is skipped. A patch whose
+    /// source is a different file is skipped too: this answer is the file
+    /// that was asked about.
+    pub(crate) fn quick_fixes(
+        &mut self,
+        path: &str,
+        span: Span,
+    ) -> Result<Vec<QuickFix>, CheckError> {
+        if span.path.as_str() != path {
+            return Ok(Vec::new());
+        }
+        let Some(published) = self.diagnostics(path)? else {
+            return Ok(Vec::new());
+        };
+        let Some(checked) = self.checked(path)? else {
+            return Ok(Vec::new());
+        };
+        let Some(modules) = self.modules.clone() else {
+            return Ok(Vec::new());
+        };
+        // Flow's `ast_transforms_of_error` takes `Arc`. The table closed over
+        // stays on this thread, so it is not `Send`.
+        #[allow(
+            clippy::arc_with_non_send_sync,
+            reason = "Flow's ast_transforms_of_error takes Arc, and this table stays on the check thread"
+        )]
+        let loc_of_aloc: Arc<dyn Fn(&ALoc) -> Loc> = Arc::new(self.loc_of_aloc());
+        let errors = checked
+            .inferred
+            .cx
+            .errors()
+            .union(&modules.signature_errors(checked.index));
+        let request = loc_covering(&checked.parsed.file_key, &span);
+        let mut fixes: Vec<QuickFix> = Vec::new();
+        for error in errors.iter() {
+            let mapped = ErrorMessage::map_loc_of_error_message(
+                {
+                    let loc_of_aloc = loc_of_aloc.dupe();
+                    move |aloc| loc_of_aloc(&aloc)
+                },
+                error.msg_of_error().clone(),
+            );
+            let Some(error_loc) = mapped.loc_of_msg() else {
+                continue;
+            };
+            if !published_meets(&published, path, &error_loc) {
+                continue;
+            }
+            let transforms = ast_transforms_of_error(
+                loc_of_aloc.dupe(),
+                None,
+                nothing_to_read(),
+                nothing_to_read(),
+                nothing_to_read(),
+                Some(request.dupe()),
+                &mapped,
+            );
+            for found in transforms {
+                let safe = matches!(
+                    found.confidence,
+                    QuickfixConfidence::WillFixErrorAndSafeForRunningOnSave,
+                );
+                let title = found.title;
+                let Some(new_ast) = (found.transform)(
+                    &checked.inferred.cx,
+                    checked.parsed.file_sig.dupe(),
+                    checked.parsed.ast.as_ref(),
+                    &checked.inferred.typed_ast,
+                    found.target_loc,
+                ) else {
+                    continue;
+                };
+                let changes = flow_ast_differ::program(checked.parsed.ast.as_ref(), &new_ast);
+                let patches = replacement_printer::mk_loc_patch_ast_differ(
+                    &js_layout_generator::default_opts(),
+                    &changes,
+                );
+                let Some(edits) = edits_in(path, patches) else {
+                    continue;
+                };
+                if fixes
+                    .iter()
+                    .any(|have| have.title == title && have.edits == edits)
+                {
+                    continue;
+                }
+                fixes.push(QuickFix { title, edits, safe });
+            }
+        }
+        Ok(fixes)
+    }
+
     /// Find references from `at` in `path`: the definition the name leads to,
     /// and every reference to it in `path` and in the files that can see it.
     ///
@@ -1127,6 +1228,77 @@ fn cursor(file_key: &FileKey, at: Position) -> Loc {
     )
 }
 
+/// A uf span as the Flow range it names, in `file_key`.
+///
+/// Columns go back to zero-based. The end stays exclusive.
+fn loc_covering(file_key: &FileKey, span: &Span) -> Loc {
+    let line = |at: u32| i32::try_from(at).unwrap_or(i32::MAX);
+    let column = |at: u32| i32::try_from(at.saturating_sub(1)).unwrap_or(i32::MAX);
+    Loc {
+        source: Some(file_key.dupe()),
+        start: flow_parser::loc::Position {
+            line: line(span.start.line),
+            column: column(span.start.column),
+        },
+        end: flow_parser::loc::Position {
+            line: line(span.end.line),
+            column: column(span.end.column),
+        },
+    }
+}
+
+/// Whether `loc` meets a diagnostic [`Self::diagnostics`] actually published
+/// for `path`: the primary caret, or the wider root when Flow gave one.
+fn published_meets(published: &[TypeDiagnostic], path: &str, loc: &Loc) -> bool {
+    let Some(error_span) = span_of(loc, path) else {
+        return false;
+    };
+    if error_span.path.as_str() != path {
+        return false;
+    }
+    published.iter().any(|diagnostic| {
+        spans_overlap(&diagnostic.primary, &error_span)
+            || diagnostic
+                .root
+                .as_ref()
+                .is_some_and(|root| spans_overlap(root, &error_span))
+    })
+}
+
+/// Half-open ranges in the same file that share a byte.
+fn spans_overlap(left: &Span, right: &Span) -> bool {
+    left.path == right.path && !(left.end < right.start || left.start > right.end)
+}
+
+/// A lookup that finds nothing. The three arguments of `ast_transforms_of_error`
+/// that need another file share this shape.
+type AbsentLookup<T> = Arc<dyn Fn(&FileKey) -> Option<T>>;
+
+/// A lookup this session cannot answer: another file's AST, a haste name, or
+/// a packed type signature. Flow then skips the rewrites that need one.
+fn nothing_to_read<T: 'static>() -> AbsentLookup<T> {
+    Arc::new(|_: &FileKey| None)
+}
+
+/// `patches` as edits in `path`.
+///
+/// [`None`] when a patch names another file, or names no place: applying the
+/// rest would leave the rewrite half done.
+fn edits_in(path: &str, patches: Vec<(Loc, String)>) -> Option<Vec<TextEdit>> {
+    let mut edits = Vec::new();
+    for (loc, new_text) in patches {
+        if loc.source.as_ref().is_some_and(|key| key.as_str() != path) {
+            return None;
+        }
+        let span = span_of(&loc, path)?;
+        if span.path.as_str() != path {
+            return None;
+        }
+        edits.push(TextEdit { span, new_text });
+    }
+    (!edits.is_empty()).then_some(edits)
+}
+
 /// A Flow location as a uf span, in `fallback` when it names no file.
 ///
 /// Zero-based columns become one-based, and the end stays exclusive, which is
@@ -1494,6 +1666,119 @@ mod tests {
             [("shapes.js", 3, 3, 7)]
         );
         assert!(worker.symbols("missing.js").is_none());
+        worker.release();
+    }
+
+    #[test]
+    fn quick_fix_rewrites_a_plus_sigil_to_readonly_where_the_cursor_is() {
+        super::super::on_check_thread("app.js", plus_sigil_to_readonly).expect("runs");
+    }
+
+    fn covering(path: &str, line: u32, start: u32, end: u32) -> Span {
+        Span {
+            path: path.into(),
+            start: Position {
+                line,
+                column: start,
+            },
+            end: Position { line, column: end },
+        }
+    }
+
+    /// `+` in `type T= {+x:string}` is the tenth byte of that line.
+    fn plus_sigil_to_readonly() {
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
+        worker
+            .load(vec![OwnedSource::new(
+                "app.js",
+                "// @flow\ntype T= {+x:string};\n",
+            )])
+            .expect("the batch loads");
+        // A cursor is an empty range: the request an editor sends when it is
+        // sitting on the `+`, which is the tenth byte of the line.
+        let fixes = worker
+            .quick_fixes("app.js", covering("app.js", 2, 10, 10))
+            .expect("runs");
+        let fix = fixes
+            .iter()
+            .find(|fix| fix.title.contains("readonly"))
+            .unwrap_or_else(|| panic!("{fixes:?}"));
+        assert!(fix.safe, "{:?}", fix.title);
+        assert!(
+            fix.edits
+                .iter()
+                .any(|edit| edit.new_text.contains("readonly")),
+            "{:?}",
+            fix.edits
+        );
+        let elsewhere = worker
+            .quick_fixes("app.js", covering("app.js", 1, 1, 1))
+            .expect("runs");
+        assert!(
+            elsewhere.iter().all(|fix| !fix.title.contains("readonly")),
+            "{elsewhere:?}"
+        );
+
+        worker
+            .edit("app.js", "// @flow\ntype T= {-x:string};\n".to_owned())
+            .expect("the edit applies");
+        let fixes = worker
+            .quick_fixes("app.js", covering("app.js", 2, 10, 11))
+            .expect("runs");
+        assert!(
+            fixes.iter().any(|fix| {
+                fix.title.contains("writeonly")
+                    && fix
+                        .edits
+                        .iter()
+                        .any(|edit| edit.new_text.contains("writeonly"))
+            }),
+            "{fixes:?}"
+        );
+
+        // A suppression that ate the error is not a lightbulb. The published
+        // diagnostics are what the editor shows, and this error is not among
+        // them.
+        worker
+            .edit(
+                "app.js",
+                "// @flow\n// $FlowFixMe[unsupported-syntax]\ntype T= {+x:string};\n".to_owned(),
+            )
+            .expect("the edit applies");
+        let hidden = worker
+            .quick_fixes("app.js", covering("app.js", 3, 10, 11))
+            .expect("runs");
+        assert!(
+            hidden.iter().all(|fix| !fix.title.contains("readonly")),
+            "{hidden:?}"
+        );
+        worker.release();
+    }
+
+    #[test]
+    fn quick_fix_rewrites_a_plus_sigil_in_an_absolute_path() {
+        super::super::on_check_thread("app.js", plus_sigil_absolute).expect("runs");
+    }
+
+    fn plus_sigil_absolute() {
+        let path = "/project/a.js";
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
+        worker
+            .load(vec![OwnedSource::new(
+                path,
+                "// @flow\ntype T= {+x:string};\n",
+            )])
+            .expect("the batch loads");
+        let fixes = worker
+            .quick_fixes(path, covering(path, 2, 10, 10))
+            .expect("runs");
+        assert!(
+            fixes.iter().any(|fix| {
+                fix.title.contains("readonly")
+                    && fix.edits.iter().any(|edit| edit.span.path.as_str() == path)
+            }),
+            "{fixes:?}"
+        );
         worker.release();
     }
 
