@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.40.0
+
+- feat(lsp): offer a quick fix when Flow can rewrite a type error in the file (#1888) (77aa8163)
+
 ## uf@0.39.0
 
 - feat(lsp): import a name exported by another project file (#1886) (0bc6a1a1)
