@@ -1756,6 +1756,33 @@ mod tests {
     }
 
     #[test]
+    fn quick_fix_rewrites_a_plus_sigil_in_an_absolute_path() {
+        super::super::on_check_thread("app.js", plus_sigil_absolute).expect("runs");
+    }
+
+    fn plus_sigil_absolute() {
+        let path = "/project/a.js";
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
+        worker
+            .load(vec![OwnedSource::new(
+                path,
+                "// @flow\ntype T= {+x:string};\n",
+            )])
+            .expect("the batch loads");
+        let fixes = worker
+            .quick_fixes(path, covering(path, 2, 10, 10))
+            .expect("runs");
+        assert!(
+            fixes.iter().any(|fix| {
+                fix.title.contains("readonly")
+                    && fix.edits.iter().any(|edit| edit.span.path.as_str() == path)
+            }),
+            "{fixes:?}"
+        );
+        worker.release();
+    }
+
+    #[test]
     fn completion_imports_a_project_export_and_forgets_it_when_the_file_changes() {
         super::super::on_check_thread("app.js", import_a_project_export).expect("runs");
     }
