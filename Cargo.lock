@@ -375,6 +375,15 @@ dependencies = [
 
 [[package]]
 name = "block-buffer"
+version = "0.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
+dependencies = [
+ "generic-array",
+]
+
+[[package]]
+name = "block-buffer"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2f6c7dbe95a6ed67ad9f18e57daf93a2f034c524b99fd2b76d18fdfeb6660aa"
@@ -793,6 +802,16 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
 name = "crypto-common"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
+dependencies = [
+ "generic-array",
+ "typenum",
+]
+
+[[package]]
+name = "crypto-common"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce6e4c961d6cd6c9a86db418387425e8bdeaf05b3c8bc1411e6dca4c252f1453"
@@ -818,13 +837,23 @@ checksum = "6184e33543162437515c2e2b48714794e37845ec9851711914eec9d308f6ebe8"
 
 [[package]]
 name = "digest"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
+dependencies = [
+ "block-buffer 0.10.4",
+ "crypto-common 0.1.7",
+]
+
+[[package]]
+name = "digest"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
- "block-buffer",
+ "block-buffer 0.12.1",
  "const-oid",
- "crypto-common",
+ "crypto-common 0.2.2",
 ]
 
 [[package]]
@@ -1008,6 +1037,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow_cgroup"
+version = "0.0.0"
+dependencies = [
+ "flow_procfs",
+]
+
+[[package]]
 name = "flow_check_cache"
 version = "0.0.0"
 dependencies = [
@@ -1038,6 +1074,13 @@ dependencies = [
  "serde",
  "serde_json",
  "vec1",
+]
+
+[[package]]
+name = "flow_common_build_id"
+version = "0.0.0"
+dependencies = [
+ "flow_common_xx",
 ]
 
 [[package]]
@@ -1102,6 +1145,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow_common_transaction"
+version = "0.0.0"
+dependencies = [
+ "flow_hh_logger",
+]
+
+[[package]]
 name = "flow_common_ty"
 version = "0.0.0"
 dependencies = [
@@ -1124,6 +1174,13 @@ dependencies = [
  "flow_parser",
  "rand 0.10.2",
  "serde",
+]
+
+[[package]]
+name = "flow_common_vcs"
+version = "0.0.0"
+dependencies = [
+ "tokio",
 ]
 
 [[package]]
@@ -1251,6 +1308,13 @@ dependencies = [
  "flow_type_sig",
  "lz4_flex",
  "parking_lot",
+]
+
+[[package]]
+name = "flow_hh_json"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]
@@ -1407,6 +1471,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow_procfs"
+version = "0.0.0"
+
+[[package]]
+name = "flow_profiling"
+version = "0.0.0"
+dependencies = [
+ "flow_cgroup",
+ "flow_common_utils",
+ "flow_heap",
+ "flow_hh_json",
+ "flow_hh_logger",
+ "nix",
+ "serde_json",
+]
+
+[[package]]
+name = "flow_saved_state"
+version = "0.0.0"
+dependencies = [
+ "bincode",
+ "dupe",
+ "flow_common",
+ "flow_common_build_id",
+ "flow_common_utils",
+ "flow_config",
+ "flow_data_structure_wrapper",
+ "flow_heap",
+ "flow_hh_logger",
+ "flow_parser",
+ "flow_saved_state_fetcher",
+ "flow_server_env",
+ "flow_server_files",
+ "flow_services_export",
+ "flow_typing_errors",
+ "lz4_flex",
+ "serde",
+]
+
+[[package]]
+name = "flow_saved_state_fetcher"
+version = "0.0.0"
+dependencies = [
+ "flow_common",
+ "flow_common_vcs",
+ "flow_hh_logger",
+ "regex",
+]
+
+[[package]]
 name = "flow_server_env"
 version = "0.0.0"
 dependencies = [
@@ -1442,6 +1556,14 @@ dependencies = [
  "tokio",
  "uuid",
  "vec1",
+]
+
+[[package]]
+name = "flow_server_files"
+version = "0.0.0"
+dependencies = [
+ "flow_common",
+ "md-5",
 ]
 
 [[package]]
@@ -1482,6 +1604,48 @@ dependencies = [
  "flow_typing_utils",
  "flow_utils_concurrency",
  "lsp-types",
+]
+
+[[package]]
+name = "flow_services_code_action"
+version = "0.0.0"
+dependencies = [
+ "dupe",
+ "flow_aloc",
+ "flow_analysis",
+ "flow_check_cache",
+ "flow_common",
+ "flow_common_errors",
+ "flow_common_modulename",
+ "flow_common_ty",
+ "flow_data_structure_wrapper",
+ "flow_env_builder",
+ "flow_heap",
+ "flow_hh_logger",
+ "flow_lint_settings",
+ "flow_lsp",
+ "flow_parser",
+ "flow_parser_utils",
+ "flow_parser_utils_output",
+ "flow_server_env",
+ "flow_services_autocomplete",
+ "flow_services_export",
+ "flow_services_inference",
+ "flow_services_inference_types",
+ "flow_type_sig",
+ "flow_typing",
+ "flow_typing_context",
+ "flow_typing_errors",
+ "flow_typing_flow_common",
+ "flow_typing_flow_js",
+ "flow_typing_statement",
+ "flow_typing_ty_normalizer",
+ "flow_typing_type",
+ "flow_typing_utils",
+ "flow_typing_visitors",
+ "lsp-types",
+ "serde_json",
+ "vec1",
 ]
 
 [[package]]
@@ -1549,6 +1713,77 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow_services_inference"
+version = "0.0.0"
+dependencies = [
+ "crossbeam",
+ "dupe",
+ "flow_aloc",
+ "flow_check_cache",
+ "flow_common",
+ "flow_common_cycle_hash",
+ "flow_common_errors",
+ "flow_common_exit_status",
+ "flow_common_modulename",
+ "flow_common_semver",
+ "flow_common_tarjan",
+ "flow_common_transaction",
+ "flow_common_utils",
+ "flow_common_xx",
+ "flow_config",
+ "flow_data_structure_wrapper",
+ "flow_event_logger",
+ "flow_heap",
+ "flow_hh_logger",
+ "flow_imports_exports",
+ "flow_lazy",
+ "flow_lint_settings",
+ "flow_parser",
+ "flow_parser_utils",
+ "flow_parsing",
+ "flow_profiling",
+ "flow_saved_state",
+ "flow_saved_state_fetcher",
+ "flow_server_env",
+ "flow_server_files",
+ "flow_services_coverage",
+ "flow_services_export",
+ "flow_services_get_def",
+ "flow_services_inference_types",
+ "flow_services_module",
+ "flow_services_references",
+ "flow_type_sig",
+ "flow_typing",
+ "flow_typing_builtins",
+ "flow_typing_context",
+ "flow_typing_errors",
+ "flow_typing_flow_common",
+ "flow_typing_flow_js",
+ "flow_typing_type",
+ "flow_typing_utils",
+ "flow_utils_concurrency",
+ "serde_json",
+ "vec1",
+]
+
+[[package]]
+name = "flow_services_inference_types"
+version = "0.0.0"
+dependencies = [
+ "flow_aloc",
+ "flow_common",
+ "flow_parser",
+ "flow_parser_utils",
+ "flow_parsing",
+ "flow_services_coverage",
+ "flow_services_references",
+ "flow_type_sig",
+ "flow_typing_context",
+ "flow_typing_errors",
+ "flow_typing_type",
+]
+
+[[package]]
 name = "flow_services_module"
 version = "0.0.0"
 dependencies = [
@@ -1574,10 +1809,12 @@ dependencies = [
  "flow_analysis",
  "flow_common",
  "flow_data_structure_wrapper",
+ "flow_heap",
  "flow_lsp",
  "flow_parser",
  "flow_parser_utils",
  "flow_parser_utils_output",
+ "flow_server_env",
  "flow_services_get_def",
  "flow_typing_context",
  "flow_typing_flow_js",
@@ -2124,6 +2361,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c31b6d751ae2c7f11320402d34e41349dd1016f8d5d45e48c4312bc8625af50c"
 dependencies = [
  "byteorder",
+]
+
+[[package]]
+name = "generic-array"
+version = "0.14.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
+dependencies = [
+ "typenum",
+ "version_check",
 ]
 
 [[package]]
@@ -2679,6 +2926,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ea1f30cedd69f0a2954655f7188c6a834246d2bcf1e315e2ac40c4b24dc9519"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "md-5"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
+dependencies = [
+ "cfg-if",
+ "digest 0.10.7",
 ]
 
 [[package]]
@@ -4184,7 +4441,7 @@ checksum = "446ba717509524cb3f22f17ecc096f10f4822d76ab5c0b9822c5f9c284e825f4"
 dependencies = [
  "cfg-if",
  "cpufeatures",
- "digest",
+ "digest 0.11.3",
 ]
 
 [[package]]
@@ -4795,6 +5052,7 @@ dependencies = [
  "flow_parsing",
  "flow_server_env",
  "flow_services_autocomplete",
+ "flow_services_code_action",
  "flow_services_export",
  "flow_services_get_def",
  "flow_services_references",

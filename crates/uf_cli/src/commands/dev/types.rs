@@ -1,6 +1,7 @@
 //! Types in the editor: type errors, hover, go to definition, go to type
 //! definition, completion, signature help, find references, document
-//! highlights, rename and the document outline, answered by Flow's own
+//! highlights, rename, quick fixes for a type error whose rewrite stays in
+//! the file, and the document outline, answered by Flow's own
 //! inference and services.
 //!
 //! Every answer here comes from a [`uf_check::Session`] — the project checked
@@ -54,6 +55,10 @@
 //!   is refused rather than half made.
 //! * **A property reached only through an object literal** checked against an
 //!   annotated type: see [`uf_check::Session::references`].
+//! * **A quick fix that needs another file's typed signature, Flow's heap, or
+//!   a package index.** A type error whose rewrite Flow can make inside this
+//!   file is a `quickfix`. Organize imports is not offered: uf has no
+//!   import-order opinion.
 
 use std::sync::mpsc;
 
@@ -781,6 +786,65 @@ impl Types {
             "activeSignature": found.active_signature,
             "activeParameter": found.active_parameter,
         })
+    }
+
+    /// Type-error quick fixes whose locations meet the requested range, as
+    /// `CodeAction`s.
+    ///
+    /// Empty when the file is not Flow, the session cannot answer, or Flow
+    /// has no same-file rewrite there. A failure is said on stderr and is
+    /// also empty, so the linter's own fixes still answer the request.
+    pub(super) fn type_fixes(
+        &mut self,
+        documents: &FxHashMap<String, Document>,
+        uri: &str,
+        start_line: usize,
+        start_character: usize,
+        end_line: usize,
+        end_character: usize,
+    ) -> Vec<Value> {
+        let Some((path, start, text)) = self.locate(documents, uri, start_line, start_character)
+        else {
+            return Vec::new();
+        };
+        let Some((_, end, _)) = self.locate(documents, uri, end_line, end_character) else {
+            return Vec::new();
+        };
+        let Some(session) = self.session(documents) else {
+            return Vec::new();
+        };
+        let found = match session.quick_fixes(
+            &path,
+            Span {
+                path: path.as_str().into(),
+                start,
+                end,
+            },
+        ) {
+            Ok(found) => found,
+            Err(error) => {
+                eprintln!("uf lsp: code action: {error}");
+                return Vec::new();
+            }
+        };
+        found
+            .into_iter()
+            .map(|fix| {
+                json!({
+                    "title": fix.title,
+                    "kind": super::QUICK_FIX,
+                    "isPreferred": fix.safe,
+                    "edit": {
+                        "changes": {
+                            uri: fix.edits.iter().map(|edit| json!({
+                                "range": range_in(text, &edit.span),
+                                "newText": edit.new_text,
+                            })).collect::<Vec<_>>(),
+                        },
+                    },
+                })
+            })
+            .collect()
     }
 }
 

@@ -148,6 +148,18 @@ mod types {
             Value::Null
         }
 
+        pub(super) fn type_fixes(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _start_line: usize,
+            _start_character: usize,
+            _end_line: usize,
+            _end_character: usize,
+        ) -> Vec<Value> {
+            Vec::new()
+        }
+
         pub(super) fn symbols(
             &mut self,
             _documents: &FxHashMap<String, Document>,
@@ -460,7 +472,10 @@ fn serve(
 ///
 /// Code actions, from [`fix`]: the quick fixes uf can apply to its own
 /// diagnostics without guessing at intent, plus `source.fixAll.uf` for all of
-/// them at once. `source.organizeImports` is **not** advertised, because uf
+/// them at once. A type error whose rewrite Flow can make inside the file is
+/// also a `quickfix`, from [`types`]; a rewrite that needs another file's
+/// signature is not, and `source.fixAll` does not apply type rewrites.
+/// `source.organizeImports` is **not** advertised, because uf
 /// has no opinion about import order to organise them by — no sorter exists in
 /// any crate, and a server that advertised one would be promising an editor
 /// something uf cannot do.
@@ -750,7 +765,7 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                 respond(&mut stdout, id, edits)?;
             }
             "textDocument/codeAction" => {
-                let answer = code_actions(&message, &documents, &config, &fmt);
+                let answer = code_actions(&message, &documents, &config, &fmt, &mut types);
                 answer_request(&mut stdout, id, answer)?;
             }
             "textDocument/hover" => {
@@ -1116,6 +1131,7 @@ fn code_actions(
     documents: &FxHashMap<String, Document>,
     config: &UniflowedConfig,
     fmt: &FmtConfig,
+    types: &mut Types,
 ) -> Result<Value, String> {
     let params = message
         .get("params")
@@ -1227,6 +1243,20 @@ fn code_actions(
                 }));
             }
         }
+
+        // A type error whose rewrite Flow can make inside this file. Not part
+        // of `source.fixAll`: that path is unattended, and a best-effort type
+        // rewrite must be a lightbulb somebody clicks. Lint fixes stay first,
+        // so a cursor that has both still finds the linter's answer first.
+        let (start_line, start_character, end_line, end_character) = range;
+        actions.extend(types.type_fixes(
+            documents,
+            &uri,
+            start_line,
+            start_character,
+            end_line,
+            end_character,
+        ));
     }
 
     // `source.fixAll`: every mechanical fix in the document, not just the ones

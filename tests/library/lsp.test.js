@@ -68,6 +68,7 @@ type Entry = {
   newText?            : string,
   title?              : string,
   kind?               : string | number,
+  isPreferred?        : boolean,
   diagnostics?        : Array<Diagnostic>,
   edit?               : { changes: { [uri: string]: Array<Entry> } },
   label?              : string,
@@ -472,12 +473,17 @@ describe("formatting", () => {
 });
 
 describe("code actions", () => {
-  const codeAction = (id: number, line: number, only: Array<string> | null): Message => ({
+  const codeAction = (
+    id  : number,
+    line: number,
+    only: Array<string> | null,
+    uri : string = URI,
+  ): Message => ({
     jsonrpc: "2.0",
     id,
     method: "textDocument/codeAction",
     params: {
-      textDocument: { uri: URI },
+      textDocument: { uri },
       range       : { start: { line, character: 9 }, end: { line, character: 9 } },
       context     : only == null ? { diagnostics: [] } : { diagnostics: [], only },
     },
@@ -522,6 +528,44 @@ describe("code actions", () => {
     const messages = session([didOpen(source), codeAction(4, 1, ["source.fixAll.uf"]), EXIT]);
 
     expect(listed(messages, 4)[0].kind).toBe("source.fixAll.uf");
+  });
+
+  // The server checks the project it was started in, the same way `uf check`
+  // does, so the file under the cursor is one of that project's files.
+  const inProject = (run: (root: string, uri: string, source: string) => void): void => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-qf-")));
+    const source = "// @flow\ntype T= {+x:string};\n";
+    try {
+      fs.writeFileSync(path.join(root, "a.js"), source);
+      run(root, `file://${path.join(root, "a.js")}`, source);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  it("rewrites a `+` property sigil to `readonly`", () => {
+    // Character 9 of this line is the `+`. uf accepts TypeScript's `never`, so
+    // the rewrite this locks is one Flow still reports under uf's options.
+    inProject((root, uri, source) => {
+      const messages = session([didOpen(source, uri), codeAction(4, 1, null, uri), EXIT], root);
+      const actions = listed(messages, 4);
+      const fix = actions.find((action) => action.title === "Convert to `readonly`") ?? {};
+
+      expect(fix.kind).toBe("quickfix");
+      expect(fix.isPreferred).toBe(true);
+      expect(apply(source, present(fix.edit, "edit").changes[uri])).toContain("readonly");
+    });
+  });
+
+  it("leaves a type rewrite out of `source.fixAll`", () => {
+    inProject((root, uri, source) => {
+      const messages = session(
+        [didOpen(source, uri), codeAction(4, 1, ["source.fixAll"], uri), EXIT],
+        root,
+      );
+
+      expect(listed(messages, 4)).toEqual([]);
+    });
   });
 
   it("offers nothing for a rule whose answer would be a guess", () => {

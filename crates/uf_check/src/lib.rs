@@ -59,7 +59,7 @@ pub use crate::lints::{FlowLint, FlowLintLevel};
 pub use crate::report::{BuiltinsTiming, CheckReport, ModuleClosure, Source, UnresolvedImport};
 pub use crate::resolution::{EXPORT_CONDITIONS, MAIN_FIELDS};
 pub use crate::session::{
-    Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, Parameter,
+    Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, Parameter, QuickFix,
     References, Rename, Session, Signature, SignatureHelp, Symbol, TextEdit, TypeAt,
 };
 
