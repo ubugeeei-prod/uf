@@ -1192,7 +1192,7 @@ describe("types", () => {
             method : "textDocument/selectionRange",
             params: {
               textDocument: { uri: file },
-              positions   : [{ line: 2, character: 2 }],
+              positions   : [{ line: "nope" }, { line: 2, character: 2 }],
             },
           },
           EXIT,
@@ -1201,11 +1201,18 @@ describe("types", () => {
       );
       const ranges = listed(messages, 1);
 
+      // A position that does not parse still occupies its slot, so the name's
+      // range stays on the cursor that asked for it.
+      expect(ranges).toHaveLength(2);
       expect(ranges[0].range).toEqual({
+        start: { line: 0, character: 0 },
+        end  : { line: 0, character: 0 },
+      });
+      expect(ranges[1].range).toEqual({
         start: { line: 2, character: 2 },
         end  : { line: 2, character: 6 },
       });
-      expect(ranges[0].parent?.range).toBeTruthy();
+      expect(ranges[1].parent?.range).toBeTruthy();
     });
   });
 

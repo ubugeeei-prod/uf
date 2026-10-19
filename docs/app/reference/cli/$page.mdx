@@ -1511,10 +1511,10 @@ fetched on a thread of its own, so the versions appear as you type on; a list
 older than a day is offered as it is and refreshed behind the request.
 `UF_INDEX_CACHE` moves the cache, and `UF_TOOL_INDEX_BASE` the publishers.
 
-Not served: rename, references, document symbols, signature help and organize
-imports. Flow type errors are pushed as diagnostics beside the lint findings,
-source `flow`.
-`tests/library/lsp.test.js` drives the binary and asserts both lists.
+Not served: inlay hints. Flow type errors are pushed as diagnostics beside the
+lint findings, source `flow`.
+`tests/library/lsp.test.js` drives the binary and asserts the capabilities
+above, and that inlay hints are not advertised.
 
 ### uf editor install EDITOR
 

@@ -699,12 +699,28 @@ impl Types {
                 }
             }
         };
-        Value::Array(
-            found
+        // One read and one line index per file. Symbols are already ordered by
+        // path, so a file's entries sit together, and an empty query must not
+        // scan that file once per symbol.
+        let mut encoded = Vec::with_capacity(found.len());
+        let mut start = 0;
+        while start < found.len() {
+            let path = found[start].span.path.as_str();
+            let end = found[start..]
                 .iter()
-                .filter_map(|symbol| encode_workspace_symbol(self, documents, symbol))
-                .collect(),
-        )
+                .position(|symbol| symbol.span.path.as_str() != path)
+                .map_or(found.len(), |at| start + at);
+            if let Some((uri, text)) = self.file_text(documents, path) {
+                let lines = LineIndex::new(&text);
+                encoded.extend(
+                    found[start..end]
+                        .iter()
+                        .map(|symbol| encode_workspace_symbol(&uri, &lines, symbol)),
+                );
+            }
+            start = end;
+        }
+        Value::Array(encoded)
     }
 
     /// The edits that put `uri`'s imports in Flow's order, when they would
@@ -760,7 +776,15 @@ impl Types {
         }
         let mut encoded = Vec::with_capacity(positions.len());
         for position in positions {
+            // One result per requested position. Dropping a malformed entry
+            // would shift every later range onto the wrong cursor.
             let Some((line, character)) = protocol_point(position) else {
+                encoded.push(json!({
+                    "range": {
+                        "start": { "line": 0, "character": 0 },
+                        "end": { "line": 0, "character": 0 },
+                    },
+                }));
                 continue;
             };
             let at = self
@@ -1084,20 +1108,16 @@ fn encode_symbol(text: &str, symbol: &Symbol) -> Value {
 }
 
 /// One project symbol as the protocol's `SymbolInformation`.
-fn encode_workspace_symbol(
-    types: &Types,
-    documents: &FxHashMap<String, Document>,
-    symbol: &WorkspaceSymbol,
-) -> Option<Value> {
+fn encode_workspace_symbol(uri: &str, lines: &LineIndex, symbol: &WorkspaceSymbol) -> Value {
     let mut encoded = json!({
         "name": symbol.name,
         "kind": symbol.kind,
-        "location": types.span_location(documents, &symbol.span)?,
+        "location": { "uri": uri, "range": range_on(lines, &symbol.span) },
     });
     if let Some(container) = &symbol.container {
         encoded["containerName"] = json!(container);
     }
-    Some(encoded)
+    encoded
 }
 
 /// One selection range, innermost first, parent pointing outward.
@@ -1194,7 +1214,11 @@ fn is_identifier(name: &str) -> bool {
 /// A span as a protocol range over `text`: one-based byte columns become
 /// zero-based UTF-16 characters.
 fn range_in(text: &str, span: &Span) -> Value {
-    let index = LineIndex::new(text);
+    range_on(&LineIndex::new(text), span)
+}
+
+/// [`range_in`] against a line index the caller already built for `text`.
+fn range_on(index: &LineIndex, span: &Span) -> Value {
     let position = |at: Position| {
         let line = at.line.saturating_sub(1) as usize;
         json!({

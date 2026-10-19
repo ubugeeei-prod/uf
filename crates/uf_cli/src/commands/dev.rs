@@ -167,6 +167,49 @@ mod types {
         ) -> Value {
             Value::Null
         }
+
+        pub(super) fn workspace_symbols(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _query: &str,
+        ) -> Value {
+            Value::Array(Vec::new())
+        }
+
+        pub(super) fn organize_imports(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+        ) -> Vec<Value> {
+            Vec::new()
+        }
+
+        pub(super) fn selection_ranges(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _positions: &[Value],
+        ) -> Value {
+            Value::Null
+        }
+
+        pub(super) fn linked_editing(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _line: usize,
+            _requested: usize,
+        ) -> Value {
+            Value::Null
+        }
+
+        pub(super) fn folds(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+        ) -> Value {
+            Value::Null
+        }
     }
 }
 
@@ -709,7 +752,13 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                 id,
                 json!({
                     "serverInfo": { "name": "uf-lsp", "version": env!("CARGO_PKG_VERSION") },
-                    "capabilities": capabilities(cfg!(feature = "upstream-typecheck") || official.is_some()),
+                    "capabilities": capabilities(
+                        cfg!(feature = "upstream-typecheck") || official.is_some(),
+                        // Organize imports is answered here, not by the official
+                        // server: `codeAction` is not one of the requests handed
+                        // over, and a build without the checker has no organizer.
+                        cfg!(feature = "upstream-typecheck") && official.is_none(),
+                    ),
                 }),
             )?,
             // Every editor sends this right after `initialize`, which makes it
@@ -905,11 +954,16 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
 
 /// What the server tells `initialize` it can do.
 ///
-/// `typed` is whether the checker is compiled in, which decides the
-/// definition, reference, rename and symbol requests and completion's `.`: a
-/// build without it serves none of them, and a capability it could not serve
-/// would be a promise to the editor that the server then breaks.
-fn capabilities(typed: bool) -> Value {
+/// `typed` is whether a checker will answer the definition, reference, rename
+/// and symbol requests, and completion's `.`: this build's, or an official
+/// Flow server the config names. A capability it could not serve would be a
+/// promise to the editor that the server then breaks.
+///
+/// `organize` is narrower. Import order is answered by this process, and only
+/// when the checker is compiled in. An official Flow server does not receive
+/// `codeAction`, so advertising the kind beside one would offer an action
+/// that never appears.
+fn capabilities(typed: bool, organize: bool) -> Value {
     // `"` opens a value, and a key written as a string. `@` separates a tool
     // from its version in a spec like `node@26`, where what comes next is a
     // version. `.` is a member access, whose members the checker knows.
@@ -918,7 +972,7 @@ fn capabilities(typed: bool) -> Value {
         triggers.push(".");
     }
     let mut kinds = vec![QUICK_FIX, FIX_ALL];
-    if typed {
+    if organize {
         kinds.push(ORGANIZE_IMPORTS);
     }
     let mut capabilities = json!({

@@ -139,6 +139,12 @@ pub(crate) struct Worker {
     /// the ones nobody has asked about yet. Parsed once per file and dropped
     /// when that file is edited.
     imports: HashMap<usize, Rc<[usize]>>,
+    /// Flattened outline of each searched file, by batch index.
+    ///
+    /// A workspace-symbol query arrives on every keystroke. The outline
+    /// depends only on the file's text, so it is parsed once and dropped when
+    /// that file is edited, the same way [`Self::imports`] is.
+    outlines: HashMap<usize, Rc<[WorkspaceSymbol]>>,
     /// Exported names of each batch file. Parsed once and dropped when that
     /// file is edited, the same way [`Self::imports`] is.
     file_exports: super::exports::FileExports,
@@ -162,6 +168,7 @@ impl Worker {
             checked: Vec::new(),
             diagnosed: HashMap::new(),
             imports: HashMap::new(),
+            outlines: HashMap::new(),
             file_exports: super::exports::FileExports::new(),
             exports: None,
         }
@@ -172,6 +179,7 @@ impl Worker {
         self.checked.clear();
         self.diagnosed.clear();
         self.imports.clear();
+        self.outlines.clear();
         self.file_exports.clear();
         self.exports = None;
         if let Some(modules) = self.modules.take() {
@@ -268,8 +276,9 @@ impl Worker {
         self.checked
             .retain(|checked| !stale.contains(&checked.index));
         self.diagnosed.retain(|index, _| !stale.contains(index));
-        // Only the edited file's own imports can have changed.
+        // Only the edited file's own imports and outline can have changed.
         self.imports.remove(&index);
+        self.outlines.remove(&index);
         Ok(true)
     }
 
@@ -1075,14 +1084,28 @@ impl Worker {
             if !searched(&path) {
                 continue;
             }
-            let Some(outline) = self.symbols(&path) else {
-                continue;
+            let cached = self.outlines.get(&index).cloned();
+            let flat = match cached {
+                Some(flat) => flat,
+                None => {
+                    let Some(outline) = self.symbols(&path) else {
+                        continue;
+                    };
+                    let mut flat = Vec::new();
+                    collect_symbols(&outline, None, &mut flat);
+                    let flat: Rc<[WorkspaceSymbol]> = flat.into();
+                    self.outlines.insert(index, Rc::clone(&flat));
+                    flat
+                }
             };
-            collect_symbols(&outline, None, &mut found);
+            found.extend(
+                flat.iter()
+                    .filter(|symbol| {
+                        needle.is_empty() || symbol.name.to_ascii_lowercase().contains(&needle)
+                    })
+                    .cloned(),
+            );
         }
-        found.retain(|symbol| {
-            needle.is_empty() || symbol.name.to_ascii_lowercase().contains(&needle)
-        });
         found.sort_by(|left, right| left.span.cmp(&right.span).then(left.name.cmp(&right.name)));
         found
     }
@@ -1870,6 +1893,21 @@ mod tests {
                 .workspace_symbols("")
                 .iter()
                 .all(|symbol| symbol.span.path != "node_modules/clock/index.js")
+        );
+        worker
+            .edit(
+                "src/user.js",
+                "// @flow\nexport class Host {\n  greet(): string { return 'hi'; }\n}\n".to_owned(),
+            )
+            .expect("the edit applies");
+        assert!(worker.workspace_symbols("Greeter").is_empty());
+        assert_eq!(
+            worker
+                .workspace_symbols("host")
+                .into_iter()
+                .map(|symbol| symbol.name)
+                .collect::<Vec<_>>(),
+            vec!["Host".to_owned()]
         );
         worker.release();
     }
