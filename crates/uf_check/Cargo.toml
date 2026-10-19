@@ -41,6 +41,7 @@ upstream-typecheck = [
   "dep:flow_services_references",
   "dep:flow_services_type_info",
   "dep:flow_services_code_action",
+  "dep:flow_services_jsx",
   "dep:flow_server_env",
   "dep:flow_type_sig",
   "dep:flow_typing",
@@ -96,11 +97,15 @@ flow_services_type_info = { workspace = true, optional = true }
 # `ast_transforms_of_error`. The server heap stays unread; a rewrite that
 # needs another file's signature is not offered. See `session`.
 flow_services_code_action = { workspace = true, optional = true }
+# Linked editing (`Session::linked_editing`): Flow's `get_linked_locs`. A
+# cursor in either name of a JSX tag links the two. See `session`.
+flow_services_jsx = { workspace = true, optional = true }
 # `FuncDetailsResult`, the shape `find_signatures` returns. Not used for the
 # server itself.
 flow_server_env = { workspace = true, optional = true }
-# Only its `document_symbol_provider`: the server half, and the tokio runtime
-# it brings, stay out behind its `server` feature. Same patch.
+# Its `document_symbol_provider` and `selection_range_provider`. The server
+# half, and the tokio runtime it brings, stay out behind its `server` feature.
+# See `tools/upstream/patches/flow/0015-*` and `0019-*`.
 flow_lsp_server = { workspace = true, optional = true }
 lsp-types = { workspace = true, optional = true }
 flow_type_sig = { workspace = true, optional = true }

@@ -475,10 +475,15 @@ fn serve(
 /// them at once. A type error whose rewrite Flow can make inside the file is
 /// also a `quickfix`, from [`types`]; a rewrite that needs another file's
 /// signature is not, and `source.fixAll` does not apply type rewrites.
-/// `source.organizeImports` is **not** advertised, because uf
-/// has no opinion about import order to organise them by — no sorter exists in
-/// any crate, and a server that advertised one would be promising an editor
-/// something uf cannot do.
+/// `source.organizeImports` sorts the file's imports the way Flow's
+/// `organize_imports` does: type imports, then relative value imports, then
+/// imports from a lowercase module, then `require`. It is not part of
+/// `source.fixAll`.
+///
+/// Workspace symbols, selection ranges, linked editing of a JSX tag, and
+/// folding ranges, from [`types`]. Inlay hints are not among them: Flow's
+/// inlay path is a `^?` comment, not a hint drawn beside a parameter, so
+/// `inlayHintProvider` stays unadvertised.
 ///
 /// Hover, from [`hover`]: the rule behind a diagnostic, what an import
 /// specifier names, and what a rule id in a suppression comment means. Where
@@ -672,6 +677,10 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                 | "textDocument/rename"
                 | "textDocument/documentSymbol"
                 | "textDocument/signatureHelp"
+                | "workspace/symbol"
+                | "textDocument/selectionRange"
+                | "textDocument/linkedEditingRange"
+                | "textDocument/foldingRange"
         );
         let config_document = document_uri(&message).is_some_and(|uri| {
             Utf8Path::new(&document_path(&uri)).file_name() == Some("uf.config.js")
@@ -839,6 +848,41 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                     .ok_or_else(|| String::from("`params.textDocument.uri` is required"));
                 answer_request(&mut stdout, id, answer)?;
             }
+            "workspace/symbol" if cfg!(feature = "upstream-typecheck") => {
+                let query = message
+                    .pointer("/params/query")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                answer_request(
+                    &mut stdout,
+                    id,
+                    Ok(types.workspace_symbols(&documents, query)),
+                )?;
+            }
+            "textDocument/selectionRange" if cfg!(feature = "upstream-typecheck") => {
+                let answer = (|| {
+                    let uri = document_uri(&message)
+                        .ok_or_else(|| String::from("`params.textDocument.uri` is required"))?;
+                    let positions = message
+                        .pointer("/params/positions")
+                        .and_then(Value::as_array)
+                        .ok_or_else(|| String::from("`params.positions` is required"))?;
+                    Ok(types.selection_ranges(&documents, &uri, positions))
+                })();
+                answer_request(&mut stdout, id, answer)?;
+            }
+            "textDocument/linkedEditingRange" if cfg!(feature = "upstream-typecheck") => {
+                let answer = position_params(&message, method).map(|(uri, line, requested)| {
+                    types.linked_editing(&documents, &uri, line, requested)
+                });
+                answer_request(&mut stdout, id, answer)?;
+            }
+            "textDocument/foldingRange" if cfg!(feature = "upstream-typecheck") => {
+                let answer = document_uri(&message)
+                    .map(|uri| types.folds(&documents, &uri))
+                    .ok_or_else(|| String::from("`params.textDocument.uri` is required"));
+                answer_request(&mut stdout, id, answer)?;
+            }
             // A request uf does not serve is answered as one, not ignored: an
             // editor waiting on an id it never gets back is a hang. A
             // *notification* uf does not serve is dropped, because answering
@@ -873,12 +917,16 @@ fn capabilities(typed: bool) -> Value {
     if typed {
         triggers.push(".");
     }
+    let mut kinds = vec![QUICK_FIX, FIX_ALL];
+    if typed {
+        kinds.push(ORGANIZE_IMPORTS);
+    }
     let mut capabilities = json!({
         "textDocumentSync": 1,
         "documentFormattingProvider": true,
         "hoverProvider": true,
         "codeActionProvider": {
-            "codeActionKinds": [QUICK_FIX, FIX_ALL],
+            "codeActionKinds": kinds,
         },
         "completionProvider": { "triggerCharacters": triggers },
     });
@@ -895,6 +943,10 @@ fn capabilities(typed: bool) -> Value {
             "triggerCharacters": ["(", ",", "<"],
             "retriggerCharacters": [","],
         });
+        capabilities["workspaceSymbolProvider"] = json!(true);
+        capabilities["selectionRangeProvider"] = json!(true);
+        capabilities["linkedEditingRangeProvider"] = json!(true);
+        capabilities["foldingRangeProvider"] = json!(true);
     }
     capabilities
 }
@@ -927,6 +979,13 @@ const QUICK_FIX: &str = "quickfix";
 /// specification's kinds are hierarchical, and a request for a parent kind
 /// selects its children.
 const FIX_ALL: &str = "source.fixAll.uf";
+/// Code action kind for sorting a file's imports.
+///
+/// Flow's organizer is the order: type imports, then relative value imports,
+/// then value imports whose module starts with a lowercase letter, then
+/// `require`. Not a child of [`FIX_ALL`]: an editor that fixes on save does
+/// not also reorder imports unless it asked for this kind.
+const ORGANIZE_IMPORTS: &str = "source.organizeImports";
 
 /// Send a request's answer, or the error that stopped it being one.
 ///
@@ -1160,9 +1219,9 @@ fn code_actions(
     let Some(document) = documents.get(&uri) else {
         return Ok(json!([]));
     };
-    let Some(diagnostics) = document.diagnostics.as_deref() else {
-        return Ok(json!([]));
-    };
+    // Lint may have produced nothing. Organize imports does not read
+    // diagnostics, so an empty list is the whole of what the linter contributes.
+    let diagnostics = document.diagnostics.as_deref().unwrap_or(&[]);
     let source = document.text.as_str();
     let lines: Vec<&str> = source.lines().collect();
 
@@ -1287,6 +1346,17 @@ fn code_actions(
             actions.push(json!({
                 "title": "Fix all uf lint problems in this file",
                 "kind": FIX_ALL,
+                "edit": { "changes": { &uri: edits } },
+            }));
+        }
+    }
+
+    if wanted(only.as_deref(), ORGANIZE_IMPORTS) {
+        let edits = types.organize_imports(documents, &uri);
+        if !edits.is_empty() {
+            actions.push(json!({
+                "title": "Organize imports",
+                "kind": ORGANIZE_IMPORTS,
                 "edit": { "changes": { &uri: edits } },
             }));
         }
@@ -2190,6 +2260,20 @@ mod tests {
 
         assert!(!wanted(Some(&[String::from("quickfix")]), FIX_ALL));
         assert!(!wanted(Some(&[String::from("refactor")]), QUICK_FIX));
+        assert!(wanted(
+            Some(&[String::from("source.organizeImports")]),
+            ORGANIZE_IMPORTS
+        ));
+        assert!(wanted(Some(&[String::from("source")]), ORGANIZE_IMPORTS));
+        // Fix-all on save must not also reorder imports.
+        assert!(!wanted(
+            Some(&[String::from("source.fixAll")]),
+            ORGANIZE_IMPORTS
+        ));
+        assert!(!wanted(
+            Some(&[String::from("source.fixAll.uf")]),
+            ORGANIZE_IMPORTS
+        ));
         // A prefix that is not a whole kind segment is not a parent kind.
         assert!(!wanted(Some(&[String::from("source.fixAl")]), FIX_ALL));
         // Filtered down to nothing is a real answer, and it is "nothing".

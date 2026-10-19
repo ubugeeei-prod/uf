@@ -87,8 +87,10 @@
       to guess at intent deliberately do not. Hover answers the rule behind a
       diagnostic, what an import specifier names, and what a rule id in a
       suppression comment means — and, anywhere else, the type at the
-      position; see the next item. `source.organizeImports` is not advertised
-      because uf has no import-order opinion to organise them by.
+      position; see the next item. `source.organizeImports` sorts imports the way
+      Flow's `organize_imports` does — type imports, then relative value
+      imports, then lowercase modules, then `require` — and is not part of
+      `source.fixAll`.
 - [ ] Answer types in the editor from Flow's inference (ubugeeei-prod/uf#949).
       `uf_check::Session` keeps the project's batch warm on a worker thread and
       asks the port's own services over it: `type_at_pos_type` for
@@ -115,6 +117,12 @@
       and a component's props. A type error whose rewrite Flow can make inside
       the file is a `quickfix` from `ast_transforms_of_error`; a fix that needs
       another file's signature is not, and `source.fixAll` stays the linter's.
+      `workspace/symbol`, `textDocument/selectionRange`,
+      `textDocument/linkedEditingRange` and `textDocument/foldingRange` are the
+      project outline filtered by a substring, the parse ranges a selection can
+      grow through, the JSX names linked to the cursor, and the multi-line
+      declarations. `source.organizeImports` is Flow's organizer. Inlay hints
+      stay unadvertised.
       Not yet: that 200 ms target on the largest
       files, and answers in a file that does not parse.
 - [x] Add editor integration directories for VS Code, Neovim, Emacs, Vim, Helix, Zed, and Cursor.

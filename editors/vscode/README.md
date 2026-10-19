@@ -74,6 +74,11 @@ they are in `uf run ci`.
 | **Go to Type Definition** | `textDocument/typeDefinition`, from Flow's inference | The declaration of the named types in the type under the cursor: for `const user: User`, `type User`. |
 | **Completion** | `textDocument/completion` | In `uf.config.js`: the keys valid where you are typing, each with its documentation and type; after `"`, the values of a key whose type is a fixed set (`quotes: "single" \| "double"`); `true` and `false` for a boolean; in a tool spec (`runtime: "node@26"`), the names its key takes and, after `@`, that tool's versions, newest first. In any other Flow file, from Flow's inference: after `value.`, the members of `value`'s type with their types, and elsewhere the names in scope. |
 | **Signature help** | `textDocument/signatureHelp` | The call or component the cursor is inside, and which argument it is on. VS Code asks when `(`, `,` or `<` is typed, because the server advertises those trigger characters. |
+| **Organize imports** | kind `source.organizeImports` | Sorts the file's imports the way Flow does: type imports, then relative value imports, then imports from a lowercase module, then `require`. Not part of `source.fixAll`. |
+| **Workspace symbols** | `workspace/symbol` | Symbols in the project's own files whose names contain the query. Packages under `node_modules` are left out. |
+| **Selection range** | `textDocument/selectionRange` | The ranges the selection can grow through, innermost first. |
+| **Linked editing** | `textDocument/linkedEditingRange` | The opening and closing names of the JSX tag under the cursor. A cursor on either name links both, and a fragment's brackets do the same. |
+| **Folding** | `textDocument/foldingRange` | Every multi-line declaration in the outline. A declaration on one line is not a fold. |
 
 Completion reads `@uniflowed/config`'s own Flow type — the declaration
 `defineConfig` checks the file against — compiled into `uf`, so it needs nothing
@@ -109,8 +114,8 @@ hierarchical, and asking for the parent selects uf's child kind.
 
 ## What does not work, and will not until the server serves it
 
-Workspace symbols, inlay hints and organize imports are not advertised. The
-extension does not invent them. Completion does offer a name exported by
+Inlay hints are not advertised. Flow's inlay path is a `^?` comment, not a
+hint beside a parameter, and the extension does not invent one. Completion does offer a name exported by
 another file of the project, and accepting it inserts the import — a relative
 specifier with `.js` or `.jsx` written out. A package under `node_modules`, an
 `export *`, and a name bound by destructuring are not offered that way. A
@@ -125,9 +130,6 @@ completion still answers after `value.`. The syntax error itself is reported
 **The first type answer waits for the project to be read.** The server reads
 the whole project, as `uf check` does, in the background when it starts; a
 hover that arrives first waits for that.
-
-**Organize imports is not offered.** uf has no import-order opinion to organise
-them by, so the server does not advertise `source.organizeImports`.
 
 ## Settings
 

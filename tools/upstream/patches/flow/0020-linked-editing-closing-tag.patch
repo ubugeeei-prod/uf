@@ -1,0 +1,32 @@
+Subject: link a JSX closing tag back to its opening tag
+
+Issue: ubugeeei-prod/uf#1381
+Upstream: not filed yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+`get_linked_locs` returned the opening and closing names only when the
+cursor was in the opening name. A cursor in the closing name found nothing,
+so linked editing could not rename a tag from its close. Both names match.
+
+diff --git a/rust_port/crates/flow_services_jsx/src/linked_editing_jsx.rs b/rust_port/crates/flow_services_jsx/src/linked_editing_jsx.rs
+index 796b92d3b..5ac567168 100644
+--- a/rust_port/crates/flow_services_jsx/src/linked_editing_jsx.rs
++++ b/rust_port/crates/flow_services_jsx/src/linked_editing_jsx.rs
+@@ -56,7 +56,7 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, Found> for ContainsMapper {
+             Some(closing) => {
+                 let opening_loc = loc_of_jsx_name(&elem.opening_element.name);
+                 let closing_loc = loc_of_jsx_name(&closing.name);
+-                if opening_loc.contains(&self.target) {
++                if opening_loc.contains(&self.target) || closing_loc.contains(&self.target) {
+                     return Err(Found(vec![opening_loc.dupe(), closing_loc.dupe()]));
+                 }
+                 ast_visitor::jsx_element_default(self, _loc, elem)
+@@ -72,7 +72,7 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, Found> for ContainsMapper {
+     ) -> Result<(), Found> {
+         let opening_loc = name_loc_of_jsx_fragment_element_loc(&frag.frag_opening_element);
+         let closing_loc = name_loc_of_jsx_fragment_element_loc(&frag.frag_closing_element);
+-        if opening_loc.contains(&self.target) {
++        if opening_loc.contains(&self.target) || closing_loc.contains(&self.target) {
+             return Err(Found(vec![opening_loc, closing_loc]));
+         }
+         ast_visitor::jsx_fragment_default(self, loc, frag)

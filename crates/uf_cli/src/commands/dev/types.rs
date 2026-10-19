@@ -1,7 +1,8 @@
 //! Types in the editor: type errors, hover, go to definition, go to type
 //! definition, completion, signature help, find references, document
 //! highlights, rename, quick fixes for a type error whose rewrite stays in
-//! the file, and the document outline, answered by Flow's own
+//! the file, organize imports, the document outline, workspace symbols,
+//! selection ranges, linked editing, and folding, answered by Flow's own
 //! inference and services.
 //!
 //! Every answer here comes from a [`uf_check::Session`] — the project checked
@@ -57,16 +58,20 @@
 //!   annotated type: see [`uf_check::Session::references`].
 //! * **A quick fix that needs another file's typed signature, Flow's heap, or
 //!   a package index.** A type error whose rewrite Flow can make inside this
-//!   file is a `quickfix`. Organize imports is not offered: uf has no
-//!   import-order opinion.
+//!   file is a `quickfix`. Import order is
+//!   [`uf_check::Session::organize_imports`], advertised as
+//!   `source.organizeImports`, and it is not part of `source.fixAll`.
+//! * **Inlay hints.** Flow's inlay path is a `^?` comment asking for the type
+//!   at that point, not a parameter or type hint beside the code, so nothing
+//!   here advertises `inlayHintProvider`.
 
 use std::sync::mpsc;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::{Value, json};
 use uf_check::{
-    CheckLimits, Definition, MessageSegment, Origin, OwnedSource, Position, Rename, Session,
-    Severity, Span, Symbol, TypeDiagnostic,
+    CheckLimits, Definition, MessageSegment, Origin, OwnedSource, Position, Rename, Selection,
+    Session, Severity, Span, Symbol, TypeDiagnostic, WorkspaceSymbol,
 };
 use uf_config::UniflowedConfig;
 use uf_infra::FxHashMap;
@@ -675,6 +680,187 @@ impl Types {
         }
     }
 
+    /// `workspace/symbol`: symbols in the project's own files whose names
+    /// contain `query`. An empty list when nothing matches, never `null`.
+    pub(super) fn workspace_symbols(
+        &mut self,
+        documents: &FxHashMap<String, Document>,
+        query: &str,
+    ) -> Value {
+        let found = {
+            let Some(session) = self.session(documents) else {
+                return json!([]);
+            };
+            match session.workspace_symbols(query) {
+                Ok(found) => found,
+                Err(error) => {
+                    eprintln!("uf lsp: workspace symbols: {error}");
+                    return json!([]);
+                }
+            }
+        };
+        Value::Array(
+            found
+                .iter()
+                .filter_map(|symbol| encode_workspace_symbol(self, documents, symbol))
+                .collect(),
+        )
+    }
+
+    /// The edits that put `uri`'s imports in Flow's order, when they would
+    /// change the text. Empty when the document is not Flow or already ordered.
+    pub(super) fn organize_imports(
+        &mut self,
+        documents: &FxHashMap<String, Document>,
+        uri: &str,
+    ) -> Vec<Value> {
+        let Some(document) = documents.get(uri) else {
+            return Vec::new();
+        };
+        let Some(path) = self.path_of(uri) else {
+            return Vec::new();
+        };
+        let edits = {
+            let Some(session) = self.session(documents) else {
+                return Vec::new();
+            };
+            match session.organize_imports(&path) {
+                Ok(Some(edits)) => edits,
+                Ok(None) => return Vec::new(),
+                Err(error) => {
+                    eprintln!("uf lsp: organize imports: {error}");
+                    return Vec::new();
+                }
+            }
+        };
+        edits
+            .iter()
+            .map(|edit| {
+                json!({
+                    "range": range_in(&document.text, &edit.span),
+                    "newText": edit.new_text,
+                })
+            })
+            .collect()
+    }
+
+    /// `textDocument/selectionRange`: one nested range per position, innermost
+    /// first. `null` when the document is not Flow.
+    pub(super) fn selection_ranges(
+        &mut self,
+        documents: &FxHashMap<String, Document>,
+        uri: &str,
+        positions: &[Value],
+    ) -> Value {
+        let Some(document) = documents.get(uri) else {
+            return Value::Null;
+        };
+        if self.path_of(uri).is_none() {
+            return Value::Null;
+        }
+        let mut encoded = Vec::with_capacity(positions.len());
+        for position in positions {
+            let Some((line, character)) = protocol_point(position) else {
+                continue;
+            };
+            let at = self
+                .locate(documents, uri, line, character)
+                .map(|(_, at, _)| at);
+            let selection = match at {
+                Some(at) => {
+                    let Some(path) = self.path_of(uri) else {
+                        return Value::Null;
+                    };
+                    let Some(session) = self.session(documents) else {
+                        return Value::Null;
+                    };
+                    match session.selection_range(&path, at) {
+                        Ok(found) => found,
+                        Err(error) => {
+                            eprintln!("uf lsp: selection range: {error}");
+                            return Value::Null;
+                        }
+                    }
+                }
+                None => None,
+            };
+            encoded.push(match selection {
+                Some(selection) => encode_selection(&document.text, &selection),
+                None => json!({
+                    "range": {
+                        "start": { "line": line, "character": character },
+                        "end": { "line": line, "character": character },
+                    },
+                }),
+            });
+        }
+        Value::Array(encoded)
+    }
+
+    /// `textDocument/linkedEditingRange`: the JSX names linked to the cursor,
+    /// or `null` when the cursor is not on one.
+    pub(super) fn linked_editing(
+        &mut self,
+        documents: &FxHashMap<String, Document>,
+        uri: &str,
+        line: usize,
+        requested: usize,
+    ) -> Value {
+        let Some((path, position, text)) = self.locate(documents, uri, line, requested) else {
+            return Value::Null;
+        };
+        let found = {
+            let Some(session) = self.session(documents) else {
+                return Value::Null;
+            };
+            match session.linked_editing(&path, position) {
+                Ok(found) => found,
+                Err(error) => {
+                    eprintln!("uf lsp: linked editing: {error}");
+                    return Value::Null;
+                }
+            }
+        };
+        let Some(spans) = found else {
+            return Value::Null;
+        };
+        json!({
+            "ranges": spans.iter().map(|span| range_in(text, span)).collect::<Vec<_>>(),
+        })
+    }
+
+    /// `textDocument/foldingRange`: multi-line declarations. `null` when the
+    /// document is not Flow.
+    pub(super) fn folds(&mut self, documents: &FxHashMap<String, Document>, uri: &str) -> Value {
+        let Some(document) = documents.get(uri) else {
+            return Value::Null;
+        };
+        let Some(path) = self.path_of(uri) else {
+            return Value::Null;
+        };
+        let found = {
+            let Some(session) = self.session(documents) else {
+                return Value::Null;
+            };
+            match session.folds(&path) {
+                Ok(found) => found,
+                Err(error) => {
+                    eprintln!("uf lsp: folding: {error}");
+                    return Value::Null;
+                }
+            }
+        };
+        let Some(spans) = found else {
+            return Value::Null;
+        };
+        Value::Array(
+            spans
+                .iter()
+                .map(|span| encode_fold(&document.text, span))
+                .collect(),
+        )
+    }
+
     /// `textDocument/completion` in a Flow document: after `value.`, the
     /// members of `value`'s type with their types; elsewhere, the names in
     /// scope.
@@ -895,6 +1081,57 @@ fn encode_symbol(text: &str, symbol: &Symbol) -> Value {
             .collect();
     }
     encoded
+}
+
+/// One project symbol as the protocol's `SymbolInformation`.
+fn encode_workspace_symbol(
+    types: &Types,
+    documents: &FxHashMap<String, Document>,
+    symbol: &WorkspaceSymbol,
+) -> Option<Value> {
+    let mut encoded = json!({
+        "name": symbol.name,
+        "kind": symbol.kind,
+        "location": types.span_location(documents, &symbol.span)?,
+    });
+    if let Some(container) = &symbol.container {
+        encoded["containerName"] = json!(container);
+    }
+    Some(encoded)
+}
+
+/// One selection range, innermost first, parent pointing outward.
+fn encode_selection(text: &str, selection: &Selection) -> Value {
+    let mut encoded = json!({ "range": range_in(text, &selection.span) });
+    if let Some(parent) = &selection.parent {
+        encoded["parent"] = encode_selection(text, parent);
+    }
+    encoded
+}
+
+/// One fold, without a kind: the span is the whole declaration.
+fn encode_fold(text: &str, span: &Span) -> Value {
+    let index = LineIndex::new(text);
+    let point = |at: Position| {
+        let line = at.line.saturating_sub(1) as usize;
+        (line, character(index.line(line), at.column as usize))
+    };
+    let (start_line, start_character) = point(span.start);
+    let (end_line, end_character) = point(span.end);
+    json!({
+        "startLine": start_line,
+        "endLine": end_line,
+        "startCharacter": start_character,
+        "endCharacter": end_character,
+    })
+}
+
+/// A protocol `Position` as a zero-based line and UTF-16 character.
+fn protocol_point(position: &Value) -> Option<(usize, usize)> {
+    Some((
+        usize::try_from(position.get("line")?.as_u64()?).ok()?,
+        usize::try_from(position.get("character")?.as_u64()?).ok()?,
+    ))
 }
 
 /// Whether `name` can be written where a binding's name is: an identifier,

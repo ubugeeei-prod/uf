@@ -78,10 +78,17 @@ type Entry = {
   additionalTextEdits?: Array<Entry>,
   filterText?         : string,
   sortText?           : string,
-  // A `DocumentSymbol`.
+  // A `DocumentSymbol`, a `SymbolInformation`, a `SelectionRange`, or a fold.
   name?          : string,
   selectionRange?: Range,
   children?      : Array<Entry>,
+  location?      : { uri: string, range: Range },
+  containerName? : string,
+  parent?        : Entry,
+  startLine?     : number,
+  endLine?       : number,
+  startCharacter?: number,
+  endCharacter?  : number,
 };
 
 // A `result` that is not a list: `initialize`'s, and `hover`'s.
@@ -103,12 +110,17 @@ type Answer = {
       triggerCharacters  : Array<string>,
       retriggerCharacters: Array<string>,
     |},
+    workspaceSymbolProvider?   : boolean,
+    selectionRangeProvider?    : boolean,
+    linkedEditingRangeProvider?: boolean,
+    foldingRangeProvider?      : boolean,
     // Not advertised; named so a test can say so.
-    workspaceSymbolProvider?: mixed,
-    inlayHintProvider?      : mixed,
+    inlayHintProvider?: mixed,
   },
   contents?: { kind: string, value: string },
   range?   : Range,
+  // `textDocument/linkedEditingRange`.
+  ranges?: Array<Range>,
   // `textDocument/signatureHelp`.
   signatures?: Array<{|
     label      : string,
@@ -303,6 +315,7 @@ describe("what uf lsp tells an editor it can do", () => {
     expect(present(capabilities.codeActionProvider, "codeActionProvider").codeActionKinds).toEqual([
       "quickfix",
       "source.fixAll.uf",
+      "source.organizeImports",
     ]);
     // Completion. `"` opens a value or a quoted key in `uf.config.js`; `@`
     // separates a tool from its version; `.` is a member access, whose members
@@ -319,28 +332,27 @@ describe("what uf lsp tells an editor it can do", () => {
       triggerCharacters  : ["(", ",", "<"],
       retriggerCharacters: [","],
     });
+    expect(capabilities.workspaceSymbolProvider).toBe(true);
+    expect(capabilities.selectionRangeProvider).toBe(true);
+    expect(capabilities.linkedEditingRangeProvider).toBe(true);
+    expect(capabilities.foldingRangeProvider).toBe(true);
   });
 
   it("does not advertise what it cannot do", () => {
-    // The READMEs are written from this list. `source.organizeImports` is
-    // absent because uf has no import-order opinion; workspace symbols and
-    // inlay hints because nothing serves them yet.
+    // The READMEs are written from this list. Inlay hints stay absent: Flow's
+    // inlay path is a `^?` comment, not a hint beside a parameter.
     const messages = session([
       { jsonrpc: "2.0", id: 1, method: "initialize", params: { capabilities: {} } },
       EXIT,
     ]);
     const capabilities = answered(messages, 1).capabilities ?? {};
 
-    expect(capabilities.workspaceSymbolProvider).toBe(undefined);
     expect(capabilities.inlayHintProvider).toBe(undefined);
-    expect(
-      present(capabilities.codeActionProvider, "codeActionProvider").codeActionKinds,
-    ).not.toContain("source.organizeImports");
   });
 
   it("answers a request it does not serve instead of leaving the editor waiting", () => {
     const messages = session([
-      { jsonrpc: "2.0", id: 2, method: "workspace/symbol", params: {} },
+      { jsonrpc: "2.0", id: 2, method: "textDocument/inlayHint", params: {} },
       EXIT,
     ]);
 
@@ -1086,6 +1098,175 @@ describe("types", () => {
         start: { line: 2, character: 2 },
         end  : { line: 2, character: 7 },
       });
+    });
+  });
+
+  it("finds a workspace symbol in a project file and not in a package", () => {
+    withProject((root, uri) => {
+      const messages = session(
+        [
+          INITIALIZED,
+          { jsonrpc: "2.0", id: 1, method: "workspace/symbol", params: { query: "greet" } },
+          { jsonrpc: "2.0", id: 2, method: "workspace/symbol", params: { query: "tick" } },
+          EXIT,
+        ],
+        root,
+      );
+      const greet = listed(messages, 1);
+      expect(
+        greet.some(
+          (symbol) => symbol.name === "greet" && symbol.location?.uri === uri("src/user.js"),
+        ),
+      ).toBe(true);
+      expect(greet.every((symbol) => !String(symbol.location?.uri).includes("node_modules"))).toBe(
+        true,
+      );
+      expect(listed(messages, 2)).toEqual([]);
+    });
+  });
+
+  it("organizes imports in Flow's order", () => {
+    withProject((root, uri) => {
+      const source = [
+        "// @flow",
+        'import { b } from "./b.js";',
+        'import { a } from "./a.js";',
+        'import type { T } from "./t.js";',
+        'import React from "react";',
+        "const x = 1;",
+        "",
+      ].join("\n");
+      const file = uri("src/messy.js");
+      const messages = session(
+        [
+          INITIALIZED,
+          open(file, source),
+          {
+            jsonrpc: "2.0",
+            id     : 1,
+            method : "textDocument/codeAction",
+            params: {
+              textDocument: { uri: file },
+              range       : { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+              context     : { diagnostics: [], only: ["source.organizeImports"] },
+            },
+          },
+          EXIT,
+        ],
+        root,
+      );
+      const actions = listed(messages, 1);
+
+      expect(actions).toHaveLength(1);
+      expect(actions[0].kind).toBe("source.organizeImports");
+      expect(actions[0].title).toBe("Organize imports");
+      expect(apply(source, present(actions[0].edit, "edit").changes[file])).toBe(
+        [
+          "// @flow",
+          'import type { T } from "./t.js";',
+          "",
+          'import { a } from "./a.js";',
+          'import { b } from "./b.js";',
+          "",
+          'import React from "react";',
+          "const x = 1;",
+          "",
+        ].join("\n"),
+      );
+    });
+  });
+
+  it("nests a selection range outward from the name", () => {
+    withProject((root, uri) => {
+      const source = ["// @noflow", "export class Shape {", "  area() { return 0; }", "}", ""].join(
+        "\n",
+      );
+      const file = uri("src/shapes.js");
+      const messages = session(
+        [
+          INITIALIZED,
+          open(file, source),
+          {
+            jsonrpc: "2.0",
+            id     : 1,
+            method : "textDocument/selectionRange",
+            params: {
+              textDocument: { uri: file },
+              positions   : [{ line: 2, character: 2 }],
+            },
+          },
+          EXIT,
+        ],
+        root,
+      );
+      const ranges = listed(messages, 1);
+
+      expect(ranges[0].range).toEqual({
+        start: { line: 2, character: 2 },
+        end  : { line: 2, character: 6 },
+      });
+      expect(ranges[0].parent?.range).toBeTruthy();
+    });
+  });
+
+  it("links a JSX tag from either its opening or its closing name", () => {
+    withProject((root, uri) => {
+      const source = [
+        "// @flow",
+        "export function View(): mixed {",
+        "  return <Button>ok</Button>;",
+        "}",
+        "",
+      ].join("\n");
+      const file = uri("src/view.js");
+      const ask = (character: number): Message => ({
+        jsonrpc: "2.0",
+        id     : character,
+        method : "textDocument/linkedEditingRange",
+        params : { textDocument: { uri: file }, position: { line: 2, character } },
+      });
+      const messages = session([INITIALIZED, open(file, source), ask(10), ask(21), EXIT], root);
+      const line = source.split("\n")[2];
+      for (const id of [10, 21]) {
+        const result = answered(messages, id);
+        const ranges = present(result.ranges, "ranges");
+        expect(ranges).toHaveLength(2);
+        expect(line.slice(ranges[0].start.character, ranges[0].end.character)).toBe("Button");
+        expect(line.slice(ranges[1].start.character, ranges[1].end.character)).toBe("Button");
+      }
+    });
+  });
+
+  it("folds a multi-line declaration and not a one-line one", () => {
+    withProject((root, uri) => {
+      const source = [
+        "// @noflow",
+        "export class Shape {",
+        "  area() { return 0; }",
+        "}",
+        "function make() {}",
+        "",
+      ].join("\n");
+      const file = uri("src/shapes.js");
+      const messages = session(
+        [
+          INITIALIZED,
+          open(file, source),
+          {
+            jsonrpc: "2.0",
+            id     : 1,
+            method : "textDocument/foldingRange",
+            params : { textDocument: { uri: file } },
+          },
+          EXIT,
+        ],
+        root,
+      );
+      const folds = listed(messages, 1);
+
+      expect(folds.some((fold) => fold.startLine === 1 && (fold.endLine ?? 0) >= 3)).toBe(true);
+      expect(folds.every((fold) => fold.startLine !== fold.endLine)).toBe(true);
+      expect(folds.every((fold) => fold.startLine !== 2 && fold.startLine !== 4)).toBe(true);
     });
   });
 
