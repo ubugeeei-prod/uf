@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.41.0
+
+- feat(lsp): workspace symbols, organize imports, selection, linked editing, and folding (#1891) (d1ae07ae)
+
 ## uf@0.40.0
 
 - feat(lsp): offer a quick fix when Flow can rewrite a type error in the file (#1888) (77aa8163)
