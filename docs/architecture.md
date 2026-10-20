@@ -1488,9 +1488,14 @@ workspace remains responsible for parsing, linting, formatting, route type
 generation and diagnostics. None of the integrations implements a language
 feature — each one is a client, and what it may offer is exactly what
 `initialize` advertises:
-diagnostics, `textDocument/formatting`, `textDocument/codeAction` (`quickfix`
-and `source.fixAll.uf`), `textDocument/hover`, `textDocument/definition`,
-`textDocument/typeDefinition` and `textDocument/completion`, and nothing else.
+diagnostics, `textDocument/formatting`, `textDocument/codeAction` (`quickfix`,
+`source.fixAll.uf` and `source.organizeImports`), `textDocument/hover`,
+`textDocument/definition`, `textDocument/typeDefinition`,
+`textDocument/completion`, `textDocument/references`,
+`textDocument/documentHighlight`, `textDocument/rename`,
+`textDocument/documentSymbol`, `textDocument/signatureHelp`, `workspace/symbol`,
+`textDocument/selectionRange`, `textDocument/linkedEditingRange` and
+`textDocument/foldingRange`. Inlay hints are not advertised.
 
 The type answers — hover over an expression, both definitions, and completion
 outside `uf.config.js` — come from `uf_check::Session`: the batch `uf check`

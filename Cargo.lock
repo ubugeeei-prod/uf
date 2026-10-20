@@ -1784,6 +1784,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow_services_jsx"
+version = "0.0.0"
+dependencies = [
+ "dupe",
+ "flow_parser",
+ "flow_parser_utils_output",
+]
+
+[[package]]
 name = "flow_services_module"
 version = "0.0.0"
 dependencies = [
@@ -5055,6 +5064,7 @@ dependencies = [
  "flow_services_code_action",
  "flow_services_export",
  "flow_services_get_def",
+ "flow_services_jsx",
  "flow_services_references",
  "flow_services_type_info",
  "flow_type_sig",

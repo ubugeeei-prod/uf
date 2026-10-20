@@ -41,6 +41,11 @@
 //! | [`Session::rename_range`] | `flow_services_references::prepare_rename_searcher` |
 //! | [`Session::rename`] | the references, then `rename_mapper` and Flow's AST differ and printer |
 //! | [`Session::symbols`] | `flow_lsp_server::document_symbol_provider`, over the parse alone |
+//! | [`Session::workspace_symbols`] | the same outline, flattened across the project's own files |
+//! | [`Session::organize_imports`] | `flow_services_code_action::autofix_imports::organize_imports` |
+//! | [`Session::selection_range`] | `flow_lsp_server::selection_range_provider`, over the parse alone |
+//! | [`Session::linked_editing`] | `flow_services_jsx::linked_editing_jsx::get_linked_locs` |
+//! | [`Session::folds`] | the multi-line spans of [`Session::symbols`] |
 //!
 //! # Threads
 //!
@@ -259,6 +264,37 @@ pub struct Symbol {
     pub selection: Span,
     /// What is declared inside it: a class's members, an object's properties.
     pub children: Vec<Symbol>,
+}
+
+/// One symbol in the project, flattened out of the file that declares it.
+///
+/// The location is the whole declaration, the same span a document outline
+/// gives it. [`Self::container`] is the symbol it is nested in, which is what
+/// the protocol calls `containerName`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceSymbol {
+    /// What is declared.
+    pub name: String,
+    /// Its kind, in the Language Server Protocol's `SymbolKind` numbering,
+    /// which is the vocabulary Flow's provider answers in.
+    pub kind: u32,
+    /// The symbol it is nested in, when it is nested in one.
+    pub container: Option<String>,
+    /// The whole declaration.
+    pub span: Span,
+}
+
+/// One range a cursor can grow to, innermost first.
+///
+/// [`Self::parent`] is the next range out, the same nesting the protocol's
+/// `SelectionRange` uses, so an editor can widen the selection one step at a
+/// time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Selection {
+    /// This range.
+    pub span: Span,
+    /// The range this one sits inside.
+    pub parent: Option<Box<Selection>>,
 }
 
 /// A type environment kept warm across questions. See the module header.
@@ -507,8 +543,9 @@ impl Session {
     /// `ast_transforms_of_error` returns. A rewrite that needs another file's
     /// typed signature, Flow's heap, or a package index is not offered: those
     /// lookups have nothing to read here. A suppressed error is not offered
-    /// either, and neither is organize-imports. [`QuickFix::safe`] is Flow's
-    /// own judgement; nothing here applies a fix on save.
+    /// either. Import order is [`Session::organize_imports`], not one of these
+    /// rewrites. [`QuickFix::safe`] is Flow's own judgement; nothing here
+    /// applies a fix on save.
     ///
     /// # Errors
     ///
@@ -660,6 +697,128 @@ impl Session {
         {
             let path = path.to_owned();
             self.ask(move |worker| Ok(worker.symbols(&path)))
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = path;
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// Every symbol in the project's own files whose name contains `query`.
+    ///
+    /// The match is a case-insensitive ASCII substring, and an empty query is
+    /// every symbol. Packages under `node_modules` are left out, the same
+    /// files [`Session::references`] does not search. The outline is read from
+    /// the parse, so a file that says `@noflow` is included.
+    ///
+    /// # Errors
+    ///
+    /// [`CheckError::Worker`] when the worker has gone.
+    pub fn workspace_symbols(&self, query: &str) -> Result<Vec<WorkspaceSymbol>, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let query = query.to_owned();
+            self.ask(move |worker| Ok(worker.workspace_symbols(&query)))
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = query;
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// The edit that puts `path`'s imports in Flow's order, when they are not
+    /// already.
+    ///
+    /// Type imports, then relative value imports, then value imports from a
+    /// module whose name starts with a lowercase letter, then `require`.
+    /// Specifiers from one module are combined, and the named ones are sorted.
+    /// [`None`] when `path` is not in the batch, has no imports, or the text
+    /// would not change.
+    ///
+    /// # Errors
+    ///
+    /// [`CheckError::Worker`] when the worker has gone.
+    pub fn organize_imports(&self, path: &str) -> Result<Option<Vec<TextEdit>>, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let path = path.to_owned();
+            self.ask(move |worker| Ok(worker.organize_imports(&path)))
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = path;
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// The ranges the selection at `at` can grow through, innermost first.
+    ///
+    /// Read from the parse. [`None`] when `path` is not in the batch, or `at`
+    /// names no place in it.
+    ///
+    /// # Errors
+    ///
+    /// [`CheckError::Worker`] when the worker has gone.
+    pub fn selection_range(
+        &self,
+        path: &str,
+        at: Position,
+    ) -> Result<Option<Selection>, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let path = path.to_owned();
+            self.ask(move |worker| Ok(worker.selection_range(&path, at)))
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = (path, at);
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// The JSX names that rename together with the name under `at`.
+    ///
+    /// A cursor in the opening name or the closing name links the two, and a
+    /// fragment's brackets do the same. [`None`] when `at` is not on one, or
+    /// `path` is not in the batch.
+    ///
+    /// # Errors
+    ///
+    /// [`CheckError::Worker`] when the worker has gone.
+    pub fn linked_editing(
+        &self,
+        path: &str,
+        at: Position,
+    ) -> Result<Option<Vec<Span>>, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let path = path.to_owned();
+            self.ask(move |worker| Ok(worker.linked_editing(&path, at)))
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = (path, at);
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// The ranges in `path` an editor can fold: every multi-line declaration
+    /// in its outline, nested ones included.
+    ///
+    /// A declaration that stays on one line is not a fold. [`None`] when
+    /// `path` is not in the batch. An empty list is a file whose outline has
+    /// nothing spanning two lines.
+    ///
+    /// # Errors
+    ///
+    /// [`CheckError::Worker`] when the worker has gone.
+    pub fn folds(&self, path: &str) -> Result<Option<Vec<Span>>, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let path = path.to_owned();
+            self.ask(move |worker| Ok(worker.folds(&path)))
         }
         #[cfg(not(feature = "upstream-typecheck"))]
         {

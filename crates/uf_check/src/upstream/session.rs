@@ -31,6 +31,7 @@ use flow_services_get_def::find_refs_utils::AstInfo;
 use flow_services_get_def::get_def_js::{self, GetDefResult};
 use flow_services_get_def::get_def_types::{DefInfo, PropertyDefInfo, Purpose};
 use flow_services_get_def::get_def_utils;
+use flow_services_jsx::linked_editing_jsx::get_linked_locs;
 use flow_services_references::find_refs_js;
 use flow_services_references::find_refs_types::{FindRefsOk, Kind, RefKind, Request, SingleRef};
 use flow_services_references::{prepare_rename_searcher, rename_mapper};
@@ -49,7 +50,8 @@ use super::{
 use crate::limits::CHECK_STACK_BYTES;
 use crate::session::{
     Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, Parameter, QuickFix,
-    References, Rename, Signature, SignatureHelp, Symbol, TextEdit, TypeAt,
+    References, Rename, Selection, Signature, SignatureHelp, Symbol, TextEdit, TypeAt,
+    WorkspaceSymbol,
 };
 use crate::{CheckError, CheckLimits, Position, Source, Span, TypeDiagnostic};
 
@@ -137,6 +139,12 @@ pub(crate) struct Worker {
     /// the ones nobody has asked about yet. Parsed once per file and dropped
     /// when that file is edited.
     imports: HashMap<usize, Rc<[usize]>>,
+    /// Flattened outline of each searched file, by batch index.
+    ///
+    /// A workspace-symbol query arrives on every keystroke. The outline
+    /// depends only on the file's text, so it is parsed once and dropped when
+    /// that file is edited, the same way [`Self::imports`] is.
+    outlines: HashMap<usize, Rc<[WorkspaceSymbol]>>,
     /// Exported names of each batch file. Parsed once and dropped when that
     /// file is edited, the same way [`Self::imports`] is.
     file_exports: super::exports::FileExports,
@@ -160,6 +168,7 @@ impl Worker {
             checked: Vec::new(),
             diagnosed: HashMap::new(),
             imports: HashMap::new(),
+            outlines: HashMap::new(),
             file_exports: super::exports::FileExports::new(),
             exports: None,
         }
@@ -170,6 +179,7 @@ impl Worker {
         self.checked.clear();
         self.diagnosed.clear();
         self.imports.clear();
+        self.outlines.clear();
         self.file_exports.clear();
         self.exports = None;
         if let Some(modules) = self.modules.take() {
@@ -266,8 +276,9 @@ impl Worker {
         self.checked
             .retain(|checked| !stale.contains(&checked.index));
         self.diagnosed.retain(|index, _| !stale.contains(index));
-        // Only the edited file's own imports can have changed.
+        // Only the edited file's own imports and outline can have changed.
         self.imports.remove(&index);
+        self.outlines.remove(&index);
         Ok(true)
     }
 
@@ -1061,6 +1072,93 @@ impl Worker {
                 .collect(),
         )
     }
+
+    pub(crate) fn workspace_symbols(&mut self, query: &str) -> Vec<WorkspaceSymbol> {
+        let Some(modules) = self.modules.clone() else {
+            return Vec::new();
+        };
+        let needle = query.to_ascii_lowercase();
+        let mut found = Vec::new();
+        for index in 0..modules.len() {
+            let (path, _) = modules.source(index);
+            if !searched(&path) {
+                continue;
+            }
+            let cached = self.outlines.get(&index).cloned();
+            let flat = match cached {
+                Some(flat) => flat,
+                None => {
+                    let Some(outline) = self.symbols(&path) else {
+                        continue;
+                    };
+                    let mut flat = Vec::new();
+                    collect_symbols(&outline, None, &mut flat);
+                    let flat: Rc<[WorkspaceSymbol]> = flat.into();
+                    self.outlines.insert(index, Rc::clone(&flat));
+                    flat
+                }
+            };
+            found.extend(
+                flat.iter()
+                    .filter(|symbol| {
+                        needle.is_empty() || symbol.name.to_ascii_lowercase().contains(&needle)
+                    })
+                    .cloned(),
+            );
+        }
+        found.sort_by(|left, right| left.span.cmp(&right.span).then(left.name.cmp(&right.name)));
+        found
+    }
+
+    pub(crate) fn organize_imports(&mut self, path: &str) -> Option<Vec<TextEdit>> {
+        let parsed = self.parsed(path)?;
+        let patches = flow_services_code_action::autofix_imports::organize_imports(
+            &js_layout_generator::default_opts(),
+            &parsed.ast,
+        );
+        let edits = edits_in(path, patches)?;
+        let text = {
+            let modules = self.modules.as_ref()?;
+            let index = modules.index_of(path)?;
+            modules.source(index).1
+        };
+        let changed: Vec<TextEdit> = edits
+            .into_iter()
+            .filter(|edit| match covered(&text, &edit.span) {
+                Some(current) => current != edit.new_text,
+                None => true,
+            })
+            .collect();
+        (!changed.is_empty()).then_some(changed)
+    }
+
+    pub(crate) fn selection_range(&mut self, path: &str, at: Position) -> Option<Selection> {
+        let parsed = self.parsed(path)?;
+        let position = lsp_types::Position {
+            line: at.line.saturating_sub(1),
+            character: at.column.saturating_sub(1),
+        };
+        let ranges = flow_lsp_server::selection_range_provider::provide_selection_ranges(
+            &[position],
+            &parsed.ast,
+        )
+        .ok()?;
+        selection_from(ranges.first()?, path)
+    }
+
+    pub(crate) fn linked_editing(&mut self, path: &str, at: Position) -> Option<Vec<Span>> {
+        let parsed = self.parsed(path)?;
+        let locs = get_linked_locs(&parsed.ast, cursor(&parsed.file_key, at))?;
+        let spans: Vec<Span> = locs.iter().filter_map(|loc| span_of(loc, path)).collect();
+        (!spans.is_empty()).then_some(spans)
+    }
+
+    pub(crate) fn folds(&mut self, path: &str) -> Option<Vec<Span>> {
+        let outline = self.symbols(path)?;
+        let mut spans = Vec::new();
+        fold_spans(&outline, &mut spans);
+        Some(spans)
+    }
 }
 
 /// The parse artifacts the references service reads.
@@ -1299,6 +1397,93 @@ fn edits_in(path: &str, patches: Vec<(Loc, String)>) -> Option<Vec<TextEdit>> {
     (!edits.is_empty()).then_some(edits)
 }
 
+/// The provider's outline, flattened, with each entry's parent name.
+fn collect_symbols(symbols: &[Symbol], container: Option<&str>, out: &mut Vec<WorkspaceSymbol>) {
+    for symbol in symbols {
+        out.push(WorkspaceSymbol {
+            name: symbol.name.clone(),
+            kind: symbol.kind,
+            container: container.map(str::to_owned),
+            span: symbol.span.clone(),
+        });
+        collect_symbols(&symbol.children, Some(symbol.name.as_str()), out);
+    }
+}
+
+/// A protocol `SelectionRange` as uf's, innermost first.
+fn selection_from(range: &lsp_types::SelectionRange, path: &str) -> Option<Selection> {
+    Some(Selection {
+        span: span_from_lsp(&range.range, path)?,
+        parent: match &range.parent {
+            Some(parent) => Some(Box::new(selection_from(parent, path)?)),
+            None => None,
+        },
+    })
+}
+
+/// A protocol range as a uf span.
+///
+/// The provider built it from a Flow location by taking one off the line and
+/// keeping the column, so the way back is one onto each. The same conversion
+/// [`symbol`] makes.
+fn span_from_lsp(range: &lsp_types::Range, path: &str) -> Option<Span> {
+    let position = |at: lsp_types::Position| -> Option<Position> {
+        Some(Position {
+            line: at.line.checked_add(1)?,
+            column: at.character.checked_add(1)?,
+        })
+    };
+    Some(Span {
+        path: CompactString::new(path),
+        start: position(range.start)?,
+        end: position(range.end)?,
+    })
+}
+
+/// Declarations an editor can fold: a symbol that spans more than one line,
+/// and the same for whatever it contains.
+fn fold_spans(symbols: &[Symbol], spans: &mut Vec<Span>) {
+    for symbol in symbols {
+        if symbol.span.end.line > symbol.span.start.line {
+            spans.push(symbol.span.clone());
+        }
+        fold_spans(&symbol.children, spans);
+    }
+}
+
+/// The bytes `span` covers in `text`.
+///
+/// [`None`] when either end does not land on a byte of `text`. A caller
+/// comparing an edit keeps the edit in that case rather than drop a rewrite
+/// it could not check.
+fn covered<'a>(text: &'a str, span: &Span) -> Option<&'a str> {
+    let start = byte_at(text, span.start)?;
+    let end = byte_at(text, span.end)?;
+    text.get(start..end)
+}
+
+/// `at` as a byte offset into `text`.
+///
+/// Lines and columns are one-based, and a column counts bytes on its line,
+/// not past that line's break. The exclusive end of a line is the column just
+/// after its last byte.
+fn byte_at(text: &str, at: Position) -> Option<usize> {
+    let line_index = usize::try_from(at.line.checked_sub(1)?).ok()?;
+    let column = usize::try_from(at.column.checked_sub(1)?).ok()?;
+    let mut rest = text;
+    let mut offset = 0usize;
+    for _ in 0..line_index {
+        let newline = rest.find('\n')?;
+        offset += newline + 1;
+        rest = rest.get(newline + 1..)?;
+    }
+    let line_len = rest.find('\n').unwrap_or(rest.len());
+    if column > line_len {
+        return None;
+    }
+    Some(offset + column)
+}
+
 /// A Flow location as a uf span, in `fallback` when it names no file.
 ///
 /// Zero-based columns become one-based, and the end stays exclusive, which is
@@ -1372,6 +1557,8 @@ fn without_current_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::session::TextEdit;
 
     /// A worker on this thread, over `app.js` importing `model.js`, and an
     /// `other.js` that imports nothing.
@@ -1666,6 +1853,222 @@ mod tests {
             [("shapes.js", 3, 3, 7)]
         );
         assert!(worker.symbols("missing.js").is_none());
+        worker.release();
+    }
+
+    #[test]
+    fn workspace_symbols_match_a_substring_and_skip_packages() {
+        super::super::on_check_thread("src/user.js", workspace_query).expect("runs");
+    }
+
+    fn workspace_query() {
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
+        worker
+            .load(vec![
+                OwnedSource::new(
+                    "src/user.js",
+                    "// @flow\nexport class Greeter {\n  greet(): string { return 'hi'; }\n}\n",
+                ),
+                OwnedSource::new(
+                    "node_modules/clock/index.js",
+                    "// @flow\nexport function tick(): number { return 0; }\n",
+                ),
+            ])
+            .expect("the batch loads");
+        let greet: Vec<(String, Option<String>)> = worker
+            .workspace_symbols("gReEt")
+            .into_iter()
+            .map(|symbol| (symbol.name, symbol.container))
+            .collect();
+        assert_eq!(
+            greet,
+            [
+                ("Greeter".to_owned(), None),
+                ("greet".to_owned(), Some("Greeter".to_owned())),
+            ]
+        );
+        assert!(worker.workspace_symbols("tick").is_empty());
+        assert!(
+            worker
+                .workspace_symbols("")
+                .iter()
+                .all(|symbol| symbol.span.path != "node_modules/clock/index.js")
+        );
+        worker
+            .edit(
+                "src/user.js",
+                "// @flow\nexport class Host {\n  greet(): string { return 'hi'; }\n}\n".to_owned(),
+            )
+            .expect("the edit applies");
+        assert!(worker.workspace_symbols("Greeter").is_empty());
+        assert_eq!(
+            worker
+                .workspace_symbols("host")
+                .into_iter()
+                .map(|symbol| symbol.name)
+                .collect::<Vec<_>>(),
+            vec!["Host".to_owned()]
+        );
+        worker.release();
+    }
+
+    #[test]
+    fn organize_imports_sorts_by_flows_sections() {
+        super::super::on_check_thread("messy.js", organize).expect("runs");
+    }
+
+    fn organize() {
+        let source = "\
+// @flow
+import { b } from \"./b.js\";
+import { a } from \"./a.js\";
+import type { T } from \"./t.js\";
+import React from \"react\";
+const x = 1;
+";
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
+        worker
+            .load(vec![OwnedSource::new("messy.js", source)])
+            .expect("the batch loads");
+        let edits = worker
+            .organize_imports("messy.js")
+            .expect("the imports move");
+        let written = splice(source, &edits);
+        assert_eq!(written, ORGANIZED, "{written}");
+        worker.edit("messy.js", written).expect("the edit applies");
+        assert!(
+            worker.organize_imports("messy.js").is_none(),
+            "a second pass would change text that is already in order"
+        );
+        worker.release();
+    }
+
+    /// What [`organize`] locks. Flow's printer, not a layout of our own: a
+    /// blank line between each section, and none after the last import.
+    const ORGANIZED: &str = "\
+// @flow
+import type { T } from \"./t.js\";
+
+import { a } from \"./a.js\";
+import { b } from \"./b.js\";
+
+import React from \"react\";
+const x = 1;
+";
+
+    fn splice(text: &str, edits: &[TextEdit]) -> String {
+        let mut owned = text.to_owned();
+        let mut ordered = edits.to_vec();
+        ordered.sort_by_key(|edit| std::cmp::Reverse(edit.span.start));
+        for edit in &ordered {
+            let start = super::byte_at(&owned, edit.span.start).unwrap_or_else(|| {
+                panic!("edit misses the text: {edit:?}");
+            });
+            let end = super::byte_at(&owned, edit.span.end).unwrap_or_else(|| {
+                panic!("edit misses the text: {edit:?}");
+            });
+            owned.replace_range(start..end, &edit.new_text);
+        }
+        owned
+    }
+
+    #[test]
+    fn selection_range_nests_outward_from_the_name() {
+        super::super::on_check_thread("shapes.js", selection).expect("runs");
+    }
+
+    fn selection() {
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
+        worker
+            .load(vec![OwnedSource::new(
+                "shapes.js",
+                "// @noflow\nexport class Shape {\n  area() { return 0; }\n}\nfunction make() {}\n",
+            )])
+            .expect("the batch loads");
+        // `a` of `area`.
+        let found = worker
+            .selection_range("shapes.js", at(3, 3))
+            .expect("a range");
+        assert_eq!(
+            places(std::slice::from_ref(&found.span)),
+            [("shapes.js", 3, 3, 7)]
+        );
+        let mut outer = &found;
+        let mut nested = false;
+        while let Some(parent) = outer.parent.as_ref() {
+            nested = true;
+            assert!(parent.span.start <= found.span.start);
+            assert!(parent.span.end >= found.span.end);
+            outer = parent;
+        }
+        assert!(nested, "the name sits inside a wider range");
+        assert!(outer.span.start.line <= 2 && outer.span.end.line >= 4);
+        assert!(worker.selection_range("missing.js", at(1, 1)).is_none());
+        worker.release();
+    }
+
+    #[test]
+    fn linked_editing_matches_either_jsx_name() {
+        super::super::on_check_thread("view.js", linked).expect("runs");
+    }
+
+    fn linked() {
+        let source = "\
+// @flow
+export function View(): mixed {
+  return <Button>ok</Button>;
+}
+";
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
+        worker
+            .load(vec![OwnedSource::new("view.js", source)])
+            .expect("the batch loads");
+        for cursor in [at(3, 11), at(3, 22)] {
+            let spans = worker
+                .linked_editing("view.js", cursor)
+                .unwrap_or_else(|| panic!("no link at {cursor:?}"));
+            let names: Vec<&str> = spans
+                .iter()
+                .map(|span| super::covered(source, span).unwrap_or_else(|| panic!("{span:?}")))
+                .collect();
+            assert_eq!(names, ["Button", "Button"], "from {cursor:?}");
+        }
+        assert!(worker.linked_editing("view.js", at(2, 8)).is_none());
+        worker.release();
+    }
+
+    #[test]
+    fn folds_are_the_multiline_declarations() {
+        super::super::on_check_thread("shapes.js", folding).expect("runs");
+    }
+
+    fn folding() {
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default(), &[]);
+        worker
+            .load(vec![OwnedSource::new(
+                "shapes.js",
+                "// @noflow\nexport class Shape {\n  area() { return 0; }\n}\nfunction make() {}\n",
+            )])
+            .expect("the batch loads");
+        let folds = worker.folds("shapes.js").expect("in the batch");
+        assert!(
+            folds.iter().all(|span| span.end.line > span.start.line),
+            "{folds:?}"
+        );
+        assert!(
+            folds
+                .iter()
+                .any(|span| span.start.line == 2 && span.end.line >= 4),
+            "{folds:?}"
+        );
+        // `area` and `make` each occupy one line.
+        assert!(
+            folds
+                .iter()
+                .all(|span| span.start.line != 3 && span.start.line != 5),
+            "{folds:?}"
+        );
+        assert!(worker.folds("missing.js").is_none());
         worker.release();
     }
 

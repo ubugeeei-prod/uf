@@ -1470,11 +1470,15 @@ once, when it starts.
 | --- | --- |
 | `textDocument/publishDiagnostics` | Pushed on open and on every change, from the linter `uf lint` runs; and Flow's type errors, from the checker `uf check` runs, once typing pauses |
 | `textDocument/formatting` | One edit over the whole document, from the printer `uf fmt` runs |
-| `textDocument/codeAction` | `quickfix` where a rule's fix is mechanical, and where Flow can rewrite a type error inside this file. A rewrite that needs another file's signature is not offered. `source.fixAll.uf` is every safe lint fix at once, and does not apply type rewrites |
+| `textDocument/codeAction` | `quickfix` where a rule's fix is mechanical, and where Flow can rewrite a type error inside this file. A rewrite that needs another file's signature is not offered. `source.fixAll.uf` is every safe lint fix at once, and does not apply type rewrites. `source.organizeImports` sorts the file's imports the way Flow does, and is not part of that fix-all |
 | `textDocument/hover` | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js`; anywhere else in a Flow file, the inferred type under the cursor, printed as Flow |
 | `textDocument/definition` | Where the name under the cursor is declared: across files, into a package under `node_modules`, and into the project's `flow-typed/` |
 | `textDocument/typeDefinition` | Where the named types in the type under the cursor are declared |
 | `textDocument/completion` | In `uf.config.js`: the keys valid at the cursor, with their documentation and type; the values of a key whose type is a fixed set; and in a tool spec, the names its key takes and, after `@`, that tool's versions. In any other Flow file: after `value.`, the members of `value`'s type with their types, and elsewhere the names in scope. `"`, `@` and `.` trigger it |
+| `workspace/symbol` | Symbols in the project's own files whose names contain the query. Packages under `node_modules` are left out |
+| `textDocument/selectionRange` | The ranges the selection can grow through, innermost first, from the parse |
+| `textDocument/linkedEditingRange` | The opening and closing names of the JSX tag under the cursor. A cursor on either name links both |
+| `textDocument/foldingRange` | Every multi-line declaration in the file's outline |
 
 Hover over an expression, both definitions and completion outside `uf.config.js`
 come from the checker `uf check` runs, over the same batch — every source, what
@@ -1507,10 +1511,10 @@ fetched on a thread of its own, so the versions appear as you type on; a list
 older than a day is offered as it is and refreshed behind the request.
 `UF_INDEX_CACHE` moves the cache, and `UF_TOOL_INDEX_BASE` the publishers.
 
-Not served: rename, references, document symbols, signature help and organize
-imports. Flow type errors are pushed as diagnostics beside the lint findings,
-source `flow`.
-`tests/library/lsp.test.js` drives the binary and asserts both lists.
+Not served: inlay hints. Flow type errors are pushed as diagnostics beside the
+lint findings, source `flow`.
+`tests/library/lsp.test.js` drives the binary and asserts the capabilities
+above, and that inlay hints are not advertised.
 
 ### uf editor install EDITOR
 

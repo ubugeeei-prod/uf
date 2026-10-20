@@ -60,7 +60,8 @@ pub use crate::report::{BuiltinsTiming, CheckReport, ModuleClosure, Source, Unre
 pub use crate::resolution::{EXPORT_CONDITIONS, MAIN_FIELDS};
 pub use crate::session::{
     Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, Parameter, QuickFix,
-    References, Rename, Session, Signature, SignatureHelp, Symbol, TextEdit, TypeAt,
+    References, Rename, Selection, Session, Signature, SignatureHelp, Symbol, TextEdit, TypeAt,
+    WorkspaceSymbol,
 };
 
 /// Which type checker a build compiled in.

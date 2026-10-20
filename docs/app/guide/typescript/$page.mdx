@@ -39,22 +39,23 @@ smaller than it was, and uf counts it per package instead of hiding it.
 of it. What it can do is the diagnostics it pushes — the linter's when a document
 opens or changes, and Flow's type errors, the ones `uf check` reports, once
 typing pauses — and what it advertises in `initialize`: `textDocument/formatting`,
-`textDocument/codeAction` (`quickfix` and `source.fixAll.uf`),
+`textDocument/codeAction` (`quickfix`, `source.fixAll.uf` and `source.organizeImports`),
 `textDocument/hover`, `textDocument/definition`, `textDocument/typeDefinition`,
 `textDocument/completion`, `textDocument/references`, `textDocument/documentHighlight`,
-`textDocument/rename`, `textDocument/documentSymbol` and `textDocument/signatureHelp`.
-Hover, the definitions and completion outside `uf.config.js` are answered by
-Flow's own inference over the whole project, kept in memory: the type under the
-cursor, where a name or a type is declared — across files and into `node_modules`
-— the members of a value after `.`, and a name exported by another file of the
-project, with the relative import that brings it in. A package under
-`node_modules`, an `export *`, and a name bound by destructuring are outside
-that import. A type error whose rewrite Flow can make inside the file is a
-`quickfix`. A fix that needs another file's signature, or a package, is not,
-and `source.fixAll` stays the linter's. There are no inlay hints and no
-workspace symbols, and `source.organizeImports` is not advertised. Against
-TypeScript 7's own server,
-which advertises those and a broader auto-import, that is still most of the gap.
+`textDocument/rename`, `textDocument/documentSymbol`, `textDocument/signatureHelp`,
+`workspace/symbol`, `textDocument/selectionRange`, `textDocument/linkedEditingRange`
+and `textDocument/foldingRange`. Hover, the definitions and completion outside
+`uf.config.js` are answered by Flow's own inference over the whole project, kept
+in memory: the type under the cursor, where a name or a type is declared — across
+files and into `node_modules` — the members of a value after `.`, and a name
+exported by another file of the project, with the relative import that brings it
+in. A package under `node_modules`, an `export *`, and a name bound by
+destructuring are outside that import. A type error whose rewrite Flow can make
+inside the file is a `quickfix`. A fix that needs another file's signature, or a
+package, is not, and `source.fixAll` stays the linter's. `source.organizeImports`
+sorts the file's imports the way Flow does, and is not part of that fix-all.
+There are no inlay hints. Against TypeScript 7's own server, which advertises
+those and a broader auto-import, that is still most of the gap.
 `tests/library/lsp.test.js` drives the real binary and asserts both the
 capabilities the READMEs claim and the absence of the ones they disclaim.
 

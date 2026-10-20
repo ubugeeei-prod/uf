@@ -38,7 +38,9 @@ to eighty lines long, or an editor plugin configured to start `uf lsp`.
   and for a type error whose rewrite Flow can make inside this file. A rewrite
   that needs another file's typed signature, or a package, is not offered.
   `source.fixAll.uf` is every safe lint fix at once, and does not apply type
-  rewrites.
+  rewrites. `source.organizeImports` sorts the file's imports the way Flow
+  does — type imports, then relative value imports, then imports from a
+  lowercase module, then `require` — and is not part of `source.fixAll`.
 * **Hover** — the rule behind a diagnostic, what an import specifier names,
   what a rule id in a suppression comment means, a key of `uf.config.js`, and
   anywhere else in a Flow file the type under the cursor as Flow infers it.
@@ -66,11 +68,20 @@ to eighty lines long, or an editor plugin configured to start `uf lsp`.
 * **Signature help** — the call or component the cursor is inside, and which
   argument it is on. Flow's signature-help service. `(` opens a call, `,`
   moves to the next argument, and `<` opens a component.
+* **Workspace symbols** — the outline of every project file, flattened, filtered
+  by a case-insensitive substring. Packages under `node_modules` are left out.
+* **Selection range** — the ranges the selection can grow through, innermost
+  first, from the parse.
+* **Linked editing** — the opening and closing names of the JSX tag under the
+  cursor, including a cursor on the closing name, and a fragment's brackets.
+* **Folding** — every multi-line declaration in the file's outline. A
+  declaration on one line is not a fold.
 
-Not workspace symbols, inlay hints or organize imports. The server advertises
-none of them; `tests/library/lsp.test.js` asserts that it does not, so a
-README here cannot quietly start over-claiming. Auto-import of a project
-export is part of completion, above, and is not a separate capability.
+Not inlay hints. Flow's inlay path is a `^?` comment, not a hint drawn beside
+a parameter, so the server does not advertise `inlayHintProvider`.
+`tests/library/lsp.test.js` asserts the capabilities above and that this one
+is absent, so a README here cannot quietly start over-claiming. Auto-import of
+a project export is part of completion, above, and is not a separate capability.
 
 ## Keeping TypeScript's server off Flow files
 

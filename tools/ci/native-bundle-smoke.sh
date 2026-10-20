@@ -33,7 +33,16 @@ const dependencies = {
   react: '19.2.3', 'react-dom': '19.2.3', 'react-native-web': '0.21.2',
   'react-native': provider === 'expo' ? '0.86.3' : '0.87.1',
 };
-if (provider === 'expo') Object.assign(dependencies, { expo: '57.0.24', '@expo/vector-icons': '15.0.3' });
+if (provider === 'expo') Object.assign(dependencies, {
+  expo: '57.0.24', '@expo/vector-icons': '15.0.3',
+  // vector-icons accepts expo-font >=14, so npm hoists 58.0.9. That module's
+  // Android publication omits version, which autolinking requires. 57.0.4
+  // satisfies expo (~57.0.4) and includes the field. The other two pins are
+  // the resolutions the last green smoke installed on 2026-10-13.
+  'expo-font': '57.0.4',
+  'expo-modules-autolinking': '57.0.15',
+  'expo-modules-core': '57.0.22',
+});
 else Object.assign(dependencies, {
   '@react-native-community/cli': '20.2.0',
   '@react-native/metro-config': '0.87.1', '@react-native/babel-preset': '0.87.1',

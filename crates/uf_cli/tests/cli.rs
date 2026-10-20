@@ -2441,7 +2441,9 @@ fn lsp_initialize_returns_native_capabilities() {
     assert!(stdout.contains(r#""documentFormattingProvider":true"#));
     assert!(stdout.contains(r#""hoverProvider":true"#));
     assert!(
-        stdout.contains(r#""codeActionKinds":["quickfix","source.fixAll.uf"]"#),
+        stdout.contains(
+            r#""codeActionKinds":["quickfix","source.fixAll.uf","source.organizeImports"]"#
+        ),
         "{stdout}"
     );
     // Completion: `"` opens a value or a quoted key in `uf.config.js`, `@`
@@ -2462,11 +2464,25 @@ fn lsp_initialize_returns_native_capabilities() {
     // notification and has no capability to advertise. Advertising a pull
     // provider that nothing serves is what ubugeeei-prod/uf#162 was.
     assert!(!stdout.contains("diagnosticProvider"), "{stdout}");
-    // Nor `source.organizeImports`, for the same reason: uf has no opinion
-    // about import order anywhere in the workspace, so there is nothing to
-    // organise them into. A capability is a promise, and this one would be
-    // a promise to sort imports into an order uf has never decided on.
-    assert!(!stdout.contains("organizeImports"), "{stdout}");
+    // Inlay hints stay unadvertised: Flow's path is a `^?` comment, not a
+    // hint beside a parameter.
+    assert!(!stdout.contains("inlayHintProvider"), "{stdout}");
+    assert!(
+        stdout.contains(r#""workspaceSymbolProvider":true"#),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(r#""selectionRangeProvider":true"#),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(r#""linkedEditingRangeProvider":true"#),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(r#""foldingRangeProvider":true"#),
+        "{stdout}"
+    );
     assert_plain(&stdout);
 }
 
@@ -2650,11 +2666,11 @@ fn lsp_republishes_on_change_and_clears_on_close() {
 /// failure this whole command had. The answer is the one the specification
 /// names — `MethodNotFound` — rather than a `null` result, because a null
 /// result says "there is nothing here" and the truth is "uf does not do
-/// workspace symbols".
+/// inlay hints".
 #[test]
 fn lsp_answers_a_request_it_does_not_serve() {
     let messages = lsp_session(&[
-        framed(r#"{"jsonrpc":"2.0","id":7,"method":"workspace/symbol","params":{}}"#),
+        framed(r#"{"jsonrpc":"2.0","id":7,"method":"textDocument/inlayHint","params":{}}"#),
         framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
     ]);
 
@@ -2663,7 +2679,7 @@ fn lsp_answers_a_request_it_does_not_serve() {
         answer(&messages, 7)["error"]["message"]
             .as_str()
             .unwrap()
-            .contains("workspace/symbol"),
+            .contains("textDocument/inlayHint"),
         "{messages:#?}"
     );
 }

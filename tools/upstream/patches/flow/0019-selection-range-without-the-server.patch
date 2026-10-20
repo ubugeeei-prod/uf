@@ -1,0 +1,51 @@
+Subject: build the selection-range provider without Flow's server
+
+Issue: ubugeeei-prod/uf#1381
+Upstream: not filed yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+`textDocument/selectionRange` is Flow's `selection_range_provider`, an AST
+walk. Patch 0015 put that module behind the `server` feature because it
+imported `flow_server_env`. The two helpers it used are a position
+conversion `flow_lsp` already has and a three-line range constructor, so
+the module no longer needs the server stack and is built with the document
+symbol provider.
+
+Delete this when upstream splits the provider from the server.
+
+diff --git a/rust_port/crates/flow_lsp_server/src/lib.rs b/rust_port/crates/flow_lsp_server/src/lib.rs
+--- a/rust_port/crates/flow_lsp_server/src/lib.rs
++++ b/rust_port/crates/flow_lsp_server/src/lib.rs
+@@ -21,4 +21,3 @@
+ #[cfg(feature = "server")]
+ pub mod rage_print;
+-#[cfg(feature = "server")]
+ pub mod selection_range_provider;
+diff --git a/rust_port/crates/flow_lsp_server/src/selection_range_provider.rs b/rust_port/crates/flow_lsp_server/src/selection_range_provider.rs
+index ec9297881..32fc0fbd6 100644
+--- a/rust_port/crates/flow_lsp_server/src/selection_range_provider.rs
++++ b/rust_port/crates/flow_lsp_server/src/selection_range_provider.rs
+@@ -18,11 +18,21 @@ use flow_parser::ast_visitor::AstVisitor;
+ use flow_parser::ast_visitor::TypeParamsContext;
+ use flow_parser::loc::Loc;
+ use flow_parser::loc::Position;
+-use flow_server_env::flow_lsp_conversions::selection_range_of_loc;
+-use flow_server_env::lsp::lsp_position_to_flow_position;
++use flow_lsp::lsp::loc_to_lsp_range;
++use flow_lsp::lsp::lsp_position_to_flow_position;
+ use lsp_types::Position as LspPosition;
+ use lsp_types::SelectionRange;
+ 
++fn selection_range_of_loc(
++    parent: Option<Box<lsp_types::SelectionRange>>,
++    loc: &Loc,
++) -> lsp_types::SelectionRange {
++    lsp_types::SelectionRange {
++        range: loc_to_lsp_range(loc),
++        parent,
++    }
++}
++
+ struct SelectionRangeFinder {
+     position: Position,
+     acc: Vec<Loc>,
