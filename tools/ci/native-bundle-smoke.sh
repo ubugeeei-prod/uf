@@ -35,9 +35,11 @@ const dependencies = {
 };
 if (provider === 'expo') Object.assign(dependencies, {
   expo: '57.0.24', '@expo/vector-icons': '15.0.3',
-  // autolinking 57.0.16 and modules-core 57.0.23, both published 2026-10-14,
-  // make the generated Android settings fail: publication.version is required
-  // and missing. These are the resolutions the last green smoke installed.
+  // vector-icons accepts expo-font >=14, so npm hoists 58.0.9. That module's
+  // Android publication omits version, which autolinking requires. 57.0.4
+  // satisfies expo (~57.0.4) and includes the field. The other two pins are
+  // the resolutions the last green smoke installed on 2026-10-13.
+  'expo-font': '57.0.4',
   'expo-modules-autolinking': '57.0.15',
   'expo-modules-core': '57.0.22',
 });
