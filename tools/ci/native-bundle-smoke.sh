@@ -33,7 +33,14 @@ const dependencies = {
   react: '19.2.3', 'react-dom': '19.2.3', 'react-native-web': '0.21.2',
   'react-native': provider === 'expo' ? '0.86.3' : '0.87.1',
 };
-if (provider === 'expo') Object.assign(dependencies, { expo: '57.0.24', '@expo/vector-icons': '15.0.3' });
+if (provider === 'expo') Object.assign(dependencies, {
+  expo: '57.0.24', '@expo/vector-icons': '15.0.3',
+  // autolinking 57.0.16 and modules-core 57.0.23, both published 2026-10-14,
+  // make the generated Android settings fail: publication.version is required
+  // and missing. These are the resolutions the last green smoke installed.
+  'expo-modules-autolinking': '57.0.15',
+  'expo-modules-core': '57.0.22',
+});
 else Object.assign(dependencies, {
   '@react-native-community/cli': '20.2.0',
   '@react-native/metro-config': '0.87.1', '@react-native/babel-preset': '0.87.1',
