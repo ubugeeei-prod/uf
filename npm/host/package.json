@@ -20,6 +20,8 @@
     "./module-mocks": "./module-mocks.js",
     "./register": "./register.js",
     "./transform": "./transform.js",
+    "./turbopack": "./turbopack.cjs",
+    "./turbopack-loader": "./turbopack-loader.cjs",
     "./write-atomically": "./write-atomically.js"
   },
   "browser": {
@@ -39,6 +41,8 @@
     "lint-worker.js",
     "module-mocks.js",
     "transform.js",
+    "turbopack.cjs",
+    "turbopack-loader.cjs",
     "write-atomically.js",
     "internal/*.js",
     "!*.test.js"
