@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.42.0
+
+- feat(turbopack): compile Flow inside Next.js Turbopack (#1895) (2775c96a)
+
 ## uf@0.41.0
 
 - feat(lsp): workspace symbols, organize imports, selection, linked editing, and folding (#1891) (d1ae07ae)
