@@ -102,12 +102,12 @@ the object itself renders `[object Object]`.
 
 The loader writes the generated sheet next to the module that asked for it:
 `app/page.js` imports `./page.js.uf.css`. The suffix is not `.module.css`. A
-CSS module would hash the class, and Next.js allows a global stylesheet only
-from a layout, so a component outside `app/` could not import one. Turbopack
-is told `*.uf.css` is plain CSS. On `next build --webpack` the helper opens
-that same suffix in the rule that otherwise rejects global CSS outside a
-layout. `"use client"` and `"use server"` stay the first statements; the
-import is inserted after them.
+CSS module would hash the class. Next.js 16's webpack pipeline rejects a
+global stylesheet imported from anywhere but a layout, and these sheets are
+imported by the module that owns them, layout or not. Turbopack is told
+`*.uf.css` is plain CSS. On `next build --webpack` the helper opens that
+suffix in the rule that otherwise rejects the import. `"use client"` and
+`"use server"` stay the first statements; the import is inserted after them.
 
 Generated files:
 
@@ -120,10 +120,14 @@ The first sits beside project source. The second is where a sheet from
 `node_modules/@uniflowed/` goes, because that directory is not a place to write
 build output. Add both to `.gitignore`. The helper does not edit it for you.
 
-Turbopack resolves that import against the files present when the build
+Turbopack resolves that import against the files present when compilation
 starts, so a sheet created during compilation is invisible to it. Loading the
-config creates an empty sheet for each Flow file. The loader replaces it with
-the generated rules, and deletes it when the module declares none.
+config creates an empty sheet for each Flow file it can see, including a
+package that pnpm linked into `node_modules/@uniflowed`. The loader replaces
+that file with the generated rules. When the module declares none, the import
+is omitted and the file is left empty, so a later edit that adds StyleX still
+resolves. A Flow file created after the config loaded gets its sheet the next
+time the config loads.
 
 A dependency's React Compiler findings are warnings, and they are omitted
 unless `UF_REACT_COMPILER_DIAGNOSTICS=all`. A syntax error fails the build and

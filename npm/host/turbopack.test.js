@@ -180,6 +180,10 @@ describe("@uniflowed/host/turbopack", () => {
         const compiled = config.webpack({ module: { rules: [] } }, {});
         expect(compiled.module.rules[0].enforce).toBe("pre");
         expect(compiled.module.rules[0].use[0].loader).toBe(turbopackLoaderPath);
+        const exclude = compiled.module.rules[0].exclude;
+        expect(exclude("/app/page.js")).toBe(false);
+        expect(exclude("/app/node_modules/left-pad/index.js")).toBe(true);
+        expect(exclude("/app/node_modules/@uniflowed/stylex/index.js")).toBe(false);
         expect(config.webpack(compiled, {}).module.rules.length).toBe(1);
       } finally {
         process.argv = argv;
@@ -355,13 +359,25 @@ describe("@uniflowed/host/turbopack", () => {
       const plain = path.join(root, "app", "plain.js");
       const mark = path.join(root, "components", "mark.js");
       const packaged = path.join(root, "node_modules", "@uniflowed", "ui", "button.js");
+      const linkedReal = path.join(
+        root,
+        "store",
+        "node_modules",
+        "@uniflowed",
+        "linked",
+        "mark.js",
+      );
+      const linked = path.join(root, "node_modules", "@uniflowed", "linked", "mark.js");
       fs.mkdirSync(path.dirname(page), { recursive: true });
       fs.mkdirSync(path.dirname(mark), { recursive: true });
       fs.mkdirSync(path.dirname(packaged), { recursive: true });
+      fs.mkdirSync(path.dirname(linkedReal), { recursive: true });
       fs.writeFileSync(page, "// @flow\nexport const page = 1;\n");
       fs.writeFileSync(plain, "export const plain = 1;\n");
       fs.writeFileSync(mark, "// @flow\nexport const mark = 1;\n");
       fs.writeFileSync(packaged, "// @flow\nexport const button = 1;\n");
+      fs.writeFileSync(linkedReal, "// @flow\nexport const linked = 1;\n");
+      fs.symlinkSync(path.dirname(linkedReal), path.dirname(linked));
       const kept = `${page}.uf.css`;
       fs.writeFileSync(kept, "/* kept */\n");
 
@@ -371,10 +387,13 @@ describe("@uniflowed/host/turbopack", () => {
       expect(fs.existsSync(`${mark}.uf.css`)).toBe(true);
       expect(fs.existsSync(`${plain}.uf.css`)).toBe(false);
       expect(fs.existsSync(`${packaged}.uf.css`)).toBe(false);
+      expect(fs.existsSync(styleModuleFor(packaged, root).file)).toBe(true);
+      expect(fs.existsSync(styleModuleFor(linked, root).file)).toBe(true);
+      expect(fs.existsSync(styleModuleFor(fs.realpathSync(linked), root).file)).toBe(true);
       const generated = fs.readdirSync(path.join(root, ".uf", "turbopack"));
-      expect(generated.length).toBe(1);
-      expect(generated[0].endsWith(".css")).toBe(true);
-      expect(generated[0].includes(".module.")).toBe(false);
+      expect(generated.every((name) => name.endsWith(".css") && !name.includes(".module."))).toBe(
+        true,
+      );
     });
   });
 });
@@ -417,7 +436,7 @@ describe("uf transform through the loader", () => {
     });
   });
 
-  it("writes StyleX as a global CSS module and removes it when the module no longer has any", async () => {
+  it("writes StyleX as plain CSS and keeps an empty sheet when the module no longer has any", async () => {
     const binary = requireRealUf();
     await withProject(async (root) => {
       await withEnv({ UF_BINARY: binary }, async () => {
@@ -445,15 +464,15 @@ describe("uf transform through the loader", () => {
         const cleared = await compile("// @flow\nexport const value = 1;\n", file, { root });
         expect(cleared.cssPath).toBe(null);
         expect(cleared.code).not.toContain(".uf.css");
-        expect(fs.existsSync(`${file}.uf.css`)).toBe(false);
+        expect(fs.readFileSync(`${file}.uf.css`, "utf8")).toBe("\n");
       });
     });
   });
 });
 
 describe("next build", () => {
-  it("compiles Flow with Turbopack when UF_TURBOPACK_E2E=1", async () => {
-    if (process.env.UF_TURBOPACK_E2E !== "1") return;
+  const nextBuild = process.env.UF_TURBOPACK_E2E === "1" ? it : it.skip;
+  nextBuild("compiles Flow with Turbopack when UF_TURBOPACK_E2E=1", async () => {
     const binary = requireRealUf();
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "uf-turbopack-next-")));
     const trace = path.join(root, "trace.txt");

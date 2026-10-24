@@ -285,11 +285,14 @@ function walkSources(directory, root) {
   for (const entry of entries) {
     if (SKIP_DIRECTORIES.has(entry.name)) continue;
     const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
+    // pnpm links each package. `Dirent.isDirectory()` is false for that link,
+    // and the path hashed below has to stay the path the loader will be given,
+    // so the walk follows the link without resolving it first.
+    if (isDirectoryEntry(entry, full)) {
       walkSources(full, root);
       continue;
     }
-    if (!entry.isFile() || !SOURCE_EXTENSION.test(entry.name)) continue;
+    if (!isFileEntry(entry, full) || !SOURCE_EXTENSION.test(entry.name)) continue;
     let source;
     try {
       if (fs.statSync(full).size > MAX_SOURCE_BYTES) continue;
@@ -298,11 +301,48 @@ function walkSources(directory, root) {
       continue;
     }
     if (NOFLOW_PRAGMA.test(source) || !FLOW_PRAGMA.test(source)) continue;
-    const sheet = styleModuleFor(full, root);
-    if (fs.existsSync(sheet.file)) continue;
-    fs.mkdirSync(path.dirname(sheet.file), { recursive: true });
-    fs.writeFileSync(sheet.file, "\n");
+    placeEmptySheet(full, root);
   }
+}
+
+function isDirectoryEntry(entry, full) {
+  if (entry.isDirectory()) return true;
+  if (!entry.isSymbolicLink()) return false;
+  try {
+    return fs.statSync(full).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function isFileEntry(entry, full) {
+  if (entry.isFile()) return true;
+  if (!entry.isSymbolicLink()) return false;
+  try {
+    return fs.statSync(full).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function placeEmptySheet(filename, root) {
+  writeEmpty(styleModuleFor(filename, root).file);
+  // The loader may be handed the real path of a linked package. A real path
+  // that has left `node_modules` is a store this walk must not write into.
+  let real;
+  try {
+    real = fs.realpathSync(filename);
+  } catch {
+    return;
+  }
+  if (real === filename || !/(?:^|[\\/])node_modules[\\/]/.test(real)) return;
+  writeEmpty(styleModuleFor(real, root).file);
+}
+
+function writeEmpty(file) {
+  if (fs.existsSync(file)) return;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, "\n");
 }
 
 /**
@@ -329,7 +369,11 @@ function webpackField(existing, options) {
         config.module.rules.unshift({
           test   : /\.(?:js|jsx|mjs|cjs)$/,
           enforce: "pre",
-          use    : [{ loader: turbopackLoaderPath, options: plainOptions(options) }],
+          // Turbopack's rules skip foreign packages. webpack's `test` does
+          // not, so the same line is drawn here: project files, and `@uniflowed`.
+          exclude: (file) =>
+            /(?:^|[\\/])node_modules[\\/]/.test(file) && !UNIFLOWED_PACKAGE.test(file),
+          use: [{ loader: turbopackLoaderPath, options: plainOptions(options) }],
         });
       }
       allowUfStylesheets(config);

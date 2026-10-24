@@ -136,7 +136,10 @@ async function compile(source, filename, options = {}) {
   const stylesheet = styleModuleFor(file, root);
   const css = typeof out.css === "string" ? out.css : "";
   if (css.trim() === "") {
-    removeIfExists(stylesheet.file);
+    // Leave the placeholder. Turbopack resolves the import against files that
+    // existed when this compilation started, so deleting the sheet would make
+    // the next edit that adds StyleX fail until the config loads again.
+    if (fs.existsSync(stylesheet.file)) writeIfChanged(stylesheet.file, "\n");
     return { code: out.code, map: normalizeMap(out.map), cssPath: null };
   }
 
@@ -184,18 +187,6 @@ function writeIfChanged(file, contents) {
     throw new Error(
       `@uniflowed/host/turbopack: could not write ${file}: ${error instanceof Error ? error.message : String(error)}`,
     );
-  }
-}
-
-function removeIfExists(file) {
-  try {
-    fs.unlinkSync(file);
-  } catch (error) {
-    if (error?.code !== "ENOENT") {
-      throw new Error(
-        `@uniflowed/host/turbopack: could not remove ${file}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
   }
 }
 
