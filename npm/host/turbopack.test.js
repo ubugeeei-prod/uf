@@ -219,7 +219,8 @@ describe("@uniflowed/host/turbopack", () => {
   it("changes the loader identity when the uf binary file changes", () => {
     return withProject((root) => {
       const binary = fakeUf(root);
-      const identity = (config) => config.turbopack.rules["*.js"][0].loaders[0].options.identity;
+      const identity = (config: LoaderIdentityConfig): string =>
+        config.turbopack.rules["*.js"][0].loaders[0].options.identity;
       return withEnv({ UF_BINARY: binary }, () => {
         const before = identity(withUniflowed({}, root));
         expect(before).toContain(binary);
@@ -276,7 +277,7 @@ describe("@uniflowed/host/turbopack", () => {
         " count: config.turbopack.rules['*.js'].length," +
         " webpack: Object.hasOwn(config, 'webpack')," +
         " }));";
-      const env = {
+      const env: Env = {
         ...process.env,
         UF_BINARY      : fakeUf(root),
         UF_PROJECT_ROOT: root,
@@ -517,10 +518,7 @@ describe("next build", () => {
       );
       expect(commandOutput(install)).toBe("");
       fs.rmSync(path.join(root, "node_modules/@uniflowed/host"), { recursive: true, force: true });
-      fs.cpSync(DIR, path.join(root, "node_modules/@uniflowed/host"), {
-        recursive: true,
-        filter   : (source) => !source.endsWith(".test.js"),
-      });
+      copyHost(DIR, path.join(root, "node_modules/@uniflowed/host"));
       const built = runNext(root, binary, trace, ["build"]);
       expect(commandOutput(built)).toBe("");
       expect(`${built.stdout}\n${built.stderr}`).toContain("Turbopack");
@@ -537,7 +535,23 @@ describe("next build", () => {
   });
 });
 
-function assertFlowSurvived(root, trace) {
+type Env        = { [string]: string | void, ... };
+type CommandRun = { status: number | null, stdout: string, stderr: string, ... };
+type LoaderIdentityConfig = {
+  turbopack: {
+    rules: {
+      [string]: $ReadOnlyArray<{
+        loaders: $ReadOnlyArray<{ options: { identity: string, ... }, ... }>,
+        ...
+      }>,
+      ...
+    },
+    ...
+  },
+  ...
+};
+
+function assertFlowSurvived(root: string, trace: string): void {
   const seen = fs.readFileSync(trace, "utf8");
   expect(seen).toContain(path.join(root, "app/page.js"));
   expect(seen).toContain(path.join(root, "components/mark.js"));
@@ -570,8 +584,8 @@ function assertFlowSurvived(root, trace) {
   }
 }
 
-function filesUnder(directory) {
-  const found = [];
+function filesUnder(directory: string): Array<string> {
+  const found: Array<string> = [];
   if (!fs.existsSync(directory)) return found;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const child = path.join(directory, entry.name);
@@ -581,13 +595,13 @@ function filesUnder(directory) {
   return found;
 }
 
-function commandOutput(run) {
+function commandOutput(run: CommandRun): string {
   if (run.status === 0) return "";
-  return `exit ${run.status}\n${run.stdout}\n${run.stderr}`;
+  return `exit ${String(run.status)}\n${run.stdout}\n${run.stderr}`;
 }
 
-function nextEnv(root, binary, trace) {
-  const env = {
+function nextEnv(root: string, binary: string, trace: string): Env {
+  const env: Env = {
     ...process.env,
     UF_BINARY              : binary,
     UF_TURBOPACK_TRACE     : trace,
@@ -598,9 +612,14 @@ function nextEnv(root, binary, trace) {
   return env;
 }
 
-function runNext(root, binary, trace, args) {
+function runNext(
+  root  : string,
+  binary: string,
+  trace : string,
+  args  : $ReadOnlyArray<string>,
+): CommandRun {
   const next = path.join(root, "node_modules/next/dist/bin/next");
-  return runPlainNode(args, nextEnv(root, binary, trace), root, process.execPath, [next, ...args]);
+  return runPlainNode(args, nextEnv(root, binary, trace), root, plainNode(), [next, ...args]);
 }
 
 function requireRealUf() {
@@ -612,7 +631,7 @@ function requireRealUf() {
   return REAL_UF;
 }
 
-function fakeUf(root) {
+function fakeUf(root: string): string {
   const binary = path.join(root, "bin", "uf");
   fs.mkdirSync(path.dirname(binary), { recursive: true });
   fs.writeFileSync(binary, "#!/bin/sh\n");
@@ -620,7 +639,7 @@ function fakeUf(root) {
   return binary;
 }
 
-async function withProject(body) {
+async function withProject(body: (root: string) => mixed): Promise<mixed> {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "uf-turbopack-")));
   try {
     fs.writeFileSync(path.join(root, "uf.config.js"), "export default {};\n");
@@ -630,8 +649,8 @@ async function withProject(body) {
   }
 }
 
-async function withEnv(values, body) {
-  const previous = new Map();
+async function withEnv(values: Env, body: () => mixed): Promise<mixed> {
+  const previous: Map<string, string | void> = new Map();
   for (const name of Object.keys(values)) {
     previous.set(name, process.env[name]);
     const value = values[name];
@@ -648,7 +667,39 @@ async function withEnv(values, body) {
   }
 }
 
-function runPlainNode(args, env, cwd, command = process.execPath, commandArgs = args) {
+/**
+ * Node itself, not whichever host is running this file.
+ *
+ * The Deno library lane executes the suite, so `process.execPath` is `deno`.
+ * `deno -e` cannot `require` the ES module `@uniflowed/host/transform` the way
+ * Node 20.19 and later can, and that load is what the plain-Node case proves.
+ */
+function plainNode(): string {
+  const found = spawnSync("node", ["-p", "process.execPath"], { encoding: "utf8" });
+  const binary = String(found.stdout ?? "").trim();
+  if (found.status === 0 && binary !== "") return binary;
+  throw new Error("`node` is not on PATH, so the plain-Node load cannot be proven.");
+}
+
+/** `fs.cpSync` has no Flow declaration in this repository's libdef. */
+function copyHost(from: string, to: string): void {
+  fs.mkdirSync(to, { recursive: true });
+  for (const name of fs.readdirSync(from)) {
+    if (name.endsWith(".test.js")) continue;
+    const source = path.join(from, name);
+    const target = path.join(to, name);
+    if (fs.statSync(source).isDirectory()) copyHost(source, target);
+    else fs.copyFileSync(source, target);
+  }
+}
+
+function runPlainNode(
+  args       : $ReadOnlyArray<string>,
+  env        : Env,
+  cwd        : ?string,
+  command    : string = plainNode(),
+  commandArgs: $ReadOnlyArray<string> = args,
+): CommandRun {
   const childEnv = { ...env };
   delete childEnv.NODE_OPTIONS;
   const run = spawnSync(command, commandArgs, {
@@ -663,6 +714,6 @@ function runPlainNode(args, env, cwd, command = process.execPath, commandArgs = 
   };
 }
 
-function escapeRegExp(value) {
+function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
