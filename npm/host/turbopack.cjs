@@ -97,7 +97,7 @@ function flowRules(options = {}) {
           ],
         },
         loaders: [{ ...loader, options: { ...loader.options } }],
-        as      : "*.js",
+        as     : "*.js",
       },
       {
         condition: {
@@ -108,7 +108,7 @@ function flowRules(options = {}) {
           ],
         },
         loaders: [{ ...loader, options: { ...loader.options } }],
-        as      : "*.js",
+        as     : "*.js",
       },
     ];
   }
@@ -122,7 +122,7 @@ function plainOptions(options) {
     // The resolved `uf`. Loader workers do not inherit a `UF_BINARY` this
     // process set after they were spawned, and the cache key alone does not
     // tell the worker which file to execute.
-    binary  : typeof options.binary === "string" ? options.binary : "",
+    binary: typeof options.binary === "string" ? options.binary : "",
   };
 }
 
@@ -188,10 +188,7 @@ function applyUniflowed(config, projectRoot) {
     config.turbopack != null && typeof config.turbopack === "object" ? config.turbopack : {};
   const next = {
     ...config,
-    transpilePackages: mergePackages(
-      config.transpilePackages,
-      flow.uniflowedPackages(projectRoot),
-    ),
+    transpilePackages: mergePackages(config.transpilePackages, flow.uniflowedPackages(projectRoot)),
     turbopack: {
       ...turbopack,
       rules: mergeRules(turbopack.rules, rules),
@@ -233,7 +230,15 @@ function applyUniflowed(config, projectRoot) {
   return next;
 }
 
-const SKIP_DIRECTORIES = new Set(["node_modules", ".next", ".git", ".uf", "dist", "coverage", "out"]);
+const SKIP_DIRECTORIES = new Set([
+  "node_modules",
+  ".next",
+  ".git",
+  ".uf",
+  "dist",
+  "coverage",
+  "out",
+]);
 const SOURCE_EXTENSION = /\.(?:js|jsx|mjs|cjs)$/;
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 
@@ -316,7 +321,7 @@ function webpackField(existing, options) {
     return function webpack(webpackConfig, context) {
       const config =
         typeof existing === "function"
-          ? existing(webpackConfig, context) ?? webpackConfig
+          ? (existing(webpackConfig, context) ?? webpackConfig)
           : webpackConfig;
       config.module ??= {};
       config.module.rules ??= [];
@@ -485,10 +490,7 @@ function pinCompiler(flow) {
   }
   // The path half is absolute even when lookup started from a bare `uf`.
   const resolved = identity.split("\0")[0];
-  if (
-    (process.env.UF_BINARY == null || process.env.UF_BINARY === "") &&
-    resolved !== ""
-  ) {
+  if ((process.env.UF_BINARY == null || process.env.UF_BINARY === "") && resolved !== "") {
     process.env.UF_BINARY = resolved;
   }
   // Loader options have to be plain JSON. The identity's own separator is a

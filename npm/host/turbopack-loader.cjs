@@ -46,9 +46,7 @@ const JS_EXTENSION = /\.(?:js|jsx|mjs|cjs)$/;
 function loader(source, inputSourceMap) {
   const callback = this.async();
   if (typeof callback !== "function") {
-    throw new Error(
-      "@uniflowed/host/turbopack: the loader was called without async support.",
-    );
+    throw new Error("@uniflowed/host/turbopack: the loader was called without async support.");
   }
   if (typeof this.cacheable === "function") this.cacheable(true);
   const options = readOptions(this);
@@ -58,9 +56,9 @@ function loader(source, inputSourceMap) {
       : this.rootContext || process.cwd();
   compile(String(source), this.resourcePath, {
     root,
-    binary      : typeof options.binary === "string" ? options.binary : "",
-    development : this.mode === "development",
-    emitWarning : (error) => {
+    binary     : typeof options.binary === "string" ? options.binary : "",
+    development: this.mode === "development",
+    emitWarning: (error) => {
       if (typeof this.emitWarning === "function") this.emitWarning(error);
     },
     addDependency: (file) => {
@@ -113,10 +111,10 @@ async function compile(source, filename, options = {}) {
   try {
     out = await flow.transformFlow(source, file, {
       root,
-      development : options.development === true,
-      refresh     : false,
-      sourceMap   : true,
-      nativeStyles: false,
+      development  : options.development === true,
+      refresh      : false,
+      sourceMap    : true,
+      nativeStyles : false,
       inSourceTests: false,
     });
   } catch (error) {
@@ -212,8 +210,7 @@ function reportDiagnostics(diagnostics, filename, root, emitWarning) {
   }
   for (const diagnostic of diagnostics) {
     if (diagnostic == null || typeof diagnostic !== "object") continue;
-    const at =
-      diagnostic.line == null ? "" : `:${diagnostic.line}:${(diagnostic.column ?? 0) + 1}`;
+    const at = diagnostic.line == null ? "" : `:${diagnostic.line}:${(diagnostic.column ?? 0) + 1}`;
     const who = diagnostic.function == null ? "" : ` (in ${diagnostic.function})`;
     const relative = path.relative(root, filename) || filename;
     warn(new Error(`${relative}${at}: ${diagnostic.message ?? ""}${who}`));
