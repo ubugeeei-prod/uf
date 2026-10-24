@@ -1470,7 +1470,11 @@ exit, which would be a build that produced nothing and said it succeeded.
 uf ships, and `crates/uf_cli/tests/fixtures/paper-builder` is a second
 implementation that exists to keep the contract honest rather than to be used.
 A production builder for Rolldown, rspack or esbuild is **Planned**, and is a
-separate piece of work: nothing in the contract above waits on it.
+separate piece of work: nothing in the contract above waits on it. Compiling
+Flow inside an existing Next.js app is not that builder.
+`@uniflowed/host/turbopack` registers a loader with Next.js's Turbopack and,
+when the build is `next build --webpack`, with webpack. `uf dev` and `uf build`
+stay on `@uniflowed/vite`.
 
 `@uniflowed/router` is the runtime the virtual modules call into: matching
 (`[param]`, `[...rest]`, `(group)`, most specific wins), nested layouts,

@@ -1,0 +1,156 @@
+---
+title: "Next.js and Turbopack · uf"
+description: "Compile Flow inside a Next.js app with Turbopack. uf dev and uf build stay on Vite."
+readiness: "Implemented"
+---
+
+<p className="eyebrow">The toolchain</p>
+
+# Next.js and Turbopack
+
+<div className="lede">
+A Next.js app can compile its Flow with uf and keep Next.js. Turbopack stays
+the bundler. Vite stays the bundler of `uf dev` and `uf build`. The two are
+not the same integration, and this page is only the first one.
+</div>
+
+**What you will be able to do:** compile Flow, the React Compiler and StyleX in
+a Next.js 16 app, with `next dev` and `next build`, and with `next build
+--webpack` when that is how the app builds.
+
+**What you need first:** [uf installed](/guide/install), a Next.js 16 app, and
+a `uf.config.js` at the app root. Next.js 16 runs Turbopack unless the command
+passes `--webpack`. The loader starts `uf transform` there, and that command
+reads the config. An app that is not otherwise a uf app can leave it empty:
+`export default {}`.
+
+## The current line
+
+| Piece | Status | What it does |
+| --- | --- | --- |
+| `withUniflowed` | Implemented | Composes `next.config.js` with the loader, including a function config |
+| Turbopack | Implemented | `turbopack.rules` on `*.js`, `*.jsx`, `*.mjs` and `*.cjs`, only where a file carries `@flow` |
+| `@uniflowed/*` | Implemented | `transpilePackages` lists the scope that is installed, and the loader compiles the packages that ship Flow |
+| `next build --webpack` | Implemented | The same loader, and only when the config already has a `webpack` function or the command passes `--webpack` |
+| StyleX | Implemented | A stylesheet next to the file, with the generated class names left intact |
+| `uf dev` on Turbopack | Not this | Vite remains the builder `uf dev` and `uf build` drive. `build.builder` does not gain a `turbopack` value |
+
+## Configure
+
+```js
+// next.config.js
+const { withUniflowed } = require("@uniflowed/host/turbopack");
+
+module.exports = withUniflowed({
+  // The Next.js config the project already has.
+});
+```
+
+The helper is CommonJS, because Next.js evaluates the config in plain Node,
+where uf's loader hooks are not installed. A config written as an ES module
+can `import { withUniflowed } from "@uniflowed/host/turbopack"`.
+
+A function config is wrapped rather than called here. Next.js calls it with
+the phase, and the helper composes whatever object comes back, including from
+a returned promise. Composing twice is composing once.
+
+```js
+// app/page.js
+// @flow
+import { stylex } from "@uniflowed/stylex";
+
+const styles = stylex.create({
+  title: { color: "red", fontSize: 32 },
+});
+
+export default function Page() {
+  return <h1 {...stylex.props(styles.title)}>Flow</h1>;
+}
+```
+
+Only a file with a Flow pragma is compiled. `// @flow` or `/* @flow */` at the
+start of a line counts. `// @noflow` does not, and neither does a mention of
+the pragma in the middle of a comment: those files stay with SWC. The same
+rule applies under `node_modules`, limited to `@uniflowed/*`, because that is
+the scope that ships Flow source. Other packages are left alone.
+
+`refresh` is off. Next.js registers components for its own Fast Refresh, and a
+component registered twice remounts instead of keeping state.
+
+## What the helper changes
+
+| Field | What the helper does |
+| --- | --- |
+| `turbopack.rules` | Appends the Flow loader to `*.js`, `*.jsx`, `*.mjs` and `*.cjs`. A rule the project already has for that glob stays, and runs as well |
+| `experimental.turbo.rules` | The same, and only when the config already has that key. The helper does not create it |
+| `transpilePackages` | Appends each installed `@uniflowed/*` package that is not already listed, so Next.js compiles the package instead of externalizing its Flow |
+| `webpack` | Left untouched, unless the project already set a function or the command is `--webpack`. Next.js 16 refuses a default Turbopack build that suddenly has a webpack config |
+
+The loader's options carry the `uf` binary's identity. Turbopack and webpack
+both cache a loader's output, and an upgraded `uf` has to miss that cache
+without anyone passing a reset flag.
+
+`flowRules()` is those rule objects without the rest of the Next.js config, for
+a Turbopack that is not Next.js and already runs webpack loaders. Next.js is
+the integration this page tests.
+
+## StyleX
+
+StyleX's class name is the string in the compiled JavaScript. Apply it with
+`stylex.props`, which turns the compiled object into a `className`. Passing
+the object itself renders `[object Object]`.
+
+The loader writes the generated sheet next to the module that asked for it:
+`app/page.js` imports `./page.js.uf.css`. The suffix is not `.module.css`. A
+CSS module would hash the class. Next.js 16's webpack pipeline rejects a
+global stylesheet imported from anywhere but a layout, and these sheets are
+imported by the module that owns them, layout or not. Turbopack is told
+`*.uf.css` is plain CSS. On `next build --webpack` the helper opens that
+suffix in the rule that otherwise rejects the import. `"use client"` and
+`"use server"` stay the first statements; the import is inserted after them.
+
+Generated files:
+
+```text
+*.uf.css
+.uf/turbopack/*.css
+```
+
+The first sits beside project source. The second is where a sheet from
+`node_modules/@uniflowed/` goes, because that directory is not a place to write
+build output. Add both to `.gitignore`. The helper does not edit it for you.
+
+Turbopack resolves that import against the files present when compilation
+starts, so a sheet created during compilation is invisible to it. Loading the
+config creates an empty sheet for each Flow file it can see, including a
+package that pnpm linked into `node_modules/@uniflowed`. The loader replaces
+that file with the generated rules. When the module declares none, the import
+is omitted and the file is left empty, so a later edit that adds StyleX still
+resolves. A Flow file created after the config loaded gets its sheet the next
+time the config loads.
+
+A dependency's React Compiler findings are warnings, and they are omitted
+unless `UF_REACT_COMPILER_DIAGNOSTICS=all`. A syntax error fails the build and
+names the file, line and column.
+
+## The uf binary
+
+The loader compiles with the `uf` binary, found in this order: `UF_BINARY`,
+which uf sets to itself for every process it starts; `uf` on `PATH`; and the
+installer's directory, `UF_BIN_DIR` or `~/.local/bin`. When none of the three
+has an executable, `next.config.js` fails to load and the error names all
+three, plus the install:
+
+```text
+curl -fsSL https://setup.uniflowed.dev | sh
+```
+
+## What this is not
+
+`uf dev` and `uf build` do not run on Turbopack. The builder contract — routes,
+server components, the dev server, assets — is Vite's, and a second production
+builder is separate work. Nothing on this page sets `build.builder`.
+
+Moving the application off Next.js and onto uf is [From Next.js](/guide/migrate#from-nextjs).
+The audit of App Router features is [uf and Next.js](/guide/nextjs). A row
+there is about uf's own server, not about this loader.

@@ -201,6 +201,12 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb:
           "uf mcp: twelve tools over stdio, the two that write, and what an agent should not assume.",
       },
+      {
+        href : "/guide/turbopack",
+        title: "Next.js and Turbopack",
+        blurb:
+          "Compile Flow inside a Next.js app with Turbopack. uf dev and uf build stay on Vite.",
+      },
     ],
     featured: ["/guide/dev", "/guide/testing", "/guide/check", "/guide/format", "/guide/ci"],
     then    : "/guide/build-an-app",
