@@ -9,8 +9,10 @@
 //! either), and a span that runs past the end of the line (which must not
 //! panic, misalign, or print an unbounded row of carets).
 
+use crate::capability::ColorLevel;
 use crate::render::Renderer;
 use crate::text::{char_width, floor_char_boundary, push_repeat, push_spaces, push_usize};
+use crate::theme::Theme;
 
 /// How a tab is rendered and measured inside a code frame.
 const TAB_WIDTH: usize = 4;
@@ -169,6 +171,30 @@ fn window(span: Span) -> (usize, usize) {
     (start, start + MAX_LINE_WIDTH)
 }
 
+/// Paint `message` as the lines it was written in.
+///
+/// `safe_message` drops every control character, newline included, because a
+/// message is also interpolated into places that are one line. A code frame is
+/// not one of those places: the newline is how Flow separates "To fix the
+/// error" from the list under it. The carriage return and the escape stay
+/// dropped, on each line, which is what keeps the message from steering the
+/// terminal.
+fn paint_message(theme: &Theme, level: ColorLevel, message: &str, indent: usize, out: &mut String) {
+    let mut lines = message.split('\n');
+    let first = lines.next().unwrap_or("");
+    theme
+        .title
+        .paint(level, &crate::text::safe_message(first), out);
+    out.push('\n');
+    for line in lines {
+        push_spaces(out, indent);
+        theme
+            .title
+            .paint(level, &crate::text::safe_message(line), out);
+        out.push('\n');
+    }
+}
+
 pub(crate) fn render_frame(
     renderer: &Renderer,
     out: &mut String,
@@ -196,11 +222,11 @@ pub(crate) fn render_frame(
     level_style.close(level, out);
     out.push_str(": ");
     // The message quotes module paths and import specifiers, which came out of
-    // the same checkout the filename did. #659.
-    theme
-        .title
-        .paint(level, &crate::text::safe_message(frame.message), out);
-    out.push('\n');
+    // the same checkout the filename did. #659. Flow's own explanation of how
+    // to fix an error is several lines (`To fix the error`, then a list); the
+    // line break is the one control character that is the message, and every
+    // other one is still dropped, per line. #1381.
+    paint_message(theme, level, frame.message, indent, out);
 
     let gutter = crate::text::decimal_digits(frame.line);
     push_spaces(out, indent + gutter);
