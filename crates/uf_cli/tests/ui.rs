@@ -333,6 +333,54 @@ fn list_says_what_the_registry_has_and_what_the_project_added() {
 }
 
 #[test]
+fn add_and_list_read_a_directory_instead_of_the_embedded_registry() {
+    let dir = app();
+    let registry = dir.path().join("registry");
+    fs::create_dir(&registry).expect("the registry directory");
+    fs::write(
+        registry.join("badge.js"),
+        "// @flow\n// Badge: a badge.\nexport component Badge() {}\n",
+    )
+    .expect("the component is written");
+    fs::write(registry.join("badge.example.js"), "not a component\n").expect("the example");
+    fs::write(registry.join("README.md"), "notes\n").expect("the notes");
+
+    let (code, stdout, stderr) = run(
+        dir.path(),
+        &["ui", "list", "--registry", "registry", "--json"],
+    );
+    assert_eq!(code, 0, "{stderr}");
+    let report: Value = serde_json::from_str(&stdout).expect("--json is only JSON");
+    let names: Vec<&str> = report["components"]
+        .as_array()
+        .expect("a list")
+        .iter()
+        .map(|each| each["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["badge"]);
+    assert_eq!(report["components"][0]["description"], "a badge.");
+
+    let (code, stdout, stderr) = run(
+        dir.path(),
+        &["ui", "add", "--registry", "registry", "badge"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let written = fs::read_to_string(component(dir.path(), "badge")).expect("the copy");
+    assert!(
+        written.contains("export component Badge"),
+        "the directory's source is what was written: {written}"
+    );
+
+    let (code, _, stderr) = run(
+        dir.path(),
+        &["ui", "add", "--registry", "registry", "dialog"],
+    );
+    assert_eq!(code, 1);
+    assert!(stderr.contains("no component named `dialog`"), "{stderr}");
+    assert!(!component(dir.path(), "dialog").exists());
+}
+
+#[test]
 fn an_unknown_name_is_refused_with_the_closest_names() {
     let dir = app();
     let (code, _, stderr) = run(dir.path(), &["ui", "add", "buton"]);
