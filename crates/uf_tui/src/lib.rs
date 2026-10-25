@@ -68,7 +68,9 @@ impl Default for TuiFrameworkContract {
             // `npm/tui/tui.test.js` against a rendered frame; the other
             // twelve variants of `TuiFeature` name parts of OpenTUI that uf
             // does not implement yet, and listing them here is how a reader
-            // ends up importing a component that does not exist.
+            // ends up importing a component that does not exist. `ScrollBar`
+            // is a component on [`TuiFeature::Scrollback`], not a twelfth
+            // feature: it is the bar `ScrollBox` already draws, on its own.
             features: smallvec::smallvec![
                 TuiFeature::Flexbox,
                 TuiFeature::CellDiff,
@@ -384,7 +386,7 @@ pub struct ReactInkTarget {
     /// Whether an Ink application could be ported without losing a capability.
     ///
     /// Not yet: Ink has no mouse either, but it does have `<Static>`, a
-    /// spinner ecosystem and a component library uf has seven components
+    /// spinner ecosystem and a component library uf has eight components
     /// against. See ubugeeei-prod/uf#314.
     pub replacement_ready: bool,
     /// Whether rendering happens in native code rather than in JavaScript.
@@ -455,15 +457,15 @@ pub fn contract() -> TuiFrameworkContract {
 
 /// The components `@uniflowed/tui` exports today.
 ///
-/// Seven, and the list is short on purpose. `Box` is a flex container that can
+/// Eight, and the list is short on purpose. `Box` is a flex container that can
 /// draw a background, a border and two titles; `Text` is styled text that
 /// knows how to wrap; `Input` is a line somebody types into; `ScrollBox` is a
-/// window onto content taller than itself; `Select` and `TabSelect` are a list
-/// and a row of tabs somebody moves through and chooses from; `Textarea` is
-/// several lines somebody edits. Everything else OpenTUI offers is
-/// ubugeeei-prod/uf#314 rather than an entry here — a component named in a
-/// contract and absent from the package is the failure this whole change is
-/// about.
+/// window onto content taller than itself; `ScrollBar` is that window's bar
+/// when the caller clips the window; `Select` and `TabSelect` are a list and a
+/// row of tabs somebody moves through and chooses from; `Textarea` is several
+/// lines somebody edits. Everything else OpenTUI offers is ubugeeei-prod/uf#314
+/// rather than an entry here — a component named in a contract and absent from
+/// the package is the failure this whole change is about.
 ///
 /// The three that arrived last are interactive in the sense `Input` is: what
 /// they are for is a key somebody presses, so they are not described as safe
@@ -485,6 +487,13 @@ fn default_components() -> TuiComponentList {
         TuiComponent::new("Input", &["Root"], Input, TuiFeature::Keyboard, true),
         TuiComponent::new(
             "ScrollBox",
+            &["Root"],
+            Scrolling,
+            TuiFeature::Scrollback,
+            false,
+        ),
+        TuiComponent::new(
+            "ScrollBar",
             &["Root"],
             Scrolling,
             TuiFeature::Scrollback,

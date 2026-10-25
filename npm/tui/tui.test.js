@@ -32,6 +32,7 @@ import {
   INHERIT,
   Input,
   MouseButton,
+  ScrollBar,
   ScrollBox,
   Select,
   TabSelect,
@@ -1081,6 +1082,63 @@ describe("a window onto more than fits", () => {
     );
     expect(rows(handle.frame())).toEqual(["two     ", "        "]);
     handle.stop();
+  });
+});
+
+describe("a bar that says where the window is", () => {
+  it("draws a thumb at the start, the middle and the end", () => {
+    // total 10, viewport 4, length 4: the thumb is two cells (4/10 of 4,
+    // rounded) and the travel is the other two. The same split `ScrollBox`
+    // paints, asserted on the component that is only the bar.
+    const start = testRender(<ScrollBar total={10} viewport={4} offset={0} height={4} />, {
+      width : 1,
+      height: 4,
+    });
+    expect(rows(start.frame())).toEqual(["█", "█", "│", "│"]);
+    start.stop();
+
+    const middle = testRender(<ScrollBar total={10} viewport={4} offset={3} height={4} />, {
+      width : 1,
+      height: 4,
+    });
+    expect(rows(middle.frame())).toEqual(["│", "█", "█", "│"]);
+    middle.stop();
+
+    const end = testRender(<ScrollBar total={10} viewport={4} offset={6} height={4} />, {
+      width : 1,
+      height: 4,
+    });
+    expect(rows(end.frame())).toEqual(["│", "│", "█", "█"]);
+    end.stop();
+  });
+
+  it("draws nothing when everything already fits", () => {
+    const handle = testRender(<ScrollBar total={4} viewport={4} height={4} />, {
+      width : 1,
+      height: 4,
+    });
+    expect(rows(handle.frame())).toEqual([" ", " ", " ", " "]);
+    handle.stop();
+  });
+
+  it("runs along a row when asked, in the glyphs the terminal has", () => {
+    const unicode = testRender(
+      <ScrollBar orientation="horizontal" total={10} viewport={4} offset={0} width={4} />,
+      { width: 4, height: 1 },
+    );
+    expect(rows(unicode.frame())).toEqual(["██──"]);
+    unicode.stop();
+
+    const ascii = testRender(
+      <ScrollBar orientation="horizontal" total={10} viewport={4} offset={6} width={4} />,
+      {
+        width       : 4,
+        height      : 1,
+        capabilities: { color: "none", glyphs: "ascii", tty: "interactive" },
+      },
+    );
+    expect(rows(ascii.frame())).toEqual(["--##"]);
+    ascii.stop();
   });
 });
 

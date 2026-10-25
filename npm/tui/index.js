@@ -74,13 +74,14 @@
 // declarative focus, mouse input — press, release, hover, drag with capture,
 // drop and wheel, routed by a hit grid the painter records — text selection by
 // drag, one per renderer, read back with
-// `getSelectedText()`, a scrolling window onto content taller than it, a
-// list, a row of tabs and a multi-line editor with OpenTUI's keys, terminal
+// `getSelectedText()`, a scrolling window onto content taller than it, a bar
+// that says where that window is, a list, a row of tabs and a multi-line
+// editor with OpenTUI's keys, terminal
 // capability and *size* detection that agrees with the CLI's, and an
 // in-memory renderer that runs the same code the terminal one does.
 //
 // Not here: the repeated-press gestures that widen a selection to a word or a
-// line, images, the rich content components, `Slider` and `ScrollBar`, and
+// line, images, the rich content components, `Slider`, and
 // everything under OpenTUI's
 // "application APIs" — except for the write-only OSC 52 clipboard — which is
 // why `getSelectedText()` hands a string back and leaves policy to the caller.
@@ -120,8 +121,8 @@
 // - `capability.js` — what this terminal can render and how big it is, by the
 //   CLI's own rules.
 // - `terminal.js` — a real terminal, and the in-memory one tests use.
-// - `components.js` — `Box`, `Text`, `Input`, `ScrollBox`, `Select`,
-//   `TabSelect`, `Textarea`, and the hooks.
+// - `components.js` — `Box`, `Text`, `Input`, `ScrollBox`, `ScrollBar`,
+//   `Select`, `TabSelect`, `Textarea`, and the hooks.
 //
 // `internal/` holds the five that a consumer must not be able to reach past:
 // `tree.js` (props become a layout style once, here), `paint.js` (both passes
@@ -200,6 +201,8 @@ export type {
   ColorValue,
   InputProps,
   MouseProps,
+  ScrollBarOrientation,
+  ScrollBarProps,
   ScrollBoxProps,
   SelectColorProps,
   SelectProps,
@@ -213,6 +216,7 @@ export type { EditWrapMode, SelectOption } from "./internal/widgets.js";
 export {
   Box,
   Input,
+  ScrollBar,
   ScrollBox,
   Select,
   TabSelect,
