@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.43.0
+
+- feat: share dts translations, keep diagnostic lines, load a ui directory, test Zed, and draw ScrollBar (#1897) (19f14fde)
+
 ## uf@0.42.0
 
 - feat(turbopack): compile Flow inside Next.js Turbopack (#1895) (2775c96a)
