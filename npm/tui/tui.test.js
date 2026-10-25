@@ -1112,6 +1112,24 @@ describe("a bar that says where the window is", () => {
     end.stop();
   });
 
+  it("keeps a track cell when a short bar would otherwise round full", () => {
+    // total 10, viewport 9, length 4: 9/10 of 4 rounds to 4. One cell stays
+    // track, so offset 0 and offset 1 are not the same bar.
+    const start = testRender(<ScrollBar total={10} viewport={9} offset={0} height={4} />, {
+      width : 1,
+      height: 4,
+    });
+    expect(rows(start.frame())).toEqual(["█", "█", "█", "│"]);
+    start.stop();
+
+    const end = testRender(<ScrollBar total={10} viewport={9} offset={1} height={4} />, {
+      width : 1,
+      height: 4,
+    });
+    expect(rows(end.frame())).toEqual(["│", "█", "█", "█"]);
+    end.stop();
+  });
+
   it("draws nothing when everything already fits", () => {
     const handle = testRender(<ScrollBar total={4} viewport={4} height={4} />, {
       width : 1,

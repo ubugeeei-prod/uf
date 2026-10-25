@@ -268,8 +268,10 @@ having to know how long the log is.
 `ScrollBar` is that bar on its own, for a window the caller clips. It takes
 `total`, `viewport` and `offset` in one unit and draws a thumb in the same
 proportion `ScrollBox` does. Give it a `height` (or a `width`, for a horizontal
-bar) when the bar should not be `viewport` cells long. Nothing is drawn when
-everything already fits.
+bar) in cells when the bar should not be `viewport` cells long. A percentage is
+not a cell count yet, so it is read as no length. A bar longer than one cell
+keeps one track cell, so the thumb still has somewhere to move. Nothing is
+drawn when everything already fits.
 
 The offset is the caller's, and no key is bound to it. That is the same rule
 focus follows, one level down: what an arrow key should do inside a scrolling

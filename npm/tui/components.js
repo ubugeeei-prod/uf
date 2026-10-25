@@ -433,12 +433,12 @@ type BarCell = "thumb" | "track" | "blank";
 /**
  * Where the thumb sits in a bar `length` cells long.
  *
- * The same arithmetic `paint.js` uses for the bar `ScrollBox` draws, so the
- * two cannot drift: the thumb is `viewport / total` of the bar, at least one
- * cell and never the whole bar, and `offset` places it in the cells that are
- * left. Nothing is drawn when everything fits. A full-height thumb would say
- * "all of it is showing", which is the one thing that is not true of a bar
- * that was asked to say where.
+ * The same ratio `paint.js` uses for the bar `ScrollBox` draws: the thumb is
+ * `viewport / total` of the bar, at least one cell, and `offset` places it in
+ * the cells that are left. A bar of more than one cell keeps one track cell.
+ * `ScrollBox` is as tall as its viewport, and that ratio does not fill it; a
+ * caller can ask this bar to be shorter, and rounding would otherwise fill it
+ * and leave the thumb nowhere to move. Nothing is drawn when everything fits.
  */
 function barCells(total: number, viewport: number, offset: number, length: number): Array<BarCell> {
   const cells: Array<BarCell> = [];
@@ -453,7 +453,8 @@ function barCells(total: number, viewport: number, offset: number, length: numbe
     }
     return cells;
   }
-  const thumb = Math.max(1, Math.min(length, Math.round((viewport / total) * length)));
+  const room = length > 1 ? length - 1 : 1;
+  const thumb = Math.max(1, Math.min(room, Math.round((viewport / total) * length)));
   const travel = length - thumb;
   const scrolled = total - viewport;
   const clamped = Math.min(Math.max(0, offset), scrolled);
@@ -464,7 +465,13 @@ function barCells(total: number, viewport: number, offset: number, length: numbe
   return cells;
 }
 
-/** How long the bar is, in cells: an explicit size, or `viewport`. */
+/**
+ * How long the bar is, in cells: an explicit size, or `viewport`.
+ *
+ * A percentage is a fraction of a parent this function has not laid out, so it
+ * is not a cell count. The glyphs are chosen before layout, and the box is
+ * then that many cells.
+ */
 function barLength(sized: Dimension | void, viewport: number): number {
   if (typeof sized === "number" && Number.isFinite(sized) && sized >= 0) {
     return Math.floor(sized);
