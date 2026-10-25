@@ -895,7 +895,10 @@ fn store(directory: &Path, swept: &mut bool, record: &Path, bytes: &[u8]) {
         "json.{}",
         std::process::id()
     )));
-    if fs::write(&aside, bytes).is_ok() && fs::rename(&aside, record).is_err() {
+    // A write that stops halfway leaves a truncated aside, and the name is this
+    // process, so the next run does not replace it. Remove it unless the
+    // rename took it.
+    if fs::write(&aside, bytes).is_err() || fs::rename(&aside, record).is_err() {
         let _ = fs::remove_file(&aside);
     }
 }
