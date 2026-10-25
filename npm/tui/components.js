@@ -2,12 +2,13 @@
 //
 // The components a caller writes, and the hooks they reach for.
 //
-// Seven components. The first four were most of the argument of the first
+// Eight components. The first four were most of the argument of the first
 // two releases: `Box` is a flex container that can draw a frame around itself;
 // `Text` is a run of styled characters that knows how to wrap; `Input` is a
 // line a reader types into; `ScrollBox` is a window onto content taller than
-// it. Much of what else OpenTUI offers — a table, a diff view — is those plus
-// state, and shipping them badly is worse than not shipping them, so they are
+// it. `ScrollBar` is that window's bar when the window and the bar are not
+// the same box. Much of what else OpenTUI offers — a table, a diff view — is
+// those plus state, and shipping them badly is worse than not shipping them, so they are
 // ubugeeei-prod/uf#314 rather than stubs that throw.
 //
 // `ScrollBox` is the exception to "plus state", which is why it is a component
@@ -42,8 +43,9 @@
 // a render reads — `Textarea` reads its node through a ref only inside a key
 // handler, to know how wide its lines were drawn; `useTerminalSize` subscribes
 // with `useSyncExternalStore` and returns a snapshot that is stable between
-// resizes; `ScrollBox` owns no scroll state at all. All seven are safe under
-// Strict Mode's double invocation and under the React Compiler's memoization.
+// resizes; `ScrollBox` and `ScrollBar` own no scroll state at all. All eight
+// are safe under Strict Mode's double invocation and under the React
+// Compiler's memoization.
 
 import * as React from "@uniflowed/react";
 import {
@@ -419,6 +421,127 @@ export component ScrollBox(
     >
       {children}
     </uf-box>
+  );
+}
+
+/** Which way a `ScrollBar` runs. */
+export type ScrollBarOrientation = "vertical" | "horizontal";
+
+/** One cell of a `ScrollBar`: the thumb, the track, or nothing to draw. */
+type BarCell = "thumb" | "track" | "blank";
+
+/**
+ * Where the thumb sits in a bar `length` cells long.
+ *
+ * The same ratio `paint.js` uses for the bar `ScrollBox` draws: the thumb is
+ * `viewport / total` of the bar, at least one cell, and `offset` places it in
+ * the cells that are left. A bar of more than one cell keeps one track cell.
+ * `ScrollBox` is as tall as its viewport, and that ratio does not fill it; a
+ * caller can ask this bar to be shorter, and rounding would otherwise fill it
+ * and leave the thumb nowhere to move. Nothing is drawn when everything fits.
+ */
+function barCells(total: number, viewport: number, offset: number, length: number): Array<BarCell> {
+  const cells: Array<BarCell> = [];
+  if (!(length > 0)) {
+    return cells;
+  }
+  const blank =
+    !Number.isFinite(total) || !Number.isFinite(viewport) || !(viewport > 0) || !(total > viewport);
+  if (blank) {
+    for (let row = 0; row < length; row += 1) {
+      cells.push("blank");
+    }
+    return cells;
+  }
+  const room = length > 1 ? length - 1 : 1;
+  const thumb = Math.max(1, Math.min(room, Math.round((viewport / total) * length)));
+  const travel = length - thumb;
+  const scrolled = total - viewport;
+  const clamped = Math.min(Math.max(0, offset), scrolled);
+  const start = Math.round((clamped / scrolled) * travel);
+  for (let row = 0; row < length; row += 1) {
+    cells.push(row >= start && row < start + thumb ? "thumb" : "track");
+  }
+  return cells;
+}
+
+/**
+ * How long the bar is, in cells: an explicit size, or `viewport`.
+ *
+ * A percentage is a fraction of a parent this function has not laid out, so it
+ * is not a cell count. The glyphs are chosen before layout, and the box is
+ * then that many cells.
+ */
+function barLength(sized: Dimension | void, viewport: number): number {
+  if (typeof sized === "number" && Number.isFinite(sized) && sized >= 0) {
+    return Math.floor(sized);
+  }
+  return Number.isFinite(viewport) && viewport > 0 ? Math.floor(viewport) : 0;
+}
+
+/** Everything a `ScrollBar` accepts beyond the three numbers that place it. */
+export type ScrollBarProps = {
+  ...BoxProps,
+  readonly orientation?: ScrollBarOrientation,
+  /** How much content there is, in the same unit as `viewport`. */
+  readonly total: number,
+  /** How much of it is showing. */
+  readonly viewport: number,
+  /** How far into the content the window starts. */
+  readonly offset?: number,
+};
+
+/**
+ * A bar that says where a window is in content longer than it.
+ *
+ * `ScrollBox` draws its own, in a column it reserves. This is that bar when
+ * the window and the bar are not the same box: a split the caller clips, a
+ * bar beside a region whose rows the caller already decided. `total`,
+ * `viewport` and `offset` are the caller's, in one unit — rows, or items —
+ * and the bar is `viewport` cells long unless `height` (vertical) or `width`
+ * (horizontal) names a length.
+ *
+ * Nothing is drawn when `total` is not greater than `viewport`.
+ */
+export component ScrollBar(
+  orientation?: ScrollBarOrientation = "vertical",
+  total       : number,
+  viewport    : number,
+  offset?     : number = 0,
+  ...props    : BoxProps
+) {
+  const vertical = orientation !== "horizontal";
+  const asked = vertical
+    ? (props.height ?? props.style?.height)
+    : (props.width ?? props.style?.width);
+  const length = barLength(asked, viewport);
+  const ascii = useRenderer().capabilities.glyphs === "ascii";
+  const track = ascii ? (vertical ? "|" : "-") : vertical ? "│" : "─";
+  const thumb = ascii ? "#" : "█";
+  const cells = barCells(total, viewport, offset, length);
+  const glyph = (cell: BarCell): string => {
+    if (cell === "thumb") {
+      return thumb;
+    }
+    if (cell === "track") {
+      return track;
+    }
+    return " ";
+  };
+  // One `Text`. A newline is a row, so a vertical bar is the glyphs joined by
+  // newlines and a horizontal one is the same glyphs on one row. A list of
+  // `Text`s would need a key that is the row number, which is the position.
+  return (
+    <Box
+      {...props}
+      width={vertical ? 1 : length}
+      height={vertical ? length : 1}
+      selectable={props.selectable ?? false}
+    >
+      <Text wrap="none" fg={props.fg} selectable={false}>
+        {cells.map(glyph).join(vertical ? "\n" : "")}
+      </Text>
+    </Box>
   );
 }
 

@@ -344,6 +344,52 @@ fn a_frame_message_cannot_be_made_to_clear_the_screen() {
     );
 }
 
+/// Flow writes "To fix the error" as a list. The line breaks are the message.
+///
+/// A carriage return in the same message is not a line break: that is the
+/// steering character the single-line sanitiser exists to drop. See
+/// ubugeeei-prod/uf#1381 and #659.
+#[test]
+fn a_multi_line_message_keeps_its_lines() {
+    let frame = CodeFrame::new(
+        DiagnosticLevel::Error,
+        "To fix the error:\r\n- Either make `a` a `string`\n- Or make `b` a `ReadonlyArray`.\nSee https://example.test/fix",
+        "src/app.js",
+        8,
+        1,
+    );
+    let rendered = render(&frame);
+    let lines: Vec<_> = rendered.lines().collect();
+
+    assert_eq!(lines[0], "error: To fix the error:");
+    assert_eq!(lines[1], "- Either make `a` a `string`");
+    assert_eq!(lines[2], "- Or make `b` a `ReadonlyArray`.");
+    assert_eq!(lines[3], "See https://example.test/fix");
+    assert_eq!(lines[4], " --> src/app.js:8:1");
+    assert!(!rendered.contains('\r'), "{rendered:?}");
+    assert!(!rendered.contains('\x1b'), "{rendered:?}");
+}
+
+/// A newline does not become a way to plant an escape on its own line.
+#[test]
+fn a_multi_line_message_still_cannot_clear_the_screen() {
+    let frame = CodeFrame::new(
+        DiagnosticLevel::Error,
+        "cannot resolve \x1b[2Jgotcha\nb\rfabricated",
+        "src/app.js",
+        3,
+        1,
+    );
+    let rendered = render(&frame);
+    let lines: Vec<_> = rendered.lines().collect();
+
+    assert_eq!(lines[0], "error: cannot resolve [2Jgotcha");
+    assert_eq!(lines[1], "bfabricated");
+    assert_eq!(lines[2], " --> src/app.js:3:1");
+    assert!(!rendered.contains('\x1b'), "{rendered:?}");
+    assert!(!rendered.contains('\r'), "{rendered:?}");
+}
+
 /// A source line is checkout text, and the caret still lands where it did.
 ///
 /// This is the half that could have gone wrong: the caret is placed by

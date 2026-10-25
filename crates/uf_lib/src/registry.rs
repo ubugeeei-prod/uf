@@ -785,6 +785,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "INHERIT",
                 "Input",
                 "MouseButton",
+                "ScrollBar",
                 "ScrollBox",
                 "Select",
                 "TabSelect",

@@ -1,5 +1,8 @@
 //! The components this uf carries, and what each one's source says it needs.
 
+use std::fs;
+use std::path::Path;
+
 use compact_str::{CompactString, ToCompactString};
 
 /// The version every component in this binary was written at: the uf that
@@ -211,6 +214,35 @@ pub enum RegistryError {
     },
 }
 
+/// Why [`Registry::from_directory`] could not read a directory.
+///
+/// A directory is not the registry embedded in the binary, so a file that
+/// cannot be read, or a `*.js` file that is not a component, is this error
+/// rather than a new [`RegistryError`]. Adding a variant there would be a
+/// breaking change for a match that already names every one.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum DirectoryError {
+    /// The directory, or a file in it, could not be read.
+    #[error("could not read `{path}`: {detail}")]
+    Unreadable {
+        /// The path that could not be read.
+        path: String,
+        /// What the filesystem said.
+        detail: String,
+    },
+    /// A `*.js` file whose name is not a component's.
+    #[error(
+        "`{name}` is not a component file; a registry file is `<name>.js`, in lower case, and `<name>.example.js` and `<name>.test.js` are not components"
+    )]
+    InvalidName {
+        /// The file name, as the directory has it.
+        name: String,
+    },
+    /// A component failed the same checks as the embedded registry.
+    #[error(transparent)]
+    Registry(#[from] RegistryError),
+}
+
 /// A name that is not a component in this registry.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("no component named `{name}`")]
@@ -229,6 +261,72 @@ impl Registry {
     /// The registry embedded in this binary.
     pub fn embedded() -> Result<Self, RegistryError> {
         Self::from_sources(EMBEDDED.iter().map(|entry| (entry.name, entry.source)))
+    }
+
+    /// A registry read from a directory of component files.
+    ///
+    /// Each `<name>.js` whose name [is a component name](is_component_name) is
+    /// a component, checked by the same rules as the one embedded in this
+    /// binary. `<name>.example.js` and `<name>.test.js` are the companions
+    /// this repository keeps beside its own components and are skipped, as is
+    /// anything that is not a `.js` file. The sources are kept for the
+    /// process, which is how long the embedded ones live: a command reads one
+    /// directory once.
+    ///
+    /// # Errors
+    ///
+    /// The directory cannot be read, a `.js` file is not named as a component,
+    /// or a component fails the same checks [`Self::from_sources`] applies.
+    pub fn from_directory(directory: &Path) -> Result<Self, DirectoryError> {
+        let listing = fs::read_dir(directory).map_err(|error| DirectoryError::Unreadable {
+            path: directory.display().to_string(),
+            detail: error.to_string(),
+        })?;
+        let mut files = Vec::new();
+        for entry in listing {
+            let entry = entry.map_err(|error| DirectoryError::Unreadable {
+                path: directory.display().to_string(),
+                detail: error.to_string(),
+            })?;
+            // `FileType::is_file` does not follow a symlink. A link named
+            // `button.js` would otherwise be copied into the project from
+            // wherever it points.
+            let file_type = entry
+                .file_type()
+                .map_err(|error| DirectoryError::Unreadable {
+                    path: entry.path().display().to_string(),
+                    detail: error.to_string(),
+                })?;
+            if !file_type.is_file() {
+                continue;
+            }
+            let path = entry.path();
+            let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            if file_name.ends_with(".example.js") || file_name.ends_with(".test.js") {
+                continue;
+            }
+            let Some(name) = file_name.strip_suffix(".js") else {
+                continue;
+            };
+            if !is_component_name(name) {
+                return Err(DirectoryError::InvalidName {
+                    name: file_name.to_owned(),
+                });
+            }
+            let source = fs::read_to_string(&path).map_err(|error| DirectoryError::Unreadable {
+                path: path.display().to_string(),
+                detail: error.to_string(),
+            })?;
+            files.push((name.to_owned(), source));
+        }
+        files.sort_by(|left, right| left.0.cmp(&right.0));
+        let sources = files
+            .into_iter()
+            .map(|(name, source)| (leak_for_process(name), leak_for_process(source)))
+            .collect::<Vec<_>>();
+        Self::from_sources(sources).map_err(DirectoryError::from)
     }
 
     /// A registry of the given `(name, source)` pairs, for a test that needs
@@ -309,6 +407,12 @@ impl Registry {
         path.pop();
         ordered.push(component);
     }
+}
+
+/// Keep `text` for the process. A directory registry is read once a command,
+/// and the embedded registry's sources live exactly that long.
+fn leak_for_process(text: String) -> &'static str {
+    Box::leak(text.into_boxed_str())
 }
 
 /// Whether `name` is spelled the way a component's name is: lower case, digits

@@ -108,7 +108,7 @@ fn inspect_reports_zero_config_defaults() {
         .iter()
         .map(|component| component["name"].as_str().unwrap())
         .collect();
-    // Seven, and the list is the package's: `uf inspect` is where somebody
+    // Eight, and the list is the package's: `uf inspect` is where somebody
     // reads which components exist before importing one.
     assert_eq!(
         components,
@@ -117,6 +117,7 @@ fn inspect_reports_zero_config_defaults() {
             "Text",
             "Input",
             "ScrollBox",
+            "ScrollBar",
             "Select",
             "TabSelect",
             "Textarea"

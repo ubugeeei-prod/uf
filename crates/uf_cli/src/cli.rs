@@ -1246,7 +1246,7 @@ impl Commands {
                 }
                 | Self::Test { json: true, .. }
                 | Self::Ui {
-                    command: UiCommand::List { json: true }
+                    command: UiCommand::List { json: true, .. }
                         | UiCommand::Diff { json: true, .. }
                         | UiCommand::Update { json: true, .. },
                 }
@@ -1411,6 +1411,11 @@ pub(crate) enum UiCommand {
         /// components named.
         #[arg(long)]
         overwrite: bool,
+        /// A directory of `<name>.js` component files to add from, instead of
+        /// the registry built into this uf. Each file is checked by the same
+        /// rules.
+        #[arg(long, value_name = "DIR")]
+        registry: Option<Utf8PathBuf>,
         /// The components: `button`, `dialog`, `tabs`, `select`.
         #[arg(value_name = "NAME", required = true)]
         names: Vec<String>,
@@ -1420,6 +1425,10 @@ pub(crate) enum UiCommand {
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
+        /// A directory of `<name>.js` component files to list, instead of the
+        /// registry built into this uf.
+        #[arg(long, value_name = "DIR")]
+        registry: Option<Utf8PathBuf>,
     },
     /// How the project's copies differ from this uf's components.
     ///

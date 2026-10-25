@@ -55,8 +55,12 @@ use crate::ui::Ui;
 
 pub(crate) fn ui(cwd: &Utf8Path, ui: &mut Ui, command: UiCommand) -> Result<()> {
     match command {
-        UiCommand::Add { overwrite, names } => add(cwd, ui, &names, overwrite),
-        UiCommand::List { json } => list(cwd, ui, json),
+        UiCommand::Add {
+            overwrite,
+            names,
+            registry,
+        } => add(cwd, ui, &names, overwrite, registry.as_deref()),
+        UiCommand::List { json, registry } => list(cwd, ui, json, registry.as_deref()),
         UiCommand::Diff { json, names } => diff(cwd, ui, &names, json),
         UiCommand::Update {
             dry_run,
@@ -134,11 +138,42 @@ fn registry() -> Result<Registry> {
     )
 }
 
+/// `directory` when `uf ui --registry` named one, otherwise the registry this
+/// uf was built with.
+///
+/// A relative directory is relative to `cwd`, which is where the person typed
+/// the command, not to the project root: the registry is an input they are
+/// pointing at, and the project root is where the copies are written.
+fn load_registry(cwd: &Utf8Path, directory: Option<&Utf8Path>) -> Result<Registry> {
+    let Some(directory) = directory else {
+        return registry();
+    };
+    let path = if directory.is_absolute() {
+        directory.to_owned()
+    } else {
+        cwd.join(directory)
+    };
+    if !path.is_dir() {
+        bail!(uf_infra::cstr!(
+            "`{path}` is not a registry directory; pass a directory of `<name>.js` component files"
+        ));
+    }
+    Registry::from_directory(path.as_std_path()).with_context(|| {
+        uf_infra::into_string(uf_infra::cstr!("could not read the registry in `{path}`"))
+    })
+}
+
 // --- uf ui add -----------------------------------------------------------------
 
-fn add(cwd: &Utf8Path, ui: &mut Ui, names: &[String], overwrite: bool) -> Result<()> {
+fn add(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    names: &[String],
+    overwrite: bool,
+    registry_dir: Option<&Utf8Path>,
+) -> Result<()> {
     let place = Place::find(cwd)?;
-    let registry = registry()?;
+    let registry = load_registry(cwd, registry_dir)?;
     let asked: Vec<&str> = names.iter().map(String::as_str).collect();
 
     let plan = match project::plan_add(&place.root, &place.directory, &registry, &asked, overwrite)
@@ -366,9 +401,9 @@ fn render_added(ui: &mut Ui, place: &Place, plan: &AddPlan, imports: &(String, V
 
 // --- uf ui list ----------------------------------------------------------------
 
-fn list(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> {
+fn list(cwd: &Utf8Path, ui: &mut Ui, as_json: bool, registry_dir: Option<&Utf8Path>) -> Result<()> {
     let place = Place::find(cwd)?;
-    let registry = registry()?;
+    let registry = load_registry(cwd, registry_dir)?;
     let copies = project::survey(&place.directory, &registry).with_context(|| {
         uf_infra::into_string(uf_infra::cstr!(
             "could not read {}",

@@ -41,6 +41,15 @@
 //! and did not find, since one appearing changes the answer as surely as one
 //! changing. A warm run reads and hashes those files and translates nothing.
 //!
+//! The same record is also written to a cache every checkout of this `uf`
+//! shares: `$UF_DTS_CACHE` when it is set to a directory, otherwise
+//! `$XDG_CACHE_HOME/uf/dts` or `~/.cache/uf/dts` (`USERPROFILE` on Windows).
+//! An empty `UF_DTS_CACHE` turns that shared cache off. A shared hit is still
+//! checked against the files in *this* checkout, so a record whose
+//! declarations differ is a miss and is translated again. Packages a run
+//! still has to translate are translated together. The files of one package
+//! are one import graph, so a package is the unit and a file inside it is not.
+//!
 //! # What is not typed
 //!
 //! Whatever the translation could not carry over is `any`, and each such place
@@ -107,8 +116,9 @@ pub(super) struct TranslatedPackage {
     /// out because Flow reports it at the declaration and still types every
     /// use by the variance declared.
     pub(super) findings: usize,
-    /// Whether the translation came back from `.uf/cache/dts` instead of being
-    /// made by this run.
+    /// Whether the translation came back from a cache instead of being made by
+    /// this run: this project's `.uf/cache/dts`, or the cache shared by every
+    /// checkout of this `uf`.
     pub(super) from_cache: bool,
 }
 
@@ -326,44 +336,95 @@ impl Declarations {
     /// Translate every package something new was asked of. Returns whether the
     /// batch's sources changed.
     pub(super) fn flush(&mut self) -> bool {
-        let mut changed = false;
-        for package in self.packages.values_mut().filter(|package| package.stale) {
+        let stale: Vec<String> = self
+            .packages
+            .iter()
+            .filter(|(_, package)| package.stale)
+            .map(|(key, _)| key.clone())
+            .collect();
+        if stale.is_empty() {
+            return false;
+        }
+
+        // What a cache miss still has to translate. Owned, so the translations
+        // can run without borrowing the packages they will be written back into.
+        struct Miss {
+            key: String,
+            base: PathBuf,
+            entries: Vec<String>,
+            record: Option<PathBuf>,
+            shared: Option<PathBuf>,
+        }
+
+        let mut misses = Vec::new();
+        for key in stale {
+            let Some(package) = self.packages.get_mut(&key) else {
+                continue;
+            };
             package.stale = false;
-            changed = true;
             let base = self.root.join(&package.declarations);
-            let entries: Vec<&str> = package
+            let entries: Vec<String> = package
                 .entries
                 .values()
                 .map(String::as_str)
-                .collect::<BTreeSet<&str>>()
+                .collect::<BTreeSet<_>>()
                 .into_iter()
+                .map(str::to_owned)
                 .collect();
+            let entry_refs: Vec<&str> = entries.iter().map(String::as_str).collect();
             let record = self
                 .cache
                 .as_ref()
-                .map(|cache| cache.record(package, &entries));
-            if let (Some(cache), Some(record)) = (self.cache.as_ref(), record.as_ref())
-                && let Some(translation) = cache.read(record, &base)
+                .map(|cache| cache.record(package, &entry_refs));
+            let shared = self
+                .cache
+                .as_ref()
+                .and_then(|cache| cache.shared_record(package, &entry_refs));
+            if let Some(cache) = self.cache.as_ref()
+                && let Some(translation) = cache.read(record.as_deref(), shared.as_deref(), &base)
             {
                 package.translation = Some(translation);
                 package.from_cache = true;
                 continue;
             }
             package.from_cache = false;
-            package.translation = match translate_package(&base, &entries) {
+            misses.push(Miss {
+                key,
+                base,
+                entries,
+                record,
+                shared,
+            });
+        }
+
+        // One package is one import graph (`uf_dts::translate` walks it), so
+        // the packages are the parallel unit. Below eight of them this runs on
+        // the calling thread; that threshold lives in `uf_infra::parallel`.
+        let translated = match uf_infra::parallel::map(&misses, |miss| {
+            let entries: Vec<&str> = miss.entries.iter().map(String::as_str).collect();
+            Ok::<_, std::convert::Infallible>(translate_package(&miss.base, &entries))
+        }) {
+            Ok(translated) => translated,
+            Err(error) => match error {},
+        };
+        for (miss, outcome) in misses.iter().zip(translated) {
+            let Some(package) = self.packages.get_mut(&miss.key) else {
+                continue;
+            };
+            package.translation = match outcome {
                 Some((translation, reads)) => {
-                    if let (Some(cache), Some(record)) = (self.cache.as_mut(), record.as_ref()) {
-                        cache.write(record, &reads, &translation);
+                    if let Some(cache) = self.cache.as_mut()
+                        && let Some(record) = miss.record.as_deref()
+                    {
+                        cache.write(record, miss.shared.as_deref(), &reads, &translation);
                     }
                     Some(translation)
                 }
                 None => None,
             };
         }
-        if changed {
-            self.sources = self.packages.values().flat_map(Package::sources).collect();
-        }
-        changed
+        self.sources = self.packages.values().flat_map(Package::sources).collect();
+        true
     }
 
     /// The sources standing in for every translated package: each one's
@@ -703,27 +764,36 @@ struct Record {
     translation: Translation,
 }
 
-/// `.uf/cache/dts`.
+/// `.uf/cache/dts`, and the copy of it shared by every checkout of this `uf`.
 struct Cache {
     directory: PathBuf,
+    /// [`shared_root`], when this process has one. `None` is the project's
+    /// cache alone: a test, or `UF_DTS_CACHE` set empty.
+    shared: Option<PathBuf>,
     /// The binary this process is running, for the reason `uf_check`'s cache
     /// keys by it: builds between two releases share a version, and it is
     /// builds that change what a translation says.
     identity: String,
     swept: bool,
+    shared_swept: bool,
 }
 
 impl Cache {
     fn open(root: &Path) -> Option<Self> {
         Some(Self {
             directory: root.join(".uf").join("cache").join("dts"),
+            shared: shared_root(),
             identity: binary_identity()?,
             swept: false,
+            shared_swept: false,
         })
     }
 
-    /// The record `package`'s translation of `entries` is kept in.
-    fn record(&self, package: &Package, entries: &[&str]) -> PathBuf {
+    /// The file name `package`'s translation of `entries` is kept under.
+    ///
+    /// The same name in the project cache and the shared cache, so a checkout
+    /// that has never seen the package can still find the record.
+    fn record_name(&self, package: &Package, entries: &[&str]) -> String {
         let mut hasher = Sha256::new();
         let version = package.version.as_deref().unwrap_or_default();
         for part in [
@@ -738,34 +808,45 @@ impl Cache {
             hasher.update(part.as_bytes());
             hasher.update([0]);
         }
-        self.directory.join(uf_infra::into_string(uf_infra::cstr!(
-            "{}.json",
-            hex(&hasher.finalize())
-        )))
+        uf_infra::into_string(uf_infra::cstr!("{}.json", hex(&hasher.finalize())))
     }
 
-    /// The translation kept in `record`, when every file it read still reads
-    /// the same.
-    fn read(&self, record: &Path, base: &Path) -> Option<Translation> {
-        let kept: Record = serde_json::from_slice(&fs::read(record).ok()?).ok()?;
-        let fresh = kept.version == RECORD_VERSION
-            && kept.reads.iter().all(|read| {
-                fs::read_to_string(base.join(&read.path))
-                    .ok()
-                    .as_deref()
-                    .map(digest)
-                    == read.sha256
-            });
-        fresh.then_some(kept.translation)
+    /// The record `package`'s translation of `entries` is kept in, in this
+    /// project's cache.
+    fn record(&self, package: &Package, entries: &[&str]) -> PathBuf {
+        self.directory.join(self.record_name(package, entries))
     }
 
-    /// Keep a translation. Best effort: a cache that cannot be written is a
-    /// slower next run, not a failed one.
-    fn write(&mut self, record: &Path, reads: &[Read], translation: &Translation) {
-        if !self.swept {
-            self.swept = true;
-            sweep(&self.directory, CacheBound::default());
-        }
+    /// The same record in the shared cache.
+    fn shared_record(&self, package: &Package, entries: &[&str]) -> Option<PathBuf> {
+        self.shared
+            .as_ref()
+            .map(|directory| directory.join(self.record_name(package, entries)))
+    }
+
+    /// The translation kept in the project record, or else the shared one,
+    /// when every file it read still reads the same under `base`.
+    fn read(
+        &self,
+        record: Option<&Path>,
+        shared: Option<&Path>,
+        base: &Path,
+    ) -> Option<Translation> {
+        record
+            .and_then(|record| read_record(record, base))
+            .or_else(|| shared.and_then(|record| read_record(record, base)))
+    }
+
+    /// Keep a translation in the project cache and, when there is one, the
+    /// shared cache. Best effort: a cache that cannot be written is a slower
+    /// next run, not a failed one.
+    fn write(
+        &mut self,
+        record: &Path,
+        shared: Option<&Path>,
+        reads: &[Read],
+        translation: &Translation,
+    ) {
         let kept = json!({
             "version": RECORD_VERSION,
             "reads": reads,
@@ -774,19 +855,71 @@ impl Cache {
         let Ok(bytes) = serde_json::to_vec(&kept) else {
             return;
         };
-        if fs::create_dir_all(&self.directory).is_err() {
-            return;
-        }
-        // Written aside and renamed, so a run that reads while another writes
-        // sees the old record or the new one and never half of one.
-        let aside = record.with_extension(uf_infra::into_string(uf_infra::cstr!(
-            "json.{}",
-            std::process::id()
-        )));
-        if fs::write(&aside, bytes).is_ok() && fs::rename(&aside, record).is_err() {
-            let _ = fs::remove_file(&aside);
+        store(&self.directory, &mut self.swept, record, &bytes);
+        if let Some(record) = shared
+            && let Some(directory) = self.shared.clone()
+        {
+            store(&directory, &mut self.shared_swept, record, &bytes);
         }
     }
+}
+
+/// The translation kept in `record`, when every file it read still reads the
+/// same under `base`.
+fn read_record(record: &Path, base: &Path) -> Option<Translation> {
+    let kept: Record = serde_json::from_slice(&fs::read(record).ok()?).ok()?;
+    let fresh = kept.version == RECORD_VERSION
+        && kept.reads.iter().all(|read| {
+            fs::read_to_string(base.join(&read.path))
+                .ok()
+                .as_deref()
+                .map(digest)
+                == read.sha256
+        });
+    fresh.then_some(kept.translation)
+}
+
+/// Write `bytes` to `record`, sweeping `directory` once per process.
+///
+/// Written aside and renamed, so a run that reads while another writes sees
+/// the old record or the new one and never half of one.
+fn store(directory: &Path, swept: &mut bool, record: &Path, bytes: &[u8]) {
+    if !*swept {
+        *swept = true;
+        sweep(directory, CacheBound::default());
+    }
+    if fs::create_dir_all(directory).is_err() {
+        return;
+    }
+    let aside = record.with_extension(uf_infra::into_string(uf_infra::cstr!(
+        "json.{}",
+        std::process::id()
+    )));
+    // A write that stops halfway leaves a truncated aside, and the name is this
+    // process, so the next run does not replace it. Remove it unless the
+    // rename took it.
+    if fs::write(&aside, bytes).is_err() || fs::rename(&aside, record).is_err() {
+        let _ = fs::remove_file(&aside);
+    }
+}
+
+/// Where translations are shared across checkouts.
+///
+/// `$UF_DTS_CACHE` when it names a directory. Empty means the caller turned
+/// the shared cache off. Otherwise the uf directory under the XDG cache home,
+/// `~/.cache`, or `%USERPROFILE%\.cache`.
+fn shared_root() -> Option<PathBuf> {
+    if let Some(value) = std::env::var_os("UF_DTS_CACHE") {
+        return (!value.is_empty()).then(|| PathBuf::from(value));
+    }
+    let home = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+        .or_else(|| {
+            std::env::var_os("USERPROFILE").map(|home| PathBuf::from(home).join(".cache"))
+        })?;
+    Some(home.join("uf").join("dts"))
 }
 
 /// The SHA-256 of `text`, as lowercase hex.
@@ -1033,8 +1166,10 @@ mod tests {
         let root = root_of(&directory);
         let cache = || Cache {
             directory: directory.path().join(".uf/cache/dts"),
+            shared: None,
             identity: "test".to_owned(),
             swept: false,
+            shared_swept: false,
         };
         let run = || {
             let mut declarations =
@@ -1066,6 +1201,111 @@ mod tests {
             "an edit translates again"
         );
         assert!(edited.sources()[1].source.contains("changed"));
+    }
+
+    #[test]
+    fn a_translation_is_reused_by_another_checkout_until_its_files_differ() {
+        let shared = tempfile::tempdir().expect("a shared cache");
+        let files = [
+            (
+                "node_modules/tiny/package.json",
+                r#"{ "name": "tiny", "version": "1.2.3", "types": "./index.d.ts" }"#,
+            ),
+            ("node_modules/tiny/index.d.ts", SCHEMA),
+        ];
+        let first = project(&files);
+        let second = project(&files);
+        let open = |root: &tempfile::TempDir, identity: &str| Cache {
+            directory: root.path().join(".uf/cache/dts"),
+            shared: Some(shared.path().to_path_buf()),
+            identity: identity.to_owned(),
+            swept: false,
+            shared_swept: false,
+        };
+        let run = |root: &tempfile::TempDir, identity: &str| {
+            let mut declarations =
+                Declarations::with_cache(root.path().to_path_buf(), Some(open(root, identity)));
+            declarations.request("tiny", ".", Some("node_modules/tiny"), &mut || None);
+            declarations.flush();
+            declarations
+        };
+
+        assert!(
+            !run(&first, "test").translated(&[])[0].from_cache,
+            "the first checkout translates"
+        );
+        let warm = run(&second, "test");
+        assert!(
+            warm.translated(&[])[0].from_cache,
+            "the second checkout reads the shared record"
+        );
+        assert!(
+            !second.path().join(".uf/cache/dts").exists(),
+            "a shared hit is not a translation this checkout made"
+        );
+        assert_eq!(warm.sources().len(), 2);
+
+        // A different `uf` does not read a translation another build wrote.
+        // The identity is in the record's name for that reason.
+        let other = run(&first, "other-uf");
+        assert!(!other.translated(&[])[0].from_cache);
+
+        fs::write(
+            second.path().join("node_modules/tiny/index.d.ts"),
+            "export declare const changed: string;\n",
+        )
+        .expect("the declaration is rewritten");
+        let edited = run(&second, "test");
+        assert!(
+            !edited.translated(&[])[0].from_cache,
+            "a shared record whose file differs is translated again"
+        );
+        assert!(edited.sources()[1].source.contains("changed"));
+    }
+
+    #[test]
+    fn stale_packages_are_translated_together() {
+        // Nine, because `uf_infra::parallel` translates on the calling thread
+        // below eight and the result has to be the same either way.
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        for index in 0..9 {
+            let name = format!("pkg{index}");
+            let package = directory.path().join("node_modules").join(&name);
+            fs::create_dir_all(&package).expect("the package directory is made");
+            fs::write(
+                package.join("package.json"),
+                format!(
+                    r#"{{ "name": "{name}", "version": "1.0.{index}", "types": "./index.d.ts" }}"#
+                ),
+            )
+            .expect("the manifest is written");
+            fs::write(
+                package.join("index.d.ts"),
+                format!("export declare const value{index}: number;\n"),
+            )
+            .expect("the declaration is written");
+        }
+        let mut declarations = Declarations::uncached(&root_of(&directory));
+        for index in 0..9 {
+            let name = format!("pkg{index}");
+            let installed = format!("node_modules/{name}");
+            declarations.request(&name, ".", Some(&installed), &mut || None);
+        }
+
+        assert!(declarations.flush());
+        let translated = declarations.translated(&[]);
+        assert_eq!(translated.len(), 9);
+        assert!(translated.iter().all(|package| !package.from_cache));
+        for index in 0..9 {
+            let needle = format!("value{index}");
+            assert!(
+                declarations
+                    .sources()
+                    .iter()
+                    .any(|source| source.source.contains(&needle)),
+                "{needle}"
+            );
+        }
     }
 
     #[test]

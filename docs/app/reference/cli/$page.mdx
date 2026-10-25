@@ -288,7 +288,7 @@ a run that stops has written none of its files.
 `uf prepare` regenerates `router.js`, so the new path joins `RoutePath` on the
 next run of it.
 
-### uf ui add NAME... [--overwrite]
+### uf ui add NAME... [--overwrite] [--registry DIR]
 
 Writes styled components into the project, with the components they import.
 
@@ -307,9 +307,16 @@ does not use StyleX imports `@uniflowed/ui` and styles the parts itself.
 [Owned or headless](/guide/ui#owned-or-headless) is that choice.
 
 The components are part of the uf binary, so adding one needs no network and
-writes the version that matches the uf running it. A package a component
-imports that `package.json` does not name is added first, through `uf add`, at
-that uf's own version, and an install that fails leaves every file unwritten.
+writes the version that matches the uf running it. `--registry DIR` reads
+`<name>.js` files from that directory instead. A relative path is relative to
+the working directory. Each file is checked by the same rules: a
+`// Title: what it is` line, imports that are packages or sibling components,
+and a lower-case name. `*.example.js`, `*.test.js`, and anything that is not a
+`.js` file are not components, and a symlink is not followed. `uf ui diff` and
+`uf ui update` do not take the flag: they compare a copy with the registry in
+the uf that wrote it. A package a component imports that `package.json` does
+not name is added first, through `uf add`, at that uf's own version, and an
+install that fails leaves every file unwritten.
 
 What happens to a file that is already there depends on what it is:
 
@@ -326,12 +333,13 @@ it and a digest of what was written. That line is how `uf ui add` tells an
 edited copy from an untouched one, and how `uf ui diff` says whose change a
 difference is.
 
-### uf ui list [--json]
+### uf ui list [--json] [--registry DIR]
 
 Every component this uf carries, what each one is, and whether the project has
 it: not added, added and untouched, added by an older uf, edited, or a file of
-the project's own under the same name. `--json` adds the packages each component
-imports and the components it needs.
+the project's own under the same name. `--registry DIR` lists that directory
+instead, by the same rules as `uf ui add --registry`. `--json` adds the
+packages each component imports and the components it needs.
 
 ### uf ui diff [NAME...] [--json]
 
