@@ -185,12 +185,10 @@ impl Component {
 
 /// Why a registry could not be read.
 ///
-/// For the registry embedded in the binary, every one of these is a defect in
-/// how uf was built rather than in a project, and `tests.rs` fails on each
-/// before a release could carry it. For a directory registry they are the
-/// directory. They are errors rather than panics so that a uf built from a
-/// broken checkout, or pointed at a directory that is not a registry, says
-/// what is wrong instead of aborting.
+/// Every one of these is a defect in how uf was built rather than in a project,
+/// and `tests.rs` fails on each before a release could carry it; they are
+/// errors rather than panics so that a uf built from a broken checkout says what
+/// is broken instead of aborting.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RegistryError {
     /// The header does not open with `// Title: description`.
@@ -214,6 +212,16 @@ pub enum RegistryError {
         component: &'static str,
         required: CompactString,
     },
+}
+
+/// Why [`Registry::from_directory`] could not read a directory.
+///
+/// A directory is not the registry embedded in the binary, so a file that
+/// cannot be read, or a `*.js` file that is not a component, is this error
+/// rather than a new [`RegistryError`]. Adding a variant there would be a
+/// breaking change for a match that already names every one.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum DirectoryError {
     /// The directory, or a file in it, could not be read.
     #[error("could not read `{path}`: {detail}")]
     Unreadable {
@@ -230,6 +238,9 @@ pub enum RegistryError {
         /// The file name, as the directory has it.
         name: String,
     },
+    /// A component failed the same checks as the embedded registry.
+    #[error(transparent)]
+    Registry(#[from] RegistryError),
 }
 
 /// A name that is not a component in this registry.
@@ -266,21 +277,30 @@ impl Registry {
     ///
     /// The directory cannot be read, a `.js` file is not named as a component,
     /// or a component fails the same checks [`Self::from_sources`] applies.
-    pub fn from_directory(directory: &Path) -> Result<Self, RegistryError> {
-        let listing = fs::read_dir(directory).map_err(|error| RegistryError::Unreadable {
+    pub fn from_directory(directory: &Path) -> Result<Self, DirectoryError> {
+        let listing = fs::read_dir(directory).map_err(|error| DirectoryError::Unreadable {
             path: directory.display().to_string(),
             detail: error.to_string(),
         })?;
         let mut files = Vec::new();
         for entry in listing {
-            let entry = entry.map_err(|error| RegistryError::Unreadable {
+            let entry = entry.map_err(|error| DirectoryError::Unreadable {
                 path: directory.display().to_string(),
                 detail: error.to_string(),
             })?;
-            let path = entry.path();
-            if !path.is_file() {
+            // `FileType::is_file` does not follow a symlink. A link named
+            // `button.js` would otherwise be copied into the project from
+            // wherever it points.
+            let file_type = entry
+                .file_type()
+                .map_err(|error| DirectoryError::Unreadable {
+                    path: entry.path().display().to_string(),
+                    detail: error.to_string(),
+                })?;
+            if !file_type.is_file() {
                 continue;
             }
+            let path = entry.path();
             let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
                 continue;
             };
@@ -291,11 +311,11 @@ impl Registry {
                 continue;
             };
             if !is_component_name(name) {
-                return Err(RegistryError::InvalidName {
+                return Err(DirectoryError::InvalidName {
                     name: file_name.to_owned(),
                 });
             }
-            let source = fs::read_to_string(&path).map_err(|error| RegistryError::Unreadable {
+            let source = fs::read_to_string(&path).map_err(|error| DirectoryError::Unreadable {
                 path: path.display().to_string(),
                 detail: error.to_string(),
             })?;
@@ -306,7 +326,7 @@ impl Registry {
             .into_iter()
             .map(|(name, source)| (leak_for_process(name), leak_for_process(source)))
             .collect::<Vec<_>>();
-        Self::from_sources(sources)
+        Self::from_sources(sources).map_err(DirectoryError::from)
     }
 
     /// A registry of the given `(name, source)` pairs, for a test that needs

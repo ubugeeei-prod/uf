@@ -149,7 +149,9 @@ pub mod stamp;
 pub mod update;
 
 pub use project::DEFAULT_DIRECTORY;
-pub use registry::{Component, REGISTRY_VERSION, Registry, RegistryError, UnknownComponent};
+pub use registry::{
+    Component, DirectoryError, REGISTRY_VERSION, Registry, RegistryError, UnknownComponent,
+};
 pub use stamp::Stamp;
 
 #[cfg(test)]

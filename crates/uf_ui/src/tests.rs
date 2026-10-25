@@ -13,8 +13,8 @@ use crate::project::{
     AddAction, AddError, CopyState, ProjectCopy, apply, inspect, package_spec, plan_add, survey,
 };
 use crate::registry::{
-    EMBEDDED, REGISTRY_VERSION, Registry, RegistryError, description, exported_components, imports,
-    is_component_name, namespace_name,
+    DirectoryError, EMBEDDED, REGISTRY_VERSION, Registry, RegistryError, description,
+    exported_components, imports, is_component_name, namespace_name,
 };
 use crate::stamp::{Copy, Stamp, digest, stamped};
 use crate::update::{self, UpdateAction, UpdateError, base_of, plan_update};
@@ -1158,7 +1158,9 @@ fn a_directory_registry_rejects_what_the_embedded_one_rejects() {
     )]);
     assert!(matches!(
         Registry::from_directory(missing.path()),
-        Err(RegistryError::MissingComponent { .. })
+        Err(DirectoryError::Registry(
+            RegistryError::MissingComponent { .. }
+        ))
     ));
 
     let elsewhere = write_registry(&[(
@@ -1167,23 +1169,52 @@ fn a_directory_registry_rejects_what_the_embedded_one_rejects() {
     )]);
     assert!(matches!(
         Registry::from_directory(elsewhere.path()),
-        Err(RegistryError::UnresolvedImport { .. })
+        Err(DirectoryError::Registry(
+            RegistryError::UnresolvedImport { .. }
+        ))
     ));
 
     let unnamed = write_registry(&[("button.js", "export const x = 1;\n")]);
     assert!(matches!(
         Registry::from_directory(unnamed.path()),
-        Err(RegistryError::NoDescription { .. })
+        Err(DirectoryError::Registry(
+            RegistryError::NoDescription { .. }
+        ))
     ));
 
     let spelled = write_registry(&[("Button.js", BUTTON)]);
     assert!(matches!(
         Registry::from_directory(spelled.path()),
-        Err(RegistryError::InvalidName { .. })
+        Err(DirectoryError::InvalidName { .. })
     ));
 
     assert!(matches!(
         Registry::from_directory(Path::new("/no/such/uf-registry-043")),
-        Err(RegistryError::Unreadable { .. })
+        Err(DirectoryError::Unreadable { .. })
     ));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_is_not_a_component_file() {
+    let directory = write_registry(&[("button.js", BUTTON)]);
+    let outside = tempfile::tempdir().expect("a directory outside the registry");
+    let secret = outside.path().join("secret.js");
+    fs::write(
+        &secret,
+        "// @flow\n// Secret: not in the directory.\nexport component Secret() {}\n",
+    )
+    .expect("the outside file is written");
+    std::os::unix::fs::symlink(secret, directory.path().join("secret.js"))
+        .expect("the link is made");
+
+    let registry = Registry::from_directory(directory.path()).expect("the directory reads");
+    assert_eq!(
+        registry
+            .components()
+            .iter()
+            .map(|component| component.name)
+            .collect::<Vec<_>>(),
+        ["button"]
+    );
 }
