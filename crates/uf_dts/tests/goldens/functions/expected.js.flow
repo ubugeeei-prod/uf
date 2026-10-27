@@ -16,3 +16,6 @@ export type Returns = () => string | number;
 export type InUnion = (() => void) | null;
 export type Guard = (value: mixed) => value is number;
 export type GenericFunction = <T>(value: T) => T;
+declare export function takeArray(xs: $ReadOnlyArray<number>): void;
+declare export function useCallback(cb: (xs: Array<number>) => void): void;
+declare export function useNested(cb: (inner: (xs: $ReadOnlyArray<number>) => void) => void): void;

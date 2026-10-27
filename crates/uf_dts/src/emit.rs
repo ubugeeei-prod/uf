@@ -2444,10 +2444,20 @@ impl<'e> Emitter<'e> {
         let scope_len = self.type_scope.len();
         self.type_parameters(type_parameters);
         self.printer.char('(');
+        // Parameters are contravariant. Widen an array only when this function
+        // type is not already in a widened position: a top-level `xs: number[]`
+        // becomes `$ReadOnlyArray`, and a callback parameter
+        // `(xs: number[]) => void` stays `Array`. Flow rejects a callback
+        // written with `Array` against a parameter of `$ReadOnlyArray`. The
+        // flag is set for the whole parameter, so a callback nested one level
+        // deeper flips again. ubugeeei-prod/uf#1899.
+        let widen_params = !self.covariant_arrays;
+        let saved_arrays = self.covariant_arrays;
+        self.covariant_arrays = widen_params;
         let mut first = true;
         if let Some(this) = this_param {
             self.printer.text("this: ");
-            self.annotation_in(this.type_annotation.as_deref(), true);
+            self.annotation(this.type_annotation.as_deref());
             first = false;
         }
         for (index, param) in params.items.iter().enumerate() {
@@ -2461,9 +2471,7 @@ impl<'e> Emitter<'e> {
                 self.printer.char('?');
             }
             self.printer.text(": ");
-            // A parameter is where a caller passes a value. TypeScript accepts
-            // a tuple for `any[]` there; Flow accepts it for `$ReadOnlyArray`.
-            self.annotation_in(param.type_annotation.as_deref(), true);
+            self.annotation(param.type_annotation.as_deref());
         }
         if let Some(rest) = &params.rest {
             if !first {
@@ -2473,8 +2481,9 @@ impl<'e> Emitter<'e> {
             let name = binding_name(&rest.rest.argument, params.items.len());
             self.printer.text(&name);
             self.printer.text(": ");
-            self.annotation_in(rest.type_annotation.as_deref(), true);
+            self.annotation(rest.type_annotation.as_deref());
         }
+        self.covariant_arrays = saved_arrays;
         self.printer.char(')');
         self.printer.text(if arrow { " => " } else { ": " });
         // A return is what the caller receives and may write to, so an array
