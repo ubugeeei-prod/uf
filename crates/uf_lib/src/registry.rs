@@ -788,6 +788,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "ScrollBar",
                 "ScrollBox",
                 "Select",
+                "Slider",
                 "TabSelect",
                 "Text",
                 "Textarea",

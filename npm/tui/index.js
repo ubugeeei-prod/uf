@@ -81,7 +81,7 @@
 // in-memory renderer that runs the same code the terminal one does.
 //
 // Not here: the repeated-press gestures that widen a selection to a word or a
-// line, images, the rich content components, `Slider`, and
+// line, images, the rich content components, and
 // everything under OpenTUI's
 // "application APIs" — except for the write-only OSC 52 clipboard — which is
 // why `getSelectedText()` hands a string back and leaves policy to the caller.
@@ -122,7 +122,7 @@
 //   CLI's own rules.
 // - `terminal.js` — a real terminal, and the in-memory one tests use.
 // - `components.js` — `Box`, `Text`, `Input`, `ScrollBox`, `ScrollBar`,
-//   `Select`, `TabSelect`, `Textarea`, and the hooks.
+//   `Slider`, `Select`, `TabSelect`, `Textarea`, and the hooks.
 //
 // `internal/` holds the five that a consumer must not be able to reach past:
 // `tree.js` (props become a layout style once, here), `paint.js` (both passes
@@ -203,6 +203,8 @@ export type {
   MouseProps,
   ScrollBarOrientation,
   ScrollBarProps,
+  SliderOrientation,
+  SliderProps,
   ScrollBoxProps,
   SelectColorProps,
   SelectProps,
@@ -219,6 +221,7 @@ export {
   ScrollBar,
   ScrollBox,
   Select,
+  Slider,
   TabSelect,
   Text,
   Textarea,

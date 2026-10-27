@@ -173,6 +173,16 @@ fn add(
     registry_dir: Option<&Utf8Path>,
 ) -> Result<()> {
     let place = Place::find(cwd)?;
+    // Registry copies are StyleX. `"none"` does not rewrite them, so writing
+    // one would hand the project a file its compiler will not accept.
+    // ubugeeei-prod/uf#1354.
+    if load_config(&place.root)?.config.app.builtins.style == uf_config::StyleEngine::Off {
+        bail!(uf_infra::cstr!(
+            "`uf ui add` copies StyleX components, and this project sets `app.builtins.style` \
+             to `none`. That setting does not rewrite StyleX into plain CSS. Import the \
+             headless parts from `@uniflowed/ui` and style them with the project's own CSS"
+        ));
+    }
     let registry = load_registry(cwd, registry_dir)?;
     let asked: Vec<&str> = names.iter().map(String::as_str).collect();
 

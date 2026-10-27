@@ -16,3 +16,6 @@ export type Returns = () => string | number;
 export type InUnion = (() => void) | null;
 export type Guard = (value: unknown) => value is number;
 export type GenericFunction = <T>(value: T) => T;
+export declare function takeArray(xs: number[]): void;
+export declare function useCallback(cb: (xs: number[]) => void): void;
+export declare function useNested(cb: (inner: (xs: number[]) => void) => void): void;

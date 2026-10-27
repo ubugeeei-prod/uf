@@ -727,6 +727,14 @@ struct Emitter<'e> {
     /// Interfaces merged into a namespace of the same name, whose bare
     /// references are to `Name.$Self`.
     self_interfaces: FxHashSet<CompactString>,
+    /// Whether a TypeScript array in this position is `$ReadOnlyArray`.
+    ///
+    /// Flow does not treat a tuple as a subtype of `Array`, only of
+    /// `$ReadOnlyArray`. TypeScript does, so an array in a constraint, a
+    /// parameter, or an object property — the places a tuple is checked
+    /// against — is printed read-only. A return stays `Array`, which is what
+    /// a caller can write to. ubugeeei-prod/uf#1899.
+    covariant_arrays: bool,
 }
 
 /// The names Flow refuses to let a type, an interface or a class be declared
@@ -765,6 +773,7 @@ impl<'e> Emitter<'e> {
             indexer: None,
             type_renames: FxHashMap::default(),
             self_interfaces: FxHashSet::default(),
+            covariant_arrays: false,
         };
         for name in summary.locals.keys().chain(summary.imports.keys()) {
             if RESERVED_TYPE_NAMES.contains(&name.as_str()) {
@@ -2435,6 +2444,16 @@ impl<'e> Emitter<'e> {
         let scope_len = self.type_scope.len();
         self.type_parameters(type_parameters);
         self.printer.char('(');
+        // Parameters are contravariant. Widen an array only when this function
+        // type is not already in a widened position: a top-level `xs: number[]`
+        // becomes `$ReadOnlyArray`, and a callback parameter
+        // `(xs: number[]) => void` stays `Array`. Flow rejects a callback
+        // written with `Array` against a parameter of `$ReadOnlyArray`. The
+        // flag is set for the whole parameter, so a callback nested one level
+        // deeper flips again. ubugeeei-prod/uf#1899.
+        let widen_params = !self.covariant_arrays;
+        let saved_arrays = self.covariant_arrays;
+        self.covariant_arrays = widen_params;
         let mut first = true;
         if let Some(this) = this_param {
             self.printer.text("this: ");
@@ -2464,12 +2483,19 @@ impl<'e> Emitter<'e> {
             self.printer.text(": ");
             self.annotation(rest.type_annotation.as_deref());
         }
+        self.covariant_arrays = saved_arrays;
         self.printer.char(')');
         self.printer.text(if arrow { " => " } else { ": " });
+        // A return is what the caller receives and may write to, so an array
+        // here stays `Array` even when the function type itself sits in a
+        // property or a constraint.
+        let arrays = self.covariant_arrays;
+        self.covariant_arrays = false;
         match returns {
             Return::Void => self.printer.text("void"),
             Return::Annotation(annotation) => self.return_type(annotation, arrow),
         }
+        self.covariant_arrays = arrays;
         self.type_scope.truncate(scope_len);
     }
 
@@ -2510,10 +2536,21 @@ impl<'e> Emitter<'e> {
     }
 
     fn annotation(&mut self, annotation: Option<&TSTypeAnnotation<'_>>) {
+        self.annotation_in(annotation, false);
+    }
+
+    /// `covariant` prints array types as `$ReadOnlyArray`, for a position
+    /// where TypeScript accepts a tuple and Flow does not.
+    fn annotation_in(&mut self, annotation: Option<&TSTypeAnnotation<'_>>, covariant: bool) {
+        let previous = self.covariant_arrays;
+        if covariant {
+            self.covariant_arrays = true;
+        }
         match annotation {
             Some(annotation) => self.ty(&annotation.type_annotation, Prec::Any),
             None => self.printer.text("any"),
         }
+        self.covariant_arrays = previous;
     }
 
     fn type_parameters(&mut self, declaration: Option<&TSTypeParameterDeclaration<'_>>) {
@@ -2582,16 +2619,20 @@ impl<'e> Emitter<'e> {
         self.printer.char('>');
     }
 
-    fn type_parameter_constraint(&mut self, constraint: &TSType<'_>, default: Option<&TSType<'_>>) {
-        if default.is_some_and(tuple_like_type)
-            && let TSType::TSArrayType(array) = unparenthesized(constraint)
-        {
-            self.printer.text("$ReadOnlyArray<");
-            self.ty(&array.element_type, Prec::Any);
-            self.printer.char('>');
-            return;
-        }
+    fn type_parameter_constraint(
+        &mut self,
+        constraint: &TSType<'_>,
+        _default: Option<&TSType<'_>>,
+    ) {
+        // The whole bound, not only a top-level `T[]`. A bound that is an
+        // object type (`T extends Descriptor`) carries its arrays in another
+        // declaration; those are widened where the property is printed. A
+        // bound that *is* an array, or holds one inline, is widened here.
+        // ubugeeei-prod/uf#1899.
+        let previous = self.covariant_arrays;
+        self.covariant_arrays = true;
         self.ty(constraint, Prec::Union);
+        self.covariant_arrays = previous;
     }
 
     fn type_arguments(&mut self, arguments: Option<&TSTypeParameterInstantiation<'_>>) {
@@ -2654,7 +2695,11 @@ impl<'e> Emitter<'e> {
                     self.printer.char('?');
                 }
                 self.printer.text(": ");
-                self.annotation(property.type_annotation.as_deref());
+                // Interface and object properties are already printed
+                // `readonly`, because TypeScript reads them covariantly. An
+                // array property has to be `$ReadOnlyArray` for the same
+                // reason: a tuple is not a Flow `Array`. ubugeeei-prod/uf#1899.
+                self.annotation_in(property.type_annotation.as_deref(), true);
                 self.printer.char(separator);
                 self.context.pop();
             }
@@ -2766,7 +2811,10 @@ impl<'e> Emitter<'e> {
         self.printer.text(": ");
         self.ty(key, Prec::Any);
         self.printer.text("]: ");
+        let previous = self.covariant_arrays;
+        self.covariant_arrays = true;
         self.ty(&index.type_annotation.type_annotation, Prec::Any);
+        self.covariant_arrays = previous;
     }
 
     // ----------------------------------------------------------------------
@@ -2879,7 +2927,11 @@ impl<'e> Emitter<'e> {
                 },
             },
             TSType::TSArrayType(array) => {
-                self.printer.text("Array<");
+                self.printer.text(if self.covariant_arrays {
+                    "$ReadOnlyArray<"
+                } else {
+                    "Array<"
+                });
                 self.ty(&array.element_type, Prec::Any);
                 self.printer.char('>');
             }
@@ -2910,7 +2962,10 @@ impl<'e> Emitter<'e> {
                 self.printer.text(infer.type_parameter.name.name.as_str());
                 if let Some(constraint) = &infer.type_parameter.constraint {
                     self.printer.text(" extends ");
+                    let previous = self.covariant_arrays;
+                    self.covariant_arrays = true;
                     self.ty(constraint, Prec::Union);
+                    self.covariant_arrays = previous;
                 }
                 self.close(wrap);
             }
@@ -3009,7 +3064,12 @@ impl<'e> Emitter<'e> {
         self.ty(&conditional.check_type, Prec::Union);
         self.printer.text(" extends ");
         let scope_len = self.type_scope.len();
+        // The checked bound is a constraint: a tuple has to be able to extend
+        // `any[]`, which in Flow means `$ReadOnlyArray`.
+        let previous = self.covariant_arrays;
+        self.covariant_arrays = true;
         self.ty(&conditional.extends_type, Prec::Function);
+        self.covariant_arrays = previous;
         let mut inferred = InferNames::default();
         inferred.visit_ts_type(&conditional.extends_type);
         self.type_scope.extend(inferred.names);
@@ -3237,7 +3297,12 @@ impl<'e> Emitter<'e> {
         }
         self.printer.text(": ");
         match &mapped.type_annotation {
-            Some(value) => self.ty(value, Prec::Any),
+            Some(value) => {
+                let previous = self.covariant_arrays;
+                self.covariant_arrays = true;
+                self.ty(value, Prec::Any);
+                self.covariant_arrays = previous;
+            }
             None => self.printer.text("any"),
         }
         self.type_scope.truncate(scope_len);
@@ -3375,6 +3440,11 @@ impl<'e> Emitter<'e> {
                 self.printer.char('>');
                 return;
             }
+        }
+        if self.covariant_arrays && self.is_global(reference, "Array") {
+            self.printer.text("$ReadOnlyArray");
+            self.type_arguments(reference.type_arguments.as_deref());
+            return;
         }
         self.type_name(&reference.type_name);
         self.type_arguments(reference.type_arguments.as_deref());

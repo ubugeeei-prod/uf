@@ -1,0 +1,30 @@
+export type DescriptorType = interface {
+  readonly row: interface { readonly [key: string]: any };
+  readonly refs: any;
+  readonly unique: $ReadOnlyArray<any>;
+};
+export type IncludeExp<T extends DescriptorType> = { [K in keyof T["refs"]]?: true };
+
+
+export type Blog = interface {
+  readonly id: string;
+  readonly title: string;
+};
+export type Category = interface {
+  readonly id: string;
+  readonly name: string;
+};
+export type Category__Descriptor = interface {
+  readonly row: Category;
+  readonly refs: interface {};
+  readonly unique: [interface { readonly key: string; }];
+};
+export type Blog__Descriptor = interface {
+  readonly row: Blog;
+  readonly refs: interface {
+    readonly category: Category__Descriptor;
+  };
+  readonly unique: [];
+};
+export type TakesArray = <T extends $ReadOnlyArray<any>>(value: T) => void;
+export type TakesArrayReference = <T extends $ReadOnlyArray<string>>(value: T) => void;

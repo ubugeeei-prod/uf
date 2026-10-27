@@ -66,6 +66,26 @@ fn component(dir: &Path, name: &str) -> std::path::PathBuf {
 }
 
 #[test]
+fn add_refuses_when_style_is_none_and_writes_nothing() {
+    let dir = app();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "export default { app: { builtins: { style: \"none\" } } };\n",
+    )
+    .expect("the config is written");
+
+    let (code, stdout, stderr) = run(dir.path(), &["ui", "add", "button"]);
+    assert_ne!(code, 0, "{stdout}{stderr}");
+    assert!(stderr.contains("app.builtins.style"), "{stderr}");
+    assert!(stderr.contains("@uniflowed/ui"), "{stderr}");
+    assert!(
+        !component(dir.path(), "button").exists(),
+        "a refusal writes no component"
+    );
+    assert!(!stdout.contains("wrote"), "{stdout}");
+}
+
+#[test]
 fn add_writes_the_component_and_the_components_it_imports() {
     let dir = app();
     let (code, stdout, stderr) = run(dir.path(), &["ui", "add", "dialog"]);

@@ -35,6 +35,7 @@ import {
   ScrollBar,
   ScrollBox,
   Select,
+  Slider,
   TabSelect,
   Text,
   Textarea,
@@ -1157,6 +1158,105 @@ describe("a bar that says where the window is", () => {
     );
     expect(rows(ascii.frame())).toEqual(["--##"]);
     ascii.stop();
+  });
+});
+
+describe("a thumb a reader moves", () => {
+  const LEFT = "\u001b[D";
+  const RIGHT = "\u001b[C";
+  const UP = "\u001b[A";
+  const DOWN = "\u001b[B";
+
+  it("draws the thumb at the start, the middle and the end", () => {
+    const start = testRender(<Slider value={0} />, { width: 10, height: 1 });
+    expect(rows(start.frame())).toEqual(["█─────────"]);
+    start.stop();
+
+    const middle = testRender(<Slider value={50} />, { width: 10, height: 1 });
+    expect(rows(middle.frame())).toEqual(["─────█────"]);
+    middle.stop();
+
+    const end = testRender(<Slider value={100} />, { width: 10, height: 1 });
+    expect(rows(end.frame())).toEqual(["─────────█"]);
+    end.stop();
+  });
+
+  it("moves with the arrows that match its direction, and not past either end", () => {
+    const lowChanges = [];
+    const low = testRender(
+      <Slider focused={true} value={0} onChange={(next) => lowChanges.push(next)} />,
+      { width: 10, height: 1 },
+    );
+    low.press(LEFT);
+    expect(lowChanges).toEqual([]);
+    low.press(RIGHT);
+    expect(lowChanges).toEqual([1]);
+    low.stop();
+
+    const highChanges = [];
+    const high = testRender(
+      <Slider focused={true} value={100} step={10} onChange={(next) => highChanges.push(next)} />,
+      { width: 10, height: 1 },
+    );
+    high.press(RIGHT);
+    expect(highChanges).toEqual([]);
+    high.press(LEFT);
+    expect(highChanges).toEqual([90]);
+    high.stop();
+
+    const verticalChanges = [];
+    const vertical = testRender(
+      <Slider
+        focused={true}
+        orientation="vertical"
+        value={0}
+        onChange={(next) => verticalChanges.push(next)}
+      />,
+      { width: 1, height: 10 },
+    );
+    vertical.press(DOWN);
+    expect(verticalChanges).toEqual([]);
+    vertical.press(UP);
+    expect(verticalChanges).toEqual([1]);
+    vertical.stop();
+  });
+
+  it("ignores a modified arrow, and still reports the key to the caller", () => {
+    const changes = [];
+    const keys = [];
+    const handle = testRender(
+      <Slider
+        focused={true}
+        value={0}
+        onChange={(next) => changes.push(next)}
+        onKeyDown={(key) =>
+          keys.push(key.name + (key.shift ? "+shift" : "") + (key.ctrl ? "+ctrl" : ""))
+        }
+      />,
+      { width: 10, height: 1 },
+    );
+    handle.press("\u001b[1;2C");
+    handle.press("\u001b[1;5C");
+    expect(changes).toEqual([]);
+    expect(keys).toEqual(["right+shift", "right+ctrl"]);
+    handle.press(RIGHT);
+    expect(changes).toEqual([1]);
+    expect(keys).toEqual(["right+shift", "right+ctrl", "right"]);
+    handle.stop();
+  });
+
+  it("uses the ascii glyphs, and ten cells when the size is a percentage", () => {
+    const ascii = testRender(<Slider value={0} />, {
+      width       : 10,
+      height      : 1,
+      capabilities: { color: "none", glyphs: "ascii", tty: "interactive" },
+    });
+    expect(rows(ascii.frame())).toEqual(["#---------"]);
+    ascii.stop();
+
+    const percent = testRender(<Slider value={100} width="100%" />, { width: 10, height: 1 });
+    expect(rows(percent.frame())).toEqual(["─────────█"]);
+    percent.stop();
   });
 });
 

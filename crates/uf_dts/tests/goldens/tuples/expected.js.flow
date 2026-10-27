@@ -1,7 +1,7 @@
 export type Pair = [string, number];
 export type Named = [first: string, second?: number];
 export type Optional = [string, number?];
-export type Spread<out T extends Array<mixed>> = [head: string, ...tail: T];
+export type Spread<out T extends $ReadOnlyArray<mixed>> = [head: string, ...tail: T];
 export type ArrayRest = any;
 export type NamedArrayRest = any;
 export type Frozen = $ReadOnly<[string, number]>;

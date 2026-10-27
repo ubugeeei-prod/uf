@@ -287,9 +287,10 @@
       (`flexWrap`, `alignContent`) and positions (`position: "absolute"`
       against the nearest ancestor that is not `"static"`, offsets, `zIndex`)
       as well as taking `auto` margins. `ScrollBar` is the bar `ScrollBox`
-      draws, as its own component, for a window the caller clips. The
+      draws, as its own component, for a window the caller clips. `Slider` is
+      a controlled thumb on a track. The
       repeated-press gestures that widen a selection to a word or a line,
-      `Slider`, the rich-content and media components, `aspectRatio`, wrapping
+      the rich-content and media components, `aspectRatio`, wrapping
       and positioning inside a `ScrollBox`, and notifications, audio and
       `Timeline` remain ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and `uf ui add` for the styled components a project owns (ubugeeei-prod/uf#947).

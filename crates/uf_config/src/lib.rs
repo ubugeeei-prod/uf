@@ -55,6 +55,23 @@ pub struct FlowConfig {
     pub version: Option<CompactString>,
 }
 
+/// What `uf check` does with a dependency's TypeScript declarations.
+///
+/// Absent, a package with no Flow is translated. [`CheckConfig::untyped`]
+/// names packages that stay `any` instead, which is how a declaration graph
+/// too large to translate — `next`, for one — is kept out of the check.
+/// ubugeeei-prod/uf#1900.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CheckConfig {
+    /// Package names left untyped. `next` covers `next` and `next/headers`.
+    ///
+    /// A `flow-typed` libdef for the same name still wins: the import resolves
+    /// to that file and this list is never consulted.
+    pub untyped: Vec<CompactString>,
+}
+
 pub const CONFIG_FILES: &[&str] = &["uf.config.js"];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,6 +84,8 @@ pub struct UniflowedConfig {
     pub build: BuildConfig,
     /// Which builder `uf dev`, `uf build`, `uf preview` and `uf start` drive.
     pub builder: BuilderConfig,
+    /// Which packages `uf check` types as `any` instead of translating.
+    pub check: CheckConfig,
     pub dev: DevConfig,
     pub docs: DocsConfig,
     pub env: EnvConfig,

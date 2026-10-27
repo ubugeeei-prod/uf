@@ -36,15 +36,27 @@ fn clean_project(dir: &Path) {
 }
 
 fn check_json(dir: &Path) -> Value {
+    check_run(dir).0
+}
+
+/// `--json` on stdout, and the stderr a translation narrates on.
+///
+/// `UF_DTS_CACHE` is empty so the shared cache is off. A directory there, or
+/// the XDG cache an unset variable selects, would turn a cold translation
+/// into a hit. ubugeeei-prod/uf#1900.
+fn check_run(dir: &Path) -> (Value, String) {
     let output = uf()
         .arg("--cwd")
         .arg(dir)
         .args(["check", "--json"])
+        .env("UF_DTS_CACHE", "")
         .output()
         .unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_plain(&stdout);
-    serde_json::from_str(&stdout).expect("--json must parse")
+    let value = serde_json::from_str(&stdout).expect("--json must parse");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    (value, stderr)
 }
 
 #[test]
@@ -119,6 +131,11 @@ fn a_package_that_ships_typescript_declarations_and_no_flow_is_typed_from_them()
     fs::create_dir_all(&package).unwrap();
     fs::create_dir_all(&src).unwrap();
     fs::write(
+        dir.path().join("package.json"),
+        r#"{"name":"uf-dts-repro","private":true,"type":"module","dependencies":{"tiny-schema":"1.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(
         package.join("package.json"),
         r#"{
           "name": "tiny-schema",
@@ -147,7 +164,12 @@ fn a_package_that_ships_typescript_declarations_and_no_flow_is_typed_from_them()
     )
     .unwrap();
 
-    let cold = check_json(dir.path());
+    let (cold, cold_err) = check_run(dir.path());
+    assert!(
+        cold_err.contains("translating tiny-schema@1.0.0"),
+        "{cold_err}"
+    );
+    assert_eq!(cold["typeCheck"]["declarationSkips"], serde_json::json!([]));
 
     let diagnostics = cold["typeCheck"]["diagnostics"].as_array().unwrap();
     let lines: Vec<u64> = diagnostics
@@ -171,7 +193,11 @@ fn a_package_that_ships_typescript_declarations_and_no_flow_is_typed_from_them()
     assert_eq!(translated[0]["holes"], 0);
     assert_eq!(translated[0]["fromCache"], false);
 
-    let warm = check_json(dir.path());
+    let (warm, warm_err) = check_run(dir.path());
+    assert!(
+        !warm_err.contains("translating"),
+        "a cache hit stays quiet: {warm_err}"
+    );
     assert_eq!(
         warm["typeCheck"]["translatedPackages"][0]["fromCache"],
         true
@@ -361,6 +387,7 @@ fn a_second_run_is_answered_from_the_cache_under_the_project_root() {
         "filesSkipped",
         "untypedModules",
         "hostConditionalModules",
+        "declarationSkips",
     ] {
         assert_eq!(
             first["typeCheck"][field], second["typeCheck"][field],
@@ -852,5 +879,163 @@ fn asking_to_lint_a_library_definition_says_that_is_what_it_is() {
     assert!(
         stderr.contains("flow-typed/globals.js is a library definition"),
         "{stderr}"
+    );
+}
+
+/// `unique: []` satisfies `unique: any[]` after translation, the way TypeScript
+/// accepts it. ubugeeei-prod/uf#1899.
+#[test]
+fn a_tuple_property_satisfies_an_array_constraint_after_translation() {
+    let dir = tempfile::tempdir().unwrap();
+    let package = dir.path().join("node_modules/fake-sdk");
+    let src = dir.path().join("src");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&src).unwrap();
+    fs::write(
+        dir.path().join("package.json"),
+        r#"{"name":"uf-tuple-constraint-repro","private":true,"type":"module","dependencies":{"fake-sdk":"0.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(
+        package.join("package.json"),
+        r#"{"name":"fake-sdk","version":"0.0.0","main":"index.js","types":"index.d.ts"}"#,
+    )
+    .unwrap();
+    fs::write(package.join("index.js"), "export {};\n").unwrap();
+    fs::write(
+        package.join("index.d.ts"),
+        "export type DescriptorType = {\n    row: Record<string, any>;\n    refs: any;\n    unique: any[];\n};\n\
+         export type IncludeExp<T extends DescriptorType> = {\n    [K in keyof T[\"refs\"]]?: true;\n};\n\
+         export type Blog = {\n    id: string;\n    title: string;\n};\n\
+         export type Category = {\n    id: string;\n    name: string;\n};\n\
+         export type Category__Descriptor = {\n    row: Category;\n    refs: object;\n    unique: [{ key: string }];\n};\n\
+         export type Blog__Descriptor = {\n    row: Blog;\n    refs: {\n        category: Category__Descriptor;\n    };\n    unique: [];\n};\n",
+    )
+    .unwrap();
+    fs::write(
+        src.join("tuple-constraint.js"),
+        "// @flow\nimport type { Blog__Descriptor, IncludeExp } from \"fake-sdk\";\n\n\
+         export type BlogInclude = IncludeExp<Blog__Descriptor>;\n\n\
+         export const include: BlogInclude = { category: true };\n",
+    )
+    .unwrap();
+
+    let (value, stderr) = check_run(dir.path());
+    assert_eq!(value["errors"], serde_json::json!(0), "{stderr}\n{value:#}");
+    assert_eq!(
+        value["typeCheck"]["diagnostics"],
+        serde_json::json!([]),
+        "{value:#}"
+    );
+}
+
+/// `check.untyped` types the named package as `any` and says so, instead of
+/// translating it. A libdef for the same name still wins. ubugeeei-prod/uf#1900.
+#[test]
+fn check_untyped_skips_a_named_package_and_a_libdef_still_wins() {
+    let dir = tempfile::tempdir().unwrap();
+    let package = dir.path().join("node_modules/wide");
+    let src = dir.path().join("src");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&src).unwrap();
+    fs::create_dir_all(dir.path().join("flow-typed")).unwrap();
+    fs::write(
+        dir.path().join("package.json"),
+        r#"{"name":"uf-untyped-repro","private":true,"type":"module","dependencies":{"wide":"2.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "export default { check: { untyped: [\"wide\"] } };\n",
+    )
+    .unwrap();
+    fs::write(
+        package.join("package.json"),
+        r#"{"name":"wide","version":"2.0.0","types":"index.d.ts"}"#,
+    )
+    .unwrap();
+    fs::write(package.join("index.js"), "export const thing = 1;\n").unwrap();
+    fs::write(package.join("index.d.ts"), "export const thing: number;\n").unwrap();
+    // A value. `import type` of a module left `any` is Flow's `value-as-type`,
+    // which is a different error from the declaration being skipped. A string
+    // annotation accepts `any` and rejects the declaration's `number`.
+    fs::write(
+        src.join("app.js"),
+        "// @flow\nimport { thing } from \"wide\";\nexport const value: string = thing;\n",
+    )
+    .unwrap();
+
+    let (skipped, stderr) = check_run(dir.path());
+    assert!(
+        !stderr.contains("translating"),
+        "a skipped package is not translated: {stderr}"
+    );
+    assert_eq!(
+        skipped["typeCheck"]["declarationSkips"],
+        serde_json::json!(["wide"])
+    );
+    assert_eq!(
+        skipped["typeCheck"]["translatedPackages"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        skipped["typeCheck"]["diagnostics"],
+        serde_json::json!([]),
+        "the import stays any: {skipped:#}"
+    );
+
+    fs::write(
+        dir.path().join("flow-typed/wide.js"),
+        "declare module \"wide\" {\n  declare export var thing: number;\n}\n",
+    )
+    .unwrap();
+    let (overridden, stderr) = check_run(dir.path());
+    assert_eq!(
+        overridden["typeCheck"]["declarationSkips"],
+        serde_json::json!([]),
+        "a resolved libdef never asks for a translation: {stderr}"
+    );
+    let diagnostics = overridden["typeCheck"]["diagnostics"].as_array().unwrap();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic["code"] == "incompatible-type"),
+        "the libdef's number rejects a string: {overridden:#}"
+    );
+}
+
+/// A project that turns StyleX off can still check a headless part.
+/// ubugeeei-prod/uf#1354.
+#[cfg(unix)]
+#[test]
+fn a_project_without_stylex_checks_a_headless_separator() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("package.json"),
+        r#"{"name":"plain-css","private":true,"type":"module","dependencies":{"@uniflowed/react":"0.43.0","@uniflowed/ui":"0.43.0"}}"#,
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "export default { app: { builtins: { style: \"none\" } } };\n",
+    )
+    .unwrap();
+    let modules = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../node_modules");
+    std::os::unix::fs::symlink(&modules, dir.path().join("node_modules")).unwrap();
+    fs::create_dir_all(dir.path().join("src")).unwrap();
+    fs::write(
+        dir.path().join("src/rule.js"),
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\
+         import { Separator } from \"@uniflowed/ui\";\n\n\
+         export function Rule(): React.Node {\n  return <Separator />;\n}\n",
+    )
+    .unwrap();
+
+    let (value, stderr) = check_run(dir.path());
+    assert_eq!(value["errors"], serde_json::json!(0), "{stderr}\n{value:#}");
+    assert_eq!(
+        value["typeCheck"]["diagnostics"],
+        serde_json::json!([]),
+        "{value:#}"
     );
 }
