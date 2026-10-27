@@ -623,11 +623,16 @@ export component Slider(
     glyphs.push(cell === at ? thumb : track);
   }
   const onKeyDown = (key: KeyEvent) => {
+    if (props.onKeyDown != null) {
+      props.onKeyDown(key);
+    }
     if (key.eventType === "release") {
       return;
     }
-    const increase = vertical ? key.name === "up" : key.name === "right";
-    const decrease = vertical ? key.name === "down" : key.name === "left";
+    // Unmodified arrows only. Shift, Ctrl and Meta are different bindings,
+    // the same way `Select` tells `up` from `shift+up`.
+    const increase = vertical ? bound(key, "up") : bound(key, "right");
+    const decrease = vertical ? bound(key, "down") : bound(key, "left");
     if (!increase && !decrease) {
       return;
     }

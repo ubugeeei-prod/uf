@@ -1221,6 +1221,30 @@ describe("a thumb a reader moves", () => {
     vertical.stop();
   });
 
+  it("ignores a modified arrow, and still reports the key to the caller", () => {
+    const changes = [];
+    const keys = [];
+    const handle = testRender(
+      <Slider
+        focused={true}
+        value={0}
+        onChange={(next) => changes.push(next)}
+        onKeyDown={(key) =>
+          keys.push(key.name + (key.shift ? "+shift" : "") + (key.ctrl ? "+ctrl" : ""))
+        }
+      />,
+      { width: 10, height: 1 },
+    );
+    handle.press("\u001b[1;2C");
+    handle.press("\u001b[1;5C");
+    expect(changes).toEqual([]);
+    expect(keys).toEqual(["right+shift", "right+ctrl"]);
+    handle.press(RIGHT);
+    expect(changes).toEqual([1]);
+    expect(keys).toEqual(["right+shift", "right+ctrl", "right"]);
+    handle.stop();
+  });
+
   it("uses the ascii glyphs, and ten cells when the size is a percentage", () => {
     const ascii = testRender(<Slider value={0} />, {
       width       : 10,
