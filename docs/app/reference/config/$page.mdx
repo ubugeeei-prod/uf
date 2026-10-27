@@ -1276,10 +1276,10 @@ export default defineConfig({
 ```
 
 `check` is read before a declaration file is translated. A name on
-`check.untyped` stays `any`, and stderr names the packages that were left
-that way. A package that is not on the list is named on stderr as
-`translating <name>@<version>` while its declarations are translated. A cache
-hit stays quiet.
+`check.untyped` stays `any`, and the human report on stdout names the
+packages that were left that way. A package that is not on the list is named
+on stderr as `translating <name>@<version>` while its declarations are
+translated. A cache hit stays quiet.
 
 ## Official Flow
 
