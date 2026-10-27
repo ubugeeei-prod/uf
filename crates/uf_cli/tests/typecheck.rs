@@ -1003,3 +1003,39 @@ fn check_untyped_skips_a_named_package_and_a_libdef_still_wins() {
         "the libdef's number rejects a string: {overridden:#}"
     );
 }
+
+/// A project that turns StyleX off can still check a headless part.
+/// ubugeeei-prod/uf#1354.
+#[cfg(unix)]
+#[test]
+fn a_project_without_stylex_checks_a_headless_separator() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("package.json"),
+        r#"{"name":"plain-css","private":true,"type":"module","dependencies":{"@uniflowed/react":"0.43.0","@uniflowed/ui":"0.43.0"}}"#,
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "export default { app: { builtins: { style: \"none\" } } };\n",
+    )
+    .unwrap();
+    let modules = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../node_modules");
+    std::os::unix::fs::symlink(&modules, dir.path().join("node_modules")).unwrap();
+    fs::create_dir_all(dir.path().join("src")).unwrap();
+    fs::write(
+        dir.path().join("src/rule.js"),
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\
+         import { Separator } from \"@uniflowed/ui\";\n\n\
+         export function Rule(): React.Node {\n  return <Separator />;\n}\n",
+    )
+    .unwrap();
+
+    let (value, stderr) = check_run(dir.path());
+    assert_eq!(value["errors"], serde_json::json!(0), "{stderr}\n{value:#}");
+    assert_eq!(
+        value["typeCheck"]["diagnostics"],
+        serde_json::json!([]),
+        "{value:#}"
+    );
+}

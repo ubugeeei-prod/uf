@@ -137,6 +137,10 @@ copies that source. It does not translate a copy into plain CSS, a CSS
 Module, or a string of class names, and nothing you set asks it to. The style
 engine is StyleX. A registry copy is a file written in it.
 
+`uf ui add` refuses when `app.builtins.style` is `"none"`. It writes nothing.
+The copies are StyleX, and that setting does not rewrite them into CSS. Import
+the parts from `@uniflowed/ui` and style them with the project's own CSS.
+
 A project that does not compile StyleX does not start from those copies. It
 imports the parts and puts its own class on them, which is the rest of this
 page. Importing a part does not import StyleX.
