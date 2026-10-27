@@ -336,6 +336,15 @@ export type CoverageThresholds = {
 };
 
 export type UniflowedConfig = {
+  /**
+   * Packages `uf check` types as `any` instead of translating their TypeScript
+   * declarations. A name covers the package and its subpaths. A libdef in
+   * `flow-typed/` for the same name still wins.
+   */
+  readonly check?: {
+    /** Package names, for example `["next"]`. */
+    readonly untyped?: $ReadOnlyArray<string>,
+  },
   /** Official Flow checker and language server; absent uses uf's bundled checker. */
   readonly flow?: {
     /** Exact official release, for example "0.333.0". Acquired and verified automatically. */

@@ -48,6 +48,7 @@ of any key whose type is a fixed set — and explains a key you hover. See
 | `site` | Where the built site is served from, and what `uf build` writes for a crawler |
 | `env` | The `.env` files and the default mode. Its `toolchain` is deprecated |
 | `fmt` | `uf fmt` |
+| `check` | Packages `uf check` leaves untyped instead of translating. See [below](#check) |
 | `flow` | The official checker and editor server release. See [below](#official-flow) |
 | `ignore` | Paths no command walks into: `uf fmt`, `uf lint`, `uf check`, `uf test`, `uf doc` |
 | `lint` | `uf lint` and Flow's built-in lints |
@@ -1261,6 +1262,24 @@ defaults to `"react"`, which is what MDX was always compiled against.
 `taskRunner.allowPackageScripts` is enforced, and defaults to `true`, which is
 what `uf run` always did; a project that wrote `false` is told so by the
 codemod, because from 0.10 that refuses a task with no command.
+
+## check
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `check.untyped` | `[]` | Package names `uf check` types as `any` instead of translating their TypeScript declarations. `next` covers `next` and `next/headers`. A handwritten libdef in `flow-typed/` for the same name still wins. |
+
+```js
+export default defineConfig({
+  check: { untyped: ["next"] },
+});
+```
+
+`check` is read before a declaration file is translated. A name on
+`check.untyped` stays `any`, and stderr names the packages that were left
+that way. A package that is not on the list is named on stderr as
+`translating <name>@<version>` while its declarations are translated. A cache
+hit stays quiet.
 
 ## Official Flow
 

@@ -191,6 +191,13 @@ pub(super) struct Declarations {
     /// a later round does not read the same manifests to learn the same thing.
     unanswered: FxHashSet<String>,
     sources: Vec<SourceFile>,
+    /// Package names `check.untyped` named. A request for one is recorded and
+    /// not translated, so the import stays `any`. A libdef that already
+    /// resolved the specifier never asks, and that file still wins.
+    /// ubugeeei-prod/uf#1900.
+    skip: FxHashSet<String>,
+    /// Names from [`Self::skip`] that a round actually asked for.
+    skipped: BTreeSet<String>,
 }
 
 /// One package being typed from its declarations.
@@ -238,7 +245,30 @@ impl Declarations {
             flow: FxHashSet::default(),
             unanswered: FxHashSet::default(),
             sources: Vec::new(),
+            skip: FxHashSet::default(),
+            skipped: BTreeSet::new(),
         }
+    }
+
+    /// Leave these package names untyped. `next` covers `next` and `next/headers`.
+    pub(super) fn leave_untyped<S: AsRef<str>>(&mut self, names: &[S]) {
+        self.skip
+            .extend(names.iter().map(|name| name.as_ref().to_owned()));
+    }
+
+    /// Package names [`Self::leave_untyped`] kept out of translation, and that
+    /// something asked for. Configured names nobody imported are absent.
+    pub(super) fn skipped(&self) -> Vec<String> {
+        self.skipped.iter().cloned().collect()
+    }
+
+    fn left_untyped(names: &FxHashSet<String>, name: &str) -> bool {
+        names.iter().any(|configured| {
+            name == configured.as_str()
+                || name
+                    .strip_prefix(configured.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
     }
 
     /// Record that the package installed at `directory` ships Flow.
@@ -263,6 +293,10 @@ impl Declarations {
         installed: Option<&str>,
         types: &mut dyn FnMut() -> Option<String>,
     ) {
+        if Self::left_untyped(&self.skip, name) {
+            self.skipped.insert(name.to_owned());
+            return;
+        }
         if installed.is_some_and(|directory| self.flow.contains(directory)) {
             return;
         }
@@ -335,7 +369,20 @@ impl Declarations {
 
     /// Translate every package something new was asked of. Returns whether the
     /// batch's sources changed.
+    ///
+    /// The check reports through [`Self::flush_with`]. The unit tests do not.
+    #[cfg(test)]
     pub(super) fn flush(&mut self) -> bool {
+        self.flush_with(&mut |_| {})
+    }
+
+    /// [`Self::flush`], telling `report` the name of each package that still
+    /// has to be translated, before that translation starts.
+    ///
+    /// A cache hit stays quiet. The line is the only signal a translation that
+    /// runs for minutes produces, and a progress spinner writes nothing when
+    /// stderr is not a terminal. ubugeeei-prod/uf#1900.
+    pub(super) fn flush_with(&mut self, report: &mut dyn FnMut(&str)) -> bool {
         let stale: Vec<String> = self
             .packages
             .iter()
@@ -395,6 +442,20 @@ impl Declarations {
                 record,
                 shared,
             });
+        }
+
+        for miss in &misses {
+            let Some(package) = self.packages.get(&miss.key) else {
+                continue;
+            };
+            let label = match &package.version {
+                Some(version) => {
+                    uf_infra::into_string(uf_infra::cstr!("{}@{version}", package.name))
+                }
+                None => package.name.clone(),
+            };
+            let message = uf_infra::into_string(uf_infra::cstr!("translating {label}"));
+            report(&message);
         }
 
         // One package is one import graph (`uf_dts::translate` walks it), so

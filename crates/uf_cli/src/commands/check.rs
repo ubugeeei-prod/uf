@@ -149,6 +149,9 @@ struct Batch {
     /// and a reader deciding how far to trust a clean check has to know by
     /// how much.
     translated: Vec<declarations::TranslatedPackage>,
+    /// Packages `check.untyped` named that this run was asked to translate
+    /// and left as `any` instead. ubugeeei-prod/uf#1900.
+    declaration_skips: Vec<String>,
     /// What `--explain-any` asked about, when it was passed.
     explained: Option<declarations::Explanation>,
 }
@@ -293,7 +296,21 @@ pub(crate) fn check(
         official_check(&sources, &available, &root, &config)?
     } else {
         let flow_lints = configured_flow_lints(&config);
-        let types = type_check(&sources, &available, &root, explain_any, &flow_lints);
+        // Progress draws nothing unless stderr is a terminal, and JSON mode
+        // forces that off. The line is what a translation that runs for
+        // minutes has to print anyway. ubugeeei-prod/uf#1900.
+        let mut narrate = |message: &str| {
+            progress.draw(message);
+            eprintln!("{message}");
+        };
+        let types = type_check_reporting(
+            &sources,
+            &available,
+            &root,
+            explain_any,
+            &flow_lints,
+            &mut narrate,
+        );
         if matches!(types, TypeCheck::Checked(..)) {
             // Inference ran these. Leaving them on the lint report would say
             // `uf check` skipped rules it just ran. `uf lint` still lists them.
@@ -416,13 +433,29 @@ pub(crate) fn configured_flow_lints(config: &uf_config::UniflowedConfig) -> Vec<
 ///
 /// `lints` are the levels [`configured_flow_lints`] read. An empty slice leaves
 /// Flow's inference lints off.
-#[cfg(feature = "upstream-typecheck")]
+///
+/// The command itself calls [`type_check_reporting`]. This wrapper exists for
+/// the unit tests, which do not watch translation.
+#[cfg(all(test, feature = "upstream-typecheck"))]
 fn type_check(
     sources: &[SourceFile],
     available: &[SourceFile],
     root: &Utf8Path,
     explain_any: Option<&str>,
     lints: &[FlowLint],
+) -> TypeCheck {
+    type_check_reporting(sources, available, root, explain_any, lints, &mut |_| {})
+}
+
+/// [`type_check`], reporting each declaration package before it is translated.
+#[cfg(feature = "upstream-typecheck")]
+fn type_check_reporting(
+    sources: &[SourceFile],
+    available: &[SourceFile],
+    root: &Utf8Path,
+    explain_any: Option<&str>,
+    lints: &[FlowLint],
+    report_translation: &mut dyn FnMut(&str),
 ) -> TypeCheck {
     let limits = CheckLimits::default();
     // The project's own library definitions, before anything is merged: they
@@ -480,7 +513,15 @@ fn type_check(
         installed,
         declarations,
         builtins,
-    } = match closure(root, &project, &seeds, &libs, &limits, requires) {
+    } = match closure(
+        root,
+        &project,
+        &seeds,
+        &libs,
+        &limits,
+        requires,
+        report_translation,
+    ) {
         Ok(closure) => closure,
         Err(error) if error.is_unavailable() => return TypeCheck::Unavailable,
         Err(error) => return TypeCheck::Failed(error),
@@ -504,6 +545,7 @@ fn type_check(
         // Filled once the check has run: what a translated package reports
         // includes the errors Flow finds inside it.
         translated: Vec::new(),
+        declaration_skips: declarations.skipped(),
         explained: None,
     };
 
@@ -645,6 +687,7 @@ fn official_check(
             builtins: None,
             libdefs: 0,
             translated: Vec::new(),
+            declaration_skips: Vec::new(),
             explained: None,
         }),
     ))
@@ -687,12 +730,20 @@ fn closure(
     libs: &[Source<'_>],
     limits: &CheckLimits,
     mut requires: ModuleRequires,
+    report_translation: &mut dyn FnMut(&str),
 ) -> Result<Closure, CheckError> {
     let mut installed: Vec<SourceFile> = Vec::new();
     let mut read: FxHashSet<String> = FxHashSet::default();
     // The packages with no Flow and with TypeScript declarations, typed from a
     // translation of those. ubugeeei-prod/uf#946.
     let mut declarations = declarations::Declarations::open(root);
+    // `check.untyped` names packages whose declaration graphs stay `any`.
+    // Read here so a check and a language-server batch honour the same list.
+    // ubugeeei-prod/uf#1900.
+    let untyped = uf_config::load_config(root)
+        .map(|resolved| resolved.config.check.untyped)
+        .unwrap_or_default();
+    declarations.leave_untyped(&untyped);
     let mut builtins = None;
     // `requires` is held across the rounds rather than rebuilt inside each one:
     // what a file imports is the same answer every time it is asked, and asking
@@ -731,7 +782,7 @@ fn closure(
         // A package translated this round changes the batch without adding a
         // file to `installed`, so it keeps the rounds going too — its
         // declarations import packages of their own.
-        let translated = declarations.flush();
+        let translated = declarations.flush_with(report_translation);
         if more.is_empty() && !translated {
             return Ok(Closure {
                 paths,
@@ -782,6 +833,8 @@ pub(crate) fn project_batch(
         &libs,
         &limits,
         ModuleRequires::default(),
+        // A hover must not narrate every package the batch translates.
+        &mut |_| {},
     )?;
     let reached: FxHashSet<&str> = found.paths.iter().map(String::as_str).collect();
     let sources = project
@@ -861,6 +914,12 @@ fn type_check_payload(types: &TypeCheck) -> Value {
         value["builtinsNeeded"] = json!(builtins.needed);
         value["untypedModules"] = json!(report.untyped_modules);
         value["hostConditionalModules"] = json!(report.host_conditional_modules);
+        value["declarationSkips"] = json!(
+            types
+                .batch()
+                .map(|batch| batch.declaration_skips.as_slice())
+                .unwrap_or(&[])
+        );
     }
     if let TypeCheck::Failed(error) = types {
         value["error"] = json!(error.to_string());
@@ -1116,12 +1175,24 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             if batch.libdefs > 0 {
                 rows.insert(1, KeyValue::toned("libdefs", &libdefs, Tone::Muted));
             }
-            let untyped = untyped_module_list(report);
-            let host_conditional = host_conditional_module_list(report);
+            let untyped = untyped_module_list(report, &batch.declaration_skips);
+            let host_conditional = host_conditional_module_list(report, &batch.declaration_skips);
+            let skipped = declaration_skip_list(&batch.declaration_skips);
             let translated = translated_package_list(&batch.translated);
             let explained = batch.explained.as_ref().map(explanation_lines);
             ui.render(|renderer, out| {
                 renderer.key_values(out, 2, &rows);
+                if !skipped.is_empty() {
+                    renderer.blank(out);
+                    push_spaces(out, 2);
+                    renderer.status(
+                        out,
+                        Status::Info,
+                        "these packages were left untyped because check.untyped names them; a handwritten libdef in flow-typed/ still overrides this",
+                    );
+                    let items: Vec<&str> = skipped.iter().map(String::as_str).collect();
+                    renderer.bullet_list(out, 4, &items);
+                }
                 if !untyped.is_empty() {
                     renderer.blank(out);
                     push_spaces(out, 2);
@@ -1258,13 +1329,39 @@ fn translated_package_list(packages: &[declarations::TranslatedPackage]) -> Vec<
 /// A project pulls in more packages than a terminal should list, and the full
 /// set is always in `--json`.
 #[cfg(feature = "upstream-typecheck")]
-fn untyped_module_list(report: &CheckReport) -> Vec<String> {
-    limited_module_list(&report.untyped_modules)
+fn untyped_module_list(report: &CheckReport, skips: &[String]) -> Vec<String> {
+    let named: Vec<_> = report
+        .untyped_modules
+        .iter()
+        .filter(|specifier| !covered_by_skip(specifier, skips))
+        .collect();
+    limited_module_list(&named)
 }
 
 #[cfg(feature = "upstream-typecheck")]
-fn host_conditional_module_list(report: &CheckReport) -> Vec<String> {
-    limited_module_list(&report.host_conditional_modules)
+fn host_conditional_module_list(report: &CheckReport, skips: &[String]) -> Vec<String> {
+    let named: Vec<_> = report
+        .host_conditional_modules
+        .iter()
+        .filter(|specifier| !covered_by_skip(specifier, skips))
+        .collect();
+    limited_module_list(&named)
+}
+
+/// Whether `check.untyped` already explained `specifier`.
+#[cfg(feature = "upstream-typecheck")]
+fn covered_by_skip(specifier: &str, skips: &[String]) -> bool {
+    skips.iter().any(|name| {
+        specifier == name.as_str()
+            || specifier
+                .strip_prefix(name.as_str())
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
+#[cfg(feature = "upstream-typecheck")]
+fn declaration_skip_list(skips: &[String]) -> Vec<String> {
+    limited_module_list(skips)
 }
 
 #[cfg(feature = "upstream-typecheck")]
