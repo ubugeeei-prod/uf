@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.44.0
+
+- feat: widen declaration arrays, show declaration translation, document route files, draw Slider, and keep StyleX copies on StyleX (#1902) (3609ff25)
+
 ## uf@0.43.0
 
 - feat: share dts translations, keep diagnostic lines, load a ui directory, test Zed, and draw ScrollBar (#1897) (19f14fde)
