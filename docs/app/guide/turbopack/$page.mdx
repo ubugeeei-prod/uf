@@ -56,23 +56,44 @@ a returned promise. Composing twice is composing once.
 
 ```js
 // app/page.js
+// Plain JavaScript. Next.js parses this file itself.
+export { default } from "./page.impl.js";
+
+// app/page.impl.js
 // @flow
+import * as React from "react";
 import { stylex } from "@uniflowed/stylex";
+
+type Title = string;
 
 const styles = stylex.create({
   title: { color: "red", fontSize: 32 },
 });
 
-export default function Page() {
-  return <h1 {...stylex.props(styles.title)}>Flow</h1>;
+export default function Page(): React.Node {
+  const title: Title = "Flow";
+  return <h1 {...stylex.props(styles.title)}>{title}</h1>;
 }
 ```
 
-Only a file with a Flow pragma is compiled. `// @flow` or `/* @flow */` at the
-start of a line counts. `// @noflow` does not, and neither does a mention of
-the pragma in the middle of a comment: those files stay with SWC. The same
-rule applies under `node_modules`, limited to `@uniflowed/*`, because that is
-the scope that ships Flow source. Other packages are left alone.
+Next.js parses a route convention file with SWC, outside `turbopack.rules`.
+That list is `page`, `layout`, `default`, `route`, `opengraph-image`, `proxy`
+and `middleware`. Flow syntax in one of them is a parse error, pragma or not,
+because the loader never sees the file. Write the Flow in a sibling such as
+`page.impl.js` and re-export it from the convention file, as the example does.
+
+An export Next.js reads statically has to be written in the convention file.
+Re-exporting it is not the same read. That is `dynamic`, the `alt`, `size` and
+`contentType` of an `opengraph-image`, and `config.matcher` on `proxy`.
+`proxy` also has to `export default function proxy(...)` as a function
+declaration. The sibling can hold everything else.
+
+Only a file with a Flow pragma is compiled, and only when Next.js is not the
+one parsing it. `// @flow` or `/* @flow */` at the start of a line counts.
+`// @noflow` does not, and neither does a mention of the pragma in the middle
+of a comment: those files stay with SWC. The same rule applies under
+`node_modules`, limited to `@uniflowed/*`, because that is the scope that ships
+Flow source. Other packages are left alone.
 
 `refresh` is off. Next.js registers components for its own Fast Refresh, and a
 component registered twice remounts instead of keeping state.
