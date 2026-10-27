@@ -2,12 +2,13 @@
 //
 // The components a caller writes, and the hooks they reach for.
 //
-// Eight components. The first four were most of the argument of the first
+// Nine components. The first four were most of the argument of the first
 // two releases: `Box` is a flex container that can draw a frame around itself;
 // `Text` is a run of styled characters that knows how to wrap; `Input` is a
 // line a reader types into; `ScrollBox` is a window onto content taller than
 // it. `ScrollBar` is that window's bar when the window and the bar are not
-// the same box. Much of what else OpenTUI offers — a table, a diff view — is
+// the same box. `Slider` is a controlled value a reader moves with the arrow
+// keys. Much of what else OpenTUI offers — a table, a diff view — is
 // those plus state, and shipping them badly is worse than not shipping them, so they are
 // ubugeeei-prod/uf#314 rather than stubs that throw.
 //
@@ -43,8 +44,8 @@
 // a render reads — `Textarea` reads its node through a ref only inside a key
 // handler, to know how wide its lines were drawn; `useTerminalSize` subscribes
 // with `useSyncExternalStore` and returns a snapshot that is stable between
-// resizes; `ScrollBox` and `ScrollBar` own no scroll state at all. All eight
-// are safe under Strict Mode's double invocation and under the React
+// resizes; `ScrollBox`, `ScrollBar` and `Slider` own no scroll state at all.
+// All nine are safe under Strict Mode's double invocation and under the React
 // Compiler's memoization.
 
 import * as React from "@uniflowed/react";
@@ -540,6 +541,123 @@ export component ScrollBar(
     >
       <Text wrap="none" fg={props.fg} selectable={false}>
         {cells.map(glyph).join(vertical ? "\n" : "")}
+      </Text>
+    </Box>
+  );
+}
+
+/** Which way a `Slider` runs. */
+export type SliderOrientation = "horizontal" | "vertical";
+
+/**
+ * How long a `Slider` is, in cells.
+ *
+ * An explicit width or height is that many cells. A percentage is a fraction
+ * of a parent this function has not laid out, so it is not a cell count, and
+ * neither is a missing size. Ten cells is what is drawn then.
+ */
+function sliderLength(sized: Dimension | void): number {
+  if (typeof sized === "number" && Number.isFinite(sized) && sized >= 0) {
+    return Math.floor(sized);
+  }
+  return 10;
+}
+
+/** `value` brought inside `min` and `max`. A value that is not a number is `min`. */
+function sliderClamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+/** Everything a `Slider` accepts beyond the value it shows. */
+export type SliderProps = {
+  ...BoxProps,
+  readonly orientation?: SliderOrientation,
+  /** The value the thumb shows. The component does not keep its own. */
+  readonly value: number,
+  readonly min? : number,
+  readonly max? : number,
+  readonly step?: number,
+  /** Called with the next value when an arrow key moves the thumb. */
+  readonly onChange?: (value: number) => mixed,
+};
+
+/**
+ * A thumb a reader moves along a track.
+ *
+ * Controlled: `value` is what is drawn, and `onChange` is how it changes.
+ * Horizontal, the left and right arrows move it. Vertical, up and down do.
+ * The thumb is one cell. The track is `─` where the terminal has box drawing
+ * and `-` where it does not, and the thumb is `█` or `#` on the same rule.
+ * One `Text` holds the whole bar.
+ *
+ * Ten cells unless `width` (horizontal) or `height` (vertical) names a length
+ * in cells. A percentage is not a cell count. Nothing is reported when the
+ * arrow would leave the value where it is.
+ */
+export component Slider(
+  value       : number,
+  onChange?   : (value: number) => mixed,
+  min?        : number = 0,
+  max?        : number = 100,
+  step?       : number = 1,
+  orientation?: SliderOrientation = "horizontal",
+  ...props    : BoxProps
+) {
+  const vertical = orientation === "vertical";
+  const asked = vertical
+    ? (props.height ?? props.style?.height)
+    : (props.width ?? props.style?.width);
+  const length = sliderLength(asked);
+  const ascii = useRenderer().capabilities.glyphs === "ascii";
+  const track = ascii ? "-" : "─";
+  const thumb = ascii ? "#" : "█";
+  const span = max - min;
+  const ratio = Number.isFinite(span) && span > 0 ? (sliderClamp(value, min, max) - min) / span : 0;
+  const index = length <= 1 ? 0 : Math.round(ratio * (length - 1));
+  const at = Math.min(Math.max(0, index), Math.max(0, length - 1));
+  const glyphs: Array<string> = [];
+  for (let cell = 0; cell < length; cell += 1) {
+    glyphs.push(cell === at ? thumb : track);
+  }
+  const onKeyDown = (key: KeyEvent) => {
+    if (key.eventType === "release") {
+      return;
+    }
+    const increase = vertical ? key.name === "up" : key.name === "right";
+    const decrease = vertical ? key.name === "down" : key.name === "left";
+    if (!increase && !decrease) {
+      return;
+    }
+    if (
+      !Number.isFinite(step) ||
+      !(step > 0) ||
+      !Number.isFinite(min) ||
+      !Number.isFinite(max) ||
+      max < min
+    ) {
+      return;
+    }
+    const current = sliderClamp(value, min, max);
+    const next = sliderClamp(current + (increase ? step : -step), min, max);
+    if (next !== value && onChange != null) {
+      onChange(next);
+    }
+  };
+  return (
+    <Box
+      {...props}
+      width={vertical ? 1 : length}
+      height={vertical ? length : 1}
+      focusable={props.focusable ?? true}
+      focused={props.focused ?? false}
+      selectable={props.selectable ?? false}
+      onKeyDown={onKeyDown}
+    >
+      <Text wrap="none" fg={props.fg} selectable={false}>
+        {glyphs.join(vertical ? "\n" : "")}
       </Text>
     </Box>
   );

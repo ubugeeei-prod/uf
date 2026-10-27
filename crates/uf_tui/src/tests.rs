@@ -61,13 +61,14 @@ fn claims_only_the_features_the_package_implements() {
 fn exposes_the_components_that_exist_and_no_others() {
     let contract = contract();
 
-    assert_eq!(contract.components.len(), 8);
+    assert_eq!(contract.components.len(), 9);
     for name in [
         "Box",
         "Text",
         "Input",
         "ScrollBox",
         "ScrollBar",
+        "Slider",
         "Select",
         "TabSelect",
         "Textarea",
@@ -78,7 +79,6 @@ fn exposes_the_components_that_exist_and_no_others() {
     // The rest of OpenTUI's components, which the package does not have.
     // Adding one to the list above means deleting it from this one.
     for name in [
-        "Slider",
         "Code",
         "Markdown",
         "LineNumbers",

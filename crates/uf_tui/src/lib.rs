@@ -386,7 +386,7 @@ pub struct ReactInkTarget {
     /// Whether an Ink application could be ported without losing a capability.
     ///
     /// Not yet: Ink has no mouse either, but it does have `<Static>`, a
-    /// spinner ecosystem and a component library uf has eight components
+    /// spinner ecosystem and a component library uf has nine components
     /// against. See ubugeeei-prod/uf#314.
     pub replacement_ready: bool,
     /// Whether rendering happens in native code rather than in JavaScript.
@@ -457,11 +457,12 @@ pub fn contract() -> TuiFrameworkContract {
 
 /// The components `@uniflowed/tui` exports today.
 ///
-/// Eight, and the list is short on purpose. `Box` is a flex container that can
+/// Nine, and the list is short on purpose. `Box` is a flex container that can
 /// draw a background, a border and two titles; `Text` is styled text that
 /// knows how to wrap; `Input` is a line somebody types into; `ScrollBox` is a
 /// window onto content taller than itself; `ScrollBar` is that window's bar
-/// when the caller clips the window; `Select` and `TabSelect` are a list and a
+/// when the caller clips the window; `Slider` is a thumb a reader moves along
+/// a track; `Select` and `TabSelect` are a list and a
 /// row of tabs somebody moves through and chooses from; `Textarea` is several
 /// lines somebody edits. Everything else OpenTUI offers is ubugeeei-prod/uf#314
 /// rather than an entry here — a component named in a contract and absent from
@@ -499,6 +500,7 @@ fn default_components() -> TuiComponentList {
             TuiFeature::Scrollback,
             false,
         ),
+        TuiComponent::new("Slider", &["Root"], Input, TuiFeature::Keyboard, true),
         TuiComponent::new("Select", &["Root"], Selection, TuiFeature::Keyboard, true),
         TuiComponent::new(
             "TabSelect",

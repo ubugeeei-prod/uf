@@ -273,6 +273,13 @@ not a cell count yet, so it is read as no length. A bar longer than one cell
 keeps one track cell, so the thumb still has somewhere to move. Nothing is
 drawn when everything already fits.
 
+`Slider` is a thumb on a track. It takes a controlled `value` and calls
+`onChange` when an arrow key moves it: left and right when it is horizontal,
+up and down when it is vertical. The track is `─` (or `-`) and the thumb is
+`█` (or `#`), from the glyphs the terminal has. It is ten cells unless `width`
+or `height` names a length in cells. A percentage is not a cell count. The
+value does not change when the arrow would leave it where it is.
+
 The offset is the caller's, and no key is bound to it. That is the same rule
 focus follows, one level down: what an arrow key should do inside a scrolling
 region is the application's question — a log follows its tail, a file viewer
@@ -809,13 +816,13 @@ behind it, which is the thing this was fixing.
 
 ## What is not here yet
 
-`Slider`; the rich-content components (`Code`, `Markdown`, `LineNumbers`,
+The rich-content components (`Code`, `Markdown`, `LineNumbers`,
 `Diff`, `TextTable`); `AsciiFont`, `FrameBuffer`, `Image`, `QrCode` and
 `EmbeddedTerminal`; and OpenTUI's remaining application APIs — notifications,
 audio, `Timeline` — are not implemented. They are
 [#314](https://github.com/ubugeeei-prod/uf/issues/314), and they are *absent*
-rather than present as functions that throw: `uf inspect` reports eight
-components because there are eight.
+rather than present as functions that throw: `uf inspect` reports nine
+components because there are nine.
 
 Two smaller gaps are on the same issue. The repeated-press gestures that widen
 a text selection to a word or a line are absent, and so is `aspectRatio`, and

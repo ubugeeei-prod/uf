@@ -132,6 +132,7 @@ fn tui_registry_names_what_the_package_exports() {
         "ScrollBox",
         "ScrollBar",
         "Select",
+        "Slider",
         "TabSelect",
         "Textarea",
         "useKeyboard",
@@ -150,7 +151,7 @@ fn tui_registry_names_what_the_package_exports() {
 
     // Every component the contract names is something the package exports,
     // which is the direction a reader of `uf inspect` relies on.
-    assert_eq!(contract.components.len(), 8);
+    assert_eq!(contract.components.len(), 9);
     for component in &contract.components {
         assert!(
             module
