@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.45.0
+
+- feat: draw an aspect ratio and ship a high-contrast theme (#1904) (f24fd6da)
+
 ## uf@0.44.0
 
 - feat: widen declaration arrays, show declaration translation, document route files, draw Slider, and keep StyleX copies on StyleX (#1902) (3609ff25)
