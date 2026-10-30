@@ -124,7 +124,16 @@ well as for the eye; siblings that do not say stack in tree order.
 A `ScrollBox` reads neither `flexWrap` nor `position`: its children are one
 column whose heights it keeps between frames, which is what makes it cost its
 window, and a child out of that column would be a second answer to which rows
-are showing. There is no `aspectRatio` either.
+are showing. A child that writes a width or a height and an `aspectRatio` does
+get the other side from the ratio. A ratio with neither side written does not:
+the window assigns the width, and the ratio only reads a size that was written.
+
+`aspectRatio` is width divided by height, of the border box, in whole cells.
+One written side decides the other, rounded to the nearest cell. With neither
+side written, the short side grows until the box holds its content. `minWidth`,
+`maxWidth`, `minHeight` and `maxHeight` win, and a ratio that is not a positive
+number is ignored. The default stretch does not pull a side the ratio already
+chose out to the line.
 
 ## Only the cells that changed
 
@@ -825,8 +834,8 @@ rather than present as functions that throw: `uf inspect` reports nine
 components because there are nine.
 
 Two smaller gaps are on the same issue. The repeated-press gestures that widen
-a text selection to a word or a line are absent, and so is `aspectRatio`, and
-wrapping or positioning inside a `ScrollBox`.
+a text selection to a word or a line are absent, and so is wrapping or
+positioning inside a `ScrollBox`.
 
 Nor does uf's own CLI draw through this yet. `uf` is a Rust binary and this is
 JavaScript, and the two cannot meet without either a native bridge uf does not

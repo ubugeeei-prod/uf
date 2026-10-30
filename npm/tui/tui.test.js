@@ -85,6 +85,19 @@ const cell = (frame: Frame, x: number, y: number) => {
   };
 };
 
+/** How many cells of `frame` are painted with background `bg`. */
+const painted = (frame: Frame, bg: number): number => {
+  let count = 0;
+  for (let y = 0; y < frame.height; y += 1) {
+    for (let x = 0; x < frame.width; x += 1) {
+      if (cell(frame, x, y).bg === bg) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+};
+
 describe("a tree, as cells", () => {
   it("puts a string where layout put its text node", () => {
     const handle = testRender(<Text>ready</Text>, { width: 8, height: 2 });
@@ -373,6 +386,114 @@ describe("layout is flexbox", () => {
     expect(rows(handle.frame())).toEqual(["8x1     "]);
     handle.resize(12, 3);
     expect(frameRow(handle.frame(), 0)).toBe("12x3        ");
+    handle.stop();
+  });
+});
+
+describe("an aspect ratio", () => {
+  // Width over height, of the border box, in whole cells. The terminal is
+  // larger than the box on purpose: a ratio that only worked because the
+  // screen happened to be the same size as the box would not be a ratio.
+
+  it("takes its height from its width", () => {
+    const handle = testRender(<Box width={8} aspectRatio={2} backgroundColor="#111111" />, {
+      width : 12,
+      height: 8,
+    });
+    expect(painted(handle.frame(), 0x111111)).toBe(8 * 4);
+    handle.stop();
+  });
+
+  it("takes its width from its height, and stretch does not widen it", () => {
+    // The screen is a column whose cross axis is the width, and the default
+    // alignment is stretch. The ratio is what keeps this eight columns wide
+    // in a sixteen-column terminal.
+    const handle = testRender(<Box height={4} aspectRatio={2} backgroundColor="#111111" />, {
+      width : 16,
+      height: 8,
+    });
+    expect(painted(handle.frame(), 0x111111)).toBe(8 * 4);
+    handle.stop();
+  });
+
+  it("grows the short side until the content fits", () => {
+    // One column by four rows at 2:1 is eight by four. The other candidate,
+    // four rows squeezed into two columns, would not hold the child.
+    const handle = testRender(
+      <Box aspectRatio={2} backgroundColor="#111111">
+        <Box width={1} height={4} />
+      </Box>,
+      { width: 12, height: 8 },
+    );
+    expect(painted(handle.frame(), 0x111111)).toBe(8 * 4);
+    handle.stop();
+  });
+
+  it("lets a minimum win over the ratio", () => {
+    const handle = testRender(
+      <Box width={8} aspectRatio={2} minHeight={6} backgroundColor="#111111" />,
+      { width: 12, height: 8 },
+    );
+    expect(painted(handle.frame(), 0x111111)).toBe(8 * 6);
+    handle.stop();
+  });
+
+  it("does not let a row sibling stretch it off the ratio", () => {
+    const handle = testRender(
+      <Box flexDirection="row" width={20} height={10}>
+        <Box width={8} aspectRatio={2} backgroundColor="#111111" />
+        <Box flexGrow={1} backgroundColor="#222222" />
+      </Box>,
+      { width: 20, height: 10 },
+    );
+    expect(painted(handle.frame(), 0x111111)).toBe(8 * 4);
+    handle.stop();
+  });
+
+  it("follows the ratio after the main size grows", () => {
+    // Four columns at 2:1 would be two rows. The free space makes it eight,
+    // and the height follows the size it grew to.
+    const handle = testRender(
+      <Box flexDirection="row" width={8} height={6}>
+        <Box width={4} flexGrow={1} aspectRatio={2} backgroundColor="#111111" />
+      </Box>,
+      { width: 8, height: 6 },
+    );
+    expect(painted(handle.frame(), 0x111111)).toBe(8 * 4);
+    handle.stop();
+  });
+
+  it("treats a flex basis as a definite main size", () => {
+    const handle = testRender(
+      <Box flexDirection="row" width={20} height={10}>
+        <Box flexBasis={8} aspectRatio={2} backgroundColor="#111111" />
+        <Text>x</Text>
+      </Box>,
+      { width: 20, height: 10 },
+    );
+    expect(painted(handle.frame(), 0x111111)).toBe(8 * 4);
+    handle.stop();
+  });
+
+  it("gives a scrolling child its height from the width it wrote", () => {
+    const handle = testRender(
+      <ScrollBox height={6} width={14} scrollbar={false}>
+        <Box width={8} aspectRatio={2} backgroundColor="#111111" />
+      </ScrollBox>,
+      { width: 14, height: 6 },
+    );
+    expect(painted(handle.frame(), 0x111111)).toBe(8 * 4);
+    handle.stop();
+  });
+
+  it("ignores a ratio that is not a positive number", () => {
+    const handle = testRender(
+      <Box width={4} aspectRatio={0} backgroundColor="#111111">
+        <Box width={1} height={2} />
+      </Box>,
+      { width: 6, height: 4 },
+    );
+    expect(painted(handle.frame(), 0x111111)).toBe(4 * 2);
     handle.stop();
   });
 });

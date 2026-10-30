@@ -102,11 +102,12 @@
 //! Every colour, space, radius, type size and duration a component uses is a
 //! `ufTokens` variable from `@uniflowed/stylex/tokens.stylex.js`; a literal is
 //! only ever geometry one control alone uses. So `ufAutoTheme` — dark mode that
-//! follows the reader's system — `ufDarkTheme`, and a project's own
-//! `stylex.createTheme(ufTokens, …)` restyle every component without an edit to
-//! any of them, and the text colours sit on the backgrounds
-//! `crates/uf_stylex/src/tests/preset.rs` measures at 4.5:1 in both shipped
-//! themes. State is drawn from the attributes a part already writes —
+//! follows the reader's system — `ufDarkTheme`, `ufContrastTheme`, and a
+//! project's own `stylex.createTheme(ufTokens, …)` restyle every component
+//! without an edit to any of them, and the text colours sit on the backgrounds
+//! `crates/uf_stylex/src/tests/preset.rs` measures at 4.5:1 in the light
+//! default and in each shipped theme. State is drawn from the attributes a
+//! part already writes —
 //! `:is([aria-selected=true])`, `:is([data-active=true])` — rather than tracked
 //! a second time beside the part that owns it.
 //!

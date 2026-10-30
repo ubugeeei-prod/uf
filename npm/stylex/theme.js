@@ -14,7 +14,7 @@
 // theme's class on an ancestor changes what every `var(--…)` beneath it
 // resolves to. No rule in `preset.js` knows a theme happened.
 //
-// # Two themes, because there are two questions
+// # Three themes, because there are three questions
 //
 // [`ufAutoTheme`] answers "follow the reader's operating system". It overrides
 // nothing at all in light mode — every entry is written *only* under
@@ -26,9 +26,18 @@
 // preview pane, a code surface, a reader who chose. Its overrides are
 // unconditional, so it also works as the thing a stored preference applies.
 //
-// Both can be composed, and the merge decides the same way it decides anything
-// else: `props(ufAutoTheme, ufDarkTheme)` is dark, because the later argument
-// wins token by token.
+// [`ufContrastTheme`] answers "this subtree is high contrast, whatever the
+// system says". It is unconditional too, over the same 19 colour tokens. The
+// neutrals are grey — no channel is more than a few steps from the others —
+// and the accent sits outside the violet band every generated palette falls
+// into. The pairs the preset paints are checked in
+// `crates/uf_stylex/src/tests/preset.rs`, and this theme is held to a higher
+// floor than the other two.
+//
+// All three can be composed, and the merge decides the same way it decides
+// anything else: `props(ufAutoTheme, ufDarkTheme)` is dark, and
+// `props(ufDarkTheme, ufContrastTheme)` is the high-contrast one, because the
+// later argument wins token by token.
 //
 // # Writing your own
 //
@@ -105,4 +114,31 @@ export const ufDarkTheme: CompiledStyle = stylex.createTheme(ufTokens, {
   dangerSoft  : "#35201d",
   focus       : "#8eaee8",
   scrim       : "rgba(0, 0, 0, 0.6)",
+});
+
+/**
+ * The preset at high contrast, unconditionally.
+ *
+ * For a reader who asked for more separation than the light default or the
+ * dark theme give them. The greys stay grey, the accent is a blue outside the
+ * violet band, and a later theme still replaces it token by token.
+ */
+export const ufContrastTheme: CompiledStyle = stylex.createTheme(ufTokens, {
+  canvas      : "#ffffff",
+  sunken      : "#f3f3f1",
+  surface     : "#ffffff",
+  surfaceHover: "#e7e7e3",
+  border      : "#2c2c2a",
+  ink         : "#111110",
+  muted       : "#3f3f3b",
+  accent      : "#1d3f8f",
+  accentHover : "#163475",
+  accentInk   : "#ffffff",
+  accentSoft  : "#e4ebf8",
+  danger      : "#8e1b14",
+  dangerHover : "#751610",
+  dangerInk   : "#ffffff",
+  dangerSoft  : "#f8e4e2",
+  focus       : "#1d3f8f",
+  scrim       : "rgba(17, 17, 16, 0.72)",
 });

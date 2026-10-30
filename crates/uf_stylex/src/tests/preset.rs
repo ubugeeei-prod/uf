@@ -12,7 +12,7 @@
 //! * every `var(--…)` the base layer emits resolves to a token the token module
 //!   actually declares — a mistyped token compiles to CSS that silently does
 //!   nothing, and neither the sheet nor a screenshot would say so;
-//! * every theme override writes a token that exists, and the two shipped
+//! * every theme override writes a token that exists, and the three shipped
 //!   themes cover the same set;
 //! * the colour pairs the preset actually pairs meet WCAG AA, computed from the
 //!   compiled stylesheet rather than asserted in a comment.
@@ -48,15 +48,35 @@ fn token(sheet: &StyleSheet, key: &str) -> String {
         .unwrap_or_else(|| panic!("the preset declares no `{key}` token"))
 }
 
-/// The value the unconditional dark theme gives `key`.
-fn dark(sheet: &StyleSheet, key: &str) -> String {
+/// The value theme `index` gives `key`, read off that theme's own class.
+///
+/// `theme.js` declares them in source order: automatic, dark, then contrast.
+/// The class is hashed over the value and the condition, so two unconditional
+/// themes that disagree are two rules, and the first `Base` rule on the sheet
+/// is not "the dark theme".
+fn theme_value(module: &CompiledModule, index: usize, key: &str) -> String {
     let name = variable_name(NAMESPACE, key);
-    sheet
+    let theme = module
+        .themes
+        .get(index)
+        .unwrap_or_else(|| panic!("theme.js has no theme at {index}"));
+    let class = theme
+        .property(&name)
+        .and_then(|property| property.classes.first())
+        .map(|class| class.class.clone())
+        .unwrap_or_else(|| panic!("theme {index} overrides no `{key}` token"));
+    module
+        .sheet
         .rules()
-        .find(|rule| rule.property == name && rule.condition == StyleCondition::Base)
+        .find(|rule| rule.class == class)
         .map(|rule| rule.value.to_string())
-        .unwrap_or_else(|| panic!("the dark theme overrides no `{key}` token"))
+        .unwrap_or_else(|| panic!("theme {index} has no rule for `{key}`"))
 }
+
+/// Theme index of `ufDarkTheme` in `theme.js`.
+const DARK: usize = 1;
+/// Theme index of `ufContrastTheme` in `theme.js`.
+const CONTRAST: usize = 2;
 
 /// One channel of a `#rrggbb` colour, linearised the way WCAG defines it.
 fn channel(byte: u8) -> f64 {
@@ -215,28 +235,57 @@ fn every_token_a_shipped_theme_overrides_is_a_token_the_preset_declares() {
     }
 }
 
+/// The custom properties one shipped theme overrides, in a stable order.
+fn theme_keys(module: &CompiledModule, index: usize) -> Vec<String> {
+    let theme = module
+        .themes
+        .get(index)
+        .unwrap_or_else(|| panic!("theme.js has no theme at {index}"));
+    let mut keys: Vec<String> = theme
+        .properties
+        .iter()
+        .map(|property| property.key.to_string())
+        .collect();
+    keys.sort_unstable();
+    keys
+}
+
 #[test]
-fn the_two_shipped_themes_cover_the_same_tokens() {
-    // One follows the operating system and one is applied by hand; a token
-    // covered by only one of them is a colour that changes in one mode and not
-    // the other, which is the failure a reader sees as a white flash.
+fn the_shipped_themes_cover_the_same_tokens() {
+    // One follows the operating system, one is dark by hand, and one is high
+    // contrast by hand. A token covered by only one of them is a colour that
+    // changes in one mode and not the other, which is the failure a reader
+    // sees as a white flash.
     let themes = shipped("theme.js", THEMES);
-    let mut automatic: Vec<&str> = Vec::new();
-    let mut explicit: Vec<&str> = Vec::new();
-    for rule in themes.sheet.rules() {
-        match &rule.condition {
-            StyleCondition::Base => explicit.push(rule.property.as_str()),
-            StyleCondition::AtRule(at) => {
-                assert_eq!(at, "@media (prefers-color-scheme: dark)");
-                automatic.push(rule.property.as_str());
-            }
-            other => panic!("a shipped theme used an unexpected condition: {other:?}"),
+    assert_eq!(themes.themes.len(), 3, "automatic, dark, and contrast");
+    let automatic = theme_keys(&themes, 0);
+    assert!(!automatic.is_empty());
+    assert_eq!(automatic, theme_keys(&themes, DARK));
+    assert_eq!(automatic, theme_keys(&themes, CONTRAST));
+
+    // The automatic theme is the media query and nothing else. The other two
+    // are unconditional, which is what makes the index above meaningful: a
+    // fourth `createTheme` inserted above contrast would move CONTRAST.
+    for property in &themes.themes[0].properties {
+        assert!(
+            property
+                .classes
+                .iter()
+                .all(|class| class.condition.at_rule().is_some()),
+            "the automatic theme wrote an unconditional class"
+        );
+    }
+    for index in [DARK, CONTRAST] {
+        for property in &themes.themes[index].properties {
+            assert!(
+                property
+                    .classes
+                    .iter()
+                    .all(|class| class.condition == StyleCondition::Base),
+                "theme {index} wrote a conditional class"
+            );
         }
     }
-    automatic.sort_unstable();
-    explicit.sort_unstable();
-    assert!(!automatic.is_empty());
-    assert_eq!(automatic, explicit);
 }
 
 #[test]
@@ -272,12 +321,41 @@ fn the_dark_theme_meets_wcag_aa() {
     let themes = shipped("theme.js", THEMES);
     for (foreground, background) in PAIRS {
         let ratio = contrast(
-            &dark(&themes.sheet, foreground),
-            &dark(&themes.sheet, background),
+            &theme_value(&themes, DARK, foreground),
+            &theme_value(&themes, DARK, background),
         );
         assert!(
             ratio >= 4.5,
             "in dark, `{foreground}` on `{background}` is {ratio:.2}:1, under the 4.5:1 AA floor"
+        );
+    }
+}
+
+#[test]
+fn the_contrast_theme_meets_wcag_aaa() {
+    // The other two themes are held to AA, 4.5:1. This one is the theme a
+    // reader asks for when that is not enough, so its text pairs are held to
+    // 7:1, which is AAA, and its focus ring is held to the same 7:1 rather
+    // than the 3:1 non-text floor.
+    let themes = shipped("theme.js", THEMES);
+    for (foreground, background) in PAIRS {
+        let ratio = contrast(
+            &theme_value(&themes, CONTRAST, foreground),
+            &theme_value(&themes, CONTRAST, background),
+        );
+        assert!(
+            ratio >= 7.0,
+            "in contrast, `{foreground}` on `{background}` is {ratio:.2}:1, under the 7:1 floor"
+        );
+    }
+    for background in ["surface", "canvas"] {
+        let ratio = contrast(
+            &theme_value(&themes, CONTRAST, "focus"),
+            &theme_value(&themes, CONTRAST, background),
+        );
+        assert!(
+            ratio >= 7.0,
+            "in contrast the focus ring is {ratio:.2}:1 on `{background}`"
         );
     }
 }
@@ -297,12 +375,20 @@ fn the_focus_ring_is_visible_against_the_surfaces_it_is_drawn_on() {
             "the focus ring is {light:.2}:1 on `{background}`"
         );
         let night = contrast(
-            &dark(&themes.sheet, "focus"),
-            &dark(&themes.sheet, background),
+            &theme_value(&themes, DARK, "focus"),
+            &theme_value(&themes, DARK, background),
         );
         assert!(
             night >= 3.0,
             "in dark the focus ring is {night:.2}:1 on `{background}`"
+        );
+        let contrast_ring = contrast(
+            &theme_value(&themes, CONTRAST, "focus"),
+            &theme_value(&themes, CONTRAST, background),
+        );
+        assert!(
+            contrast_ring >= 3.0,
+            "in contrast the focus ring is {contrast_ring:.2}:1 on `{background}`"
         );
     }
 }
@@ -352,13 +438,15 @@ const NEUTRALS: &[&str] = &[
 fn the_neutrals_are_grey_rather_than_tinted() {
     // A slate or navy grey is what makes an interface read as a generated one:
     // everything carries the same faint blue. The defaults' greys stay within a
-    // few steps of neutral in every channel, in light and in dark.
+    // few steps of neutral in every channel, in light, in dark, and in the
+    // high-contrast theme.
     let tokens = shipped("tokens.stylex.js", TOKENS);
     let themes = shipped("theme.js", THEMES);
     for key in NEUTRALS {
         for (mode, colour) in [
             ("light", token(&tokens.sheet, key)),
-            ("dark", dark(&themes.sheet, key)),
+            ("dark", theme_value(&themes, DARK, key)),
+            ("contrast", theme_value(&themes, CONTRAST, key)),
         ] {
             let [r, g, b] = bytes(&colour);
             let spread = r.max(g).max(b) - r.min(g).min(b);
@@ -374,13 +462,14 @@ fn the_neutrals_are_grey_rather_than_tinted() {
 fn the_accent_is_not_violet() {
     // Indigo through magenta (roughly 235° to 330°) is the default of every
     // generated interface; the preset's one accent stays out of that band in
-    // both modes, and so does the focus ring.
+    // every shipped theme, and so does the focus ring.
     let tokens = shipped("tokens.stylex.js", TOKENS);
     let themes = shipped("theme.js", THEMES);
     for key in ["accent", "accentHover", "accentSoft", "focus"] {
         for (mode, colour) in [
             ("light", token(&tokens.sheet, key)),
-            ("dark", dark(&themes.sheet, key)),
+            ("dark", theme_value(&themes, DARK, key)),
+            ("contrast", theme_value(&themes, CONTRAST, key)),
         ] {
             if let Some(degrees) = hue(&colour) {
                 assert!(

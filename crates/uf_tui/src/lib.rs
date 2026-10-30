@@ -143,7 +143,7 @@ pub enum TuiLayoutEngine {
     ///
     /// It was `"flexbox-yoga-compatible"`, which claimed more than was true
     /// then and is still not quite true now: a terminal resolves whole columns
-    /// where Yoga resolves fractional pixels, there is no `aspectRatio`, and a
+    /// where Yoga resolves fractional pixels, and a
     /// scrolling box reads neither `position` nor `flexWrap`
     /// (ubugeeei-prod/uf#314). What *is* compatible is the part a caller
     /// writes: the property names, the defaults — a `flexDirection` that starts
@@ -199,11 +199,13 @@ pub enum TuiFeature {
     /// Flexbox layout, in whole cells, with OpenTUI's defaults.
     ///
     /// Direction, growth and shrinking, `justifyContent`, `alignItems`,
-    /// `alignSelf`, gaps, percentages, `min*`/`max*`, `flexWrap` with
+    /// `alignSelf`, gaps, percentages, `min*`/`max*`, `aspectRatio` (width over
+    /// height of the border box, in whole cells, with `min*` and `max*`
+    /// winning), `flexWrap` with
     /// `alignContent`, `auto` margins on both axes, and `position` in all
     /// three of Yoga 3's values: an absolute box is placed by its offsets
     /// against the padding box of its nearest ancestor that is not `static`,
-    /// or the screen. What is not behind the word: `aspectRatio`, and
+    /// or the screen. What is not behind the word:
     /// wrapping or positioning inside a scrolling box, whose children are one
     /// column. An absolute box is also still drawn, clipped and hit with its
     /// parent in the tree, as it is in OpenTUI — not lifted out to its

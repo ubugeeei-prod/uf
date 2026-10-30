@@ -114,26 +114,34 @@ export type BoxLayoutProps = {
   readonly flexBasis?     : Dimension,
   readonly width?         : Dimension,
   readonly height?        : Dimension,
-  readonly minWidth?      : Dimension,
-  readonly minHeight?     : Dimension,
-  readonly maxWidth?      : Dimension,
-  readonly maxHeight?     : Dimension,
-  readonly padding?       : number,
-  readonly paddingX?      : number,
-  readonly paddingY?      : number,
-  readonly paddingTop?    : number,
-  readonly paddingRight?  : number,
-  readonly paddingBottom? : number,
-  readonly paddingLeft?   : number,
-  readonly margin?        : Margin,
-  readonly marginTop?     : Margin,
-  readonly marginRight?   : Margin,
-  readonly marginBottom?  : Margin,
-  readonly marginLeft?    : Margin,
-  readonly gap?           : number,
-  readonly rowGap?        : number,
-  readonly columnGap?     : number,
-  readonly overflow?      : Overflow,
+  /**
+   * Width divided by height, of the border box, in whole cells.
+   *
+   * A positive number. One written side decides the other; with neither, the
+   * short side grows until the content fits. `min*` and `max*` win. Not a
+   * positive number is ignored.
+   */
+  readonly aspectRatio?  : number,
+  readonly minWidth?     : Dimension,
+  readonly minHeight?    : Dimension,
+  readonly maxWidth?     : Dimension,
+  readonly maxHeight?    : Dimension,
+  readonly padding?      : number,
+  readonly paddingX?     : number,
+  readonly paddingY?     : number,
+  readonly paddingTop?   : number,
+  readonly paddingRight? : number,
+  readonly paddingBottom?: number,
+  readonly paddingLeft?  : number,
+  readonly margin?       : Margin,
+  readonly marginTop?    : Margin,
+  readonly marginRight?  : Margin,
+  readonly marginBottom? : Margin,
+  readonly marginLeft?   : Margin,
+  readonly gap?          : number,
+  readonly rowGap?       : number,
+  readonly columnGap?    : number,
+  readonly overflow?     : Overflow,
   /**
    * In its parent's flex line (`"relative"`, the default) or out of it
    * (`"absolute"`). `"static"` is in the line too, but is not what an

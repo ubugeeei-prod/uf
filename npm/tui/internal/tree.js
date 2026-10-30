@@ -213,6 +213,7 @@ const NUMBER_KEYS = [
   "rowGap",
   "columnGap",
   "scrollTop",
+  "aspectRatio",
 ] as const;
 
 /** The style keys whose value is a margin: cells, or `"auto"`. */

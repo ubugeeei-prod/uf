@@ -26,7 +26,7 @@ import {
   tabStyles,
   textStyles,
 } from "@uniflowed/stylex/preset";
-import { ufAutoTheme, ufDarkTheme } from "@uniflowed/stylex/theme";
+import { ufAutoTheme, ufContrastTheme, ufDarkTheme } from "@uniflowed/stylex/theme";
 import { Switch, Tabs } from "@uniflowed/ui";
 
 /** A compiled namespace, in the shape `uf transform` emits. */
@@ -301,6 +301,20 @@ describe("a theme", () => {
     // Both themes cover the same tokens, so the later one wins all of them and
     // nothing of the earlier one is left.
     expect(both).toEqual(classes(props(ufDarkTheme)));
+  });
+
+  it("is a high-contrast theme of unconditional classes", () => {
+    expect(ufContrastTheme.$$css).toBe(true);
+    for (const property of Object.keys(ufContrastTheme)) {
+      if (property !== "$$css") {
+        expect(property.startsWith("--")).toBe(true);
+        expect(typeof ufContrastTheme[property]).toBe("string");
+      }
+    }
+  });
+
+  it("replaces the dark theme token by token when it comes later", () => {
+    expect(classes(props(ufDarkTheme, ufContrastTheme))).toEqual(classes(props(ufContrastTheme)));
   });
 
   it("composes with the styles it themes rather than replacing them", () => {

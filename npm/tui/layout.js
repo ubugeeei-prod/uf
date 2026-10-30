@@ -18,14 +18,15 @@
 // can least afford: the whole visible difference between a fast CLI and a slow
 // one is what happens before the first paint. It also solves a problem this
 // does not have. Yoga resolves fractional CSS pixels, percentages of
-// percentages, aspect ratios, and writing directions; a terminal has integer
+// percentages, and writing directions; a terminal has integer
 // columns, one writing direction, and a tree whose depth is bounded by what
 // fits on a screen.
 //
-// So this implements the subset a terminal uses, in whole cells. What it does
-// *not* implement is written down at the bottom of this file rather than
-// discovered: no aspect ratio, and no wrapping or positioning inside a
-// scrolling box. Those are ubugeeei-prod/uf#314.
+// So this implements the subset a terminal uses, in whole cells, including an
+// aspect ratio: width over height of the border box, rounded to a cell, with
+// `min*` and `max*` winning. What it does *not* implement is written down at
+// the bottom of this file rather than discovered: no wrapping or positioning
+// inside a scrolling box. That is ubugeeei-prod/uf#314.
 //
 // # Whole cells, and where the remainder goes
 //
@@ -135,25 +136,37 @@ export type LayoutStyle = {
   readonly flexBasis?     : Dimension,
   readonly width?         : Dimension,
   readonly height?        : Dimension,
-  readonly minWidth?      : Dimension,
-  readonly minHeight?     : Dimension,
-  readonly maxWidth?      : Dimension,
-  readonly maxHeight?     : Dimension,
-  readonly padding?       : number,
-  readonly paddingTop?    : number,
-  readonly paddingRight?  : number,
-  readonly paddingBottom? : number,
-  readonly paddingLeft?   : number,
-  readonly margin?        : Margin,
-  readonly marginTop?     : Margin,
-  readonly marginRight?   : Margin,
-  readonly marginBottom?  : Margin,
-  readonly marginLeft?    : Margin,
-  readonly gap?           : number,
-  readonly rowGap?        : number,
-  readonly columnGap?     : number,
-  readonly overflow?      : Overflow,
-  readonly position?      : Position,
+  /**
+   * Width divided by height, of the border box.
+   *
+   * A positive finite number. Anything else is ignored, because zero would
+   * ask for an infinite height and a negative ratio is not a box. One
+   * definite side transfers to the other, rounded to the nearest cell. With
+   * neither side definite, the side that is short of the ratio grows until
+   * the box contains its content. `min*` and `max*` are applied after that
+   * and win. A scrolling box only sees a ratio on a child that wrote a width
+   * or a height: the width the window assigns is not a size the ratio reads.
+   */
+  readonly aspectRatio?  : number,
+  readonly minWidth?     : Dimension,
+  readonly minHeight?    : Dimension,
+  readonly maxWidth?     : Dimension,
+  readonly maxHeight?    : Dimension,
+  readonly padding?      : number,
+  readonly paddingTop?   : number,
+  readonly paddingRight? : number,
+  readonly paddingBottom?: number,
+  readonly paddingLeft?  : number,
+  readonly margin?       : Margin,
+  readonly marginTop?    : Margin,
+  readonly marginRight?  : Margin,
+  readonly marginBottom? : Margin,
+  readonly marginLeft?   : Margin,
+  readonly gap?          : number,
+  readonly rowGap?       : number,
+  readonly columnGap?    : number,
+  readonly overflow?     : Overflow,
+  readonly position?     : Position,
   /** Offsets: cells, or a percentage of the parent's inside. Negative is allowed. */
   readonly top?   : Dimension,
   readonly right? : Dimension,
@@ -315,6 +328,31 @@ function resolve(value: Dimension | void, basis: number): number | null {
     return Number.isFinite(percent) ? Math.max(0, Math.round((basis * percent) / 100)) : null;
   }
   return null;
+}
+
+/**
+ * The aspect ratio layout should honour: width over height.
+ *
+ * Missing, non-finite, or not positive is no ratio. The check is here rather
+ * than where the prop is copied, so a style built by hand is held to the same
+ * rule as a prop.
+ */
+function aspectOf(style: LayoutStyle): number | null {
+  const ratio = style.aspectRatio;
+  if (ratio == null || !(ratio > 0) || !Number.isFinite(ratio)) {
+    return null;
+  }
+  return ratio;
+}
+
+/** The border-box height of a border box `width` cells wide at `ratio`. */
+function fromWidth(width: number, ratio: number): number {
+  return Math.max(0, Math.round(width / ratio));
+}
+
+/** The border-box width of a border box `height` cells tall at `ratio`. */
+function fromHeight(height: number, ratio: number): number {
+  return Math.max(0, Math.round(height * ratio));
 }
 
 /**
@@ -560,8 +598,27 @@ function measureIntrinsic(node: LayoutNode, availableWidth: number, availableHei
     contentHeight = row ? cross : main;
   }
 
-  const width = fixedWidth ?? contentWidth + insetLeft + insetRight;
-  const height = fixedHeight ?? contentHeight + insetTop + insetBottom;
+  let width = fixedWidth ?? contentWidth + insetLeft + insetRight;
+  let height = fixedHeight ?? contentHeight + insetTop + insetBottom;
+  const ratio = aspectOf(style);
+  if (ratio != null && fixedWidth != null && fixedHeight == null) {
+    // The written side wins, and the other side is that side through the
+    // ratio. Content taller than the result overflows, which is what an
+    // explicit size already means; `minHeight` is what keeps it in.
+    height = fromWidth(fixedWidth, ratio);
+  } else if (ratio != null && fixedHeight != null && fixedWidth == null) {
+    width = fromHeight(fixedHeight, ratio);
+  } else if (ratio != null && fixedWidth == null && fixedHeight == null) {
+    // Grow only the side that is short of the ratio, so the box still
+    // contains what it measured and the border box matches the ratio as
+    // closely as a whole cell can.
+    const transferred = fromWidth(width, ratio);
+    if (transferred >= height) {
+      height = transferred;
+    } else {
+      width = fromHeight(height, ratio);
+    }
+  }
   return {
     width : clampDimension(width, style.minWidth, style.maxWidth, availableWidth),
     height: clampDimension(height, style.minHeight, style.maxHeight, availableHeight),
@@ -808,6 +865,14 @@ export function layout(
     if (fixedMain != null) {
       return fixedMain;
     }
+    // A definite cross size transfers through the ratio. The intrinsic size
+    // would do this too, and doing it here means a row whose width was never
+    // written still has a main size before stretch can invent one.
+    const ratio = aspectOf(child.style);
+    const fixedCross = resolve(row ? child.style.height : child.style.width, crossSpace);
+    if (ratio != null && fixedCross != null) {
+      return row ? fromHeight(fixedCross, ratio) : fromWidth(fixedCross, ratio);
+    }
     const size = intrinsicSize(child, availableWidth, availableHeight);
     return row ? size.width : size.height;
   });
@@ -927,10 +992,22 @@ export function layout(
 
       const crossAvailable = Math.max(0, lineCross - crossMarginStart - crossMarginEnd);
       const fixedCross = resolve(row ? child.style.height : child.style.width, crossSpace);
+      const ratio = aspectOf(child.style);
+      // `flexBasis` is a definite main size even when width and height were
+      // both left auto. The size used is the one after grow and shrink, so a
+      // child that grew keeps the ratio instead of keeping the height it had
+      // before the free space arrived.
+      const fixedMain = resolve(row ? child.style.width : child.style.height, mainSpace);
+      const mainIsDefinite = fixedMain != null || resolve(child.style.flexBasis, mainSpace) != null;
       let crossSize: number;
       if (fixedCross != null) {
         crossSize = fixedCross;
-      } else if (align === "stretch" && !hasAutoCross) {
+      } else if (ratio != null && mainIsDefinite) {
+        crossSize = row ? fromWidth(mainSizes[index], ratio) : fromHeight(mainSizes[index], ratio);
+      } else if (align === "stretch" && !hasAutoCross && ratio == null) {
+        // The `ratio == null` is what keeps a ratio's cross size. Stretch is
+        // the default, and applying it here would replace the side the ratio
+        // already chose with the whole line.
         crossSize = crossAvailable;
       } else {
         const size = intrinsicSize(
@@ -997,13 +1074,30 @@ export function layout(
         const child = children[index];
         const [marginTop, marginRight, marginBottom, marginLeft] = resolvedMargins[index];
         const fixedCross = resolve(row ? child.style.height : child.style.width, crossSpace);
+        const ratio = aspectOf(child.style);
+        const fixedMain = resolve(row ? child.style.width : child.style.height, mainSpace);
+        const mainIsDefinite =
+          fixedMain != null || resolve(child.style.flexBasis, mainSpace) != null;
+        // The same transfer `placeLine` is about to apply. A line measured
+        // from the content, and then clamped to that line, would throw away
+        // a height that came from `flexBasis`.
         const cross =
           fixedCross ??
-          (row
-            ? intrinsicSize(child, bases[index], Math.max(0, crossSpace - marginTop - marginBottom))
-                .height
-            : intrinsicSize(child, Math.max(0, crossSpace - marginLeft - marginRight), bases[index])
-                .width);
+          (ratio != null && mainIsDefinite
+            ? row
+              ? fromWidth(bases[index], ratio)
+              : fromHeight(bases[index], ratio)
+            : row
+              ? intrinsicSize(
+                  child,
+                  bases[index],
+                  Math.max(0, crossSpace - marginTop - marginBottom),
+                ).height
+              : intrinsicSize(
+                  child,
+                  Math.max(0, crossSpace - marginLeft - marginRight),
+                  bases[index],
+                ).width);
         return Math.max(
           deepest,
           cross + (row ? marginTop + marginBottom : marginLeft + marginRight),
@@ -1332,23 +1426,28 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
 }
 
 // Implemented, and asserted as cells in `npm/tui/tui.test.js`: `flexWrap`
-// with `alignContent`; `auto` margins on both axes; and `position` in all
-// three of Yoga 3's values, with an absolute box placed against the padding
-// box of its nearest ancestor that is not `"static"` (or the root). Paint, and
-// so the hit grid, still follow the *tree*: an absolute box is drawn when its
-// parent is, under its parent's `zIndex` order and inside its parent's clip —
-// which is OpenTUI's rule, and CSS's is different: there, `overflow: hidden`
-// on a static box between an absolute one and its containing block does not
-// clip it. Here it does.
+// with `alignContent`; `auto` margins on both axes; `position` in all three
+// of Yoga 3's values, with an absolute box placed against the padding box of
+// its nearest ancestor that is not `"static"` (or the root); and
+// `aspectRatio`, width over height of the border box, rounded to a whole
+// cell. One definite side transfers to the other. With neither, the short
+// side grows until the content fits. `min*` and `max*` win, and the default
+// stretch does not replace a side the ratio decided. Paint, and so the hit
+// grid, still follow the *tree*: an absolute box is drawn when its parent
+// is, under its parent's `zIndex` order and inside its parent's clip — which
+// is OpenTUI's rule, and CSS's is different: there, `overflow: hidden` on a
+// static box between an absolute one and its containing block does not clip
+// it. Here it does.
 //
 // Not implemented here, on purpose, and tracked rather than discovered:
 //
-// - `aspectRatio`. A terminal resolves whole cells, and nothing here has a
-//   fractional layout pass to lean on.
 // - `position` and `flexWrap` inside a scrolling box. Its children are one
 //   column whose heights are kept between frames (see {@link ScrollIndex}),
 //   and a child that is out of it, drawn somewhere other than where it says,
 //   or sharing a row with another, is a second answer to "which rows are in
-//   the window". Both are read there as if they were not given.
+//   the window". Both are read there as if they were not given. A ratio is
+//   read, but only off a width or a height the child itself wrote: measuring
+//   already transfers that. The width the window assigns is not one of those,
+//   so a ratio with neither side written does not change the stack.
 //
-// Both are ubugeeei-prod/uf#314.
+// That is ubugeeei-prod/uf#314.
