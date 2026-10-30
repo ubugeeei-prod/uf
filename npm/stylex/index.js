@@ -31,7 +31,8 @@
 // 3. **A way to replace any of it.** `stylex.createTheme(ufTokens, { … })`
 //    compiles to one class per overridden token; put that class on an ancestor
 //    and every `var(--…)` beneath it resolves differently. `./theme.js` ships
-//    two, and a project writes its own the same way.
+//    three — follow the system, force dark, or force high contrast — and a
+//    project writes its own the same way.
 //
 // It is deliberately *not*: a global reset (uf emits no rule a project did not
 // ask for), a component library (`@uniflowed/ui` ships behaviour and no

@@ -53,9 +53,9 @@
 // # Contrast
 //
 // Every foreground/background pair the preset actually pairs meets WCAG AA at
-// 4.5:1, in both the light default and the shipped dark theme, and
-// `crates/uf_stylex/src/tests/preset.rs` computes the ratios from the compiled
-// stylesheet rather than trusting this comment.
+// 4.5:1, in the light default, the shipped dark theme, and the shipped
+// high-contrast theme, and `crates/uf_stylex/src/tests/preset.rs` computes
+// the ratios from the compiled stylesheet rather than trusting this comment.
 
 import { stylex } from "@uniflowed/stylex";
 

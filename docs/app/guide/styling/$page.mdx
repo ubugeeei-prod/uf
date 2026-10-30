@@ -167,7 +167,7 @@ own, which is how that toggle gets a hover colour of its own.
 
 ### Dark mode
 
-Two themes ship, and both are one spread:
+Three themes ship, and each is one spread:
 
 ```js
 import { props } from "@uniflowed/stylex";
@@ -178,9 +178,11 @@ import { ufAutoTheme } from "@uniflowed/stylex/theme";
 
 `ufAutoTheme` wraps every override in `@media (prefers-color-scheme: dark)`, so
 it follows the operating system and costs nothing in light mode.
-`ufDarkTheme` is unconditional, for a switch a reader flips. Both override the
-same 19 tokens, and applying both leaves the unconditional one winning token by
-token.
+`ufDarkTheme` is unconditional, for a switch a reader flips.
+`ufContrastTheme` is unconditional too, for a reader who asked for more
+separation than either of those: grey neutrals, an accent outside the violet
+band, and the same 19 tokens. Applying two leaves the later one winning token
+by token.
 
 Your own theme is `createTheme` over the same token set, so it changes what the
 presets and every component built on them look like:
@@ -196,11 +198,13 @@ The contrast is checked rather than claimed.
 `crates/uf_stylex/src/tests/preset.rs` compiles the stylesheet and computes
 WCAG relative luminance over the 14 foreground/background pairs the preset
 actually pairs, asserting **4.5:1 in the light default and again in the dark
-theme**, and **3:1 for the focus ring** against both `surface` and `canvas`,
-which is the non-text threshold. The tightest of those margins today are
-`accent` on `accentSoft` at 4.69:1 and the focus ring at 3.89:1 on `canvas`.
-Three more tests in the same file hold the two themes to the same token set, and
-one asserts the automatic theme emits nothing at all in light mode.
+theme**, **7:1 in `ufContrastTheme`** (text and the focus ring), and **3:1 for
+the focus ring** of the light and dark themes against both `surface` and
+`canvas`, which is the non-text threshold. The tightest of the light and dark
+margins today are `accent` on `accentSoft` at 4.69:1 and the focus ring at
+3.89:1 on `canvas`. The same file holds the three themes to the same token
+set, and one test asserts the automatic theme emits nothing at all in light
+mode.
 
 ### What holds it to a built page
 
