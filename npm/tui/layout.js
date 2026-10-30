@@ -524,7 +524,16 @@ export function intrinsicSize(
   return size;
 }
 
-function measureIntrinsic(node: LayoutNode, availableWidth: number, availableHeight: number): Size {
+function measureIntrinsic(
+  node           : LayoutNode,
+  availableWidth : number,
+  availableHeight: number,
+  // Skip the ratio. A scrolling child that wrote neither side is measured
+  // this way: the both-auto rule would invent a height for a width this call
+  // was not given. Callers that want the answer cached go through
+  // `intrinsicSize`, which does not pass this.
+  ignoreRatio: boolean = false,
+): Size {
   const style = node.style;
   const [insetTop, insetRight, insetBottom, insetLeft] = insets(node);
   const innerAvailableWidth = Math.max(0, availableWidth - insetLeft - insetRight);
@@ -600,7 +609,7 @@ function measureIntrinsic(node: LayoutNode, availableWidth: number, availableHei
 
   let width = fixedWidth ?? contentWidth + insetLeft + insetRight;
   let height = fixedHeight ?? contentHeight + insetTop + insetBottom;
-  const ratio = aspectOf(style);
+  const ratio = ignoreRatio ? null : aspectOf(style);
   if (ratio != null && fixedWidth != null && fixedHeight == null) {
     // The written side wins, and the other side is that side through the
     // ratio. Content taller than the result overflows, which is what an
@@ -885,19 +894,17 @@ export function layout(
   const justify = style.justifyContent ?? "flex-start";
   const parentAlign = style.alignItems ?? "stretch";
 
-  // Lay one flex line out: grow or shrink it into the main axis, distribute
-  // what is left, and align each child within the line's share of the cross
-  // axis, which starts `crossOrigin` cells in and is `lineCross` deep. A box
-  // that does not wrap has one line, all of it.
-  const placeLine = (line: $ReadOnlyArray<number>, crossOrigin: number, lineCross: number) => {
+  // The main size of every child after one line has grown or shrunk.
+  //
+  // The free space is the whole main axis minus that line, which is the same
+  // leftover `placeLine` places into. A line's depth and the boxes on it have
+  // to agree, or a ratio taken from the size after the free space arrived is
+  // capped at the line measured from the size before it.
+  const mainSizesAfterFlex = (line: $ReadOnlyArray<number>): Array<number> => {
     const used =
       line.reduce((total, index) => total + outerMain(index), 0) +
       Math.max(0, line.length - 1) * gap;
     const free = mainSpace - used;
-
-    // Pass two: grow into the space left over, or shrink to fit into what there
-    // is. Shrinking is weighted by the base size as CSS specifies, so a wide
-    // child gives up more columns than a narrow one with the same `flexShrink`.
     const mainSizes = bases.slice();
     if (free > 0) {
       const grow = line.map((index) => Math.max(0, children[index].style.flexGrow ?? 0));
@@ -912,6 +919,15 @@ export function layout(
         mainSizes[line[i]] = Math.max(0, mainSizes[line[i]] - shares[i]);
       }
     }
+    return mainSizes;
+  };
+
+  // Lay one flex line out: grow or shrink it into the main axis, distribute
+  // what is left, and align each child within the line's share of the cross
+  // axis, which starts `crossOrigin` cells in and is `lineCross` deep. A box
+  // that does not wrap has one line, all of it.
+  const placeLine = (line: $ReadOnlyArray<number>, crossOrigin: number, lineCross: number) => {
+    const mainSizes = mainSizesAfterFlex(line);
 
     // Whatever main-axis space the children did not take, `justifyContent`
     // decides what to do with.
@@ -1062,15 +1078,18 @@ export function layout(
   } else {
     // Lines are filled in order until the next child's outer size would not
     // fit, and a child wider than the whole line gets a line of its own
-    // rather than none. Each line is as deep as its deepest child asks to be,
-    // measured at the main size it started with.
+    // rather than none. Each line is as deep as its deepest child asks to be
+    // at the main size it has after that line grows or shrinks. The size
+    // before the free space arrived would cap a ratio taken from the size
+    // the child grew to.
     const lines = breakLines(
       bases.map((_, index) => outerMain(index)),
       mainSpace,
       gap,
     );
-    const depths = lines.map((line) =>
-      line.reduce((deepest, index) => {
+    const depths = lines.map((line) => {
+      const mainSizes = mainSizesAfterFlex(line);
+      return line.reduce((deepest, index) => {
         const child = children[index];
         const [marginTop, marginRight, marginBottom, marginLeft] = resolvedMargins[index];
         const fixedCross = resolve(row ? child.style.height : child.style.width, crossSpace);
@@ -1078,32 +1097,32 @@ export function layout(
         const fixedMain = resolve(row ? child.style.width : child.style.height, mainSpace);
         const mainIsDefinite =
           fixedMain != null || resolve(child.style.flexBasis, mainSpace) != null;
-        // The same transfer `placeLine` is about to apply. A line measured
-        // from the content, and then clamped to that line, would throw away
-        // a height that came from `flexBasis`.
+        // The same transfer `placeLine` is about to apply, from the same main
+        // size. A line measured from the content, and then clamped to that
+        // line, would throw away a height that came from `flexBasis`.
         const cross =
           fixedCross ??
           (ratio != null && mainIsDefinite
             ? row
-              ? fromWidth(bases[index], ratio)
-              : fromHeight(bases[index], ratio)
+              ? fromWidth(mainSizes[index], ratio)
+              : fromHeight(mainSizes[index], ratio)
             : row
               ? intrinsicSize(
                   child,
-                  bases[index],
+                  mainSizes[index],
                   Math.max(0, crossSpace - marginTop - marginBottom),
                 ).height
               : intrinsicSize(
                   child,
                   Math.max(0, crossSpace - marginLeft - marginRight),
-                  bases[index],
+                  mainSizes[index],
                 ).width);
         return Math.max(
           deepest,
           cross + (row ? marginTop + marginBottom : marginLeft + marginRight),
         );
-      }, 0),
-    );
+      }, 0);
+    });
     const lineGap = gapOf(style, !row);
     const spare =
       crossSpace -
@@ -1301,7 +1320,24 @@ function layoutScroll(
     const child = children[index];
     const [, marginRight, , marginLeft] = fixedMargins(margin(child.style));
     const available = Math.max(0, width - marginLeft - marginRight);
-    const childWidth = Math.min(available, resolve(child.style.width, width) ?? available);
+    // A width the child wrote is the width it gets. A height it wrote, and a
+    // ratio, is the other side: the window's width is not a size the child
+    // asked for. `min` and `max` apply to that transferred width, and then
+    // the window still wins, because a scrolling box has no horizontal
+    // scroll. A width the child wrote is not clamped here.
+    const writtenWidth = resolve(child.style.width, width);
+    const ratio = aspectOf(child.style);
+    const writtenHeight = resolve(child.style.height, height);
+    const transferred =
+      writtenWidth == null && ratio != null && writtenHeight != null
+        ? clampDimension(
+            fromHeight(writtenHeight, ratio),
+            child.style.minWidth,
+            child.style.maxWidth,
+            width,
+          )
+        : null;
+    const childWidth = Math.min(available, writtenWidth ?? transferred ?? available);
     layout(child, x + marginLeft, y + top - offset, childWidth, stack.heights[index], block);
     count += 1;
   }
@@ -1410,7 +1446,16 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
       const [marginTop, marginRight, marginBottom, marginLeft] = fixedMargins(margin(child.style));
       const available = Math.max(0, width - marginLeft - marginRight);
       const fixedHeight = resolve(child.style.height, height);
-      const own = fixedHeight ?? intrinsicSize(child, available, unbounded).height;
+      const writtenWidth = resolve(child.style.width, width);
+      // Neither side written: the ratio is unread. Measuring through
+      // `intrinsicSize` would run the both-auto rule and grow this height for
+      // a width the window assigns later, and it would cache that answer on
+      // the child. `measureIntrinsic` leaves the cache alone.
+      const own =
+        fixedHeight ??
+        (writtenWidth == null && aspectOf(child.style) != null
+          ? measureIntrinsic(child, available, unbounded, true).height
+          : intrinsicSize(child, available, unbounded).height);
       stack.tops[index] = cursor + marginTop;
       stack.heights[index] = own;
       cursor += marginTop + own + marginBottom + gap;
@@ -1446,8 +1491,11 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
 //   and a child that is out of it, drawn somewhere other than where it says,
 //   or sharing a row with another, is a second answer to "which rows are in
 //   the window". Both are read there as if they were not given. A ratio is
-//   read, but only off a width or a height the child itself wrote: measuring
-//   already transfers that. The width the window assigns is not one of those,
-//   so a ratio with neither side written does not change the stack.
+//   read only off a width or a height the child itself wrote. A written width
+//   transfers while the stack is measured. A written height transfers when
+//   the child is placed, because the stack already kept that height. The
+//   width the window assigns is not one of those, so a ratio with neither
+//   side written does not change the stack, and the measure that builds the
+//   stack skips the ratio in that case.
 //
 // That is ubugeeei-prod/uf#314.

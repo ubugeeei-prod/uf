@@ -486,6 +486,48 @@ describe("an aspect ratio", () => {
     handle.stop();
   });
 
+  it("gives a scrolling child its width from the height it wrote", () => {
+    // Fourteen columns is what the window would hand out. The height is the
+    // side the child wrote, so the width is that height through the ratio.
+    const handle = testRender(
+      <ScrollBox height={6} width={14} scrollbar={false}>
+        <Box height={4} aspectRatio={2} backgroundColor="#111111" />
+      </ScrollBox>,
+      { width: 14, height: 6 },
+    );
+    expect(painted(handle.frame(), 0x111111)).toBe(8 * 4);
+    handle.stop();
+  });
+
+  it("does not grow a scrolling child that wrote neither side", () => {
+    // The window assigns the width. That is not a size the ratio reads, so
+    // the child stays as tall as its content.
+    const handle = testRender(
+      <ScrollBox height={6} width={14} scrollbar={false}>
+        <Box aspectRatio={2} backgroundColor="#111111">
+          <Box width={8} height={1} />
+        </Box>
+      </ScrollBox>,
+      { width: 14, height: 6 },
+    );
+    expect(painted(handle.frame(), 0x111111)).toBe(14);
+    handle.stop();
+  });
+
+  it("takes a wrapped line's depth from the main size after it grows", () => {
+    // The basis is four columns, which at 2:1 is two rows. The free space
+    // makes it twenty, and the line has to be deep enough for the height
+    // that follows.
+    const handle = testRender(
+      <Box flexDirection="row" flexWrap="wrap" width={20} height={12}>
+        <Box flexBasis={4} flexGrow={1} aspectRatio={2} backgroundColor="#111111" />
+      </Box>,
+      { width: 20, height: 12 },
+    );
+    expect(painted(handle.frame(), 0x111111)).toBe(20 * 10);
+    handle.stop();
+  });
+
   it("ignores a ratio that is not a positive number", () => {
     const handle = testRender(
       <Box width={4} aspectRatio={0} backgroundColor="#111111">
