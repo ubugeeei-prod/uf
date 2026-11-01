@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.46.0
+
+- feat: select a word or a line, and point diff and update at a registry directory (#1906) (bed0a1a8)
+
 ## uf@0.45.0
 
 - feat: draw an aspect ratio and ship a high-contrast theme (#1904) (f24fd6da)
