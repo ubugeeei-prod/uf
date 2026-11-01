@@ -61,12 +61,17 @@ pub(crate) fn ui(cwd: &Utf8Path, ui: &mut Ui, command: UiCommand) -> Result<()> 
             registry,
         } => add(cwd, ui, &names, overwrite, registry.as_deref()),
         UiCommand::List { json, registry } => list(cwd, ui, json, registry.as_deref()),
-        UiCommand::Diff { json, names } => diff(cwd, ui, &names, json),
+        UiCommand::Diff {
+            json,
+            names,
+            registry,
+        } => diff(cwd, ui, &names, json, registry.as_deref()),
         UiCommand::Update {
             dry_run,
             offline,
             json,
             names,
+            registry,
         } => update(
             cwd,
             ui,
@@ -75,6 +80,7 @@ pub(crate) fn ui(cwd: &Utf8Path, ui: &mut Ui, command: UiCommand) -> Result<()> 
                 dry_run,
                 offline,
                 json,
+                registry: registry.as_deref(),
             },
         ),
     }
@@ -533,9 +539,15 @@ struct Compared<'a> {
     unified: Option<String>,
 }
 
-fn diff(cwd: &Utf8Path, ui: &mut Ui, names: &[String], as_json: bool) -> Result<()> {
+fn diff(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    names: &[String],
+    as_json: bool,
+    registry_dir: Option<&Utf8Path>,
+) -> Result<()> {
     let place = Place::find(cwd)?;
-    let registry = registry()?;
+    let registry = load_registry(cwd, registry_dir)?;
 
     let components: Vec<&Component> = if names.is_empty() {
         registry
@@ -628,7 +640,11 @@ fn diff(cwd: &Utf8Path, ui: &mut Ui, names: &[String], as_json: bool) -> Result<
                 place.relative(&each.copy.path)
             ));
             renderer.heading(out, 2, &heading);
-            let (status, sentence) = explain_state(&each.copy.state, each.component.name);
+            let (status, sentence) = explain_state(
+                &each.copy.state,
+                each.component.name,
+                registry_dir.is_some(),
+            );
             renderer.status(out, status, &sentence);
             if let Some(unified) = &each.unified {
                 renderer.blank(out);
@@ -645,7 +661,14 @@ fn diff(cwd: &Utf8Path, ui: &mut Ui, names: &[String], as_json: bool) -> Result<
 /// The sentence is the reason `uf ui diff` exists rather than `diff`: it says
 /// whether the lines below are the project's own edits, the registry's changes,
 /// or both at once.
-fn explain_state(state: &CopyState, name: &str) -> (Status, String) {
+fn explain_state(state: &CopyState, name: &str, directory: bool) -> (Status, String) {
+    // A directory registry is not "this uf". The stamp still names the uf that
+    // wrote the copy; what moved is the directory the command was pointed at.
+    let moved = if directory {
+        "the registry differs"
+    } else {
+        "this uf's version differs"
+    };
     match state {
         CopyState::Current { stamp } => (
             Status::Success,
@@ -657,7 +680,7 @@ fn explain_state(state: &CopyState, name: &str) -> (Status, String) {
         CopyState::Outdated { stamp } => (
             Status::Warn,
             uf_infra::into_string(uf_infra::cstr!(
-                "untouched since uf {} wrote it, and this uf's version differs: every line below is \
+                "untouched since uf {} wrote it, and {moved}: every line below is \
                  the registry's, and `uf ui add {name}` takes them",
                 stamp.version
             )),
@@ -679,7 +702,7 @@ fn explain_state(state: &CopyState, name: &str) -> (Status, String) {
         } => (
             Status::Warn,
             uf_infra::into_string(uf_infra::cstr!(
-                "edited since uf {} wrote it, and this uf's version differs too: the lines below \
+                "edited since uf {} wrote it, and {moved} too: the lines below \
                  are the project's edits and the registry's changes together",
                 stamp.version
             )),
@@ -735,23 +758,31 @@ const HISTORY_DEPTH: &str = "64";
 const MAX_SOURCE_BYTES: &str = "1048576";
 
 #[derive(Debug, Clone, Copy)]
-struct UpdateOptions {
+struct UpdateOptions<'a> {
     dry_run: bool,
     offline: bool,
     json: bool,
+    /// Set when the registry is a directory. The base is then only the
+    /// project's git history: the release tag is this uf's registry, not that
+    /// directory.
+    registry: Option<&'a Utf8Path>,
 }
 
-fn update(cwd: &Utf8Path, ui: &mut Ui, names: &[String], options: UpdateOptions) -> Result<()> {
+fn update(cwd: &Utf8Path, ui: &mut Ui, names: &[String], options: UpdateOptions<'_>) -> Result<()> {
     let place = Place::find(cwd)?;
-    let registry = registry()?;
+    let registry = load_registry(cwd, options.registry)?;
     let asked: Vec<&str> = names.iter().map(String::as_str).collect();
+    // A directory is not published at `uf@<version>`. Fetching that tag would
+    // offer a base from a different registry, and the stamp's digest would
+    // reject it — after the request. Skip the request.
+    let offline = options.offline || options.registry.is_some();
 
     let plan = match update::plan_update(
         &place.root,
         &place.directory,
         &registry,
         &asked,
-        |copy, stamp| find_base(copy.path.as_path(), copy.component, stamp, options.offline),
+        |copy, stamp| find_base(copy.path.as_path(), copy.component, stamp, offline),
     ) {
         Ok(plan) => plan,
         Err(UpdateError::Unknown(unknown)) => {
@@ -987,7 +1018,7 @@ fn action_from(action: &UpdateAction) -> Option<&str> {
     }
 }
 
-fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: UpdateOptions) {
+fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: UpdateOptions<'_>) {
     let label = project_label(&place.root).to_owned();
     let rows: Vec<(String, &str, String, Tone)> = plan
         .steps
@@ -1107,7 +1138,9 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
                      git history or in that uf release{}; for the rest, `uf ui diff {names}` \
                      shows both changes together and `uf ui add {names} --overwrite` takes this \
                      uf's version in place of the edit",
-                    if options.offline {
+                    if options.registry.is_some() {
+                        " (not looked for: --registry)"
+                    } else if options.offline {
                         " (not looked for: --offline)"
                     } else {
                         ""

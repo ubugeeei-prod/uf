@@ -400,6 +400,135 @@ fn add_and_list_read_a_directory_instead_of_the_embedded_registry() {
     assert!(!component(dir.path(), "dialog").exists());
 }
 
+/// `diff` and `update` read the same directory `add` and `list` do.
+///
+/// An untouched copy whose directory file has moved is replaced from that
+/// file. An edit the directory has not moved under is left alone. An edit the
+/// directory has moved under is not merged from the release the stamp names:
+/// that release is this uf's registry, and fetching it would offer a base from
+/// a different corpus.
+#[test]
+fn diff_and_update_read_a_directory_instead_of_the_embedded_registry() {
+    let dir = app();
+    let registry = dir.path().join("registry");
+    fs::create_dir(&registry).expect("the registry directory");
+    let original = "// @flow\n// Badge: a badge.\nexport component Badge() {}\n";
+    let moved = "// @flow\n// Badge: a badge that moved.\nexport component Badge() {}\n";
+    fs::write(registry.join("badge.js"), original).expect("the component is written");
+
+    let (code, stdout, stderr) = run(
+        dir.path(),
+        &["ui", "add", "--registry", "registry", "badge"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let added = fs::read_to_string(component(dir.path(), "badge")).expect("the copy");
+
+    let report = diff_registry(dir.path(), "badge");
+    assert_eq!(report["components"][0]["state"], "current");
+    assert_eq!(report["components"][0]["registryMoved"], false);
+
+    // The project's own line, under a registry that has not moved.
+    let edited = format!("{added}// the project's own line\n");
+    fs::write(component(dir.path(), "badge"), &edited).expect("the edit");
+    let report = diff_registry(dir.path(), "badge");
+    assert_eq!(report["components"][0]["state"], "edited");
+    assert_eq!(report["components"][0]["registryMoved"], false);
+    let report = update_registry(dir.path(), "badge");
+    assert_eq!(report["components"][0]["action"], "kept");
+    assert_eq!(report["components"][0]["writes"], false);
+    assert_eq!(
+        fs::read_to_string(component(dir.path(), "badge")).expect("the copy"),
+        edited,
+        "an edit the directory has not moved under is the project's"
+    );
+
+    // The directory moved, and so did the project. The stamp names this uf's
+    // release, which is a different file from the directory. Serving that
+    // release where a fetch would find it must not make the merge happen.
+    fs::write(registry.join("badge.js"), moved).expect("the registry moved");
+    let release = tempfile::tempdir().expect("a directory for the release");
+    let served = release.path().join(VERSION);
+    fs::create_dir_all(&served).expect("the release directory");
+    fs::write(served.join("badge.js"), original).expect("the released source");
+    let template = format!(
+        "file://{}/{{version}}/{{name}}.js",
+        release.path().display()
+    );
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args([
+            "--color",
+            "never",
+            "ui",
+            "update",
+            "--registry",
+            "registry",
+            "--json",
+            "badge",
+        ])
+        .env("UF_UI_REGISTRY_URL", &template)
+        .output()
+        .expect("uf started");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stdout}{stderr}");
+    let report: Value = serde_json::from_str(&stdout).expect("--json is only JSON");
+    assert_eq!(report["components"][0]["action"], "no-base");
+    assert_eq!(report["components"][0]["writes"], false);
+    assert_eq!(
+        fs::read_to_string(component(dir.path(), "badge")).expect("the copy"),
+        edited,
+        "a directory registry does not fetch the release the stamp names"
+    );
+    let (code, stdout, stderr) = run(
+        dir.path(),
+        &["ui", "update", "--registry", "registry", "badge"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(
+        stdout.contains("not looked for: --registry"),
+        "the report names the directory as the reason the release was not fetched:\n{stdout}"
+    );
+
+    // Put the untouched copy back. The directory's new file replaces it, and
+    // that replacement is the directory's text.
+    fs::write(component(dir.path(), "badge"), &added).expect("the untouched copy");
+    let report = diff_registry(dir.path(), "badge");
+    assert_eq!(report["components"][0]["state"], "outdated");
+    assert_eq!(report["components"][0]["registryMoved"], true);
+    let report = update_registry(dir.path(), "badge");
+    assert_eq!(report["components"][0]["action"], "updated");
+    assert_eq!(report["components"][0]["writes"], true);
+    let written = fs::read_to_string(component(dir.path(), "badge")).expect("the copy");
+    let copy = uf_ui::stamp::Copy::read(&written);
+    assert_eq!(copy.content, moved);
+    assert!(
+        copy.is_untouched(),
+        "the replacement is the directory's text, stamped as that text"
+    );
+}
+
+/// `uf ui diff --registry DIR NAME --json`.
+fn diff_registry(dir: &Path, name: &str) -> Value {
+    let (code, stdout, stderr) = run(
+        dir,
+        &["ui", "diff", "--registry", "registry", "--json", name],
+    );
+    assert_eq!(code, 0, "{stderr}");
+    serde_json::from_str(&stdout).expect("--json is only JSON")
+}
+
+/// `uf ui update --registry DIR NAME --json`.
+fn update_registry(dir: &Path, name: &str) -> Value {
+    let (code, stdout, stderr) = run(
+        dir,
+        &["ui", "update", "--registry", "registry", "--json", name],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    serde_json::from_str(&stdout).expect("--json is only JSON")
+}
+
 #[test]
 fn an_unknown_name_is_refused_with_the_closest_names() {
     let dir = app();
