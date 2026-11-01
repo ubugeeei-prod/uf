@@ -81,7 +81,8 @@
 // in-memory renderer that runs the same code the terminal one does.
 //
 // A second press on selectable text selects the word under the pointer, and a
-// third selects the line. A press on a blank stays a click. Not here: images,
+// third selects the line. A press on a blank stays a click and does not count
+// toward the next one. Not here: images,
 // the rich content components, wrapping or positioning inside a `ScrollBox`,
 // and everything under OpenTUI's "application APIs" — except for the
 // write-only OSC 52 clipboard — which is why `getSelectedText()` hands a

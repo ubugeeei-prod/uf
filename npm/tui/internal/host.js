@@ -164,7 +164,8 @@ export type Renderer = {
    * One is a click and selects nothing. Two selects the word under the
    * pointer, three the line. A fourth starts the count over, which is how a
    * reader clears a line they just selected. A drag, a press that is not on
-   * text, and a press that called `preventDefault()` all put it back to zero.
+   * text, a press on a blank, and a press that called `preventDefault()` all
+   * put it back to zero.
    */
   selectionPresses: number,
   /** When the last of those presses arrived, in milliseconds. */
@@ -512,12 +513,23 @@ const REPEAT_PRESS_MS = 500;
 /**
  * The selection a repeated press asks for, or `null` when this press is a click.
  *
- * The count is of left presses on selectable text with no drag between them.
- * The second selects the word under the pointer and the third the line. A
- * press on a blank is a click: there is no word there, and counting it would
- * make the space between two words select one of them.
+ * The count is of left presses on a word, with no drag and no blank between
+ * them. The second selects the word under the pointer and the third the line.
+ * A press on a blank is a click and does not count: counting it would make the
+ * next press on a word the second half of a gesture the reader did not make.
  */
 function repeatedSelection(renderer: Renderer, event: MouseEvent): Selection | null {
+  const frame = renderFrame(renderer);
+  const grid = renderer.hits;
+  if (grid == null) {
+    renderer.selectionPresses = 0;
+    return null;
+  }
+  const word = wordAt(frame, grid, event.x, event.y);
+  if (word == null) {
+    renderer.selectionPresses = 0;
+    return null;
+  }
   const now = Date.now();
   const repeated =
     renderer.selectionPresses > 0 && now - renderer.selectionPressAt <= REPEAT_PRESS_MS;
@@ -530,17 +542,7 @@ function repeatedSelection(renderer: Renderer, event: MouseEvent): Selection | n
   if (count === 1) {
     return null;
   }
-  const frame = renderFrame(renderer);
-  const grid = renderer.hits;
-  if (grid == null) {
-    return null;
-  }
-  const span =
-    count === 2 ? wordAt(frame, grid, event.x, event.y) : lineAt(frame, grid, event.x, event.y);
-  if (span == null) {
-    renderer.selectionPresses = 1;
-  }
-  return span;
+  return count === 2 ? word : lineAt(frame, grid, event.x, event.y);
 }
 
 /**

@@ -740,7 +740,8 @@ have to land on selectable text, within half a second, with no drag between
 them. The word is the run of non-blank text around the pointer, punctuation
 included, and it stops at a blank or at a cell that is not text. The line is
 that row's selectable span, the gap between two pieces of text included. A
-press on a blank stays a click, and a fourth press is a click again, which
+press on a blank stays a click, and it does not count toward the presses
+around it. A fourth press is a click again, which
 clears the line. There is still no `behavior` to report: the three presses are
 the gesture, not a choice of one.
 

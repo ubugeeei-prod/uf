@@ -240,9 +240,10 @@ pub enum TuiFeature {
     /// selection is two *cells*, not a range inside the text, so what it
     /// covers after a commit is whatever the frame now holds there — the same
     /// answer a terminal's own selection gives, and stated because the DOM's
-    /// is different. A second press on selectable text selects the word under
-    /// the pointer, and a third selects the line; there is no `behavior` to
-    /// report because that is the gesture rather than a choice of one.
+    /// is different. A second press on a word selects that word, and a third
+    /// selects the line. A press on a blank stays a click and does not count.
+    /// There is no `behavior` to report because that is the gesture rather
+    /// than a choice of one.
     /// And *item* selection — `Select`, `TabSelect` — is not this either: those
     /// are components, keyboard-driven as OpenTUI's are, and are listed under
     /// [`TuiFeature::Keyboard`] in the component list rather than here.

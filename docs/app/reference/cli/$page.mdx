@@ -313,8 +313,8 @@ the working directory. Each file is checked by the same rules: a
 `// Title: what it is` line, imports that are packages or sibling components,
 and a lower-case name. `*.example.js`, `*.test.js`, and anything that is not a
 `.js` file are not components, and a symlink is not followed. `uf ui diff` and
-`uf ui update` do not take the flag: they compare a copy with the registry in
-the uf that wrote it. A package a component imports that `package.json` does
+`uf ui update` take the same flag and compare against that directory. A package
+a component imports that `package.json` does
 not name is added first, through `uf add`, at that uf's own version, and an
 install that fails leaves every file unwritten.
 
@@ -341,23 +341,28 @@ the project's own under the same name. `--registry DIR` lists that directory
 instead, by the same rules as `uf ui add --registry`. `--json` adds the
 packages each component imports and the components it needs.
 
-### uf ui diff [NAME...] [--json]
+### uf ui diff [NAME...] [--json] [--registry DIR]
 
 How the project's copies differ from this uf's components, as a unified diff
 with the registry's version on the old side, so a `+` line is in the copy and
 not in the registry and the diff of an edited copy reads as the edit. With no
-names, every component the project has is compared.
+names, every component the project has is compared. `--registry DIR` compares
+against that directory instead, by the same rules as `uf ui add --registry`.
 
 Above each diff is the sentence that makes it more than `diff`: that the copy is
 untouched, that every line is the project's own edit because the registry has
 not moved since the copy was written, or that the lines mix the project's edits
 with the registry's changes.
 
-### uf ui update [NAME...] [--dry-run] [--offline] [--json]
+### uf ui update [NAME...] [--dry-run] [--offline] [--json] [--registry DIR]
 
 Brings the project's copies up to this uf's components. When the project has
 edited a copy, this uf's changes are merged into it rather than written over
 the edit. With no names, every component the project has is updated.
+`--registry DIR` brings them up to that directory instead, by the same rules
+as `uf ui add --registry`. The text a copy began as is then read only from the
+project's git history: a directory is a different corpus from the release the
+stamp names, so that release is left unfetched.
 
 ```
 uf ui update
@@ -385,7 +390,8 @@ this order:
    was never committed to the project, so later updates find their base here.
    `UF_UI_REGISTRY_URL` replaces the address, with `{version}` and `{name}` in
    it. Point it at a mirror, or at a `file://` checkout on a machine with no
-   network. `--offline` skips this step.
+   network. `--offline` skips this step, and so does `--registry`: the release
+   is this uf's registry, which is not the directory the command was pointed at.
 
 A candidate is used only if it hashes to the recorded digest. A mirror or a
 rewritten history can therefore make a merge impossible, but it cannot make a

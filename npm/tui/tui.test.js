@@ -2528,6 +2528,17 @@ describe("a drag selects what it crossed", () => {
     handle.stop();
   });
 
+  it("does not let a press on a blank arm the next press as a second click", () => {
+    const handle = testRender(<Text>hello world</Text>, { width: 12, height: 1 });
+
+    // The space is a click of its own. The word after it is a first press,
+    // which selects nothing, rather than the second half of the space.
+    handle.press(click(5, 0) + click(1, 0));
+
+    expect(handle.selectedText()).toBe("");
+    handle.stop();
+  });
+
   it("runs in reading order however the drag went", () => {
     const handle = testRender(<Text>hello</Text>, { width: 8, height: 1 });
 

@@ -1138,7 +1138,9 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
                      git history or in that uf release{}; for the rest, `uf ui diff {names}` \
                      shows both changes together and `uf ui add {names} --overwrite` takes this \
                      uf's version in place of the edit",
-                    if options.offline {
+                    if options.registry.is_some() {
+                        " (not looked for: --registry)"
+                    } else if options.offline {
                         " (not looked for: --offline)"
                     } else {
                         ""

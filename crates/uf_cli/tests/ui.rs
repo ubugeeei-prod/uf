@@ -481,6 +481,15 @@ fn diff_and_update_read_a_directory_instead_of_the_embedded_registry() {
         edited,
         "a directory registry does not fetch the release the stamp names"
     );
+    let (code, stdout, stderr) = run(
+        dir.path(),
+        &["ui", "update", "--registry", "registry", "badge"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(
+        stdout.contains("not looked for: --registry"),
+        "the report names the directory as the reason the release was not fetched:\n{stdout}"
+    );
 
     // Put the untouched copy back. The directory's new file replaces it, and
     // that replacement is the directory's text.
