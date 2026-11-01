@@ -2479,6 +2479,55 @@ describe("a drag selects what it crossed", () => {
     handle.stop();
   });
 
+  /** Press and release on one cell, the two reports a click is. */
+  const click = (x: number, y: number) => press(x, y) + release(x, y);
+
+  it("selects the word under a second press, and the line under a third", () => {
+    const handle = testRender(<Text>hello world</Text>, { width: 12, height: 1 });
+
+    // One press is a click. Two, on the same word, take the word and not the
+    // space after it. Three take the row, gap included, which is the line.
+    handle.press(click(1, 0));
+    expect(handle.selectedText()).toBe("");
+
+    handle.press(click(1, 0));
+    expect(handle.selectedText()).toBe("hello");
+    expect(inverted(handle.frame(), 4, 0)).toBe(true);
+    expect(inverted(handle.frame(), 5, 0)).toBe(false);
+
+    handle.press(click(1, 0));
+    expect(handle.selectedText()).toBe("hello world");
+    expect(inverted(handle.frame(), 5, 0)).toBe(true);
+
+    // A fourth press is a click again, which is how the line is cleared.
+    handle.press(click(1, 0));
+    expect(handle.selection()).toBe(null);
+    handle.stop();
+  });
+
+  it("keeps a wide grapheme whole when the second press lands on its second cell", () => {
+    const handle = testRender(<Text>{"a 界 b"}</Text>, { width: 8, height: 1 });
+
+    // Columns are `a`, a space, `界`, its continuation, a space, `b`. The
+    // second press is the continuation cell, and the word is still the one
+    // grapheme rather than the space on either side.
+    handle.press(click(0, 0) + click(3, 0));
+
+    expect(handle.selectedText()).toBe("界");
+    expect([inverted(handle.frame(), 2, 0), inverted(handle.frame(), 3, 0)]).toEqual([true, true]);
+    expect(inverted(handle.frame(), 1, 0)).toBe(false);
+    handle.stop();
+  });
+
+  it("does not treat a press on a blank as the second half of a word", () => {
+    const handle = testRender(<Text>hello world</Text>, { width: 12, height: 1 });
+
+    handle.press(click(1, 0) + click(5, 0));
+
+    expect(handle.selectedText()).toBe("");
+    handle.stop();
+  });
+
   it("runs in reading order however the drag went", () => {
     const handle = testRender(<Text>hello</Text>, { width: 8, height: 1 });
 

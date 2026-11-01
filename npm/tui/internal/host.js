@@ -74,7 +74,15 @@ import type { Selection, SelectionPoint } from "../selection.js";
 import { selectionBetween } from "../selection.js";
 import type { HitGrid } from "./hits.js";
 import { createHitGrid, hitAt, textAt } from "./hits.js";
-import { measureText, paint, paintSelection, selectionText, wrapModeOf } from "./paint.js";
+import {
+  lineAt,
+  measureText,
+  paint,
+  paintSelection,
+  selectionText,
+  wordAt,
+  wrapModeOf,
+} from "./paint.js";
 import type { TuiNode, TuiProps, Widget } from "./tree.js";
 import { applyProps, createNode, invalidate } from "./tree.js";
 import { measureWidget } from "./widgets.js";
@@ -150,6 +158,17 @@ export type Renderer = {
    * this is a cell, because that is what a selection is made of.
    */
   selectionAnchor: SelectionPoint | null,
+  /**
+   * How many left presses have landed in a row, without a drag between them.
+   *
+   * One is a click and selects nothing. Two selects the word under the
+   * pointer, three the line. A fourth starts the count over, which is how a
+   * reader clears a line they just selected. A drag, a press that is not on
+   * text, and a press that called `preventDefault()` all put it back to zero.
+   */
+  selectionPresses: number,
+  /** When the last of those presses arrived, in milliseconds. */
+  selectionPressAt: number,
   /** What OpenTUI calls a selection, and the four things a caller does with one. */
   getSelection(): Selection | null,
   hasSelection(): boolean,
@@ -199,12 +218,14 @@ export function createRenderer(
     size         : { width, height },
     sizeListeners: new Set(),
     mouseEnabled,
-    hits           : null,
-    hovered        : null,
-    dragSource     : null,
-    dragging       : false,
-    selection      : null,
-    selectionAnchor: null,
+    hits            : null,
+    hovered         : null,
+    dragSource      : null,
+    dragging        : false,
+    selection       : null,
+    selectionAnchor : null,
+    selectionPresses: 0,
+    selectionPressAt: 0,
     getSelection() {
       return renderer.selection;
     },
@@ -214,6 +235,8 @@ export function createRenderer(
     clearSelection() {
       renderer.selection = null;
       renderer.selectionAnchor = null;
+      renderer.selectionPresses = 0;
+      renderer.selectionPressAt = 0;
     },
     getSelectedText() {
       return selectedText(renderer);
@@ -473,6 +496,51 @@ function extendSelection(renderer: Renderer, event: MouseEvent): void {
     return;
   }
   renderer.selection = selectionBetween(anchor, { x: event.x, y: event.y });
+  // The gesture is a drag now. The next press is a new click, not the second
+  // half of a repeated press that happened to follow a drag.
+  renderer.selectionPresses = 0;
+}
+
+/**
+ * How long two presses may be apart and still be one repeated-press gesture.
+ *
+ * Half a second is the interval a terminal uses for the same decision. A
+ * press later than that is a reader who has moved on, and it clears.
+ */
+const REPEAT_PRESS_MS = 500;
+
+/**
+ * The selection a repeated press asks for, or `null` when this press is a click.
+ *
+ * The count is of left presses on selectable text with no drag between them.
+ * The second selects the word under the pointer and the third the line. A
+ * press on a blank is a click: there is no word there, and counting it would
+ * make the space between two words select one of them.
+ */
+function repeatedSelection(renderer: Renderer, event: MouseEvent): Selection | null {
+  const now = Date.now();
+  const repeated =
+    renderer.selectionPresses > 0 && now - renderer.selectionPressAt <= REPEAT_PRESS_MS;
+  let count = repeated ? renderer.selectionPresses + 1 : 1;
+  if (count > 3) {
+    count = 1;
+  }
+  renderer.selectionPresses = count;
+  renderer.selectionPressAt = now;
+  if (count === 1) {
+    return null;
+  }
+  const frame = renderFrame(renderer);
+  const grid = renderer.hits;
+  if (grid == null) {
+    return null;
+  }
+  const span =
+    count === 2 ? wordAt(frame, grid, event.x, event.y) : lineAt(frame, grid, event.x, event.y);
+  if (span == null) {
+    renderer.selectionPresses = 1;
+  }
+  return span;
 }
 
 /**
@@ -549,14 +617,30 @@ export function dispatchMouse(renderer: Renderer, event: MouseEvent): void {
     if (hit != null) {
       bubble(hit, event, hit, null);
     }
+    if (event.button === MouseButton.LEFT && event.defaultPrevented) {
+      renderer.selectionPresses = 0;
+    }
     if (event.button === MouseButton.LEFT && !event.defaultPrevented) {
       // A press ends the selection the reader had, whether or not it starts
       // one: that is what clicking somewhere else means, and it is why a
       // click that never moves leaves nothing selected. The new anchor is
       // only armed over selectable text, so a drag from a border or from the
       // gap between two panels moves nothing but the pointer.
-      renderer.selection = null;
-      renderer.selectionAnchor = overText ? { x: event.x, y: event.y } : null;
+      //
+      // A second press, and a third, are the exception. They widen what the
+      // click would have cleared: the word under the pointer, then the line.
+      if (!overText) {
+        renderer.selectionPresses = 0;
+        renderer.selection = null;
+        renderer.selectionAnchor = null;
+      } else {
+        const widened = repeatedSelection(renderer, event);
+        renderer.selection = widened;
+        // A widened selection is finished. Leaving the anchor armed would let
+        // the release's motion, or a drag that never left the cell, replace
+        // the word with the one cell under the pointer.
+        renderer.selectionAnchor = widened == null ? { x: event.x, y: event.y } : null;
+      }
     }
     return;
   }

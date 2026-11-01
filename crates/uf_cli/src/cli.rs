@@ -1439,6 +1439,11 @@ pub(crate) enum UiCommand {
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
+        /// A directory of `<name>.js` component files to compare against,
+        /// instead of the registry built into this uf. Each file is checked by
+        /// the same rules.
+        #[arg(long, value_name = "DIR")]
+        registry: Option<Utf8PathBuf>,
         /// The components to compare; every one the project has, when none is
         /// named.
         #[arg(value_name = "NAME")]
@@ -1464,6 +1469,13 @@ pub(crate) enum UiCommand {
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
+        /// A directory of `<name>.js` component files to update to, instead of
+        /// the registry built into this uf. Each file is checked by the same
+        /// rules. The text a copy began as is read only from the project's git
+        /// history: a directory is not this uf's published registry, so the
+        /// release tag is not fetched.
+        #[arg(long, value_name = "DIR")]
+        registry: Option<Utf8PathBuf>,
         /// The components to update; every one the project has, when none is
         /// named.
         #[arg(value_name = "NAME")]

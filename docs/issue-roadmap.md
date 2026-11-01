@@ -289,9 +289,9 @@
       as well as taking `auto` margins. `ScrollBar` is the bar `ScrollBox`
       draws, as its own component, for a window the caller clips. `Slider` is
       a controlled thumb on a track. `aspectRatio` is width over height of the
-      border box, in whole cells. The
-      repeated-press gestures that widen a selection to a word or a line,
-      the rich-content and media components, wrapping
+      border box, in whole cells. A second press on selectable text selects the
+      word under the pointer, and a third selects the line. The
+      rich-content and media components, wrapping
       and positioning inside a `ScrollBox`, and notifications, audio and
       `Timeline` remain ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and `uf ui add` for the styled components a project owns (ubugeeei-prod/uf#947).

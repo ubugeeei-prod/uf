@@ -47,6 +47,7 @@ import {
   writeGrapheme,
 } from "../cells.js";
 import type { Selection } from "../selection.js";
+import { selectionBetween } from "../selection.js";
 import type { HitGrid } from "./hits.js";
 import { recordHit, recordText } from "./hits.js";
 import type { TuiNode } from "./tree.js";
@@ -682,6 +683,112 @@ export function selectionText(frame: Frame, grid: HitGrid, selection: Selection)
     lines.push(line);
   }
   return lines.join("\n");
+}
+
+/**
+ * Whether a grapheme is a break between words.
+ *
+ * A blank is a space, a tab, or any other whitespace cluster. A continuation
+ * cell is not a grapheme — its text is empty — and the caller steps off it
+ * before asking.
+ */
+function blank(text: string): boolean {
+  return /^[\s\u00a0]*$/u.test(text);
+}
+
+/** The cell a wide grapheme starts on, walking left off continuation cells. */
+function graphemeStart(frame: Frame, y: number, x: number): number {
+  const base = y * frame.width;
+  let at = x;
+  while (at > 0 && frame.chars[base + at] === "") {
+    at -= 1;
+  }
+  return at;
+}
+
+/** Include the continuation cells that belong to the grapheme at `x`. */
+function graphemeEnd(frame: Frame, y: number, x: number): number {
+  const base = y * frame.width;
+  let to = x;
+  while (to + 1 < frame.width && frame.chars[base + to + 1] === "") {
+    to += 1;
+  }
+  return to;
+}
+
+/**
+ * The word under a cell: the run of non-blank selectable text around it.
+ *
+ * A blank, or a cell that is not selectable text, is a boundary, so a word
+ * does not jump the gap between two `Text`s or the space a reader did not
+ * press. Punctuation stays with the word, which is the run a terminal copies
+ * on a second press. A press on the blank itself is not a word.
+ */
+export function wordAt(frame: Frame, grid: HitGrid, x: number, y: number): Selection | null {
+  if (y < 0 || y >= frame.height || x < 0 || x >= frame.width) {
+    return null;
+  }
+  const base = y * frame.width;
+  const origin = graphemeStart(frame, y, x);
+  const text = frame.chars[base + origin];
+  if (grid.text[base + origin] == null || text === "" || blank(text)) {
+    return null;
+  }
+  let from = origin;
+  while (from > 0) {
+    const previous = graphemeStart(frame, y, from - 1);
+    const previousText = frame.chars[base + previous];
+    if (grid.text[base + previous] == null || previousText === "" || blank(previousText)) {
+      break;
+    }
+    from = previous;
+  }
+  let to = graphemeEnd(frame, y, origin);
+  while (to + 1 < frame.width) {
+    const nextText = frame.chars[base + to + 1];
+    if (nextText === "") {
+      to += 1;
+      continue;
+    }
+    if (grid.text[base + to + 1] == null || blank(nextText)) {
+      break;
+    }
+    to = graphemeEnd(frame, y, to + 1);
+  }
+  return selectionBetween({ x: from, y }, { x: to, y });
+}
+
+/**
+ * The line under a cell: the selectable span of that row.
+ *
+ * The same span a drag across the row would take, including the gap between
+ * two pieces of text and excluding the blanks past either end. A press that
+ * is not on selectable text has no line to widen to.
+ */
+export function lineAt(frame: Frame, grid: HitGrid, x: number, y: number): Selection | null {
+  if (y < 0 || y >= frame.height || x < 0 || x >= frame.width) {
+    return null;
+  }
+  if (grid.text[y * frame.width + graphemeStart(frame, y, x)] == null) {
+    return null;
+  }
+  const base = y * frame.width;
+  let from = -1;
+  let to = -1;
+  for (let column = 0; column < frame.width; column += 1) {
+    if (grid.text[base + column] != null) {
+      if (from < 0) {
+        from = column;
+      }
+      to = column;
+    }
+  }
+  if (from < 0 || to < 0) {
+    return null;
+  }
+  from = graphemeStart(frame, y, from);
+  to = graphemeEnd(frame, y, to);
+  return selectionBetween({ x: from, y }, { x: to, y });
 }
 
 function readColor(

@@ -735,11 +735,14 @@ does. A box that means its own thing by a drag — a splitter, a canvas, a slide
 <Box id="splitter" onMouseDown={(event) => event.preventDefault()} onMouseDrag={resize} />
 ```
 
-What is not here is OpenTUI's repeated-press gestures: a second press does not
-select the word under the pointer and a third does not select the line. There
-is one selection behaviour rather than three, so there is no `behavior` to
-report, and that is [#314](https://github.com/ubugeeei-prod/uf/issues/314) as
-well.
+**A second press selects the word, and a third selects the line.** The presses
+have to land on selectable text, within half a second, with no drag between
+them. The word is the run of non-blank text around the pointer, punctuation
+included, and it stops at a blank or at a cell that is not text. The line is
+that row's selectable span, the gap between two pieces of text included. A
+press on a blank stays a click, and a fourth press is a click again, which
+clears the line. There is still no `behavior` to report: the three presses are
+the gesture, not a choice of one.
 
 ## Terminals that cannot do what yours can
 
@@ -833,9 +836,8 @@ audio, `Timeline` — are not implemented. They are
 rather than present as functions that throw: `uf inspect` reports nine
 components because there are nine.
 
-Two smaller gaps are on the same issue. The repeated-press gestures that widen
-a text selection to a word or a line are absent, and so is wrapping or
-positioning inside a `ScrollBox`.
+One smaller gap is on the same issue: wrapping or positioning inside a
+`ScrollBox`.
 
 Nor does uf's own CLI draw through this yet. `uf` is a Rust binary and this is
 JavaScript, and the two cannot meet without either a native bridge uf does not
