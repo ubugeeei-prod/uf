@@ -310,6 +310,17 @@ export type ScrollIndex = {
   plain: boolean,
   /** Children taken out of the column, in tree order. Empty when `plain`. */
   absolute: Array<number>,
+  /**
+   * Children whose vertical relative offset can move them into the window
+   * from outside the column's range. Built with the stack, so a later scroll
+   * reads the list instead of every child. Empty on a log.
+   */
+  nudged: Array<number>,
+  /**
+   * Children laid out this frame that sit outside the painter's range,
+   * because a relative offset pulled them in. Replaced every frame.
+   */
+  also: Array<number>,
   /** Horizontal start of a wrapped child, inside the content. Empty in a column. */
   xs: Array<number>,
   /** Width of a wrapped child. Empty in a column. */
@@ -1287,7 +1298,10 @@ function layoutAbsolute(parent: LayoutNode, child: LayoutNode, block: Containing
  * child that grew to fill a viewport it is meant to scroll past is a child
  * whose height depends on where it has been scrolled to. Margins do apply, and
  * for the opposite reason — they are a fixed number of cells around a child,
- * so they say the same thing at every offset.
+ * so they say the same thing at every offset. An `auto` margin is not one of
+ * those, and inside a scrolling box it stays zero, wrap included: sharing
+ * what a row has left over is the flex path, and a scrolling box does not
+ * run it.
  *
  * # What this costs, exactly
  *
@@ -1299,14 +1313,20 @@ function layoutAbsolute(parent: LayoutNode, child: LayoutNode, block: Containing
  *
  * Only the children that intersect the window are **laid out**, and the
  * painter is given their range rather than a flag per child, so the rest get
- * no position, no size, no walk into their subtrees and no visit at all. What
+ * no position, no size, no walk into their subtrees and no visit at all. A
+ * plain column finds that range with a binary search. A wrapping box walks
+ * its children to find the rows, because a shared row is not a column and
+ * `wrap-reverse` is not ordered by index; a log does not wrap. A relative
+ * offset that can pull a child into the window is remembered on the stack,
+ * and a later frame reads that list rather than the whole column. What
  * remains proportional to the number of children is the stack of heights, and
  * {@link ScrollIndex} rebuilds only the part of it that changed.
  *
- * So moving the window over ten thousand rows touches the rows in the window
- * and nothing else, whatever the other nine thousand nine hundred and
- * seventy-six are — which is the property the whole component exists for, and
- * the reason this is not `overflow: "hidden"` with a margin on top.
+ * So moving the window over ten thousand rows of a plain column touches the
+ * rows in the window and nothing else, whatever the other nine thousand nine
+ * hundred and seventy-six are — which is the property the whole component
+ * exists for, and the reason this is not `overflow: "hidden"` with a margin
+ * on top.
  */
 function layoutScroll(
   node  : LayoutNode,
@@ -1329,11 +1349,48 @@ function layoutScroll(
   // reserved by adding one to its right padding.
   node.scrollBarColumn = x + width;
 
+  // Where a column child is drawn, before its relative offset. A written
+  // width is the width it gets. A written height and a ratio is the other
+  // side: the window's width is not a size the child asked for. `min` and
+  // `max` apply to that transferred width, and then the window still wins,
+  // because a scrolling box has no horizontal scroll.
+  const columnOrigin = (child: LayoutNode): [number, number] => {
+    const [, marginRight, , marginLeft] = fixedMargins(margin(child.style));
+    const available = Math.max(0, width - marginLeft - marginRight);
+    const writtenWidth = resolve(child.style.width, width);
+    const ratio = aspectOf(child.style);
+    const writtenHeight = resolve(child.style.height, height);
+    const transferred =
+      writtenWidth == null && ratio != null && writtenHeight != null
+        ? clampDimension(
+            fromHeight(writtenHeight, ratio),
+            child.style.minWidth,
+            child.style.maxWidth,
+            width,
+          )
+        : null;
+    return [x + marginLeft, Math.min(available, writtenWidth ?? transferred ?? available)];
+  };
+  const placeChild = (index: number, childX: number, childWidth: number) => {
+    const child = children[index];
+    const [shiftX, shiftY] = relativeShift(child.style, width, height);
+    layout(
+      child,
+      childX + shiftX,
+      y + stack.tops[index] - offset + shiftY,
+      childWidth,
+      stack.heights[index],
+      block,
+    );
+  };
+
   if (stack.mode === 0) {
     // The bottom of a child's border box only ever moves down the list, so the
     // first child the window reaches can be found without looking at the ones
     // above it. This is the step that would otherwise make the offset — the one
     // thing about a scrolling box that changes every frame — cost the content.
+    // The search is the unshifted column. A relative offset that crosses the
+    // edge is `stack.nudged`, below, and that list is empty on a log.
     const first = firstVisible(stack, offset);
     let count = 0;
     for (let index = first; index < children.length; index += 1) {
@@ -1348,35 +1405,8 @@ function layoutScroll(
         count += 1;
         continue;
       }
-      const [, marginRight, , marginLeft] = fixedMargins(margin(child.style));
-      const available = Math.max(0, width - marginLeft - marginRight);
-      // A width the child wrote is the width it gets. A height it wrote, and a
-      // ratio, is the other side: the window's width is not a size the child
-      // asked for. `min` and `max` apply to that transferred width, and then
-      // the window still wins, because a scrolling box has no horizontal
-      // scroll. A width the child wrote is not clamped here.
-      const writtenWidth = resolve(child.style.width, width);
-      const ratio = aspectOf(child.style);
-      const writtenHeight = resolve(child.style.height, height);
-      const transferred =
-        writtenWidth == null && ratio != null && writtenHeight != null
-          ? clampDimension(
-              fromHeight(writtenHeight, ratio),
-              child.style.minWidth,
-              child.style.maxWidth,
-              width,
-            )
-          : null;
-      const childWidth = Math.min(available, writtenWidth ?? transferred ?? available);
-      const [shiftX, shiftY] = relativeShift(child.style, width, height);
-      layout(
-        child,
-        x + marginLeft + shiftX,
-        y + top - offset + shiftY,
-        childWidth,
-        stack.heights[index],
-        block,
-      );
+      const [childX, childWidth] = columnOrigin(child);
+      placeChild(index, childX, childWidth);
       count += 1;
     }
     node.scrollFirst = first;
@@ -1404,33 +1434,50 @@ function layoutScroll(
       node.scrollFirst = 0;
       node.scrollCount = 0;
     } else {
+      // Every child of a visible row, including one whose own box misses the
+      // window. Leaving it unplaced would paint wherever the previous frame
+      // put it, which is how a short sibling of a tall one comes back onto
+      // the screen after it has scrolled away.
       for (let index = first; index <= last; index += 1) {
         const child = children[index];
         if (isAbsolute(child)) {
           continue;
         }
-        const top = stack.tops[index];
-        if (top - offset >= height || top + stack.heights[index] <= offset) {
-          continue;
-        }
-        const [shiftX, shiftY] = relativeShift(child.style, width, height);
-        layout(
-          child,
-          x + stack.xs[index] + shiftX,
-          y + top - offset + shiftY,
-          stack.widths[index],
-          stack.heights[index],
-          block,
-        );
+        placeChild(index, x + stack.xs[index], stack.widths[index]);
       }
       node.scrollFirst = first;
       node.scrollCount = last - first + 1;
     }
   }
 
+  // A relative offset can pull a child into the window from outside the range
+  // the column's search, or the wrap's span, just decided. The list was built
+  // with the stack. Children already in the range were placed above.
+  const also: Array<number> = [];
+  const rangeStart = node.scrollFirst;
+  const rangeEnd = rangeStart + node.scrollCount;
+  for (const index of stack.nudged) {
+    if (node.scrollCount > 0 && index >= rangeStart && index < rangeEnd) {
+      continue;
+    }
+    const shiftY = relativeShift(children[index].style, width, height)[1];
+    const top = stack.tops[index] + shiftY;
+    if (top + stack.heights[index] <= offset || top >= offset + height) {
+      continue;
+    }
+    if (stack.mode === 0) {
+      const [childX, childWidth] = columnOrigin(children[index]);
+      placeChild(index, childX, childWidth);
+    } else {
+      placeChild(index, x + stack.xs[index], stack.widths[index]);
+    }
+    also.push(index);
+  }
+  stack.also = also;
+
   // Out of the column, and against this box, so a label stays where it was
-  // written while the rows move. Painted after the rows, which is what puts
-  // it on top of them.
+  // written while the rows move. Painted with the rows in `zIndex` order, and
+  // after them when nobody set one, which is what puts the label on top.
   for (const index of stack.absolute) {
     layoutAbsolute(node, children[index], block);
   }
@@ -1496,6 +1543,8 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
       columnGap,
       plain   : true,
       absolute: [],
+      nudged  : [],
+      also    : [],
       xs      : [],
       widths  : [],
       from    : 0,
@@ -1524,6 +1573,7 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
     stack.xs.length = children.length;
     stack.widths.length = children.length;
     stack.absolute = stack.absolute.filter((index) => index < children.length);
+    stack.nudged = stack.nudged.filter((index) => index < children.length);
     stack.from = Math.min(stack.from, children.length);
   }
 
@@ -1531,6 +1581,8 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
     stack.content = 0;
     stack.from = 0;
     stack.absolute = [];
+    stack.nudged = [];
+    stack.also = [];
     stack.plain = true;
     return stack;
   }
@@ -1571,12 +1623,14 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
     }
     if (stack.from === 0) {
       stack.absolute = [];
+      stack.nudged = [];
       stack.plain = true;
     } else {
       // Read before the callback. `stack` is a `let` refined past null, and
       // the callback does not keep that refinement.
       const from = stack.from;
       stack.absolute = stack.absolute.filter((index) => index < from);
+      stack.nudged = stack.nudged.filter((index) => index < from);
     }
     for (let index = stack.from; index < children.length; index += 1) {
       const child = children[index];
@@ -1586,6 +1640,9 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
         stack.tops[index] = cursor;
         stack.heights[index] = 0;
         continue;
+      }
+      if (relativeShift(child.style, width, height)[1] !== 0) {
+        stack.nudged.push(index);
       }
       const [marginTop, marginRight, marginBottom, marginLeft] = fixedMargins(margin(child.style));
       const available = Math.max(0, width - marginLeft - marginRight);
@@ -1634,6 +1691,7 @@ function fillWrapped(node: LayoutNode, stack: ScrollIndex, width: number, height
   const rowGap = stack.gap;
   const unbounded = Number.MAX_SAFE_INTEGER;
   stack.absolute = [];
+  stack.nudged = [];
   stack.plain = true;
   stack.xs = [];
   stack.widths = [];
@@ -1658,16 +1716,56 @@ function fillWrapped(node: LayoutNode, stack: ScrollIndex, width: number, height
       stack.widths[index] = 0;
       continue;
     }
+    if (relativeShift(child.style, width, height)[1] !== 0) {
+      stack.nudged.push(index);
+    }
     const [top, right, bottom, left] = fixedMargins(margin(child.style));
     const available = Math.max(0, width - left - right);
-    const writtenWidth = resolve(child.style.width, width);
-    const offered = Math.min(available, writtenWidth ?? available);
-    const size = intrinsicSize(child, offered, unbounded);
-    const childWidth = Math.min(available, writtenWidth ?? size.width);
+    // One basis. Resolving a percentage here and again inside `intrinsicSize`
+    // would measure the child at a fraction of the width it is laid out at.
+    // A written height is the viewport's, not `unbounded`: asking the measure
+    // to resolve a percentage height against an unbounded offer is how a
+    // ratio turns one child into a row of its own.
+    const writtenWidth = resolve(child.style.width, available);
     const writtenHeight = resolve(child.style.height, height);
-    const childHeight =
-      writtenHeight ??
-      (childWidth === offered ? size.height : intrinsicSize(child, childWidth, unbounded).height);
+    const ratio = aspectOf(child.style);
+    const transferred =
+      writtenWidth == null && ratio != null && writtenHeight != null
+        ? clampDimension(
+            fromHeight(writtenHeight, ratio),
+            child.style.minWidth,
+            child.style.maxWidth,
+            available,
+          )
+        : null;
+    const decided = writtenWidth ?? transferred;
+    let childWidth = 0;
+    let childHeight = 0;
+    if (writtenHeight != null && decided != null) {
+      childWidth = Math.min(available, decided);
+      childHeight = writtenHeight;
+    } else if (writtenWidth != null) {
+      childWidth = Math.min(available, writtenWidth);
+      childHeight = intrinsicSize(child, available, unbounded).height;
+    } else if (writtenHeight != null) {
+      // Width from the content. The ratio is unread here: with a height and
+      // no width it already transferred above, and this branch is the one
+      // where it did not.
+      const size = measureIntrinsic(child, available, height, true);
+      childWidth = Math.min(available, size.width);
+      childHeight = writtenHeight;
+    } else if (ratio != null) {
+      // Neither side written. The column skips the ratio for the same reason:
+      // the width the window assigns is not a side the child wrote.
+      const size = measureIntrinsic(child, available, unbounded, true);
+      childWidth = Math.min(available, size.width);
+      childHeight = size.height;
+    } else {
+      const size = intrinsicSize(child, available, unbounded);
+      childWidth = Math.min(available, size.width);
+      childHeight =
+        childWidth === available ? size.height : intrinsicSize(child, childWidth, unbounded).height;
+    }
     flow.push(index);
     outer.push(childWidth + left + right);
     innerW[index] = childWidth;

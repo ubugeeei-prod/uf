@@ -1267,6 +1267,34 @@ describe("a window onto more than fits", () => {
     handle.stop();
   });
 
+  it("lets a zIndex put a row over the absolute child, and the other way", () => {
+    // The pin is painted after the rows when nobody says, which is why `z`
+    // covers the first cell. A lower `zIndex` is the row's again.
+    const over = testRender(
+      <ScrollBox height={1} width={4} scrollbar={false}>
+        <Text wrap="none">aaaa</Text>
+        <Text position="absolute" top={0} left={0}>
+          z
+        </Text>
+      </ScrollBox>,
+      { width: 4, height: 1 },
+    );
+    expect(rows(over.frame())).toEqual(["zaaa"]);
+    over.stop();
+
+    const under = testRender(
+      <ScrollBox height={1} width={4} scrollbar={false}>
+        <Text wrap="none">aaaa</Text>
+        <Text position="absolute" top={0} left={0} zIndex={-1}>
+          z
+        </Text>
+      </ScrollBox>,
+      { width: 4, height: 1 },
+    );
+    expect(rows(under.frame())).toEqual(["aaaa"]);
+    under.stop();
+  });
+
   it("nudges a row by a relative offset", () => {
     const handle = testRender(
       <ScrollBox height={2} width={8} scrollbar={false}>
@@ -1713,6 +1741,73 @@ describe("a window costs the window", () => {
     expect(children[1].x).toBe(4);
     expect(children[0].y).toBe(0);
     expect(children[2].y).toBe(1);
+  });
+
+  it("pulls a relative child into the window from the row below it", () => {
+    // The column's search sees the third row starting at 2, which is past a
+    // window of one row at offset 1. `top: -1` draws it on that row anyway.
+    const children = [
+      node({}, [], 1),
+      node({}, [], 1),
+      node({ position: "relative", top: -1 }, [], 1),
+    ];
+    const box = node({ overflow: "scroll", scrollTop: 1 }, children);
+    layout(box, 0, 0, 8, 1);
+    expect(children[1].y).toBe(0);
+    expect(children[2].y).toBe(0);
+    expect(children[0].y).toBe(-1);
+  });
+
+  it("places a short sibling of a visible wrapped row, even off the window", () => {
+    // The row is three cells because of the tall child. Offset 2 shows its
+    // last cell, which the short child does not reach. It is still placed:
+    // the painter walks the whole row, and an unplaced child would be drawn
+    // at wherever the previous frame left it.
+    const left = node({ width: 2 }, []);
+    left.measure = () => ({ width: 2, height: 3 });
+    const short = node({ width: 2 }, []);
+    short.measure = () => ({ width: 2, height: 1 });
+    const right = node({ width: 2 }, []);
+    right.measure = () => ({ width: 2, height: 3 });
+    // One row: the two tall children reach the window's only cell, and the
+    // short one between them does not. It is still inside the row's span.
+    const box = node({ overflow: "scroll", scrollTop: 2, flexWrap: "wrap", columnGap: 1 }, [
+      left,
+      short,
+      right,
+    ]);
+    layout(box, 0, 0, 8, 1);
+    expect(left.y).toBe(-2);
+    expect(right.y).toBe(-2);
+    expect(short.y).toBe(-2);
+  });
+
+  it("measures a percentage width once inside a wrapped row", () => {
+    const child = node({ width: "50%" }, []);
+    child.measure = (offered) => ({ width: Math.min(4, offered), height: offered >= 4 ? 1 : 2 });
+    const box = node({ overflow: "scroll", flexWrap: "wrap" }, [child]);
+    layout(box, 0, 0, 10, 3);
+    expect(child.width).toBe(5);
+    expect(child.height).toBe(1);
+  });
+
+  it("resolves a percentage height against the window before the ratio", () => {
+    const child = node({ height: "50%", aspectRatio: 1 }, []);
+    child.measure = () => ({ width: 1, height: 1 });
+    const box = node({ overflow: "scroll", flexWrap: "wrap" }, [child]);
+    layout(box, 0, 0, 10, 4);
+    expect(child.height).toBe(2);
+    expect(child.width).toBe(2);
+  });
+
+  it("does not grow a wrapped child for a ratio with neither side written", () => {
+    const child = node({ aspectRatio: 1 }, []);
+    child.measure = () => ({ width: 4, height: 1 });
+    const box = node({ overflow: "scroll", flexWrap: "wrap" }, [child]);
+    layout(box, 0, 0, 8, 6);
+    expect(box.scrollHeight).toBe(1);
+    expect(child.height).toBe(1);
+    expect(child.width).toBe(4);
   });
 });
 
