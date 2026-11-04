@@ -1573,7 +1573,10 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
       stack.absolute = [];
       stack.plain = true;
     } else {
-      stack.absolute = stack.absolute.filter((index) => index < stack.from);
+      // Read before the callback. `stack` is a `let` refined past null, and
+      // the callback does not keep that refinement.
+      const from = stack.from;
+      stack.absolute = stack.absolute.filter((index) => index < from);
     }
     for (let index = stack.from; index < children.length; index += 1) {
       const child = children[index];
