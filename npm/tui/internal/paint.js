@@ -320,7 +320,19 @@ function paintBox(
     // hundred and seventy-six of them are elsewhere.
     const end = node.scrollFirst + node.scrollCount;
     for (let index = node.scrollFirst; index < end; index += 1) {
-      paint(node.children[index], frame, capabilities, childClip, hits, selectable);
+      const child = node.children[index];
+      // Placed against the box rather than in the column, and painted with
+      // the others taken out of it, after this loop.
+      if (child.style.position === "absolute") {
+        continue;
+      }
+      paint(child, frame, capabilities, childClip, hits, selectable);
+    }
+    const pinned = node.scrollIndex?.absolute;
+    if (pinned != null) {
+      for (const index of pinned) {
+        paint(node.children[index], frame, capabilities, childClip, hits, selectable);
+      }
     }
   } else {
     for (const child of paintOrder(node.children)) {

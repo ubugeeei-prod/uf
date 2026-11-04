@@ -143,9 +143,9 @@ pub enum TuiLayoutEngine {
     ///
     /// It was `"flexbox-yoga-compatible"`, which claimed more than was true
     /// then and is still not quite true now: a terminal resolves whole columns
-    /// where Yoga resolves fractional pixels, and a
-    /// scrolling box reads neither `position` nor `flexWrap`
-    /// (ubugeeei-prod/uf#314). What *is* compatible is the part a caller
+    /// where Yoga resolves fractional pixels. A scrolling box reads
+    /// `flexWrap` and `position`; the rich-content components do not exist
+    /// yet (ubugeeei-prod/uf#314). What *is* compatible is the part a caller
     /// writes: the property names, the defaults — a `flexDirection` that starts
     /// at `column`, an `alignItems` that starts at `stretch`, an `alignContent`
     /// that starts at `flex-start`, and a `flexShrink` that starts at zero for
@@ -205,11 +205,11 @@ pub enum TuiFeature {
     /// `alignContent`, `auto` margins on both axes, and `position` in all
     /// three of Yoga 3's values: an absolute box is placed by its offsets
     /// against the padding box of its nearest ancestor that is not `static`,
-    /// or the screen. What is not behind the word:
-    /// wrapping or positioning inside a scrolling box, whose children are one
-    /// column. An absolute box is also still drawn, clipped and hit with its
-    /// parent in the tree, as it is in OpenTUI — not lifted out to its
-    /// containing block the way a browser would.
+    /// or the screen. A scrolling box is that column, and it also wraps and
+    /// takes a child out of the column. An absolute box is still drawn,
+    /// clipped and hit with its parent in the tree, as it is in OpenTUI —
+    /// not lifted out to its containing block the way a browser would. What
+    /// is not behind the word is the rich content (ubugeeei-prod/uf#314).
     Flexbox,
     /// Cell-diff renderer updates.
     CellDiff,

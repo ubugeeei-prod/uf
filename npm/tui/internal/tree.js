@@ -479,8 +479,9 @@ export function applyProps(node: TuiNode, props: TuiProps): void {
  *
  * `null` — the default, and what a change to the node's *own* props or text
  * means — leaves the node's own stack alone, because a scrolling box's props
- * cannot move its children except through the width, the viewport height and
- * the gap it gives them, and all three are part of what the stack is keyed on.
+ * cannot move its children except through the width, the viewport height, the
+ * gap, the column gap and the wrap it gives them, and all of those are part
+ * of what the stack is keyed on.
  * That exemption is not a nicety: `scrollTop` is a prop on that box, so
  * without it every scroll would invalidate the very thing that makes scrolling
  * cheap, and a hundred thousand rows would rebuild their stack on each notch.

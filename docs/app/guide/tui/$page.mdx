@@ -121,12 +121,15 @@ which is also where the mouse finds it. And
 `zIndex` decides which of two overlapping siblings is on top, for the mouse as
 well as for the eye; siblings that do not say stack in tree order.
 
-A `ScrollBox` reads neither `flexWrap` nor `position`: its children are one
-column whose heights it keeps between frames, which is what makes it cost its
-window, and a child out of that column would be a second answer to which rows
-are showing. A child that writes a width or a height and an `aspectRatio` does
-get the other side from the ratio. A ratio with neither side written does not:
-the window assigns the width, and the ratio only reads a size that was written.
+A `ScrollBox` is that column, and it keeps each child's height between frames,
+which is what makes a column cost its window. `flexWrap` lays the children in
+rows instead, and the window scrolls those rows; `"wrap-reverse"` packs the
+rows against the bottom. `position="absolute"` takes a child out of the column
+and places it against the box, so it stays while the rows move.
+`position="relative"` nudges a child off the cell the column gave it. A child
+that writes a width or a height and an `aspectRatio` does get the other side
+from the ratio. A ratio with neither side written does not: the window assigns
+the width, and the ratio only reads a size that was written.
 
 `aspectRatio` is width divided by height, of the border box, in whole cells.
 One written side decides the other, rounded to the nearest cell. With neither
@@ -836,9 +839,6 @@ audio, `Timeline` — are not implemented. They are
 [#314](https://github.com/ubugeeei-prod/uf/issues/314), and they are *absent*
 rather than present as functions that throw: `uf inspect` reports nine
 components because there are nine.
-
-One smaller gap is on the same issue: wrapping or positioning inside a
-`ScrollBox`.
 
 Nor does uf's own CLI draw through this yet. `uf` is a Rust binary and this is
 JavaScript, and the two cannot meet without either a native bridge uf does not

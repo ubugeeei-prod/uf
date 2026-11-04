@@ -1247,6 +1247,67 @@ describe("a window onto more than fits", () => {
     expect(rows(handle.frame())).toEqual(["two     ", "        "]);
     handle.stop();
   });
+
+  it("pins an absolute child to the window and does not give it a row", () => {
+    // Scrolled by one, so the column shows `bbbb` and `cccc`. `z` is out of
+    // that column: it stays on the first row of the window, at the right,
+    // and the three lines are still three lines.
+    const handle = testRender(
+      <ScrollBox height={2} width={8} scrollbar={false} scrollTop={1}>
+        <Text wrap="none">aaaa</Text>
+        <Text position="absolute" top={0} right={0}>
+          z
+        </Text>
+        <Text wrap="none">bbbb</Text>
+        <Text wrap="none">cccc</Text>
+      </ScrollBox>,
+      { width: 8, height: 2 },
+    );
+    expect(rows(handle.frame())).toEqual(["bbbb   z", "cccc    "]);
+    handle.stop();
+  });
+
+  it("nudges a row by a relative offset", () => {
+    const handle = testRender(
+      <ScrollBox height={2} width={8} scrollbar={false}>
+        <Text position="relative" left={2} wrap="none">
+          aa
+        </Text>
+        <Text wrap="none">bb</Text>
+      </ScrollBox>,
+      { width: 8, height: 2 },
+    );
+    expect(rows(handle.frame())).toEqual(["  aa    ", "bb      "]);
+    handle.stop();
+  });
+
+  it("wraps children onto shared rows and scrolls those rows", () => {
+    const handle = testRender(
+      <ScrollBox height={1} width={7} scrollbar={false} flexWrap="wrap" columnGap={1} scrollTop={1}>
+        <Text>aaa</Text>
+        <Text>bbb</Text>
+        <Text>ccc</Text>
+        <Text>ddd</Text>
+      </ScrollBox>,
+      { width: 7, height: 1 },
+    );
+    // `aaa` and `bbb` fill the first row. The offset drops that row.
+    expect(rows(handle.frame())).toEqual(["ccc ddd"]);
+    handle.stop();
+  });
+
+  it("packs wrapped rows against the bottom", () => {
+    const handle = testRender(
+      <ScrollBox height={3} width={7} scrollbar={false} flexWrap="wrap-reverse" columnGap={1}>
+        <Text>aaa</Text>
+        <Text>bbb</Text>
+        <Text>ccc</Text>
+      </ScrollBox>,
+      { width: 7, height: 3 },
+    );
+    expect(rows(handle.frame())).toEqual(["       ", "ccc    ", "aaa bbb"]);
+    handle.stop();
+  });
 });
 
 describe("a bar that says where the window is", () => {
@@ -1609,6 +1670,49 @@ describe("a window costs the window", () => {
     expect(measured).toBe(1);
     expect(box.scrollHeight).toBe(5);
     expect(children[1].y).toBe(3);
+  });
+
+  it("takes an absolute child out of the column and still skips the log", () => {
+    const children = Array.from({ length: 100 }, () => node({}, [], 1));
+    children.splice(2, 0, node({ position: "absolute", top: 0, right: 0 }, [], 1));
+    const box = node({ overflow: "scroll", scrollTop: 0 }, children);
+
+    measured = 0;
+    layout(box, 0, 0, 20, 4);
+
+    // One hundred rows, not one hundred and one: the absolute child is not a
+    // row. The window is four of those rows, plus the child that stays put.
+    expect(box.scrollHeight).toBe(100);
+    expect(placed(box)).toEqual([0, 1, 2, 3, 4]);
+    expect(children[2].x).toBe(14);
+    expect(children[2].y).toBe(0);
+    expect(children[5].y).toBe(-1);
+
+    measured = 0;
+    scrollTo(box, 50);
+    layout(box, 0, 0, 20, 4);
+    expect(measured).toBe(0);
+    expect(placed(box)).toContain(2);
+    expect(children[2].y).toBe(0);
+    expect(placed(box).filter((index) => index !== 2)).toEqual([51, 52, 53, 54]);
+  });
+
+  it("puts two leaves on one row when the box wraps", () => {
+    const children = [
+      node({ width: 3 }, [], 1),
+      node({ width: 3 }, [], 1),
+      node({ width: 3 }, [], 1),
+    ];
+    const box = node(
+      { overflow: "scroll", scrollTop: 0, flexWrap: "wrap", columnGap: 1 },
+      children,
+    );
+    layout(box, 0, 0, 7, 2);
+    expect(box.scrollHeight).toBe(2);
+    expect(children[0].x).toBe(0);
+    expect(children[1].x).toBe(4);
+    expect(children[0].y).toBe(0);
+    expect(children[2].y).toBe(1);
   });
 });
 
