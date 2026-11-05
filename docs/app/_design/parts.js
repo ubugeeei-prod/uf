@@ -12,6 +12,7 @@ import { Link, useRoute } from "@uniflowed/router";
 import { goals } from "./goals.js";
 import type { Goal } from "./goals.js";
 import { NavOverflow } from "./nav-overflow.js";
+import { ManualNavSections } from "./nav-sections.js";
 import { currentHref, featuredIn, openSectionFor, readinessFor, sections } from "./nav.js";
 import type { Entry, Section } from "./nav.js";
 
@@ -54,13 +55,19 @@ export component Command(children: string) {
 /**
  * The manual's sidebar.
  *
- * Every section is a disclosure, and only the one the open page is in starts
- * open. Listing all sixty-odd pages at once made a sidebar several screens
- * tall whose bottom edge looked like its end; closed, the other sections are a
- * heading and a page count each, so the whole manual's shape fits on one
- * screen and the section a reader is in has the room. `<details>` rather than
- * a script: it opens and closes before hydration, without JavaScript, and a
- * screen reader already knows what it is.
+ * Every section is a disclosure. The one the open page is in starts open, and
+ * a section a reader opens stays open when they follow a link: the next page
+ * adds its own section rather than closing the ones already open. That set is
+ * kept for the tab, so crossing from the guide into the reference does not
+ * fold it back up. Remembering it reads `sessionStorage`, so the list lives in
+ * `nav-sections.js`, a client module; this one stays a server module. Without
+ * JavaScript only the current section is open, which is also what the first
+ * paint is, so the marked link is visible before hydration. `<details>` rather
+ * than a script for the disclosure itself: it opens and closes without
+ * JavaScript, and a screen reader already knows what it is. Listing every
+ * section's pages at once made a sidebar several screens
+ * tall whose bottom edge looked like its end; a closed section is a heading
+ * and a page count.
  *
  * The section's landing page is the first link inside it, so opening a section
  * and following a link are two different gestures rather than one heading
@@ -75,41 +82,14 @@ export component Command(children: string) {
 export component ManualNav() {
   const { pathname } = useRoute();
   const marked = currentHref(pathname);
-  const open = openSectionFor(pathname);
+  const current = openSectionFor(pathname);
+  const currentTitle = current == null ? null : current.title;
 
   return (
     <nav className="manual-nav" id="manual-nav" aria-label="Documentation">
       <h2 className="manual-nav-title">All pages</h2>
       <div className="manual-nav-list" id="manual-nav-list">
-        {sections.map((section) => {
-          const links = [section.landing, ...section.pages];
-          return (
-            <details
-              className="manual-nav-section"
-              key={section.title}
-              open={section === open ? true : undefined}
-            >
-              <summary>
-                <h2>{section.title}</h2>
-                <span className="manual-nav-count">
-                  {links.length}
-                  <span className="visually-hidden">{links.length === 1 ? " page" : " pages"}</span>
-                </span>
-              </summary>
-              <ul>
-                {links.map((page) => (
-                  <li key={page.href}>
-                    <Link to={page.href} aria-current={page.href === marked ? "page" : undefined}>
-                      {page === section.landing && page.title === section.title
-                        ? "Overview"
-                        : page.title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          );
-        })}
+        <ManualNavSections currentTitle={currentTitle} marked={marked} />
       </div>
       <NavOverflow path={pathname} />
     </nav>

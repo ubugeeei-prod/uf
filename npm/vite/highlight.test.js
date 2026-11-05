@@ -384,6 +384,27 @@ describe("Flow's syntax shown to the JavaScript grammar", () => {
     }
   });
 
+  it("ends a match assignment before the body, so the body is a block", () => {
+    // `const label = match (status) {` is an assignment to the grammar and the
+    // `{` opens an object. The next arm then arrives as one token. The space
+    // before the brace becomes a semicolon the reader never sees.
+    expect(shimFlowGrammar("const label = match (status) {\n").code).toBe(
+      "const label = match (status);{\n",
+    );
+    expect(shimFlowGrammar("return match (error) {\n").code).toBe("return match (error);{\n");
+    expect(shimFlowGrammar("match (x){\n").code).toBe("match (x);{\n");
+    expect(shimFlowGrammar("const label = match (\n  status\n) {\n").code).toBe(
+      "const label = match (\n  status\n);{\n",
+    );
+  });
+
+  it("does not rewrite a call or a function named match", () => {
+    expect(shimFlowGrammar("text.match(re);\n").code).toBe("text.match(re);\n");
+    expect(shimFlowGrammar("function match(re) {\n  return re;\n}\n").code).toBe(
+      "function match(re) {\n  return re;\n}\n",
+    );
+  });
+
   it("rewrites the braces of an exact object type", () => {
     expect(shimFlowGrammar("type P = {| +name: string |};\n").code).toBe(
       "type P = {  +name: string  };\n",

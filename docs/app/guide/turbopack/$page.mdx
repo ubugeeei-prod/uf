@@ -14,11 +14,11 @@ the bundler. Vite stays the bundler of `uf dev` and `uf build`. The two are
 not the same integration, and this page is only the first one.
 </div>
 
-**What you will be able to do:** compile Flow, the React Compiler and StyleX in
+Compile Flow, the React Compiler and StyleX in
 a Next.js 16 app, with `next dev` and `next build`, and with `next build
 --webpack` when that is how the app builds.
 
-**What you need first:** [uf installed](/guide/install), a Next.js 16 app, and
+[uf installed](/guide/install), a Next.js 16 app, and
 a `uf.config.js` at the app root. Next.js 16 runs Turbopack unless the command
 passes `--webpack`. The loader starts `uf transform` there, and that command
 reads the config. An app that is not otherwise a uf app can leave it empty:
