@@ -3,13 +3,7 @@
 
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
-import {
-  graphql,
-  useFragment,
-  useMutation,
-  useRelayEnvironment,
-  fetchQuery,
-} from "@uniflowed/relay";
+import { graphql, useFragment, useMutation } from "@uniflowed/relay";
 import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
 import { props, stylex } from "@uniflowed/stylex";
 
@@ -17,7 +11,6 @@ import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
 import { UserAvatar } from "../_shared/avatar.client.js";
 import { styles as uiStyles } from "../_shared/ui.js";
-import timelineQuery from "./__generated__/SnsTimelineQuery.graphql.js";
 import { TOPICS, topicLabel, type FeedFilter } from "../_shared/social-model.js";
 
 import type {
@@ -54,22 +47,30 @@ const createPost = graphql`
 /** Read the viewer's own preload; `guest` is the server-rendered invitation for everyone else. */
 
 export component ComposerSlot(
-  queryRef: PreloadedQueryRef<SnsComposerQuery$variables, SnsComposerQuery$data>,
-  filter  : FeedFilter,
-  guest   : React.Node,
+  queryRef   : PreloadedQueryRef<SnsComposerQuery$variables, SnsComposerQuery$data>,
+  filter     : FeedFilter,
+  guest      : React.Node,
+  onPublished: () => Promise<void>,
 ) {
   const { viewer } = useQueryFromServer(composerQuery, queryRef);
 
-  return viewer == null ? guest : <Composer viewerRef={viewer} filter={filter} />;
+  return viewer == null ? (
+    guest
+  ) : (
+    <Composer viewerRef={viewer} filter={filter} onPublished={onPublished} />
+  );
 }
 
-component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
+component Composer(
+  viewerRef  : SnsComposer_viewer$key,
+  filter     : FeedFilter,
+  onPublished: () => Promise<void>,
+) {
   const viewer                    = useFragment(composerFragment, viewerRef);
   const [commit,    pending]      = useMutation<
     SnsCreatePostMutation["variables"],
     SnsCreatePostMutation["response"],
   >(createPost);
-  const environment               = useRelayEnvironment();
   const [body,      setBody]      = useState("");
   const [topic,     setTopic]     = useState(
     match (filter.topic) {
@@ -96,16 +97,10 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
           onCompleted: () => {
             setBody("");
             setRequestId("");
-            fetchQuery(
-              environment,
-              timelineQuery,
-              {
-                topic : filter.topic,
-                search: filter.query,
-                page  : filter.page,
-              },
-              { fetchPolicy: "network-only" },
-            ).subscribe({ error: () => setError("Published. Refresh the feed to see your note.") });
+            onPublished().then(
+              () => {},
+              () => setError("Published. Refresh the feed to see your note."),
+            );
           },
         });
       }}

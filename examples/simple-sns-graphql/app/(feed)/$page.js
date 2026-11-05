@@ -13,15 +13,15 @@ import { ActionLink, LoadingState, styles as uiStyles } from "../_shared/ui.js";
 import { TOPICS, feedFilter, feedHref, topicLabel } from "../_shared/social-model.js";
 import composerQuery from "./__generated__/SnsComposerQuery.graphql.js";
 import timelineQuery from "./__generated__/SnsTimelineQuery.graphql.js";
-import { ComposerSlot } from "./composer.client.js";
 import { SearchNotes } from "./search.client.js";
-import { Timeline } from "./timeline.client.js";
+import { Feed } from "./timeline.client.js";
 
 export const dynamic = "force-dynamic";
 
 /**
  * The feed's heading, channels and URL state render on the server. The composer and the timeline
- * are separate islands: both preloads start in this pass and reveal under one boundary.
+ * share one island so a published note can refetch the list it is standing in. Both preloads still
+ * start in this pass.
  */
 
 export component Page(searchParams: SearchParams) {
@@ -79,8 +79,13 @@ export component Page(searchParams: SearchParams) {
       }
       <div {...props(styles.feedContent)}>
         <Suspense fallback={<LoadingState kind="feed" />}>
-          <ComposerSlot
-            queryRef={relay.serverPreloadQuery(composerQuery, {})}
+          <Feed
+            composerQueryRef={relay.serverPreloadQuery(composerQuery, {})}
+            timelineQueryRef={relay.serverPreloadQuery(timelineQuery, {
+              topic : filter.topic,
+              search: filter.query,
+              page  : filter.page,
+            })}
             filter={filter}
             guest={
               <div {...props(styles.signInComposer)}>
@@ -93,14 +98,6 @@ export component Page(searchParams: SearchParams) {
                 </ActionLink>
               </div>
             }
-          />
-          <Timeline
-            queryRef={relay.serverPreloadQuery(timelineQuery, {
-              topic : filter.topic,
-              search: filter.query,
-              page  : filter.page,
-            })}
-            filter={filter}
           />
         </Suspense>
       </div>

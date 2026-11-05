@@ -3,7 +3,7 @@
 
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
-import { graphql, useFragment } from "@uniflowed/relay";
+import { graphql, useFragment, useRefetchableFragment } from "@uniflowed/relay";
 import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
 import { props } from "@uniflowed/stylex";
 
@@ -17,9 +17,16 @@ import type {
   SnsThreadsQuery$data,
 } from "./__generated__/SnsThreadsQuery.graphql.js";
 import type { SnsThread_thread$key } from "./__generated__/SnsThread_thread.graphql.js";
+import type { SnsThreads_query$data } from "./__generated__/SnsThreads_query.graphql.js";
 
 const threadsQuery = graphql`
   query SnsThreadsQuery {
+    ...SnsThreads_query
+  }
+`;
+
+const threadsFragment = graphql`
+  fragment SnsThreads_query on Query @refetchable(queryName: "SnsThreadsRefetchQuery") {
     threads {
       id
       ...SnsThread_thread
@@ -38,13 +45,22 @@ const threadFragment = graphql`
   }
 `;
 
-/** The list composes fragment references; it cannot read its rows' fields. */
+/**
+ * The list composes fragment references; it cannot read its rows' fields.
+ *
+ * The fragment is refetchable so a message sent in the other pane can refresh
+ * the preview. That pane executes the generated refetch query: the two reads
+ * stream in separate boundaries, and this one does not hold the conversation.
+ */
 
 export component Threads(
   queryRef: PreloadedQueryRef<SnsThreadsQuery$variables, SnsThreadsQuery$data>,
   selected: string,
 ) {
-  const { threads } = useQueryFromServer(threadsQuery, queryRef);
+  const loaded    = useQueryFromServer(threadsQuery, queryRef);
+  const [untyped] = useRefetchableFragment(threadsFragment, loaded);
+  const data: SnsThreads_query$data = untyped;
+  const threads = data.threads;
 
   return (
     <nav {...props(uiStyles.threadList)} aria-label="Conversations">

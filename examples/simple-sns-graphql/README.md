@@ -36,8 +36,8 @@ This is a demonstration service with in-memory data. Restarting it clears accoun
 - Routes and the shared frame are server components. `$layout.js` mounts the browser's Relay provider once; headings, navigation, channels, URL state and guest prompts never enter a client bundle. A `"use client"` file exists only where the browser holds state: a mutation, a draft, a video, or records that mutations rewrite.
 - A server component calls `relay.serverPreloadQuery` beside the island that needs the data, and that island reads its reference with `useQueryFromServer`, without a duplicate initial fetch. Every preload of a route starts in the same render pass. The feed reads identity, the composer's viewer and the timeline; the inbox streams its thread list and the selected conversation into separate Suspense boundaries; login, signup and clips read nothing but the frame's identity.
 - The frame's `preloadSession()` reference feeds both of its identity islands. `SignedIn` reads the same reference to choose between two server-rendered subtrees, so the inbox and settings gate on identity without moving their layout into the browser.
-- Each island's query selects its own fields and spreads its children's fragments: timeline to post to avatar, threads to thread, conversation to message. Generated types live in the nearest `__generated__/` directory. Mutations live beside the component that commits them.
-- Relay owns optimistic reaction rollback and normalized records. Successful publishing refreshes the selected feed; private messages use a store updater. Request IDs make write retries idempotent in the backend.
+- Each island's query selects its own fields and spreads its children's fragments: timeline to post to avatar, threads to thread, conversation to message. The feed, the open conversation and the inbox list are `@refetchable` fragments. Publishing refetches the feed fragment for the topic, search and page already on screen. Sending a message appends it in the store, then refetches that conversation and the inbox preview. Generated types live in the nearest `__generated__/` directory. Mutations live beside the component that commits them.
+- Relay owns optimistic reaction rollback and normalized records. Request IDs make write retries idempotent in the backend.
 - Signing in or out starts a fresh document and Relay environment. Settings and conversations stay scoped to the authenticated backend session.
 
 ## Relay compiler and RSC
@@ -46,7 +46,7 @@ Run `uf run relay` after changing a tag or the schema. `uf run relay -- --valida
 
 The Vite integration invokes the official Relay Babel plugin after Flow lowering. It reads the application's single-project Relay config and binds `graphql` tags to artifacts. Relay 21 uses separate variables and response generic parameters for mutation hooks.
 
-RSC entry points retain upstream's `EXPERIMENTAL` suffix. This example pins 21.0.1 and uses ordinary paginated query fields, fragments and mutations. It does not use `@defer`, which upstream's RSC preload protocol does not support, or promise coverage of every experimental connection/incremental-delivery combination. See the [Relay 21 release](https://relay.dev/blog/2026/05/18/relay-21/).
+RSC entry points retain upstream's `EXPERIMENTAL` suffix. This example pins 21.0.1 and uses ordinary paginated query fields, masked fragments, `@refetchable` fragments and mutations. It does not use `@defer`, which upstream's RSC preload protocol does not support, or promise coverage of every experimental connection/incremental-delivery combination. See the [Relay 21 release](https://relay.dev/blog/2026/05/18/relay-21/).
 
 ## Styles and verification
 

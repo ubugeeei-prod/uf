@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<7d21a31c0fd5428d41d1564070702bbc>>
+ * @generated SignedSource<<2f5993eec982323b81b1d22ad069f1ae>>
  * @flow
  * @lightSyntaxTransform
  */
@@ -10,13 +10,10 @@
 
 /*::
 import type { ConcreteRequest, Query } from 'relay-runtime';
-import type { SnsThread_thread$fragmentType } from "./SnsThread_thread.graphql";
+import type { SnsThreads_query$fragmentType } from "./SnsThreads_query.graphql";
 export type SnsThreadsQuery$variables = {};
 export type SnsThreadsQuery$data = {
-  readonly threads: ReadonlyArray<{
-    readonly id: string,
-    readonly $fragmentSpreads: SnsThread_thread$fragmentType,
-  }>,
+  readonly $fragmentSpreads: SnsThreads_query$fragmentType,
 };
 export type SnsThreadsQuery = {
   response: SnsThreadsQuery$data,
@@ -40,21 +37,9 @@ return {
     "name": "SnsThreadsQuery",
     "selections": [
       {
-        "alias": null,
         "args": null,
-        "concreteType": "Thread",
-        "kind": "LinkedField",
-        "name": "threads",
-        "plural": true,
-        "selections": [
-          (v0/*:: as any*/),
-          {
-            "args": null,
-            "kind": "FragmentSpread",
-            "name": "SnsThread_thread"
-          }
-        ],
-        "storageKey": null
+        "kind": "FragmentSpread",
+        "name": "SnsThreads_query"
       }
     ],
     "type": "Query",
@@ -121,17 +106,17 @@ return {
     ]
   },
   "params": {
-    "cacheID": "5c2bf7eb8e5f38dc7a4957ecdf9a6b70",
+    "cacheID": "69720a8c048f3fa7a9ecefd66c9d89f5",
     "id": null,
     "metadata": {},
     "name": "SnsThreadsQuery",
     "operationKind": "query",
-    "text": "query SnsThreadsQuery {\n  threads {\n    id\n    ...SnsThread_thread\n  }\n}\n\nfragment SnsAvatar_user on User {\n  id\n  photo\n  avatar\n}\n\nfragment SnsThread_thread on Thread {\n  id\n  lastMessage\n  participant {\n    name\n    ...SnsAvatar_user\n    id\n  }\n}\n"
+    "text": "query SnsThreadsQuery {\n  ...SnsThreads_query\n}\n\nfragment SnsAvatar_user on User {\n  id\n  photo\n  avatar\n}\n\nfragment SnsThread_thread on Thread {\n  id\n  lastMessage\n  participant {\n    name\n    ...SnsAvatar_user\n    id\n  }\n}\n\nfragment SnsThreads_query on Query {\n  threads {\n    id\n    ...SnsThread_thread\n  }\n}\n"
   }
 };
 })();
 
-(node/*:: as any*/).hash = "efb208a9c85a4b4b59bfcdf03d3316f0";
+(node/*:: as any*/).hash = "5321cc0a5277ef7ca116f8a4576f55f0";
 
 export default ((node/*:: as any*/)/*:: as Query<
   SnsThreadsQuery$variables,
