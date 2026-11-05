@@ -24,9 +24,10 @@
 //
 // So this implements the subset a terminal uses, in whole cells, including an
 // aspect ratio: width over height of the border box, rounded to a cell, with
-// `min*` and `max*` winning. What it does *not* implement is written down at
-// the bottom of this file rather than discovered: no wrapping or positioning
-// inside a scrolling box. That is ubugeeei-prod/uf#314.
+// `min*` and `max*` winning. A scrolling box is that column, and it also
+// wraps (`flexWrap`) and takes a child out of the column (`position`). What
+// it does *not* implement is written down at the bottom of this file rather
+// than discovered. That is ubugeeei-prod/uf#314.
 //
 // # Whole cells, and where the remainder goes
 //
@@ -282,13 +283,48 @@ export type LayoutNode = {
  *
  * `tops[i]` is where child `i`'s border box starts, measured from the top of
  * the content and including every margin and gap above it; `heights[i]` is how
- * tall it is.
+ * tall it is. A child taken out of the column stores a zero height and is
+ * listed in `absolute` instead. A wrapping box also stores where that child
+ * starts across the row (`xs`) and how wide it is (`widths`); a column leaves
+ * both empty, because every child is as wide as the window gives it.
  */
 export type ScrollIndex = {
   /** The content width, viewport height and gap the stack was built for. */
   width: number,
   view : number,
   gap  : number,
+  /**
+   * `0` when the children are one column, `1` for `flexWrap: "wrap"`, `2` for
+   * `"wrap-reverse"`. Part of the key: changing it rebuilds the stack.
+   */
+  mode: number,
+  /** The gap between children that share a row. Part of the key when wrapping. */
+  columnGap: number,
+  /**
+   * Whether every child is in the column.
+   *
+   * The placement of a plain column never looks at `absolute`. A log of a
+   * hundred thousand rows is this case, and finding the window stays a binary
+   * search over the stack.
+   */
+  plain: boolean,
+  /** Children taken out of the column, in tree order. Empty when `plain`. */
+  absolute: Array<number>,
+  /**
+   * Children whose vertical relative offset can move them into the window
+   * from outside the column's range. Built with the stack, so a later scroll
+   * reads the list instead of every child. Empty on a log.
+   */
+  nudged: Array<number>,
+  /**
+   * Children laid out this frame that sit outside the painter's range,
+   * because a relative offset pulled them in. Replaced every frame.
+   */
+  also: Array<number>,
+  /** Horizontal start of a wrapped child, inside the content. Empty in a column. */
+  xs: Array<number>,
+  /** Width of a wrapped child. Empty in a column. */
+  widths: Array<number>,
   /** The first index whose height is not known to be current. */
   from   : number,
   tops   : Array<number>,
@@ -1262,7 +1298,10 @@ function layoutAbsolute(parent: LayoutNode, child: LayoutNode, block: Containing
  * child that grew to fill a viewport it is meant to scroll past is a child
  * whose height depends on where it has been scrolled to. Margins do apply, and
  * for the opposite reason — they are a fixed number of cells around a child,
- * so they say the same thing at every offset.
+ * so they say the same thing at every offset. An `auto` margin is not one of
+ * those, and inside a scrolling box it stays zero, wrap included: sharing
+ * what a row has left over is the flex path, and a scrolling box does not
+ * run it.
  *
  * # What this costs, exactly
  *
@@ -1274,14 +1313,20 @@ function layoutAbsolute(parent: LayoutNode, child: LayoutNode, block: Containing
  *
  * Only the children that intersect the window are **laid out**, and the
  * painter is given their range rather than a flag per child, so the rest get
- * no position, no size, no walk into their subtrees and no visit at all. What
+ * no position, no size, no walk into their subtrees and no visit at all. A
+ * plain column finds that range with a binary search. A wrapping box walks
+ * its children to find the rows, because a shared row is not a column and
+ * `wrap-reverse` is not ordered by index; a log does not wrap. A relative
+ * offset that can pull a child into the window is remembered on the stack,
+ * and a later frame reads that list rather than the whole column. What
  * remains proportional to the number of children is the stack of heights, and
  * {@link ScrollIndex} rebuilds only the part of it that changed.
  *
- * So moving the window over ten thousand rows touches the rows in the window
- * and nothing else, whatever the other nine thousand nine hundred and
- * seventy-six are — which is the property the whole component exists for, and
- * the reason this is not `overflow: "hidden"` with a margin on top.
+ * So moving the window over ten thousand rows of a plain column touches the
+ * rows in the window and nothing else, whatever the other nine thousand nine
+ * hundred and seventy-six are — which is the property the whole component
+ * exists for, and the reason this is not `overflow: "hidden"` with a margin
+ * on top.
  */
 function layoutScroll(
   node  : LayoutNode,
@@ -1304,27 +1349,14 @@ function layoutScroll(
   // reserved by adding one to its right padding.
   node.scrollBarColumn = x + width;
 
-  // The bottom of a child's border box only ever moves down the list, so the
-  // first child the window reaches can be found without looking at the ones
-  // above it. This is the step that would otherwise make the offset — the one
-  // thing about a scrolling box that changes every frame — cost the content.
-  const first = firstVisible(stack, offset);
-  let count = 0;
-  for (let index = first; index < children.length; index += 1) {
-    const top = stack.tops[index];
-    // The border box, not the outer one: a margin draws nothing, so a child
-    // whose own box has left the window has left it.
-    if (top - offset >= height) {
-      break;
-    }
-    const child = children[index];
+  // Where a column child is drawn, before its relative offset. A written
+  // width is the width it gets. A written height and a ratio is the other
+  // side: the window's width is not a size the child asked for. `min` and
+  // `max` apply to that transferred width, and then the window still wins,
+  // because a scrolling box has no horizontal scroll.
+  const columnOrigin = (child: LayoutNode): [number, number] => {
     const [, marginRight, , marginLeft] = fixedMargins(margin(child.style));
     const available = Math.max(0, width - marginLeft - marginRight);
-    // A width the child wrote is the width it gets. A height it wrote, and a
-    // ratio, is the other side: the window's width is not a size the child
-    // asked for. `min` and `max` apply to that transferred width, and then
-    // the window still wins, because a scrolling box has no horizontal
-    // scroll. A width the child wrote is not clamped here.
     const writtenWidth = resolve(child.style.width, width);
     const ratio = aspectOf(child.style);
     const writtenHeight = resolve(child.style.height, height);
@@ -1337,12 +1369,118 @@ function layoutScroll(
             width,
           )
         : null;
-    const childWidth = Math.min(available, writtenWidth ?? transferred ?? available);
-    layout(child, x + marginLeft, y + top - offset, childWidth, stack.heights[index], block);
-    count += 1;
+    return [x + marginLeft, Math.min(available, writtenWidth ?? transferred ?? available)];
+  };
+  const placeChild = (index: number, childX: number, childWidth: number) => {
+    const child = children[index];
+    const [shiftX, shiftY] = relativeShift(child.style, width, height);
+    layout(
+      child,
+      childX + shiftX,
+      y + stack.tops[index] - offset + shiftY,
+      childWidth,
+      stack.heights[index],
+      block,
+    );
+  };
+
+  if (stack.mode === 0) {
+    // The bottom of a child's border box only ever moves down the list, so the
+    // first child the window reaches can be found without looking at the ones
+    // above it. This is the step that would otherwise make the offset — the one
+    // thing about a scrolling box that changes every frame — cost the content.
+    // The search is the unshifted column. A relative offset that crosses the
+    // edge is `stack.nudged`, below, and that list is empty on a log.
+    const first = firstVisible(stack, offset);
+    let count = 0;
+    for (let index = first; index < children.length; index += 1) {
+      const top = stack.tops[index];
+      // The border box, not the outer one: a margin draws nothing, so a child
+      // whose own box has left the window has left it.
+      if (top - offset >= height) {
+        break;
+      }
+      const child = children[index];
+      if (isAbsolute(child)) {
+        count += 1;
+        continue;
+      }
+      const [childX, childWidth] = columnOrigin(child);
+      placeChild(index, childX, childWidth);
+      count += 1;
+    }
+    node.scrollFirst = first;
+    node.scrollCount = count;
+  } else {
+    // A wrapped row is not a column, and `wrap-reverse` puts the first
+    // children at the bottom, so the binary search does not apply. The walk
+    // is the children. A log does not wrap; a log is the column above.
+    let first = children.length;
+    let last = -1;
+    for (let index = 0; index < children.length; index += 1) {
+      if (isAbsolute(children[index])) {
+        continue;
+      }
+      const top = stack.tops[index];
+      const bottom = top + stack.heights[index];
+      if (bottom > offset && top < offset + height) {
+        if (index < first) {
+          first = index;
+        }
+        last = index;
+      }
+    }
+    if (last < first) {
+      node.scrollFirst = 0;
+      node.scrollCount = 0;
+    } else {
+      // Every child of a visible row, including one whose own box misses the
+      // window. Leaving it unplaced would paint wherever the previous frame
+      // put it, which is how a short sibling of a tall one comes back onto
+      // the screen after it has scrolled away.
+      for (let index = first; index <= last; index += 1) {
+        const child = children[index];
+        if (isAbsolute(child)) {
+          continue;
+        }
+        placeChild(index, x + stack.xs[index], stack.widths[index]);
+      }
+      node.scrollFirst = first;
+      node.scrollCount = last - first + 1;
+    }
   }
-  node.scrollFirst = first;
-  node.scrollCount = count;
+
+  // A relative offset can pull a child into the window from outside the range
+  // the column's search, or the wrap's span, just decided. The list was built
+  // with the stack. Children already in the range were placed above.
+  const also: Array<number> = [];
+  const rangeStart = node.scrollFirst;
+  const rangeEnd = rangeStart + node.scrollCount;
+  for (const index of stack.nudged) {
+    if (node.scrollCount > 0 && index >= rangeStart && index < rangeEnd) {
+      continue;
+    }
+    const shiftY = relativeShift(children[index].style, width, height)[1];
+    const top = stack.tops[index] + shiftY;
+    if (top + stack.heights[index] <= offset || top >= offset + height) {
+      continue;
+    }
+    if (stack.mode === 0) {
+      const [childX, childWidth] = columnOrigin(children[index]);
+      placeChild(index, childX, childWidth);
+    } else {
+      placeChild(index, x + stack.xs[index], stack.widths[index]);
+    }
+    also.push(index);
+  }
+  stack.also = also;
+
+  // Out of the column, and against this box, so a label stays where it was
+  // written while the rows move. Painted with the rows in `zIndex` order, and
+  // after them when nobody set one, which is what puts the label on top.
+  for (const index of stack.absolute) {
+    layoutAbsolute(node, children[index], block);
+  }
 }
 
 /**
@@ -1384,18 +1522,35 @@ function firstVisible(stack: ScrollIndex, offset: number): number {
 function scrollStack(node: LayoutNode, width: number, height: number): ScrollIndex {
   const children = node.children;
   const gap = gapOf(node.style, false);
+  const columnGap = gapOf(node.style, true);
+  const mode = node.style.flexWrap === "wrap" ? 1 : node.style.flexWrap === "wrap-reverse" ? 2 : 0;
   let stack = node.scrollIndex;
-  if (stack == null || stack.width !== width || stack.view !== height || stack.gap !== gap) {
+  if (
+    stack == null ||
+    stack.width !== width ||
+    stack.view !== height ||
+    stack.gap !== gap ||
+    stack.columnGap !== columnGap ||
+    stack.mode !== mode
+  ) {
     // Annotated rather than inferred: a literal's `from: 0` would otherwise
     // be typed as the number zero for the rest of this function.
     const fresh: ScrollIndex = {
       width,
       view: height,
       gap,
-      from   : 0,
-      tops   : [],
-      heights: [],
-      content: 0,
+      mode,
+      columnGap,
+      plain   : true,
+      absolute: [],
+      nudged  : [],
+      also    : [],
+      xs      : [],
+      widths  : [],
+      from    : 0,
+      tops    : [],
+      heights : [],
+      content : 0,
     };
     stack = fresh;
     node.scrollIndex = stack;
@@ -1415,12 +1570,31 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
   if (stack.heights.length > children.length) {
     stack.heights.length = children.length;
     stack.tops.length = children.length;
+    stack.xs.length = children.length;
+    stack.widths.length = children.length;
+    stack.absolute = stack.absolute.filter((index) => index < children.length);
+    stack.nudged = stack.nudged.filter((index) => index < children.length);
     stack.from = Math.min(stack.from, children.length);
   }
 
   if (children.length === 0) {
     stack.content = 0;
     stack.from = 0;
+    stack.absolute = [];
+    stack.nudged = [];
+    stack.also = [];
+    stack.plain = true;
+    return stack;
+  }
+
+  // A wrap can move every row under a change, and the first child of a
+  // reversed wrap is not the first row, so the patch from `from` does not
+  // apply. The column below is the one that stays patchable.
+  if (stack.mode !== 0) {
+    if (stack.from < children.length) {
+      fillWrapped(node, stack, width, height);
+      stack.from = children.length;
+    }
     return stack;
   }
 
@@ -1434,15 +1608,42 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
     const unbounded = Number.MAX_SAFE_INTEGER;
     // Where the child before the first stale one ended. Read back out of the
     // stack rather than carried, because a rebuild may start anywhere and only
-    // the entries below it are known to be current.
+    // the entries below it are known to be current. A child out of the column
+    // is not that predecessor: it added nothing to the cursor.
     let cursor = 0;
     if (stack.from > 0) {
-      const previous = children[stack.from - 1];
-      const [, , previousBottom] = fixedMargins(margin(previous.style));
-      cursor = stack.tops[stack.from - 1] + stack.heights[stack.from - 1] + previousBottom + gap;
+      let previous = stack.from - 1;
+      while (previous >= 0 && isAbsolute(children[previous])) {
+        previous -= 1;
+      }
+      if (previous >= 0) {
+        const [, , previousBottom] = fixedMargins(margin(children[previous].style));
+        cursor = stack.tops[previous] + stack.heights[previous] + previousBottom + gap;
+      }
+    }
+    if (stack.from === 0) {
+      stack.absolute = [];
+      stack.nudged = [];
+      stack.plain = true;
+    } else {
+      // Read before the callback. `stack` is a `let` refined past null, and
+      // the callback does not keep that refinement.
+      const from = stack.from;
+      stack.absolute = stack.absolute.filter((index) => index < from);
+      stack.nudged = stack.nudged.filter((index) => index < from);
     }
     for (let index = stack.from; index < children.length; index += 1) {
       const child = children[index];
+      if (isAbsolute(child)) {
+        stack.plain = false;
+        stack.absolute.push(index);
+        stack.tops[index] = cursor;
+        stack.heights[index] = 0;
+        continue;
+      }
+      if (relativeShift(child.style, width, height)[1] !== 0) {
+        stack.nudged.push(index);
+      }
       const [marginTop, marginRight, marginBottom, marginLeft] = fixedMargins(margin(child.style));
       const available = Math.max(0, width - marginLeft - marginRight);
       const fixedHeight = resolve(child.style.height, height);
@@ -1462,12 +1663,154 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
     }
     // `cursor` counts a gap after the last child, which the content does not
     // have. Subtracting it at the end rather than skipping the first one is
-    // what makes the running total patchable from any index.
-    stack.content = cursor - gap;
+    // what makes the running total patchable from any index. A column of only
+    // children taken out of it has no gap to subtract.
+    stack.content = cursor === 0 ? 0 : cursor - gap;
     stack.from = children.length;
   }
 
   return stack;
+}
+
+/**
+ * The stack of a scrolling box whose children share rows.
+ *
+ * The box is still a vertical window. `flexWrap` is what puts two children on
+ * one row; `flexDirection` stays unread, because a scrolling box is not a
+ * horizontal scroller. `flexGrow` stays unread too, which is the same rule as
+ * the column: a child that grew to fill the window would be a different size
+ * at a different offset.
+ *
+ * Rebuilt whole. A child's width decides which row the next one starts, so a
+ * change at the top moves every row under it, and the patch the column uses
+ * would keep those rows where they no longer are.
+ */
+function fillWrapped(node: LayoutNode, stack: ScrollIndex, width: number, height: number): void {
+  const children = node.children;
+  const columnGap = stack.columnGap;
+  const rowGap = stack.gap;
+  const unbounded = Number.MAX_SAFE_INTEGER;
+  stack.absolute = [];
+  stack.nudged = [];
+  stack.plain = true;
+  stack.xs = [];
+  stack.widths = [];
+  stack.tops = [];
+  stack.heights = [];
+
+  const flow: Array<number> = [];
+  const outer: Array<number> = [];
+  const innerW: Array<number> = [];
+  const innerH: Array<number> = [];
+  const marginT: Array<number> = [];
+  const marginB: Array<number> = [];
+
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index];
+    if (isAbsolute(child)) {
+      stack.plain = false;
+      stack.absolute.push(index);
+      stack.tops[index] = 0;
+      stack.heights[index] = 0;
+      stack.xs[index] = 0;
+      stack.widths[index] = 0;
+      continue;
+    }
+    if (relativeShift(child.style, width, height)[1] !== 0) {
+      stack.nudged.push(index);
+    }
+    const [top, right, bottom, left] = fixedMargins(margin(child.style));
+    const available = Math.max(0, width - left - right);
+    // One basis. Resolving a percentage here and again inside `intrinsicSize`
+    // would measure the child at a fraction of the width it is laid out at.
+    // A written height is the viewport's, not `unbounded`: asking the measure
+    // to resolve a percentage height against an unbounded offer is how a
+    // ratio turns one child into a row of its own.
+    const writtenWidth = resolve(child.style.width, available);
+    const writtenHeight = resolve(child.style.height, height);
+    const ratio = aspectOf(child.style);
+    const transferred =
+      writtenWidth == null && ratio != null && writtenHeight != null
+        ? clampDimension(
+            fromHeight(writtenHeight, ratio),
+            child.style.minWidth,
+            child.style.maxWidth,
+            available,
+          )
+        : null;
+    const decided = writtenWidth ?? transferred;
+    let childWidth = 0;
+    let childHeight = 0;
+    if (writtenHeight != null && decided != null) {
+      childWidth = Math.min(available, decided);
+      childHeight = writtenHeight;
+    } else if (writtenWidth != null) {
+      childWidth = Math.min(available, writtenWidth);
+      childHeight = intrinsicSize(child, available, unbounded).height;
+    } else if (writtenHeight != null) {
+      // Width from the content. The ratio is unread here: with a height and
+      // no width it already transferred above, and this branch is the one
+      // where it did not.
+      const size = measureIntrinsic(child, available, height, true);
+      childWidth = Math.min(available, size.width);
+      childHeight = writtenHeight;
+    } else if (ratio != null) {
+      // Neither side written. The column skips the ratio for the same reason:
+      // the width the window assigns is not a side the child wrote.
+      const size = measureIntrinsic(child, available, unbounded, true);
+      childWidth = Math.min(available, size.width);
+      childHeight = size.height;
+    } else {
+      const size = intrinsicSize(child, available, unbounded);
+      childWidth = Math.min(available, size.width);
+      childHeight =
+        childWidth === available ? size.height : intrinsicSize(child, childWidth, unbounded).height;
+    }
+    flow.push(index);
+    outer.push(childWidth + left + right);
+    innerW[index] = childWidth;
+    innerH[index] = childHeight;
+    marginT[index] = top;
+    marginB[index] = bottom;
+    stack.xs[index] = left;
+  }
+
+  const lines = breakLines(outer, width, columnGap);
+  const rowHeights = lines.map((line) =>
+    line.reduce((deepest, at) => {
+      const index = flow[at];
+      return Math.max(deepest, innerH[index] + marginT[index] + marginB[index]);
+    }, 0),
+  );
+  let content = 0;
+  const forward: Array<number> = [];
+  for (let row = 0; row < rowHeights.length; row += 1) {
+    forward.push(content);
+    content += rowHeights[row];
+    if (row + 1 < rowHeights.length) {
+      content += rowGap;
+    }
+  }
+  // `wrap-reverse` packs the rows against the bottom. When they fit, that
+  // bottom is the window; when they do not, it is the content, and the first
+  // children are the last rows.
+  const span = stack.mode === 2 ? Math.max(content, height) : content;
+  for (let row = 0; row < lines.length; row += 1) {
+    const rowHeight = rowHeights[row];
+    const rowTop = stack.mode === 2 ? span - forward[row] - rowHeight : forward[row];
+    let across = 0;
+    for (const at of lines[row]) {
+      const index = flow[at];
+      const child = children[index];
+      const [, right, , left] = fixedMargins(margin(child.style));
+      stack.tops[index] = rowTop + marginT[index];
+      stack.heights[index] = innerH[index];
+      stack.xs[index] = across + left;
+      stack.widths[index] = innerW[index];
+      across += innerW[index] + left + right + columnGap;
+    }
+  }
+  stack.content = content;
 }
 
 // Implemented, and asserted as cells in `npm/tui/tui.test.js`: `flexWrap`
@@ -1484,18 +1827,21 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
 // static box between an absolute one and its containing block does not clip
 // it. Here it does.
 //
-// Not implemented here, on purpose, and tracked rather than discovered:
+// A scrolling box reads both. `position: "absolute"` takes a child out of the
+// column: it does not add to the content, and it is placed against this box,
+// so it stays while the rows move. `position: "relative"` nudges a child off
+// the cell the column gave it. `flexWrap` lays the children in rows and the
+// window scrolls those rows; `"wrap-reverse"` packs the rows against the
+// bottom. The column — no wrap, every child in it — is still the one whose
+// window is a binary search, and a wrapping box walks its children instead,
+// because a shared row is not that column. A ratio is read only off a width
+// or a height the child itself wrote. A written width transfers while the
+// stack is measured. A written height transfers when the child is placed,
+// because the stack already kept that height. The width the window assigns
+// is not one of those, so a ratio with neither side written does not change
+// the stack, and the measure that builds the stack skips the ratio in that
+// case.
 //
-// - `position` and `flexWrap` inside a scrolling box. Its children are one
-//   column whose heights are kept between frames (see {@link ScrollIndex}),
-//   and a child that is out of it, drawn somewhere other than where it says,
-//   or sharing a row with another, is a second answer to "which rows are in
-//   the window". Both are read there as if they were not given. A ratio is
-//   read only off a width or a height the child itself wrote. A written width
-//   transfers while the stack is measured. A written height transfers when
-//   the child is placed, because the stack already kept that height. The
-//   width the window assigns is not one of those, so a ratio with neither
-//   side written does not change the stack, and the measure that builds the
-//   stack skips the ratio in that case.
-//
-// That is ubugeeei-prod/uf#314.
+// Not implemented here, on purpose, and tracked rather than discovered: the
+// rich-content components, and notifications, audio and `Timeline`. That is
+// ubugeeei-prod/uf#314.

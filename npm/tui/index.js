@@ -82,13 +82,15 @@
 //
 // A second press on selectable text selects the word under the pointer, and a
 // third selects the line. A press on a blank stays a click and does not count
-// toward the next one. Not here: images,
-// the rich content components, wrapping or positioning inside a `ScrollBox`,
-// and everything under OpenTUI's "application APIs" — except for the
-// write-only OSC 52 clipboard — which is why `getSelectedText()` hands a
-// string back and leaves policy to the caller. Those gaps are
-// ubugeeei-prod/uf#314, and they are absent rather than present as functions
-// that throw — because a stub is what this package used to be.
+// toward the next one. A `ScrollBox` wraps (`flexWrap`) and positions
+// (`position`): an absolute child is taken out of the column and stays on
+// the window, and a relative offset nudges a row. Not here: images,
+// the rich content components, and everything under OpenTUI's "application
+// APIs" — except for the write-only OSC 52 clipboard — which is why
+// `getSelectedText()` hands a string back and leaves policy to the caller.
+// Those gaps are ubugeeei-prod/uf#314, and they are absent rather than
+// present as functions that throw — because a stub is what this package
+// used to be.
 //
 // Also not here, and worth saying because ubugeeei-prod/uf#247 asked for it:
 // uf's own CLI does not draw through this. It cannot — `crates/uf_term` is

@@ -318,9 +318,30 @@ function paintBox(
     // keeps the walk proportional to the window: a box holding ten thousand
     // rows is not visited ten thousand times to be told nine thousand nine
     // hundred and seventy-six of them are elsewhere.
+    // The window, then the children a relative offset pulled in from outside
+    // it, then the ones taken out of the column. Appending those last is what
+    // puts a pin on top when nobody set a `zIndex`. `paintOrder` is what lets
+    // a `zIndex` say otherwise, which is the same rule the flex path uses.
+    const visible: Array<TuiNode> = [];
     const end = node.scrollFirst + node.scrollCount;
     for (let index = node.scrollFirst; index < end; index += 1) {
-      paint(node.children[index], frame, capabilities, childClip, hits, selectable);
+      const child = node.children[index];
+      if (child.style.position === "absolute") {
+        continue;
+      }
+      visible.push(child);
+    }
+    const stack = node.scrollIndex;
+    if (stack != null) {
+      for (const index of stack.also) {
+        visible.push(node.children[index]);
+      }
+      for (const index of stack.absolute) {
+        visible.push(node.children[index]);
+      }
+    }
+    for (const child of paintOrder(visible)) {
+      paint(child, frame, capabilities, childClip, hits, selectable);
     }
   } else {
     for (const child of paintOrder(node.children)) {

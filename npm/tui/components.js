@@ -378,7 +378,10 @@ export type ScrollBoxProps = {
  *
  * There is still no horizontal scrolling: a terminal column is not a pixel,
  * and content wider than the window is nearly always content that should have
- * wrapped.
+ * wrapped. `flexWrap` is that wrap: children share rows, and the window
+ * scrolls the rows. `position="absolute"` takes a child out of those rows and
+ * pins it to this box. `position="relative"` nudges one. `flexDirection`
+ * stays unread — this is not a horizontal scroller.
  *
  * # What it costs
  *

@@ -143,9 +143,9 @@ pub enum TuiLayoutEngine {
     ///
     /// It was `"flexbox-yoga-compatible"`, which claimed more than was true
     /// then and is still not quite true now: a terminal resolves whole columns
-    /// where Yoga resolves fractional pixels, and a
-    /// scrolling box reads neither `position` nor `flexWrap`
-    /// (ubugeeei-prod/uf#314). What *is* compatible is the part a caller
+    /// where Yoga resolves fractional pixels. A scrolling box reads
+    /// `flexWrap` and `position`; the rich-content components do not exist
+    /// yet (ubugeeei-prod/uf#314). What *is* compatible is the part a caller
     /// writes: the property names, the defaults — a `flexDirection` that starts
     /// at `column`, an `alignItems` that starts at `stretch`, an `alignContent`
     /// that starts at `flex-start`, and a `flexShrink` that starts at zero for
@@ -205,11 +205,11 @@ pub enum TuiFeature {
     /// `alignContent`, `auto` margins on both axes, and `position` in all
     /// three of Yoga 3's values: an absolute box is placed by its offsets
     /// against the padding box of its nearest ancestor that is not `static`,
-    /// or the screen. What is not behind the word:
-    /// wrapping or positioning inside a scrolling box, whose children are one
-    /// column. An absolute box is also still drawn, clipped and hit with its
-    /// parent in the tree, as it is in OpenTUI — not lifted out to its
-    /// containing block the way a browser would.
+    /// or the screen. A scrolling box is that column, and it also wraps and
+    /// takes a child out of the column. An absolute box is still drawn,
+    /// clipped and hit with its parent in the tree, as it is in OpenTUI —
+    /// not lifted out to its containing block the way a browser would. What
+    /// is not behind the word is the rich content (ubugeeei-prod/uf#314).
     Flexbox,
     /// Cell-diff renderer updates.
     CellDiff,
@@ -257,15 +257,17 @@ pub enum TuiFeature {
     /// component does to itself.
     ///
     /// What this word does promise, and what ubugeeei-prod/uf#314 asked to be
-    /// proved rather than asserted, is that the *window* is what a scrolling
-    /// box costs. Moving one over a hundred thousand rows measures nothing,
-    /// lays out the rows on the screen, and walks into no others; a renderer
-    /// that laid all hundred thousand out and clipped them would draw the
-    /// same frames and is not this. It is counted rather than claimed —
-    /// `tests/library/tui.test.js` counts the calls layout makes into its
-    /// leaves — and the one pass still proportional to the content is the
-    /// first frame, which has to ask every row its height once because the
-    /// height of the content is what the offset gets clamped against.
+    /// proved rather than asserted, is that a plain column's *window* is what
+    /// the box costs. Moving one over a hundred thousand rows measures nothing,
+    /// lays out the rows on the screen, and walks into no others. A wrapping
+    /// box lays out the same rows and scans its children to find them, because
+    /// a shared row is not that column. A renderer that laid all hundred
+    /// thousand out and clipped them would draw the same frames and is not
+    /// this. It is counted rather than claimed — `npm/tui/tui.test.js` counts
+    /// the calls layout makes into its leaves for a column — and for a column
+    /// the one pass still proportional to the content is the first frame, which
+    /// has to ask every row its height once because the height of the content
+    /// is what the offset gets clamped against.
     Scrollback,
     /// Key binding and command routing.
     Keymap,
