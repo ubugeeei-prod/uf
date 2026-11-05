@@ -7,103 +7,14 @@
 // both work, it is the rule. See `seam.css` for why.
 
 import * as React from "@uniflowed/react";
-import { useSyncExternalStore } from "@uniflowed/react";
 import { Link, useRoute } from "@uniflowed/router";
 
 import { goals } from "./goals.js";
 import type { Goal } from "./goals.js";
 import { NavOverflow } from "./nav-overflow.js";
-import {
-  currentHref,
-  featuredIn,
-  openSectionFor,
-  readinessFor,
-  sections,
-  sectionsAfterToggle,
-  sectionsKeptOpen,
-} from "./nav.js";
+import { ManualNavSections } from "./nav-sections.js";
+import { currentHref, featuredIn, openSectionFor, readinessFor, sections } from "./nav.js";
 import type { Entry, Section } from "./nav.js";
-
-const NAV_OPEN = "uf-docs-nav-open";
-const NAV_EMPTY = "[]";
-
-/**
- * Sections this tab left open.
- *
- * The sidebar remounts when a reader crosses from the guide to the reference,
- * so the open sections cannot live in component state: that state is what a
- * navigation threw away. `sessionStorage` outlives the remount and does not
- * outlive the tab. The snapshot is a string because `useSyncExternalStore`
- * compares with `Object.is`, and a freshly parsed array never compares equal
- * to the previous one.
- *
- * The server, and the first client render, answer `[]`. Storage is read on
- * the client after hydration, which is how the markup the server sent and the
- * markup hydration sees stay the same: only the section of the page is open
- * until then.
- */
-const navListeners = new Set<() => void>();
-let navMemory: string | null = null;
-
-function subscribeNav(notify: () => void): () => void {
-  navListeners.add(notify);
-  return () => {
-    navListeners.delete(notify);
-  };
-}
-
-function notifyNav(): void {
-  for (const notify of navListeners) {
-    notify();
-  }
-}
-
-function readStored(): string {
-  if (typeof sessionStorage === "undefined") {
-    return NAV_EMPTY;
-  }
-  try {
-    return sessionStorage.getItem(NAV_OPEN) ?? NAV_EMPTY;
-  } catch {
-    return NAV_EMPTY;
-  }
-}
-
-function readSnapshot(): string {
-  if (navMemory == null) {
-    navMemory = readStored();
-  }
-  return navMemory;
-}
-
-function serverSnapshot(): string {
-  return NAV_EMPTY;
-}
-
-function parseRemembered(raw: string): $ReadOnlyArray<string> {
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeRemembered(titles: $ReadOnlyArray<string>): void {
-  const raw = JSON.stringify(titles);
-  if (raw === readSnapshot()) {
-    return;
-  }
-  navMemory = raw;
-  if (typeof sessionStorage !== "undefined") {
-    try {
-      sessionStorage.setItem(NAV_OPEN, raw);
-    } catch {
-      // A private window that refuses storage still toggles for this page.
-    }
-  }
-  notifyNav();
-}
 
 /**
  * The small mono label above a heading that says what kind of page follows —
@@ -148,11 +59,13 @@ export component Command(children: string) {
  * a section a reader opens stays open when they follow a link: the next page
  * adds its own section rather than closing the ones already open. That set is
  * kept for the tab, so crossing from the guide into the reference does not
- * fold it back up. Without JavaScript only the current section is open, which
- * is also what the first paint is, so the marked link is visible before
- * hydration. `<details>` rather than a script for the disclosure itself: it
- * opens and closes without JavaScript, and a screen reader already knows what
- * it is. Listing every section's pages at once made a sidebar several screens
+ * fold it back up. Remembering it reads `sessionStorage`, so the list lives in
+ * `nav-sections.js`, a client module; this one stays a server module. Without
+ * JavaScript only the current section is open, which is also what the first
+ * paint is, so the marked link is visible before hydration. `<details>` rather
+ * than a script for the disclosure itself: it opens and closes without
+ * JavaScript, and a screen reader already knows what it is. Listing every
+ * section's pages at once made a sidebar several screens
  * tall whose bottom edge looked like its end; a closed section is a heading
  * and a page count.
  *
@@ -171,64 +84,12 @@ export component ManualNav() {
   const marked = currentHref(pathname);
   const current = openSectionFor(pathname);
   const currentTitle = current == null ? null : current.title;
-  const remembered = parseRemembered(
-    useSyncExternalStore(subscribeNav, readSnapshot, serverSnapshot),
-  );
-  // The page's own section is open even when storage has not caught up, and
-  // even when a reader closed it on the previous page: the marked link has to
-  // be visible. A section they opened besides that one stays open.
-  const openTitles = sectionsKeptOpen(remembered, currentTitle);
-
-  const isOpen = (title: string): boolean => openTitles.includes(title);
 
   return (
     <nav className="manual-nav" id="manual-nav" aria-label="Documentation">
       <h2 className="manual-nav-title">All pages</h2>
       <div className="manual-nav-list" id="manual-nav-list">
-        {sections.map((section) => {
-          const links = [section.landing, ...section.pages];
-          return (
-            <details
-              className="manual-nav-section"
-              key={section.title}
-              open={isOpen(section.title)}
-              onToggle={(event) => {
-                const element = event.currentTarget;
-                if (!(element instanceof HTMLDetailsElement)) {
-                  return;
-                }
-                // The section the page is in stays open. The browser has
-                // already closed it; putting it back agrees with the `open`
-                // the next render sets, and does not wait on that render.
-                if (!element.open && section.title === currentTitle) {
-                  element.open = true;
-                  return;
-                }
-                const base = sectionsKeptOpen(parseRemembered(readSnapshot()), currentTitle);
-                writeRemembered(sectionsAfterToggle(base, section.title, element.open));
-              }}
-            >
-              <summary>
-                <h2>{section.title}</h2>
-                <span className="manual-nav-count">
-                  {links.length}
-                  <span className="visually-hidden">{links.length === 1 ? " page" : " pages"}</span>
-                </span>
-              </summary>
-              <ul>
-                {links.map((page) => (
-                  <li key={page.href}>
-                    <Link to={page.href} aria-current={page.href === marked ? "page" : undefined}>
-                      {page === section.landing && page.title === section.title
-                        ? "Overview"
-                        : page.title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          );
-        })}
+        <ManualNavSections currentTitle={currentTitle} marked={marked} />
       </div>
       <NavOverflow path={pathname} />
     </nav>
