@@ -703,6 +703,47 @@ export function openSectionFor(pathname: string): Section | null {
   return marked == null ? null : sectionFor(marked);
 }
 
+/**
+ * The sections a navigation leaves open.
+ *
+ * `current` is the section the page just opened is in, and it has to be open
+ * or the marked link sits inside a closed disclosure. Everything in
+ * `remembered` stays open too. Opening one section and closing the rest is
+ * what threw away a section a reader had opened to compare, on the way to the
+ * next page.
+ *
+ * The array given is returned when nothing was added, so a caller can tell a
+ * navigation that opened nothing new from one that did.
+ */
+export function sectionsKeptOpen(
+  remembered: $ReadOnlyArray<string>,
+  current   : string | null,
+): $ReadOnlyArray<string> {
+  if (current == null || remembered.includes(current)) {
+    return remembered;
+  }
+  return [...remembered, current];
+}
+
+/**
+ * What a click on a section heading leaves open.
+ *
+ * `nowOpen` is the disclosure after the click. Closing the section the reader
+ * is in is kept: the next navigation opens it again, because that is when the
+ * marked link would otherwise be hidden, and not before.
+ */
+export function sectionsAfterToggle(
+  remembered: $ReadOnlyArray<string>,
+  title     : string,
+  nowOpen   : boolean,
+): $ReadOnlyArray<string> {
+  const has = remembered.includes(title);
+  if (nowOpen) {
+    return has ? remembered : [...remembered, title];
+  }
+  return has ? remembered.filter((each) => each !== title) : remembered;
+}
+
 /** `true` when the sidebar marks the entry at `href` for `pathname`. */
 export function isCurrent(pathname: string, href: string): boolean {
   return currentHref(pathname) === href;

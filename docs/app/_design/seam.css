@@ -184,13 +184,11 @@ strong {
 /* An eyebrow: the small mono label above a heading that says what kind of
    thing follows. It is the manual's running head, not decoration. */
 .eyebrow {
-  color: var(--doc-ink-faint);
+  color: var(--doc-ink-muted);
   font-family: var(--uf-font-mono);
   font-size: 0.72rem;
   font-weight: 500;
-  letter-spacing: 0.14em;
   margin: 0 0 0.75rem;
-  text-transform: uppercase;
 }
 
 /* The one paragraph under a title that says what the page is for. */
@@ -521,9 +519,7 @@ strong {
   font-family: var(--uf-font-mono);
   font-size: 0.7rem;
   font-weight: 500;
-  letter-spacing: 0.14em;
   margin: 0;
-  text-transform: uppercase;
 }
 
 .manual-nav-count {
@@ -642,13 +638,11 @@ strong {
 }
 
 .outline h2 {
-  color: var(--doc-ink-faint);
+  color: var(--doc-ink-muted);
   font-family: var(--uf-font-mono);
   font-size: 0.7rem;
   font-weight: 500;
-  letter-spacing: 0.14em;
   margin: 0 0 0.6rem;
-  text-transform: uppercase;
 }
 
 .outline ol {
@@ -819,11 +813,9 @@ kbd {
 }
 
 .search-where {
-  color: var(--doc-ink-faint);
+  color: var(--doc-ink-muted);
   font-family: var(--uf-font-mono);
   font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .search-title {
@@ -1058,12 +1050,10 @@ td {
 }
 
 th {
-  color: var(--doc-ink-faint);
+  color: var(--doc-ink-muted);
   font-family: var(--uf-font-mono);
   font-size: 0.72rem;
   font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 
 tbody tr:last-child :is(td, th) {
@@ -1229,11 +1219,10 @@ tbody tr:last-child :is(td, th) {
   color: var(--doc-ink);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  html {
-    scroll-behavior: smooth;
-  }
-}
+/* A navigation scrolls the window to the top of the new page. Animating that
+   jump is the previous page sliding away, which is the part that feels slow.
+   The jump is instant for everyone, including a reader who did not ask for
+   reduced motion. */
 
 /* ------------------------------------------------------------------ *
  * Phones
@@ -1398,12 +1387,10 @@ tbody tr:last-child :is(td, th) {
 }
 
 .page-turn-label {
-  color: var(--doc-ink-faint);
+  color: var(--doc-ink-muted);
   font-family: var(--uf-font-mono);
   font-size: 0.68rem;
   font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 /* The way down to the contents, for a phone, where they follow the article. */
@@ -1551,8 +1538,6 @@ tbody tr:last-child :is(td, th) {
   color: var(--doc-link);
   font-family: var(--uf-font-mono);
   font-size: 0.68rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 
 /* On the home page, the pages each section's readers open first, as one line
@@ -1639,10 +1624,8 @@ tbody tr:last-child :is(td, th) {
   border-radius: 2px;
   font-family: var(--uf-font-mono);
   font-size: 0.66rem;
-  letter-spacing: 0.08em;
   line-height: 1;
   padding: 0.22rem 0.4rem;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -1902,12 +1885,10 @@ tbody tr:last-child :is(td, th) {
 
 /* The kind is the running head of an entry, as the eyebrow is of a page. */
 .prose .api-kind {
-  color: var(--doc-ink-faint);
+  color: var(--doc-ink-muted);
   font-family: var(--uf-font-mono);
   font-size: 0.68rem;
-  letter-spacing: 0.12em;
   margin: 0 0 0.3rem;
-  text-transform: uppercase;
 }
 
 .api-entry h3 {
@@ -1941,11 +1922,9 @@ tbody tr:last-child :is(td, th) {
 }
 
 .api-bare .api-kind {
-  color: var(--doc-ink-faint);
+  color: var(--doc-ink-muted);
   font-family: var(--uf-font-mono);
   font-size: 0.68rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 
 .api-bare a {

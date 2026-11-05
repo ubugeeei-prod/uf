@@ -21,11 +21,11 @@ function per query, and `@uniflowed/sql` runs them on the driver you already use
 `@uniflowed/sql` is available on npm. `better-sqlite3` uses its tested prebuilt addon; D1 runs in workerd in CI.
 D1 supports its own atomic `batch()` API and has no interactive transactions.
 
-**What you can do:** point sqlc at `uf`, generate Flow from your
+Point sqlc at `uf`, generate Flow from your
 queries, run them on SQLite, PostgreSQL or MySQL, use transactions, and fail CI
 when the generated files are stale.
 
-**What you need first:** a project ([Your first project](/guide/project)).
+You need a project ([Your first project](/guide/project)).
 `uf sqlc install` downloads sqlc 1.31.1, the release uf's own tests use, into
 `.uf/sqlc` and checks the archive. A sqlc already on your `PATH`, or named by
 `$SQLC`, is used instead of that copy.

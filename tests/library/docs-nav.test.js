@@ -47,6 +47,8 @@ import {
   previousBefore,
   readinessFor,
   sections,
+  sectionsAfterToggle,
+  sectionsKeptOpen,
   sourceFor,
 } from "../../docs/app/_design/nav.js";
 import type { Section } from "../../docs/app/_design/nav.js";
@@ -275,9 +277,9 @@ describe("the manual's navigation", () => {
     expect(currentHref("/elsewhere")).toBe(null);
   });
 
-  // The sidebar opens one section and closes the rest (#1404). The one it opens
-  // has to be the one holding the entry it marks, or the marked link is inside
-  // a closed disclosure and the reader cannot see where they are.
+  // The marked link has to be in an open section (#1404), or it sits inside a
+  // closed disclosure. A navigation adds that section to the ones the reader
+  // already opened; it does not close them.
   it("opens the section holding the marked entry, and only for pages in the manual", () => {
     for (const section of sections) {
       for (const page of [section.landing, ...section.pages]) {
@@ -290,5 +292,26 @@ describe("the manual's navigation", () => {
     );
     expect(openSectionFor("/")).toBe(null);
     expect(openSectionFor("/elsewhere")).toBe(null);
+  });
+
+  it("keeps sections a reader opened, and opens the one the new page is in", () => {
+    const kept = ["Start", "Routing"];
+    expect(sectionsKeptOpen(kept, "Routing")).toBe(kept);
+    expect(sectionsKeptOpen(kept, "Reference")).toEqual(["Start", "Routing", "Reference"]);
+    expect(sectionsKeptOpen(kept, null)).toBe(kept);
+    expect(sectionsAfterToggle(kept, "State", true)).toEqual(["Start", "Routing", "State"]);
+    expect(sectionsAfterToggle(kept, "Start", false)).toEqual(["Routing"]);
+    expect(sectionsAfterToggle(kept, "Start", true)).toBe(kept);
+    expect(sectionsAfterToggle(kept, "State", false)).toBe(kept);
+  });
+
+  it("does not animate the document scroll", () => {
+    const css = fs.readFileSync(path.join(REPO, "docs/app/_design/seam.css"), "utf8");
+    expect(css.includes("scroll-behavior: smooth")).toBe(false);
+  });
+
+  it("shows a label in the case it is written", () => {
+    const css = fs.readFileSync(path.join(REPO, "docs/app/_design/seam.css"), "utf8");
+    expect(css.includes("text-transform: uppercase")).toBe(false);
   });
 });

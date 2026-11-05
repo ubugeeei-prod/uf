@@ -48,16 +48,23 @@
 // mis-shimmed line can come out with the wrong colours. It cannot come out
 // saying `function`.
 //
+// **A `match` body.** `const label = match (status) {` is an assignment to the
+// grammar, so the `{` opens an object, not a block. An object that then holds
+// `"idle" => "Ready"` never recovers: the next arm arrives as one unstyled
+// run, string and all. A semicolon between the subject and the brace — where
+// the source has the space, which the reader never sees — ends the assignment.
+// The `{` is a block, and the arm is tokenised.
+//
 // # What it does not cover
 //
 // The declaration rewrite is anchored to the start of a line, after an
 // optional `export` or `export default`, which is where a declaration begins
 // and where the grammar breaks. A declaration written anywhere else is left to
-// the ordinary path.
+// the ordinary path. The match rewrite is only the brace that opens the body.
 //
-// Neither rewrite asks whether the line is inside a string or a comment, so a
-// line of quoted sample code that opens with `component Name(` is rewritten
-// too. The text still survives exactly; only its colours are a function's
+// The declaration and exact-object rewrites do not ask whether the line is
+// inside a string or a comment, so a line of quoted sample code that opens
+// with `component Name(` is rewritten too. The text still survives exactly; only its colours are a function's
 // rather than a string's, and `flow-keywords.js` still refuses to call the
 // word a keyword. Buying the remaining fidelity would mean lexing the block
 // twice, once here and once there, to fix a case that is a code sample inside
@@ -110,9 +117,17 @@ const EXACT_OBJECT_STAND_INS = { "{|": "{ ", "|}": " }" };
 export function shimFlowGrammar(source) {
   const original = source.split("\n");
   const edits = new Map();
+  // Parens still open in a `match` subject when a line ends. The body's `{`
+  // may be on the next line, and that is the brace the grammar must not treat
+  // as an object.
+  let matchDepth = 0;
 
   const shimmed = original.map((line, index) => {
-    const lineEdits = editsFor(line);
+    const match = matchBodyEdits(line, matchDepth);
+    matchDepth = match.depth;
+    const lineEdits = [...editsFor(line), ...match.edits].sort(
+      (left, right) => left.column - right.column,
+    );
     if (lineEdits.length === 0) {
       return line;
     }
@@ -151,6 +166,98 @@ function editsFor(line) {
     });
   }
   return found;
+}
+
+/**
+ * Where a `match` body's opening brace is, and the depth still open after
+ * `line`.
+ *
+ * The grammar reads `const label = match (status) {` as an assignment whose
+ * `{` starts an object. Inside that object a `=>` arm does not end, so the
+ * next arm is one token and the string in it is not a string. A `;` between
+ * the subject and the brace ends the assignment; the `{` is then a block, and
+ * the arms are tokenised. The `;` replaces a space when there is one, so a
+ * body written `) {` does not move, and restoration slices the original line.
+ *
+ * `depth` is the subject's unclosed parentheses. A subject that breaks across
+ * lines keeps it, and the brace on the later line is rewritten the same way.
+ * `.match(`, and `function match(`, are calls and declarations; neither is a
+ * body.
+ */
+function matchBodyEdits(line, depth) {
+  const edits = [];
+  let at = 0;
+  while (at < line.length) {
+    const here = line[at];
+    if (here === "/" && line[at + 1] === "/") {
+      break;
+    }
+    if (here === '"' || here === "'" || here === "`") {
+      at += 1;
+      while (at < line.length && line[at] !== here) {
+        at += line[at] === "\\" ? 2 : 1;
+      }
+      at += 1;
+      continue;
+    }
+    if (depth === 0) {
+      const paren = matchSubjectParen(line, at);
+      if (paren == null) {
+        break;
+      }
+      at = paren + 1;
+      depth = 1;
+      continue;
+    }
+    if (here === "(") {
+      depth += 1;
+      at += 1;
+      continue;
+    }
+    if (here === ")") {
+      depth -= 1;
+      at += 1;
+      if (depth === 0) {
+        const brace = /^\s*\{/.exec(line.slice(at));
+        if (brace != null) {
+          const space = brace[0].slice(0, -1);
+          edits.push(
+            space.length === 0
+              ? { column: at, text: "{", standIn: ";{" }
+              : { column: at, text: space, standIn: `;${space.slice(1)}` },
+          );
+        }
+      }
+      continue;
+    }
+    at += 1;
+  }
+  return { edits, depth };
+}
+
+/**
+ * The `(` of a `match` subject at or after `from`, or `null` when the rest of
+ * the line has none.
+ *
+ * A method call and a function named `match` both have the parentheses and
+ * neither has a match body. The same exclusions `flow-keywords.js` uses.
+ */
+function matchSubjectParen(line, from) {
+  const word = /(?<![.\w$])match(?![\w$])/g;
+  word.lastIndex = from;
+  let found;
+  while ((found = word.exec(line)) != null) {
+    const before = line.slice(0, found.index);
+    if (/(?:^|[^\w$])(?:const|let|var|function|class|new)\s*$/.test(before)) {
+      continue;
+    }
+    const open = /^\s*\(/.exec(line.slice(found.index + found[0].length));
+    if (open == null) {
+      continue;
+    }
+    return found.index + found[0].length + open[0].length - 1;
+  }
+  return null;
 }
 
 /** `line` with every rewrite applied, left to right. */
