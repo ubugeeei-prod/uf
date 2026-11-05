@@ -113,9 +113,13 @@ preload references in the mounted provider. Signing in or out resets the
 document and its normalized cache.
 
 The RSC protocol is experimental and does not support `@defer`. The example
-uses ordinary paginated fields and masked fragments; connection and incremental
-delivery combinations are not claimed as verified by this example. Pin the
-upstream version and exercise the operations your application uses.
+uses ordinary paginated fields and masked fragments. The feed, the open
+conversation and the inbox list are `@refetchable` fragments: publishing a
+note refetches the feed already on screen, and sending a message refetches
+that conversation and the inbox preview, instead of repeating the route query.
+Connection and incremental delivery combinations are not claimed as verified
+by this example. Pin the upstream version and exercise the operations your
+application uses.
 
 ## Keep hosts at the boundary
 

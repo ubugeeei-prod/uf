@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<46785fe4fb9a04c76e54aaf0bc90cca7>>
+ * @generated SignedSource<<ab61b14d00fcd76cf52eae79fa2c50ce>>
  * @flow
  * @lightSyntaxTransform
  */
@@ -10,23 +10,14 @@
 
 /*::
 import type { ConcreteRequest, Query } from 'relay-runtime';
-import type { SnsPost_post$fragmentType } from "./SnsPost_post.graphql";
+import type { SnsTimeline_query$fragmentType } from "./SnsTimeline_query.graphql";
 export type SnsTimelineQuery$variables = {
   page: number,
   search: string,
   topic: string,
 };
 export type SnsTimelineQuery$data = {
-  readonly feed: {
-    readonly hasNext: boolean,
-    readonly posts: ReadonlyArray<{
-      readonly id: string,
-      readonly $fragmentSpreads: SnsPost_post$fragmentType,
-    }>,
-  },
-  readonly viewer: ?{
-    readonly id: string,
-  },
+  readonly $fragmentSpreads: SnsTimeline_query$fragmentType,
 };
 export type SnsTimelineQuery = {
   response: SnsTimelineQuery$data,
@@ -50,26 +41,7 @@ v2 = {
   "kind": "LocalArgument",
   "name": "topic"
 },
-v3 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "id",
-  "storageKey": null
-},
-v4 = {
-  "alias": null,
-  "args": null,
-  "concreteType": "User",
-  "kind": "LinkedField",
-  "name": "viewer",
-  "plural": false,
-  "selections": [
-    (v3/*:: as any*/)
-  ],
-  "storageKey": null
-},
-v5 = [
+v3 = [
   {
     "kind": "Variable",
     "name": "page",
@@ -86,11 +58,11 @@ v5 = [
     "variableName": "topic"
   }
 ],
-v6 = {
+v4 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "hasNext",
+  "name": "id",
   "storageKey": null
 };
 return {
@@ -104,35 +76,10 @@ return {
     "metadata": null,
     "name": "SnsTimelineQuery",
     "selections": [
-      (v4/*:: as any*/),
       {
-        "alias": null,
-        "args": (v5/*:: as any*/),
-        "concreteType": "Feed",
-        "kind": "LinkedField",
-        "name": "feed",
-        "plural": false,
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "Post",
-            "kind": "LinkedField",
-            "name": "posts",
-            "plural": true,
-            "selections": [
-              (v3/*:: as any*/),
-              {
-                "args": null,
-                "kind": "FragmentSpread",
-                "name": "SnsPost_post"
-              }
-            ],
-            "storageKey": null
-          },
-          (v6/*:: as any*/)
-        ],
-        "storageKey": null
+        "args": (v3/*:: as any*/),
+        "kind": "FragmentSpread",
+        "name": "SnsTimeline_query"
       }
     ],
     "type": "Query",
@@ -148,10 +95,21 @@ return {
     "kind": "Operation",
     "name": "SnsTimelineQuery",
     "selections": [
-      (v4/*:: as any*/),
       {
         "alias": null,
-        "args": (v5/*:: as any*/),
+        "args": null,
+        "concreteType": "User",
+        "kind": "LinkedField",
+        "name": "viewer",
+        "plural": false,
+        "selections": [
+          (v4/*:: as any*/)
+        ],
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": (v3/*:: as any*/),
         "concreteType": "Feed",
         "kind": "LinkedField",
         "name": "feed",
@@ -165,7 +123,7 @@ return {
             "name": "posts",
             "plural": true,
             "selections": [
-              (v3/*:: as any*/),
+              (v4/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -223,7 +181,7 @@ return {
                     "name": "handle",
                     "storageKey": null
                   },
-                  (v3/*:: as any*/),
+                  (v4/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -244,24 +202,30 @@ return {
             ],
             "storageKey": null
           },
-          (v6/*:: as any*/)
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "hasNext",
+            "storageKey": null
+          }
         ],
         "storageKey": null
       }
     ]
   },
   "params": {
-    "cacheID": "c8c92afc2c26d6573f31f0e147b2ecd9",
+    "cacheID": "10cfb43d92e833e465379f6e247d9bf8",
     "id": null,
     "metadata": {},
     "name": "SnsTimelineQuery",
     "operationKind": "query",
-    "text": "query SnsTimelineQuery(\n  $topic: String!\n  $search: String!\n  $page: Int!\n) {\n  viewer {\n    id\n  }\n  feed(topic: $topic, search: $search, page: $page) {\n    posts {\n      id\n      ...SnsPost_post\n    }\n    hasNext\n  }\n}\n\nfragment SnsAvatar_user on User {\n  id\n  photo\n  avatar\n}\n\nfragment SnsPost_post on Post {\n  id\n  body\n  topic\n  likes\n  liked\n  createdAt\n  author {\n    name\n    handle\n    ...SnsAvatar_user\n    id\n  }\n}\n"
+    "text": "query SnsTimelineQuery(\n  $topic: String!\n  $search: String!\n  $page: Int!\n) {\n  ...SnsTimeline_query_41NAMG\n}\n\nfragment SnsAvatar_user on User {\n  id\n  photo\n  avatar\n}\n\nfragment SnsPost_post on Post {\n  id\n  body\n  topic\n  likes\n  liked\n  createdAt\n  author {\n    name\n    handle\n    ...SnsAvatar_user\n    id\n  }\n}\n\nfragment SnsTimeline_query_41NAMG on Query {\n  viewer {\n    id\n  }\n  feed(topic: $topic, search: $search, page: $page) {\n    posts {\n      id\n      ...SnsPost_post\n    }\n    hasNext\n  }\n}\n"
   }
 };
 })();
 
-(node/*:: as any*/).hash = "ed2215da717f8bcf3123f118eb00a072";
+(node/*:: as any*/).hash = "accc72b76e0f7f8cb669075b2ee60585";
 
 export default ((node/*:: as any*/)/*:: as Query<
   SnsTimelineQuery$variables,

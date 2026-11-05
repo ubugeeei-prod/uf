@@ -2,24 +2,44 @@
 // @flow
 
 import * as React from "@uniflowed/react";
+import { startTransition, useLayoutEffect, useRef } from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
-import { graphql } from "@uniflowed/relay";
+import { graphql, useRefetchableFragment } from "@uniflowed/relay";
 import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
 import { props, stylex } from "@uniflowed/stylex";
 
 import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
+import { RefreshBoundary } from "../_shared/refresh-boundary.client.js";
 import { Icon, EmptyState } from "../_shared/ui.js";
+import { ComposerSlot } from "./composer.client.js";
 import { PostCard } from "./post.client.js";
 import { feedHref, type FeedFilter } from "../_shared/social-model.js";
 
 import type {
+  SnsComposerQuery$variables,
+  SnsComposerQuery$data,
+} from "./__generated__/SnsComposerQuery.graphql.js";
+import type {
   SnsTimelineQuery$variables,
   SnsTimelineQuery$data,
 } from "./__generated__/SnsTimelineQuery.graphql.js";
+import type { SnsTimeline_query$data } from "./__generated__/SnsTimeline_query.graphql.js";
 
 const timelineQuery = graphql`
   query SnsTimelineQuery($topic: String!, $search: String!, $page: Int!) {
+    ...SnsTimeline_query @arguments(topic: $topic, search: $search, page: $page)
+  }
+`;
+
+const timelineFragment = graphql`
+  fragment SnsTimeline_query on Query
+  @refetchable(queryName: "SnsTimelineRefetchQuery")
+  @argumentDefinitions(
+    topic: { type: "String!" }
+    search: { type: "String!" }
+    page: { type: "Int!" }
+  ) {
     viewer {
       id
     }
@@ -34,16 +54,84 @@ const timelineQuery = graphql`
 `;
 
 /**
- * The notes and their pagination. Reactions and the composer's refresh write to the normalized
- * store, so this list lives in the browser; the page around it does not.
+ * The composer and the notes.
+ *
+ * The route query only starts the read. Publishing asks the refetchable
+ * fragment for the same topic, search and page, inside a transition, so the
+ * notes stay while that request is open. The route does not run again, and a
+ * reader who has moved to another page is not pulled back to this one.
+ * Pagination stays on the URL, which is what a shared link has to carry.
+ *
+ * A failed refetch is thrown on the next read. The list's own boundary mounts
+ * it again from the store, so the route stays and the composer keeps the
+ * message it showed for that failure. Reactions still write the normalized
+ * record; this refresh is for a note that did not exist yet.
  */
 
-export component Timeline(
-  queryRef: PreloadedQueryRef<SnsTimelineQuery$variables, SnsTimelineQuery$data>,
-  filter  : FeedFilter,
+export component Feed(
+  composerQueryRef: PreloadedQueryRef<SnsComposerQuery$variables, SnsComposerQuery$data>,
+  timelineQueryRef: PreloadedQueryRef<SnsTimelineQuery$variables, SnsTimelineQuery$data>,
+  filter          : FeedFilter,
+  guest           : React.Node,
 ) {
-  const data = useQueryFromServer(timelineQuery, queryRef);
+  const loaded         = useQueryFromServer(timelineQuery, timelineQueryRef);
+  const refreshNoteRef = useRef<null | (() => Promise<void>)>(null);
+
+  return (
+    <>
+      <ComposerSlot
+        queryRef={composerQueryRef}
+        filter={filter}
+        guest={guest}
+        onPublished={() => {
+          const refresh = refreshNoteRef.current;
+          if (refresh == null) return Promise.reject(new Error("The feed is not on screen."));
+          return refresh();
+        }}
+      />
+      <RefreshBoundary fallback={<p role="alert">The feed could not be refreshed.</p>}>
+        <FeedNotes loaded={loaded} filter={filter} refreshNoteRef={refreshNoteRef} />
+      </RefreshBoundary>
+    </>
+  );
+}
+
+component FeedNotes(
+  loaded        : SnsTimelineQuery$data,
+  filter        : FeedFilter,
+  refreshNoteRef: { current: null | (() => Promise<void>) },
+) {
+  const [untyped, refetch] = useRefetchableFragment(timelineFragment, loaded);
+  // The tag's result is the artifact's data. Naming that type keeps `hasNext`
+  // a boolean; an untyped fragment result would be `any`, and a match on it
+  // would no longer be exhaustive.
+  const data: SnsTimeline_query$data = untyped;
   const posts = data.feed.posts;
+  const refresh = (): Promise<void> =>
+    new Promise((resolve, reject) => {
+      startTransition(() => {
+        refetch(
+          { topic: filter.topic, search: filter.query, page: filter.page },
+          {
+            fetchPolicy: "network-only",
+            onComplete: (error) => {
+              if (error != null) {
+                reject(error);
+              } else {
+                resolve();
+              }
+            },
+          },
+        );
+      });
+    });
+
+  useLayoutEffect(() => {
+    refreshNoteRef.current = refresh;
+    return () => {
+      if (refreshNoteRef.current === refresh) refreshNoteRef.current = null;
+    };
+  });
 
   return (
     <>

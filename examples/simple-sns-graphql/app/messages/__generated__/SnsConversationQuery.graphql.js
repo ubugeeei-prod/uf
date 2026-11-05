@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8fafb86623e86de3382aa414037b9983>>
+ * @generated SignedSource<<e4502ba395d97011e3bcc8a1375842ca>>
  * @flow
  * @lightSyntaxTransform
  */
@@ -10,17 +10,12 @@
 
 /*::
 import type { ConcreteRequest, Query } from 'relay-runtime';
-import type { SnsConversation_conversation$fragmentType } from "./SnsConversation_conversation.graphql";
+import type { SnsConversation_query$fragmentType } from "./SnsConversation_query.graphql";
 export type SnsConversationQuery$variables = {
   thread: string,
 };
 export type SnsConversationQuery$data = {
-  readonly conversation: ?{
-    readonly thread: {
-      readonly id: string,
-    },
-    readonly $fragmentSpreads: SnsConversation_conversation$fragmentType,
-  },
+  readonly $fragmentSpreads: SnsConversation_query$fragmentType,
 };
 export type SnsConversationQuery = {
   response: SnsConversationQuery$data,
@@ -36,14 +31,7 @@ var v0 = [
     "name": "thread"
   }
 ],
-v1 = [
-  {
-    "kind": "Variable",
-    "name": "id",
-    "variableName": "thread"
-  }
-],
-v2 = {
+v1 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
@@ -58,32 +46,15 @@ return {
     "name": "SnsConversationQuery",
     "selections": [
       {
-        "alias": null,
-        "args": (v1/*:: as any*/),
-        "concreteType": "Conversation",
-        "kind": "LinkedField",
-        "name": "conversation",
-        "plural": false,
-        "selections": [
+        "args": [
           {
-            "alias": null,
-            "args": null,
-            "concreteType": "Thread",
-            "kind": "LinkedField",
+            "kind": "Variable",
             "name": "thread",
-            "plural": false,
-            "selections": [
-              (v2/*:: as any*/)
-            ],
-            "storageKey": null
-          },
-          {
-            "args": null,
-            "kind": "FragmentSpread",
-            "name": "SnsConversation_conversation"
+            "variableName": "thread"
           }
         ],
-        "storageKey": null
+        "kind": "FragmentSpread",
+        "name": "SnsConversation_query"
       }
     ],
     "type": "Query",
@@ -97,7 +68,13 @@ return {
     "selections": [
       {
         "alias": null,
-        "args": (v1/*:: as any*/),
+        "args": [
+          {
+            "kind": "Variable",
+            "name": "id",
+            "variableName": "thread"
+          }
+        ],
         "concreteType": "Conversation",
         "kind": "LinkedField",
         "name": "conversation",
@@ -111,7 +88,7 @@ return {
             "name": "thread",
             "plural": false,
             "selections": [
-              (v2/*:: as any*/),
+              (v1/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -127,7 +104,7 @@ return {
                     "name": "name",
                     "storageKey": null
                   },
-                  (v2/*:: as any*/)
+                  (v1/*:: as any*/)
                 ],
                 "storageKey": null
               }
@@ -142,7 +119,7 @@ return {
             "name": "messages",
             "plural": true,
             "selections": [
-              (v2/*:: as any*/),
+              (v1/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -173,17 +150,17 @@ return {
     ]
   },
   "params": {
-    "cacheID": "62700053d6d47902a9d4b9362b1c8509",
+    "cacheID": "102e7639bdf1184990847fdcd3de8a45",
     "id": null,
     "metadata": {},
     "name": "SnsConversationQuery",
     "operationKind": "query",
-    "text": "query SnsConversationQuery(\n  $thread: ID!\n) {\n  conversation(id: $thread) {\n    thread {\n      id\n    }\n    ...SnsConversation_conversation\n  }\n}\n\nfragment SnsConversation_conversation on Conversation {\n  thread {\n    id\n    participant {\n      name\n      id\n    }\n  }\n  messages {\n    id\n    ...SnsMessage_message\n  }\n}\n\nfragment SnsMessage_message on Message {\n  author\n  body\n  sentAt\n}\n"
+    "text": "query SnsConversationQuery(\n  $thread: ID!\n) {\n  ...SnsConversation_query_2omOIA\n}\n\nfragment SnsConversation_conversation on Conversation {\n  thread {\n    id\n    participant {\n      name\n      id\n    }\n  }\n  messages {\n    id\n    ...SnsMessage_message\n  }\n}\n\nfragment SnsConversation_query_2omOIA on Query {\n  conversation(id: $thread) {\n    thread {\n      id\n    }\n    ...SnsConversation_conversation\n  }\n}\n\nfragment SnsMessage_message on Message {\n  author\n  body\n  sentAt\n}\n"
   }
 };
 })();
 
-(node/*:: as any*/).hash = "8d39e72e7d4a15a3a7d0c083bed17915";
+(node/*:: as any*/).hash = "81b42d3f2676f3c3d9e12cdfcdd73f86";
 
 export default ((node/*:: as any*/)/*:: as Query<
   SnsConversationQuery$variables,
