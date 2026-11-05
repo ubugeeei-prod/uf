@@ -46,10 +46,14 @@ function notifyNav(): void {
 }
 
 function readStored(): string {
-  if (typeof sessionStorage === "undefined") {
-    return NAV_EMPTY;
-  }
+  // `typeof` still evaluates the getter. A browser that has storage blocked
+  // throws there, before the method call, and that throw happens during
+  // render. The catch is the answer for that and for a window with no
+  // `sessionStorage` at all.
   try {
+    if (typeof sessionStorage === "undefined") {
+      return NAV_EMPTY;
+    }
     return sessionStorage.getItem(NAV_OPEN) ?? NAV_EMPTY;
   } catch {
     return NAV_EMPTY;
@@ -82,12 +86,14 @@ function writeRemembered(titles: $ReadOnlyArray<string>): void {
     return;
   }
   navMemory = raw;
-  if (typeof sessionStorage !== "undefined") {
-    try {
+  try {
+    if (typeof sessionStorage !== "undefined") {
       sessionStorage.setItem(NAV_OPEN, raw);
-    } catch {
-      // A private window that refuses storage still toggles for this page.
     }
+  } catch {
+    // A private window, or one that has storage blocked, still toggles for
+    // this page. The property access is what throws, so it stays inside the
+    // catch.
   }
   notifyNav();
 }
