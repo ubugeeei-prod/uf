@@ -2,7 +2,7 @@
 // @flow
 
 import * as React from "@uniflowed/react";
-import { useState } from "@uniflowed/react";
+import { startTransition, useLayoutEffect, useRef, useState } from "@uniflowed/react";
 import {
   fetchQuery,
   graphql,
@@ -16,6 +16,7 @@ import { props, stylex } from "@uniflowed/stylex";
 
 import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
+import { RefreshBoundary } from "../_shared/refresh-boundary.client.js";
 import { styles as uiStyles } from "../_shared/ui.js";
 import threadsRefetchQuery from "./__generated__/SnsThreadsRefetchQuery.graphql.js";
 import { Message } from "./message.client.js";
@@ -76,28 +77,73 @@ const sendMessage = graphql`
  * with its log.
  *
  * The store updater appends the message that was just accepted, so the log
- * moves before another round trip. The fragment is then refetched: that is
- * the server's copy of this thread, including a message the other person sent
- * while this one was open. The inbox preview is the other preload, so its
- * refetch query runs from here rather than from a fragment this pane holds.
+ * moves before another round trip. The fragment is then refetched, inside a
+ * transition, so the log stays while the server's copy arrives, including a
+ * message the other person sent while this one was open. That refetch runs
+ * only when its thread is still the one on screen. A send that finishes after
+ * the reader opened another thread must not replace this pane.
+ *
+ * The inbox preview is the other preload, so its refetch query runs from here.
+ * A later send waits until the refresh already in flight settles: the same
+ * query would otherwise be joined, and the preview would keep the earlier
+ * message. A failure leaves the previous preview. The log already has the
+ * message, and a failed read of this pane mounts it again from the store.
  */
 
 export component ConversationPane(
   queryRef: PreloadedQueryRef<SnsConversationQuery$variables, SnsConversationQuery$data>,
 ) {
-  const loaded             = useQueryFromServer(conversationQuery, queryRef);
+  const loaded = useQueryFromServer(conversationQuery, queryRef);
+
+  return (
+    <RefreshBoundary fallback={<p role="alert">This conversation could not be refreshed.</p>}>
+      <OpenConversation loaded={loaded} />
+    </RefreshBoundary>
+  );
+}
+
+component OpenConversation(loaded: SnsConversationQuery$data) {
   const [untyped, refetch] = useRefetchableFragment(conversationQueryFragment, loaded);
   const data: SnsConversation_query$data = untyped;
   const environment = useRelayEnvironment();
+  const openThread = match (data.conversation) {
+    null | undefined => null,
+    const found      => found.thread.id,
+  };
+  const openThreadRef = useRef<null | string>(null);
+  const inboxRefresh  = useRef<Promise<void>>(Promise.resolve());
+
+  useLayoutEffect(() => {
+    openThreadRef.current = openThread;
+  }, [openThread]);
+
   const refresh = (thread: string) => {
-    refetch({ thread }, { fetchPolicy: "network-only" });
-    // The preview lives on the inbox fragment. Its reader is the other
-    // boundary, so the query this fragment's directive generated is what
-    // reaches it. A failure leaves the previous preview; the log already
-    // has the message.
-    fetchQuery(environment, threadsRefetchQuery, {}, { fetchPolicy: "network-only" }).subscribe({
-      error() {},
-    });
+    if (openThreadRef.current === thread) {
+      startTransition(() => {
+        refetch({ thread }, { fetchPolicy: "network-only" });
+      });
+    }
+    const pending = inboxRefresh.current.then(
+      () =>
+        new Promise((resolve) => {
+          fetchQuery(
+            environment,
+            threadsRefetchQuery,
+            {},
+            { fetchPolicy: "network-only" },
+          ).subscribe({
+            complete: () => resolve(),
+            error() {
+              resolve();
+            },
+          });
+        }),
+    );
+    // A rejected refresh must not stop the next send from starting one.
+    inboxRefresh.current = pending.then(
+      () => {},
+      () => {},
+    );
   };
 
   return match (data.conversation) {

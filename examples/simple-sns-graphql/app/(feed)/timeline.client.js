@@ -2,6 +2,7 @@
 // @flow
 
 import * as React from "@uniflowed/react";
+import { startTransition, useLayoutEffect, useRef } from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { graphql, useRefetchableFragment } from "@uniflowed/relay";
 import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
@@ -9,6 +10,7 @@ import { props, stylex } from "@uniflowed/stylex";
 
 import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
+import { RefreshBoundary } from "../_shared/refresh-boundary.client.js";
 import { Icon, EmptyState } from "../_shared/ui.js";
 import { ComposerSlot } from "./composer.client.js";
 import { PostCard } from "./post.client.js";
@@ -54,12 +56,16 @@ const timelineFragment = graphql`
 /**
  * The composer and the notes.
  *
- * The route query only starts the read. The list is a refetchable fragment, so
- * publishing a note asks that fragment for the same topic, search and page
- * again. The route does not run a second time, and a reader who has moved to
- * another page is not pulled back to this one. Reactions still write the
- * normalized record; this refresh is for a note that did not exist yet.
+ * The route query only starts the read. Publishing asks the refetchable
+ * fragment for the same topic, search and page, inside a transition, so the
+ * notes stay while that request is open. The route does not run again, and a
+ * reader who has moved to another page is not pulled back to this one.
  * Pagination stays on the URL, which is what a shared link has to carry.
+ *
+ * A failed refetch is thrown on the next read. The list's own boundary mounts
+ * it again from the store, so the route stays and the composer keeps the
+ * message it showed for that failure. Reactions still write the normalized
+ * record; this refresh is for a note that did not exist yet.
  */
 
 export component Feed(
@@ -68,7 +74,33 @@ export component Feed(
   filter          : FeedFilter,
   guest           : React.Node,
 ) {
-  const loaded             = useQueryFromServer(timelineQuery, timelineQueryRef);
+  const loaded         = useQueryFromServer(timelineQuery, timelineQueryRef);
+  const refreshNoteRef = useRef<null | (() => Promise<void>)>(null);
+
+  return (
+    <>
+      <ComposerSlot
+        queryRef={composerQueryRef}
+        filter={filter}
+        guest={guest}
+        onPublished={() => {
+          const refresh = refreshNoteRef.current;
+          if (refresh == null) return Promise.reject(new Error("The feed is not on screen."));
+          return refresh();
+        }}
+      />
+      <RefreshBoundary fallback={<p role="alert">The feed could not be refreshed.</p>}>
+        <FeedNotes loaded={loaded} filter={filter} refreshNoteRef={refreshNoteRef} />
+      </RefreshBoundary>
+    </>
+  );
+}
+
+component FeedNotes(
+  loaded        : SnsTimelineQuery$data,
+  filter        : FeedFilter,
+  refreshNoteRef: { current: null | (() => Promise<void>) },
+) {
   const [untyped, refetch] = useRefetchableFragment(timelineFragment, loaded);
   // The tag's result is the artifact's data. Naming that type keeps `hasNext`
   // a boolean; an untyped fragment result would be `any`, and a match on it
@@ -77,29 +109,32 @@ export component Feed(
   const posts = data.feed.posts;
   const refresh = (): Promise<void> =>
     new Promise((resolve, reject) => {
-      refetch(
-        { topic: filter.topic, search: filter.query, page: filter.page },
-        {
-          fetchPolicy: "network-only",
-          onComplete: (error) => {
-            if (error != null) {
-              reject(error);
-            } else {
-              resolve();
-            }
+      startTransition(() => {
+        refetch(
+          { topic: filter.topic, search: filter.query, page: filter.page },
+          {
+            fetchPolicy: "network-only",
+            onComplete: (error) => {
+              if (error != null) {
+                reject(error);
+              } else {
+                resolve();
+              }
+            },
           },
-        },
-      );
+        );
+      });
     });
+
+  useLayoutEffect(() => {
+    refreshNoteRef.current = refresh;
+    return () => {
+      if (refreshNoteRef.current === refresh) refreshNoteRef.current = null;
+    };
+  });
 
   return (
     <>
-      <ComposerSlot
-        queryRef={composerQueryRef}
-        filter={filter}
-        guest={guest}
-        onPublished={refresh}
-      />
       {
         match (posts.length > 0) {
           true  =>
