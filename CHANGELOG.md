@@ -1,5 +1,14 @@
 # Changelog
 
+## uf@0.47.0
+
+- feat(ui): submit a checkbox and a switch, and reset them with the form (#1913) (7fff7f9f)
+- feat(tui): ask the terminal to show a notification (#1914) (b8d8bfec)
+- feat(ui): submit a number and a slider, and say when the gesture ends (#1912) (ed127c8d)
+- examples: refetch the feed and the inbox as fragments (#1911) (4bf13375)
+- docs: keep the manual readable when the page changes (#1910) (2a9b0ec9)
+- feat: wrap and position children inside a ScrollBox (#1909) (cac91d9b)
+
 ## uf@0.46.0
 
 - feat: select a word or a line, and point diff and update at a registry directory (#1906) (bed0a1a8)
