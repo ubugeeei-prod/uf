@@ -491,7 +491,10 @@ component DialogClose(children: React.Node, render?: RenderProp, ...rest: Rest) 
  * afterwards: a toast, a second route, a node another library appended to
  * `<body>`. That node is the page too. A `MutationObserver` on `<body>` applies
  * the same rule to it. A node added inside the dialog is the dialog, and is
- * left alone.
+ * left alone. A node taken out of the document is dropped: a dialog that stays
+ * open does not keep every toast it has already dismissed. The attributes it
+ * had before the first dialog hid it are what it gets back, including when a
+ * second dialog had hidden it too.
  *
  * Both attributes, because they address different audiences. `aria-hidden`
  * removes the subtree from the accessibility tree; `inert` also stops clicks
@@ -499,9 +502,59 @@ component DialogClose(children: React.Node, render?: RenderProp, ...rest: Rest) 
  * the focus trap and does not depend on this component's key handling being
  * reached.
  */
+type HiddenState = {| element: Element, hidden: string | null, inert: boolean |};
+
+/**
+ * How many open dialogs are currently hiding one element, and the attributes
+ * it had before the first of them did.
+ *
+ * Shared, because two stacked dialogs conceal the same node and the one that
+ * runs second finds it already hidden. Whichever dialog lets go last writes
+ * those original attributes back. The snapshot one dialog took cannot: the
+ * dialog that concealed the node first recorded the page's own attributes, and
+ * writing those while another dialog is still open uncovers the page.
+ */
+const claims: WeakMap<Element, number> = new WeakMap();
+const originals: WeakMap<Element, {| hidden: string | null, inert: boolean |}> = new WeakMap();
+
+function claim(sibling: Element): {| hidden: string | null, inert: boolean |} {
+  const now = {
+    hidden: sibling.getAttribute("aria-hidden") ?? null,
+    inert : sibling.hasAttribute("inert"),
+  };
+  if (!originals.has(sibling)) {
+    originals.set(sibling, now);
+  }
+  claims.set(sibling, (claims.get(sibling) ?? 0) + 1);
+  return now;
+}
+
+/** The last dialog to release `sibling` writes its original attributes. */
+function release(sibling: Element, restoreOriginal: boolean) {
+  const left = (claims.get(sibling) ?? 1) - 1;
+  if (left > 0) {
+    claims.set(sibling, left);
+    return;
+  }
+  claims.delete(sibling);
+  const original = originals.get(sibling);
+  originals.delete(sibling);
+  if (!restoreOriginal || original == null) {
+    return;
+  }
+  if (original.hidden == null) {
+    sibling.removeAttribute("aria-hidden");
+  } else {
+    sibling.setAttribute("aria-hidden", original.hidden);
+  }
+  if (!original.inert) {
+    sibling.removeAttribute("inert");
+  }
+}
+
 function concealOutside(element: HTMLElement): () => void {
   const document = element.ownerDocument;
-  const restore: Array<{| element: Element, hidden: string | null, inert: boolean |}> = [];
+  const restore: Array<HiddenState> = [];
   const concealed = new Set<Element>();
 
   const conceal = (sibling: Element) => {
@@ -511,13 +564,27 @@ function concealOutside(element: HTMLElement): () => void {
       return;
     }
     concealed.add(sibling);
+    const now = claim(sibling);
     restore.push({
       element: sibling,
-      hidden : sibling.getAttribute("aria-hidden") ?? null,
-      inert  : sibling.hasAttribute("inert"),
+      hidden : now.hidden,
+      inert  : now.inert,
     });
     sibling.setAttribute("aria-hidden", "true");
     sibling.setAttribute("inert", "");
+  };
+
+  const forget = (sibling: Element) => {
+    if (!concealed.delete(sibling)) {
+      return;
+    }
+    const index = restore.findIndex((entry) => entry.element === sibling);
+    if (index !== -1) {
+      restore.splice(index, 1);
+    }
+    // Detached, so the attributes are for the next time it is inserted, not
+    // for a page the reader can still reach.
+    release(sibling, true);
   };
 
   let node: Element | null = element;
@@ -542,6 +609,19 @@ function concealOutside(element: HTMLElement): () => void {
   if (Observer != null && document.body != null) {
     observer = new Observer((records) => {
       for (const record of records) {
+        // Removals first. A node that leaves and comes back in one turn has
+        // its own attributes again before it is concealed a second time.
+        if (record.removedNodes.length > 0) {
+          const gone = [];
+          for (const sibling of concealed) {
+            if (!sibling.isConnected) {
+              gone.push(sibling);
+            }
+          }
+          for (const sibling of gone) {
+            forget(sibling);
+          }
+        }
         for (const added of Array.from(record.addedNodes)) {
           const sibling = pageSibling(element, added);
           if (sibling != null) {
@@ -557,22 +637,33 @@ function concealOutside(element: HTMLElement): () => void {
     // This observer's job ended with the dialog. Disconnecting first keeps a
     // node the close itself removes from being read as a new sibling.
     observer?.disconnect();
-    // In reverse, so an element concealed by two nested dialogs is handed back
-    // the state the outer one found rather than the state the inner one did.
+    // In reverse only so a nested close finishes its own records first. The
+    // attributes themselves come from before the first dialog, and only the
+    // last dialog still holding the node writes them. An earlier close leaves
+    // the node hidden: its own snapshot may be the page's attributes.
     for (let index = restore.length - 1; index >= 0; index -= 1) {
       const entry = restore[index];
-      if (entry.hidden == null) {
-        entry.element.removeAttribute("aria-hidden");
-      } else {
-        entry.element.setAttribute("aria-hidden", entry.hidden);
+      const others = (claims.get(entry.element) ?? 1) > 1;
+      if (!others) {
+        const original = originals.get(entry.element);
+        const hidden = original != null ? original.hidden : entry.hidden;
+        const wasInert = original != null ? original.inert : entry.inert;
+        if (hidden == null) {
+          entry.element.removeAttribute("aria-hidden");
+        } else {
+          entry.element.setAttribute("aria-hidden", hidden);
+        }
+        // Nor a part that is on its way out. A scrim beside the panel was
+        // concealed with the rest of the page, and is now fading out `inert` of
+        // its own accord (`internal/presence.js`); taking that away would leave
+        // an invisible layer over the page that swallows the next press.
+        if (!wasInert && entry.element.getAttribute("data-state") !== "closed") {
+          entry.element.removeAttribute("inert");
+        }
       }
-      // Nor a part that is on its way out. A scrim beside the panel was
-      // concealed with the rest of the page, and is now fading out `inert` of
-      // its own accord (`internal/presence.js`); taking that away would leave
-      // an invisible layer over the page that swallows the next press.
-      if (!entry.inert && entry.element.getAttribute("data-state") !== "closed") {
-        entry.element.removeAttribute("inert");
-      }
+      // The shared count still has to drop, or the next open treats the node
+      // as already claimed and keeps a stale original.
+      release(entry.element, false);
     }
   };
 }

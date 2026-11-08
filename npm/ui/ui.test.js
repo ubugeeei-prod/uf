@@ -1155,26 +1155,30 @@ describe("Dialog", () => {
     const announcer = document.createElement("div");
     announcer.setAttribute("data-uf-live-announcer", "");
     announcer.textContent = "Saved";
-    // The observer reports after the insertion, as a microtask.
-    await act(async () => {
-      document.body?.appendChild(late);
-      document.body?.appendChild(announcer);
-      screen.getByRole("dialog").appendChild(inside);
-      await Promise.resolve();
-    });
-    expect(late).toHaveAttribute("aria-hidden", "true");
-    expect(late).toHaveAttribute("inert");
-    // A control the dialog itself just rendered is the dialog, not the page.
-    expect(inside).not.toHaveAttribute("aria-hidden");
-    expect(inside).not.toHaveAttribute("inert");
-    // And the announcer has to stay readable, or a dialog cannot say what it did.
-    expect(announcer).not.toHaveAttribute("aria-hidden");
-    expect(announcer).not.toHaveAttribute("inert");
-    await userEvent.keyboard("{Escape}");
-    expect(late).not.toHaveAttribute("aria-hidden");
-    expect(late).not.toHaveAttribute("inert");
-    late.remove();
-    announcer.remove();
+    try {
+      // The observer reports after the insertion, as a microtask.
+      await act(async () => {
+        document.body?.appendChild(late);
+        document.body?.appendChild(announcer);
+        screen.getByRole("dialog").appendChild(inside);
+        await Promise.resolve();
+      });
+      expect(late).toHaveAttribute("aria-hidden", "true");
+      expect(late).toHaveAttribute("inert");
+      // A control the dialog itself just rendered is the dialog, not the page.
+      expect(inside).not.toHaveAttribute("aria-hidden");
+      expect(inside).not.toHaveAttribute("inert");
+      // And the announcer has to stay readable, or a dialog cannot say what it did.
+      expect(announcer).not.toHaveAttribute("aria-hidden");
+      expect(announcer).not.toHaveAttribute("inert");
+      await userEvent.keyboard("{Escape}");
+      expect(late).not.toHaveAttribute("aria-hidden");
+      expect(late).not.toHaveAttribute("inert");
+    } finally {
+      late.remove();
+      announcer.remove();
+      cleanup();
+    }
   });
 
   it("holds the page still while it is open, and gives it back", async () => {
@@ -1293,23 +1297,88 @@ describe("Dialog: two of them stacked", () => {
     const late = document.createElement("button");
     late.type = "button";
     late.textContent = "Late";
-    await act(async () => {
-      document.body?.appendChild(late);
-      await Promise.resolve();
-    });
-    expect(late).toHaveAttribute("aria-hidden", "true");
-    expect(late).toHaveAttribute("inert");
-    await userEvent.keyboard("{Escape}");
-    // The outer dialog is still open, so the page behind both of them is still
-    // gone. The inner dialog's cleanup must not hand the element back.
-    expect(screen.getAllByRole("dialog").length).toBe(1);
-    expect(late).toHaveAttribute("aria-hidden", "true");
-    expect(late).toHaveAttribute("inert");
-    await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog")).toBe(null);
-    expect(late).not.toHaveAttribute("aria-hidden");
-    expect(late).not.toHaveAttribute("inert");
-    late.remove();
+    try {
+      await act(async () => {
+        document.body?.appendChild(late);
+        await Promise.resolve();
+      });
+      expect(late).toHaveAttribute("aria-hidden", "true");
+      expect(late).toHaveAttribute("inert");
+      await userEvent.keyboard("{Escape}");
+      // The outer dialog is still open, so the page behind both of them is still
+      // gone. The inner dialog's cleanup must not hand the element back.
+      expect(screen.getAllByRole("dialog").length).toBe(1);
+      expect(late).toHaveAttribute("aria-hidden", "true");
+      expect(late).toHaveAttribute("inert");
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).toBe(null);
+      expect(late).not.toHaveAttribute("aria-hidden");
+      expect(late).not.toHaveAttribute("inert");
+    } finally {
+      late.remove();
+      cleanup();
+    }
+  });
+
+  it("gives a removed element its own attributes back, and hides it again if it returns", async () => {
+    render(
+      <Dialog.Root defaultOpen>
+        <Dialog.Body>
+          <Dialog.Title>Open</Dialog.Title>
+          <Dialog.Root defaultOpen>
+            <Dialog.Body>
+              <Dialog.Title>Inner</Dialog.Title>
+            </Dialog.Body>
+          </Dialog.Root>
+        </Dialog.Body>
+      </Dialog.Root>,
+    );
+    const late = document.createElement("button");
+    late.type = "button";
+    late.textContent = "Late";
+    try {
+      await act(async () => {
+        document.body?.appendChild(late);
+        await Promise.resolve();
+      });
+      expect(late).toHaveAttribute("aria-hidden", "true");
+      await act(async () => {
+        late.remove();
+        await Promise.resolve();
+      });
+      // Both dialogs have let go of it. The attributes it had before either
+      // of them are what it carries, not the hidden state the inner one saw.
+      expect(late).not.toHaveAttribute("aria-hidden");
+      expect(late).not.toHaveAttribute("inert");
+      await act(async () => {
+        document.body?.appendChild(late);
+        await Promise.resolve();
+      });
+      expect(late).toHaveAttribute("aria-hidden", "true");
+      expect(late).toHaveAttribute("inert");
+      // Focus is what chooses which dialog Escape closes. The inner one is
+      // the front; one press has to leave the outer one hiding the page.
+      // There is no trigger to return to, so the next press needs the dialog
+      // that is still open.
+      act(() => {
+        screen.getByRole("dialog", { name: "Inner" }).focus();
+      });
+      await userEvent.keyboard("{Escape}");
+      const remaining = screen.getAllByRole("dialog");
+      expect(remaining.length).toBe(1);
+      expect(late).toHaveAttribute("aria-hidden", "true");
+      expect(late).toHaveAttribute("inert");
+      act(() => {
+        remaining[0].focus();
+      });
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).toBe(null);
+      expect(late).not.toHaveAttribute("aria-hidden");
+      expect(late).not.toHaveAttribute("inert");
+    } finally {
+      late.remove();
+      cleanup();
+    }
   });
 
   it("hands the page back the state the outer dialog left it in", async () => {
