@@ -3380,6 +3380,53 @@ describe("what a form submits for a control the browser has never heard of", () 
     expect(submitted(container, "country")).toBe("GB");
   });
 
+  it("returns a select and a combobox to their defaults when the form resets", async () => {
+    const { container } = render(
+      <form>
+        <Select.Root defaultValue="GB" name="country">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+            <Select.Option value="JP">Japan</Select.Option>
+          </Select.List>
+        </Select.Root>
+        <Combobox.Root defaultInputValue="United Kingdom" defaultValue="GB" name="fruit">
+          <Combobox.Label>Fruit</Combobox.Label>
+          <Combobox.Input />
+          <Combobox.List>
+            <Combobox.Option value="GB">United Kingdom</Combobox.Option>
+            <Combobox.Option value="JP">Japan</Combobox.Option>
+          </Combobox.List>
+        </Combobox.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    const read = (field: string) => new form.ownerDocument.defaultView.FormData(form).get(field);
+    await userEvent.click(screen.getByRole("combobox", { name: "Country" }));
+    await userEvent.click(screen.getByRole("option", { name: "Japan" }));
+    expect(read("country")).toBe("JP");
+    const fruit = screen.getByRole("combobox", { name: "Fruit" });
+    act(() => {
+      fruit.focus();
+    });
+    // A click in the field does not open the list. ArrowDown does.
+    await userEvent.keyboard("{ArrowDown}");
+    await userEvent.click(screen.getByRole("option", { name: "Japan" }));
+    expect(fruit).toHaveValue("Japan");
+    expect(read("fruit")).toBe("JP");
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(read("country")).toBe("GB");
+    expect(screen.getByRole("combobox", { name: "Country" })).toHaveTextContent("United Kingdom");
+    expect(fruit).toHaveValue("United Kingdom");
+    expect(read("fruit")).toBe("GB");
+  });
+
   it("never puts a second combobox in the accessibility tree", () => {
     render(
       <form>
@@ -6264,6 +6311,32 @@ describe("Slider", () => {
     // One hidden input, not a second slider. A reader still hears two thumbs.
     // `get` would still pass if a second field of the same name were submitted.
     expect(screen.getAllByRole("slider").length).toBe(2);
+    expect(read()).toEqual(["20,60"]);
+  });
+
+  it("returns the thumbs to defaultValue when the form resets", async () => {
+    const { container } = render(
+      <form>
+        <Slider.Root defaultValue={[20, 60]} name="price">
+          <Slider.Track>
+            <Slider.Range />
+          </Slider.Track>
+          <Slider.Thumb aria-label="Minimum" index={0} />
+          <Slider.Thumb aria-label="Maximum" index={1} />
+        </Slider.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    const read = () => new form.ownerDocument.defaultView.FormData(form).getAll("price");
+    const minimum = screen.getByRole("slider", { name: "Minimum" });
+    fireEvent.keyDown(minimum, { key: "ArrowRight" });
+    fireEvent.keyUp(minimum, { key: "ArrowRight" });
+    expect(read()).toEqual(["21,60"]);
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(minimum.getAttribute("aria-valuenow")).toBe("20");
     expect(read()).toEqual(["20,60"]);
   });
 

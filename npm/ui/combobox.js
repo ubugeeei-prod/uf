@@ -127,6 +127,7 @@ import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import { itemsOf, moveTo } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { useFormReset } from "./internal/checkable-form.js";
 import { FormValue } from "./internal/form-value.js";
 import { presenceProps, usePresence } from "./internal/presence.js";
 
@@ -246,6 +247,29 @@ component ComboboxRoot(
     setActiveId(null);
   });
 
+  const rootRef = useRef<HTMLElement | null>(null);
+  const ownedValue = value === undefined;
+  const ownedText = inputValue === undefined;
+  const form = typeof rest.form === "string" ? rest.form : undefined;
+  // Reset restores the choice and the text. The field is a real input, so the
+  // browser clears it too; a controlled parent that keeps its text is written
+  // back, the same way the hidden input is.
+  const restore = useStableCallback(() => {
+    setChosen(defaultValue);
+    setText(defaultInputValue);
+    if (!ownedValue) {
+      const hidden: $FlowFixMe = rootRef.current?.querySelector?.("input[type='hidden']");
+      if (hidden != null) {
+        hidden.value = chosen ?? "";
+      }
+    }
+    const field = inputRef.current as $FlowFixMe;
+    if (!ownedText && field != null) {
+      field.value = text;
+    }
+  });
+  useFormReset(rootRef, restore, form);
+
   const state = {
     base,
     open: isOpen,
@@ -266,11 +290,17 @@ component ComboboxRoot(
     registerLabel: setLabelled,
   };
 
+  const passed = withoutComposed(rest, ["ref"]);
   return (
     <ComboboxContext.Provider value={state}>
-      <div {...rest}>
+      <div
+        {...passed}
+        ref={composeRefs(rest.ref, (element: HTMLElement | null) => {
+          rootRef.current = element;
+        })}
+      >
         {children}
-        {name == null ? null : <FormValue name={name} value={chosen} />}
+        {name == null ? null : <FormValue form={form} name={name} value={chosen} />}
       </div>
     </ComboboxContext.Provider>
   );
