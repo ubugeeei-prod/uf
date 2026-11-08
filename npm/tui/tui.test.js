@@ -50,6 +50,7 @@ import {
   testRender,
   useClipboard,
   useKeyboard,
+  useNotifications,
   useRenderer,
   useTerminalSize,
 } from "@uniflowed/tui";
@@ -4589,6 +4590,178 @@ describe("a real terminal, or something that is not one", () => {
     expect(memory).toEqual(["false", "false", "false", "false"]);
     expect(stdout.text()).not.toContain("\u001b]52;");
     app.stop();
+  });
+
+  it("asks an interactive terminal for a notification, and writes nothing otherwise", () => {
+    const stdout = output({ isTTY: true });
+    const stdin = input();
+
+    component Probe() {
+      const notifications     = useNotifications();
+      const [state, setState] = useState<string>("");
+      useKeyboard((key) => {
+        if (key.sequence === "n") {
+          setState(notifications.notify("Build", "done") ? "sent" : "refused");
+        } else if (key.sequence === "u") {
+          setState(notifications.notify("界", "") ? "sent" : "refused");
+        } else if (key.sequence === "b") {
+          setState(notifications.notify("Build\u001b]0;x", "done") ? "sent" : "refused");
+        } else if (key.sequence === "e") {
+          setState(notifications.notify("", "") ? "sent" : "refused");
+        }
+      });
+      return <Text wrap="none">{state}</Text>;
+    }
+
+    const app = render(<Probe />, {
+      stdin,
+      stdout,
+      env            : { COLORTERM: "truecolor" },
+      alternateScreen: false,
+    });
+    stdin.type("n");
+    expect(stdout.text()).toContain("\u001b]9;Build: done\u0007");
+    expect(app.text().split("\n")[0]).toBe("sent    ");
+    stdin.type("u");
+    expect(stdout.text()).toContain("\u001b]9;界\u0007");
+    const beforeBreak = stdout.text().length;
+    stdin.type("b");
+    expect(stdout.text().slice(beforeBreak)).not.toContain("\u001b]9;");
+    expect(app.text().split("\n")[0]).toBe("refused ");
+    stdin.type("e");
+    expect(app.text().split("\n")[0]).toBe("refused ");
+    app.stop();
+
+    const stdout777 = output({ isTTY: true });
+    const stdin777 = input();
+    const titled = render(<Probe />, {
+      stdin          : stdin777,
+      stdout         : stdout777,
+      env            : { COLORTERM: "truecolor" },
+      alternateScreen: false,
+      notifications  : "osc777",
+    });
+    stdin777.type("n");
+    expect(stdout777.text()).toContain("\u001b]777;notify;Build;done\u0007");
+    titled.stop();
+
+    const stdoutSemi = output({ isTTY: true });
+    const stdinSemi = input();
+    component Semicolon() {
+      const notifications = useNotifications();
+      useKeyboard(() => {
+        notifications.notify("Build; one", "a;b");
+      });
+      return <Text>semi</Text>;
+    }
+    const semi = render(<Semicolon />, {
+      stdin          : stdinSemi,
+      stdout         : stdoutSemi,
+      env            : { COLORTERM: "truecolor" },
+      alternateScreen: false,
+      notifications  : "osc777",
+    });
+    stdinSemi.type("n");
+    expect(stdoutSemi.text()).toContain("\u001b]777;notify;Build: one;a:b\u0007");
+    semi.stop();
+  });
+
+  it("lets the environment name the sequence, and a pipe still has none", () => {
+    component Probe() {
+      const notifications     = useNotifications();
+      const [state, setState] = useState<string>("");
+      useKeyboard(() => {
+        setState(
+          `${notifications.protocol} ${notifications.notify("Build", "done") ? "sent" : "refused"}`,
+        );
+      });
+      return <Text wrap="none">{state}</Text>;
+    }
+
+    const fromEnv = output({ isTTY: true });
+    const fromEnvIn = input();
+    const named = render(<Probe />, {
+      stdin : fromEnvIn,
+      stdout: fromEnv,
+      env: {
+        COLORTERM                    : "truecolor",
+        COLUMNS                      : "16",
+        LINES                        : "2",
+        OPENTUI_NOTIFICATION_PROTOCOL: "osc777",
+      },
+      alternateScreen: false,
+    });
+    fromEnvIn.type("n");
+    expect(fromEnv.text()).toContain("\u001b]777;notify;Build;done\u0007");
+    expect(named.text().split("\n")[0]).toBe("osc777 sent     ");
+    named.stop();
+
+    const silenced = output({ isTTY: true });
+    const silencedIn = input();
+    const off = render(<Probe />, {
+      stdin : silencedIn,
+      stdout: silenced,
+      env: {
+        COLORTERM                    : "truecolor",
+        COLUMNS                      : "16",
+        LINES                        : "2",
+        OPENTUI_NOTIFICATION_PROTOCOL: "none",
+      },
+      alternateScreen: false,
+    });
+    silencedIn.type("n");
+    expect(silenced.text()).not.toContain("\u001b]777;");
+    expect(silenced.text()).not.toContain("\u001b]9;");
+    expect(off.text().split("\n")[0]).toBe("none refused    ");
+    off.stop();
+
+    const overridden = output({ isTTY: true });
+    const overriddenIn = input();
+    const optionWins = render(<Probe />, {
+      stdin : overriddenIn,
+      stdout: overridden,
+      env: {
+        COLORTERM                    : "truecolor",
+        COLUMNS                      : "16",
+        LINES                        : "2",
+        OPENTUI_NOTIFICATION_PROTOCOL: "osc777",
+      },
+      alternateScreen: false,
+      notifications  : false,
+    });
+    overriddenIn.type("n");
+    expect(overridden.text()).not.toContain("\u001b]777;");
+    expect(optionWins.text().split("\n")[0]).toBe("none refused    ");
+    optionWins.stop();
+
+    // A pipe has no key listener. The frame is how the test asks the hook.
+    component PipeProbe() {
+      const notifications = useNotifications();
+      const sent = notifications.notify("Build", "done");
+      return <Text wrap="none">{`${notifications.protocol} ${sent ? "sent" : "refused"}`}</Text>;
+    }
+    const piped = output({ isTTY: false });
+    const pipe = render(<PipeProbe />, {
+      stdout: piped,
+      env   : { COLORTERM: "truecolor", COLUMNS: "16", OPENTUI_NOTIFICATION_PROTOCOL: "osc9" },
+    });
+    expect(piped.text()).not.toContain("\u001b]9;");
+    expect(pipe.text().split("\n")[0]).toBe("none refused    ");
+    pipe.stop();
+
+    const memory: Array<string> = [];
+    component Memory() {
+      const notifications = useNotifications();
+      useKeyboard(() => {
+        memory.push(String(notifications.supported));
+        memory.push(String(notifications.notify("Build", "done")));
+      });
+      return <Text>probe</Text>;
+    }
+    const handle = testRender(<Memory />, { width: 8, height: 1 });
+    handle.press("n");
+    expect(memory).toEqual(["false", "false"]);
+    handle.stop();
   });
 
   it("lays out for the size the environment declares, not the stream's guess", () => {

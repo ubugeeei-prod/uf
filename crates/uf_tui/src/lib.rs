@@ -64,13 +64,14 @@ impl Default for TuiFrameworkContract {
             layout: TuiLayoutEngine::FlexboxCells,
             input: TuiInputModel::KeyboardMouseSelectionFocus,
             runtime_binding: TuiRuntimeBinding::FlowReact,
-            // Eleven, not twenty-three. Every one of these is exercised by
+            // Twelve, not twenty-three. Every one of these is exercised by
             // `npm/tui/tui.test.js` against a rendered frame; the other
-            // twelve variants of `TuiFeature` name parts of OpenTUI that uf
+            // eleven variants of `TuiFeature` name parts of OpenTUI that uf
             // does not implement yet, and listing them here is how a reader
             // ends up importing a component that does not exist. `ScrollBar`
-            // is a component on [`TuiFeature::Scrollback`], not a twelfth
+            // is a component on [`TuiFeature::Scrollback`], not another
             // feature: it is the bar `ScrollBox` already draws, on its own.
+            // `Notifications` is a hook, not a tenth component.
             features: smallvec::smallvec![
                 TuiFeature::Flexbox,
                 TuiFeature::CellDiff,
@@ -78,6 +79,7 @@ impl Default for TuiFrameworkContract {
                 TuiFeature::Mouse,
                 TuiFeature::Selection,
                 TuiFeature::Clipboard,
+                TuiFeature::Notifications,
                 TuiFeature::Focus,
                 TuiFeature::RichText,
                 TuiFeature::Scrollback,
@@ -304,6 +306,13 @@ pub enum TuiFeature {
     /// policy may still refuse it after uf has written the request.
     Clipboard,
     /// Host notifications.
+    ///
+    /// `useNotifications()` writes one escape sequence the caller chose:
+    /// OSC 9 or OSC 777. There is no capability query. An interactive
+    /// terminal sends OSC 9 unless `notifications` or
+    /// `OPENTUI_NOTIFICATION_PROTOCOL` says otherwise. A `true` return
+    /// means the sequence was written, not that a desktop showed it.
+    /// OSC 99 is not implemented.
     Notifications,
     /// Timeline and animation API.
     Animations,
