@@ -3,7 +3,7 @@ Importing a value from a module Flow has no types for gives you `any`, which swi
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import leftPad from "left-pad"; // no types, no library definition
 
 export const padded: string = leftPad("7", 3, "0");
@@ -12,6 +12,6 @@ export const padded: string = leftPad("7", 3, "0");
 ## Good
 
 ```js
-// @flow
+"use flow";
 export const padded: string = "7".padStart(3, "0");
 ```

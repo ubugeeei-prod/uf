@@ -3,7 +3,7 @@ A link that opens with `target="_blank"` sends the current page's URL along as t
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Docs() {
   return (
     <a href="https://docs.example.com" target="_blank">
@@ -20,7 +20,7 @@ app/example.js:4:40 `<a target="_blank">` sends the `Referer` header on, so wher
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Docs() {
   return (
     <a href="https://docs.example.com" rel="noreferrer" target="_blank">

@@ -3,7 +3,7 @@ A module that imports itself gets its own half-initialized exports back, which i
 ## Bad
 
 ```js path=app/format.js
-// @flow
+"use flow";
 import { pad } from "./format.js";
 
 export const pad = (value: number): string => String(value).padStart(2, "0");
@@ -17,7 +17,7 @@ app/format.js:2:21 a module must not import itself; move shared code to another 
 ## Good
 
 ```js path=app/format.js
-// @flow
+"use flow";
 export const pad = (value: number): string => String(value).padStart(2, "0");
 export const clock = (hours: number, minutes: number): string => `${pad(hours)}:${pad(minutes)}`;
 ```

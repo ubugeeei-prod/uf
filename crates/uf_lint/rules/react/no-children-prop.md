@@ -3,7 +3,7 @@ Children belong between the tags. Passed as a `children` prop they are easy to m
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Notice(text: string) {
   return <p children={text} />;
 }
@@ -16,7 +16,7 @@ app/example.js:3:13 pass `children` to `<p>` between its tags rather than as a p
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Notice(text: string) {
   return <p>{text}</p>;
 }

@@ -3,7 +3,7 @@ A `role` the element already has, such as `role="button"` on a `button`, changes
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Save() {
   return (
     <button type="submit" role="button">
@@ -20,7 +20,7 @@ app/example.js:4:27 a `<button>` is already a `button`, so `role="button"` tells
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Save() {
   return (
     <button type="submit">Save</button>

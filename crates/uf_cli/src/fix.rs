@@ -107,8 +107,8 @@
 //!   reported today; its sibling rules in the same runner guard the same
 //!   search with an in-string test and this one does not.
 //! - `server/use-client-directive-position`, `server/use-server-actions` — the
-//!   directive has to land before the first *statement* but after the docblock
-//!   comment that carries `@flow`, and finding that line means re-running the
+//!   boundary has to sit in the directive prologue, after `"use flow";` and
+//!   after the header comment, and finding that line means re-running the
 //!   comment scanner that `uf_lint` owns.
 //! - `security/*`, `fetch/no-global-override`, most of `react/*`,
 //!   `uniflowed/no-npm-script-invocation` — these ask for a different design,

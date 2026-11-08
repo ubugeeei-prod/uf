@@ -3,7 +3,7 @@ A getter or setter runs code when a property is read or written, where a reader 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export class Temperature {
   celsius: number = 0;
   get fahrenheit(): number {
@@ -19,7 +19,7 @@ app/example.js:4:3 avoid getters and setters; they hide side effects behind prop
 ## Good
 
 ```js
-// @flow
+"use flow";
 export class Temperature {
   celsius: number = 0;
   fahrenheit(): number {

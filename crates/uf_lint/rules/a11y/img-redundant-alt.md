@@ -3,7 +3,7 @@ A screen reader already says "image" before an image's `alt`. Alt text that star
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Team() {
   return (
     <img src="/team.jpg" alt="Photo of the team at the offsite" />
@@ -18,7 +18,7 @@ app/example.js:4:26 this `alt` says "photo", but a screen reader already announc
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Team() {
   return (
     <img src="/team.jpg" alt="The team at the offsite" />

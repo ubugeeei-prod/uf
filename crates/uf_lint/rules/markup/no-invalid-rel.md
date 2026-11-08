@@ -3,7 +3,7 @@ Each `rel` keyword is defined for particular elements: `stylesheet` for `link`, 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Styles() {
   return (
     <a href="/theme.css" rel="stylesheet">
@@ -20,7 +20,7 @@ app/example.js:4:26 `stylesheet` is a link type, but not one a `<a>` takes, so t
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Styles() {
   return (
     <link href="/theme.css" rel="stylesheet" />

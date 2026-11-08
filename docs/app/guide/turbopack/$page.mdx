@@ -137,7 +137,7 @@ global stylesheet imported from anywhere but a layout, and these sheets are
 imported by the module that owns them, layout or not. Turbopack is told
 `*.uf.css` is plain CSS. On `next build --webpack` the helper opens that
 suffix in the rule that otherwise rejects the import. `"use client"` and
-`"use server"` stay the first statements; the import is inserted after them.
+`"use server"` stay in the directive prologue; the import is inserted after it.
 
 Generated files:
 

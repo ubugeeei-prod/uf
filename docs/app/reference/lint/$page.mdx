@@ -194,8 +194,8 @@ Server components, server actions and the client boundary.
 | --- | --- | --- |
 | [`server/no-client-secret`](#serverno-client-secret) | `error` | client modules must not read server secrets |
 | [`server/no-server-only-import-in-client`](#serverno-server-only-import-in-client) | `error` | client modules must not import server-only modules |
-| [`server/use-client-directive-position`](#serveruse-client-directive-position) | `error` | `use client`/`use server` must be the module's first statement |
-| [`server/use-server-actions`](#serveruse-server-actions) | `error` | server action modules must open with `"use server";` |
+| [`server/use-client-directive-position`](#serveruse-client-directive-position) | `error` | `use client`/`use server` must lead the module, before any statement other than a mode directive |
+| [`server/use-server-actions`](#serveruse-server-actions) | `error` | server action modules must declare `"use server"` before any statement other than a mode directive |
 
 ## Router
 
@@ -288,7 +288,7 @@ app/example.js:2:21 object type is neither exact (`{| |}`) nor explicitly inexac
 ```js
 "use flow";
 export type Exact = {| id: string |};
-export type Open  = { id: string, ... };
+export type Open = { id: string, ... };
 ```
 
 ### flow/default-import-access
@@ -331,7 +331,7 @@ Default: `error`. The `bool` type alias is deprecated; write `boolean`.
 
 ```js
 "use flow";
-export type Toggle = { readonly on: boolean };
+export type Toggle = { readonly on: bool };
 ```
 
 `uf lint` reports:
@@ -539,13 +539,7 @@ export component List(items: $ReadOnlyArray<string>) {
   component Row(label: string) {
     return <li>{label}</li>;
   }
-  return (
-    <ul>
-      {items.map((item) => (
-        <Row key={item} label={item} />
-      ))}
-    </ul>
-  );
+  return <ul>{items.map((item) => <Row key={item} label={item} />)}</ul>;
 }
 ```
 
@@ -564,13 +558,7 @@ component Row(label: string) {
 }
 
 export component List(items: $ReadOnlyArray<string>) {
-  return (
-    <ul>
-      {items.map((item) => (
-        <Row key={item} label={item} />
-      ))}
-    </ul>
-  );
+  return <ul>{items.map((item) => <Row key={item} label={item} />)}</ul>;
 }
 ```
 
@@ -1476,13 +1464,7 @@ React matches list items between renders by `key`. Without one it matches them b
 type Todo = { id: string, title: string };
 
 export component Todos(todos: $ReadOnlyArray<Todo>) {
-  return (
-    <ul>
-      {todos.map((todo) => (
-        <li>{todo.title}</li>
-      ))}
-    </ul>
-  );
+  return <ul>{todos.map((todo) => <li>{todo.title}</li>)}</ul>;
 }
 ```
 
@@ -2232,7 +2214,7 @@ export component Rows(count: number, parent: { current: HTMLElement | null }) {
   const virtualizer = useVirtualizer({
     count,
     getScrollElement: () => parent.current,
-    estimateSize    : () => 32,
+    estimateSize: () => 32,
   });
   return <div>{virtualizer.getVirtualItems().length}</div>;
 }
@@ -2448,16 +2430,7 @@ import { useRef } from "react";
 
 export component Clicks() {
   const count = useRef(0);
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        count.current += 1;
-      }}
-    >
-      {count.current}
-    </button>
-  );
+  return <button type="button" onClick={() => { count.current += 1; }}>{count.current}</button>;
 }
 ```
 
@@ -2810,7 +2783,9 @@ An image with no `alt` is announced by its file name, or not at all, so a screen
 ```js
 "use flow";
 export component Avatar() {
-  return <img src="/avatars/ada.png" />;
+  return (
+    <img src="/avatars/ada.png" />
+  );
 }
 ```
 
@@ -2825,7 +2800,9 @@ app/example.js:4:5 `<img>` has no `alt`, so a screen reader announces its URL or
 ```js
 "use flow";
 export component Avatar() {
-  return <img src="/avatars/ada.png" alt="Ada Lovelace" />;
+  return (
+    <img src="/avatars/ada.png" alt="Ada Lovelace" />
+  );
 }
 ```
 
@@ -2878,7 +2855,9 @@ A link with no text and no label is announced as "link" and nothing more, so nob
 ```js
 "use flow";
 export component Home() {
-  return <a href="/" />;
+  return (
+    <a href="/" />
+  );
 }
 ```
 
@@ -2893,7 +2872,9 @@ app/example.js:4:5 this `<a>` is empty, so a screen reader reads it as "link" an
 ```js
 "use flow";
 export component Home() {
-  return <a href="/">Home</a>;
+  return (
+    <a href="/">Home</a>
+  );
 }
 ```
 
@@ -3102,7 +3083,9 @@ Elements such as `meta`, `script`, `style` and `html` are never rendered as cont
 ```js
 "use flow";
 export component Head() {
-  return <meta charSet="utf-8" aria-hidden="true" />;
+  return (
+    <meta charSet="utf-8" aria-hidden="true" />
+  );
 }
 ```
 
@@ -3117,7 +3100,9 @@ app/example.js:4:27 `<meta>` is one of the elements ARIA reserves: it is never r
 ```js
 "use flow";
 export component Head() {
-  return <meta charSet="utf-8" />;
+  return (
+    <meta charSet="utf-8" />
+  );
 }
 ```
 
@@ -3132,7 +3117,9 @@ Browsers and password managers fill a field from its `autoComplete` token, and a
 ```js
 "use flow";
 export component Email() {
-  return <input type="email" name="email" autoComplete="mail" />;
+  return (
+    <input type="email" name="email" autoComplete="mail" />
+  );
 }
 ```
 
@@ -3147,7 +3134,9 @@ app/example.js:4:38 `mail` is not an autofill token, so the browser cannot tell 
 ```js
 "use flow";
 export component Email() {
-  return <input type="email" name="email" autoComplete="email" />;
+  return (
+    <input type="email" name="email" autoComplete="email" />
+  );
 }
 ```
 
@@ -3202,7 +3191,9 @@ A button, input or other control with no text, no label and no `aria-label` is a
 ```js
 "use flow";
 export component Search(onSearch: () => void) {
-  return <button type="button" onClick={onSearch} />;
+  return (
+    <button type="button" onClick={onSearch} />
+  );
 }
 ```
 
@@ -3217,7 +3208,9 @@ app/example.js:4:5 this `<button>` has no name and no `id` for a `<label>` to po
 ```js
 "use flow";
 export component Search(onSearch: () => void) {
-  return <button type="button" aria-label="Search" onClick={onSearch} />;
+  return (
+    <button type="button" aria-label="Search" onClick={onSearch} />
+  );
 }
 ```
 
@@ -3354,7 +3347,9 @@ A screen reader announces an `iframe` by its `title`. Without one, the reader he
 ```js
 "use flow";
 export component Map() {
-  return <iframe src="https://maps.example.com/embed?q=office" />;
+  return (
+    <iframe src="https://maps.example.com/embed?q=office" />
+  );
 }
 ```
 
@@ -3369,7 +3364,9 @@ app/example.js:4:5 this `<iframe>` has no `title`, so a screen reader announces 
 ```js
 "use flow";
 export component Map() {
-  return <iframe src="https://maps.example.com/embed?q=office" title="Map of our office" />;
+  return (
+    <iframe src="https://maps.example.com/embed?q=office" title="Map of our office" />
+  );
 }
 ```
 
@@ -3384,7 +3381,9 @@ A screen reader already says "image" before an image's `alt`. Alt text that star
 ```js
 "use flow";
 export component Team() {
-  return <img src="/team.jpg" alt="Photo of the team at the offsite" />;
+  return (
+    <img src="/team.jpg" alt="Photo of the team at the offsite" />
+  );
 }
 ```
 
@@ -3399,7 +3398,9 @@ app/example.js:4:26 this `alt` says "photo", but a screen reader already announc
 ```js
 "use flow";
 export component Team() {
-  return <img src="/team.jpg" alt="The team at the offsite" />;
+  return (
+    <img src="/team.jpg" alt="The team at the offsite" />
+  );
 }
 ```
 
@@ -3534,7 +3535,9 @@ Deaf and hard-of-hearing viewers rely on captions for anything a video or record
 ```js
 "use flow";
 export component Intro() {
-  return <video src="/intro.mp4" controls />;
+  return (
+    <video src="/intro.mp4" controls />
+  );
 }
 ```
 
@@ -3589,7 +3592,13 @@ app/example.js:4:48 `onMouseOut` fires for a pointer and nothing else, so whatev
 "use flow";
 export component Hint(onShow: () => void, onHide: () => void) {
   return (
-    <button type="button" onMouseOver={onShow} onMouseOut={onHide} onFocus={onShow} onBlur={onHide}>
+    <button
+      type="button"
+      onMouseOver={onShow}
+      onMouseOut={onHide}
+      onFocus={onShow}
+      onBlur={onHide}
+    >
       ?
     </button>
   );
@@ -3626,7 +3635,9 @@ app/example.js:4:27 `accessKey` asks for a keyboard shortcut the browser and the
 ```js
 "use flow";
 export component Save() {
-  return <button type="submit">Save</button>;
+  return (
+    <button type="submit">Save</button>
+  );
 }
 ```
 
@@ -3681,7 +3692,9 @@ Default: `error`. `autoFocus` moves focus before the reader knows where they are
 ```js
 "use flow";
 export component Search() {
-  return <input type="search" aria-label="Search" autoFocus />;
+  return (
+    <input type="search" aria-label="Search" autoFocus />
+  );
 }
 ```
 
@@ -3696,7 +3709,9 @@ app/example.js:4:46 `autoFocus` moves focus before the reader has been told wher
 ```js
 "use flow";
 export component Search() {
-  return <input type="search" aria-label="Search" />;
+  return (
+    <input type="search" aria-label="Search" />
+  );
 }
 ```
 
@@ -3711,7 +3726,9 @@ Default: `error`. `marquee` and `blink` move with no way for the reader to stop 
 ```js
 "use flow";
 export component Banner() {
-  return <marquee>Sale ends tonight</marquee>;
+  return (
+    <marquee>Sale ends tonight</marquee>
+  );
 }
 ```
 
@@ -3726,7 +3743,9 @@ app/example.js:4:5 `<marquee>` animates on its own and gives the reader no way t
 ```js
 "use flow";
 export component Banner() {
-  return <p>Sale ends tonight</p>;
+  return (
+    <p>Sale ends tonight</p>
+  );
 }
 ```
 
@@ -3859,7 +3878,9 @@ A `tabIndex` on content that does nothing adds a stop to the tab order that lead
 ```js
 "use flow";
 export component Notice() {
-  return <p tabIndex={0}>Your changes were saved.</p>;
+  return (
+    <p tabIndex={0}>Your changes were saved.</p>
+  );
 }
 ```
 
@@ -3876,7 +3897,9 @@ If the text must be announced, make it a live region instead of a tab stop.
 ```js
 "use flow";
 export component Notice() {
-  return <p role="status">Your changes were saved.</p>;
+  return (
+    <p role="status">Your changes were saved.</p>
+  );
 }
 ```
 
@@ -3910,7 +3933,9 @@ app/example.js:4:27 a `<button>` is already a `button`, so `role="button"` tells
 ```js
 "use flow";
 export component Save() {
-  return <button type="submit">Save</button>;
+  return (
+    <button type="submit">Save</button>
+  );
 }
 ```
 
@@ -3925,7 +3950,9 @@ A `div` or `span` with an `onClick` cannot be reached with the keyboard and is a
 ```js
 "use flow";
 export component Card(onOpen: () => void) {
-  return <div onClick={onOpen}>Open the report</div>;
+  return (
+    <div onClick={onOpen}>Open the report</div>
+  );
 }
 ```
 
@@ -4127,7 +4154,9 @@ A `tabIndex` above zero moves the element ahead of everything else in the tab or
 ```js
 "use flow";
 export component Login() {
-  return <input type="email" aria-label="Email" tabIndex={1} />;
+  return (
+    <input type="email" aria-label="Email" tabIndex={1} />
+  );
 }
 ```
 
@@ -4142,7 +4171,9 @@ app/example.js:4:44 a `tabIndex` of 1 puts this element ahead of everything the 
 ```js
 "use flow";
 export component Login() {
-  return <input type="email" aria-label="Email" />;
+  return (
+    <input type="email" aria-label="Email" />
+  );
 }
 ```
 
@@ -4214,7 +4245,9 @@ app/example.js:4:26 `stylesheet` is a link type, but not one a `<a>` takes, so t
 ```js
 "use flow";
 export component Styles() {
-  return <link href="/theme.css" rel="stylesheet" />;
+  return (
+    <link href="/theme.css" rel="stylesheet" />
+  );
 }
 ```
 
@@ -4696,9 +4729,9 @@ app/example.js:4:27 client modules must not read private server secrets
 export async function charge(amount: number): Promise<void> {
   const token = process.env.PRIVATE_TOKEN;
   await fetch("https://payments.example/charge", {
-    body   : JSON.stringify({ amount }),
+    body: JSON.stringify({ amount }),
     headers: { authorization: `Bearer ${token ?? ""}` },
-    method : "POST",
+    method: "POST",
   });
 }
 ```
@@ -4741,31 +4774,27 @@ export component Price(cents: number) {
 
 ### server/use-client-directive-position
 
-Default: `error`. `use client`/`use server` must be the module's first statement.
+Default: `error`. `use client`/`use server` must lead the module, before any statement other than a mode directive.
 
-`"use client"` and `"use server"` only mark a module when they are its first statement. Written after an import, they are ordinary string expressions: the module silently stays on the other side of the boundary. A `"use server"` inside a function body marks that function as a server action and is fine.
+`"use client"` and `"use server"` only mark a module from its directive prologue. A mode directive (`"use flow";`, `"use js";` or `"use strict";`) may precede them; an import or any other statement may not. Written after one, they are ordinary string expressions: the module silently stays on the other side of the boundary. A `"use server"` inside a function body marks that function as a server action and is fine.
 
 #### Bad
 
 ```js
 "use flow";
 import { useState } from "react";
-("use client");
+"use client";
 
 export component Counter() {
   const [count, setCount] = useState(0);
-  return (
-    <button onClick={() => setCount(count + 1)} type="button">
-      {count}
-    </button>
-  );
+  return <button onClick={() => setCount(count + 1)} type="button">{count}</button>;
 }
 ```
 
 `uf lint` reports:
 
 ```text
-app/example.js:3:1 a boundary directive is only honoured as the module's first statement
+app/example.js:3:1 a boundary directive is only honoured before any statement other than a mode directive
 ```
 
 #### Good
@@ -4778,19 +4807,15 @@ import { useState } from "react";
 
 export component Counter() {
   const [count, setCount] = useState(0);
-  return (
-    <button onClick={() => setCount(count + 1)} type="button">
-      {count}
-    </button>
-  );
+  return <button onClick={() => setCount(count + 1)} type="button">{count}</button>;
 }
 ```
 
 ### server/use-server-actions
 
-Default: `error`. Server action modules must open with `"use server";`.
+Default: `error`. Server action modules must declare `"use server"` before any statement other than a mode directive.
 
-A module that defines server actions with `serverAction` has to open with `"use server"`. Without it, the bundler does not replace the actions with references, and the action bodies (and everything they import) are bundled into the client.
+A module that defines server actions with `serverAction` has to declare `"use server"` in its directive prologue. `"use flow";` may lead. Without the boundary, the bundler does not replace the actions with references, and the action bodies (and everything they import) are bundled into the client.
 
 #### Bad
 
@@ -4808,7 +4833,7 @@ export const save = serverAction(async (title: string) => {
 `uf lint` reports:
 
 ```text
-app/actions.server.js:1:1 server action modules must start with "use server";
+app/actions.server.js:1:1 server action modules must declare "use server" before any statement other than a mode directive
 ```
 
 #### Good
@@ -4816,8 +4841,8 @@ app/actions.server.js:1:1 server action modules must start with "use server";
 `app/actions.server.js`
 
 ```js
-"use server";
 "use flow";
+"use server";
 import { serverAction } from "@uniflowed/server";
 
 export const save = serverAction(async (title: string) => {
@@ -4919,7 +4944,9 @@ app/example.js:3:10 this `<iframe>` has no `sandbox`, so the document inside it 
 ```js
 "use flow";
 export component Map() {
-  return <iframe sandbox="allow-scripts" src="https://maps.example/embed" title="Store location" />;
+  return (
+    <iframe sandbox="allow-scripts" src="https://maps.example/embed" title="Store location" />
+  );
 }
 ```
 
@@ -5246,7 +5273,7 @@ A tab is as wide as each editor, terminal and code review tool decides, so tab-i
 ```js
 "use flow";
 export function total(prices: $ReadOnlyArray<number>): number {
-  return prices.reduce((sum, price) => sum + price, 0);
+	return prices.reduce((sum, price) => sum + price, 0);
 }
 ```
 
@@ -5277,7 +5304,7 @@ Whitespace at the end of a line is invisible in the editor and noisy in every di
 
 ```js
 "use flow";
-export const greeting = "hello";
+export const greeting = "hello";   
 ```
 
 `uf lint` reports:

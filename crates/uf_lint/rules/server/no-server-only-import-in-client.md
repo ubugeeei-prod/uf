@@ -3,7 +3,7 @@ A client module is bundled for the browser along with everything it imports. Imp
 ## Bad
 
 ```js
-// @flow
+"use flow";
 "use client";
 
 import { db } from "@uniflowed/server";
@@ -18,7 +18,7 @@ app/example.js:5:31 client modules must not import server-only modules; move the
 ## Good
 
 ```js
-// @flow
+"use flow";
 "use client";
 
 import { formatPrice } from "./format.js";

@@ -3,7 +3,7 @@ Elements such as `meta`, `script`, `style` and `html` are never rendered as cont
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Head() {
   return (
     <meta charSet="utf-8" aria-hidden="true" />
@@ -18,7 +18,7 @@ app/example.js:4:27 `<meta>` is one of the elements ARIA reserves: it is never r
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Head() {
   return (
     <meta charSet="utf-8" />

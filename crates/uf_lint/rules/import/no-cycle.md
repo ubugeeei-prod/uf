@@ -5,7 +5,7 @@ Two modules that import each other, directly or through others, are evaluated in
 `cart.js` imports `pricing.js`, which imports `cart.js` back.
 
 ```js path=app/cart.js
-// @flow
+"use flow";
 import { priceOf } from "./pricing.js";
 
 export type Line = { readonly sku: string, readonly quantity: number };
@@ -14,7 +14,7 @@ export const total = (lines: $ReadOnlyArray<Line>): number =>
 ```
 
 ```js path=app/pricing.js
-// @flow
+"use flow";
 import type { Line } from "./cart.js";
 import { total } from "./cart.js";
 
@@ -32,7 +32,7 @@ app/pricing.js:3:23 this import creates a cycle through `app/cart.js`
 The shared type moves to its own module, and `pricing.js` no longer reaches back into `cart.js`.
 
 ```js path=app/cart.js
-// @flow
+"use flow";
 import type { Line } from "./line.js";
 import { priceOf } from "./pricing.js";
 
@@ -41,13 +41,13 @@ export const total = (lines: $ReadOnlyArray<Line>): number =>
 ```
 
 ```js path=app/pricing.js
-// @flow
+"use flow";
 import type { Line } from "./line.js";
 
 export const priceOf = (line: Line): number => line.quantity * 100;
 ```
 
 ```js path=app/line.js
-// @flow
+"use flow";
 export type Line = { readonly sku: string, readonly quantity: number };
 ```

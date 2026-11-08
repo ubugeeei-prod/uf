@@ -3,7 +3,7 @@ An existence check such as `if (value)` on a `?bigint` is false both when the va
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export function describe(value: ?bigint): string {
   if (value) {
     return "set";
@@ -15,7 +15,7 @@ export function describe(value: ?bigint): string {
 ## Good
 
 ```js
-// @flow
+"use flow";
 export function describe(value: ?bigint): string {
   if (value != null) {
     return "set";

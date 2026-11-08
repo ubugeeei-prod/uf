@@ -3,7 +3,7 @@ Screen reader users skim a page through its list of links, where each link is he
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Pricing() {
   return (
     <p>
@@ -20,7 +20,7 @@ app/example.js:5:26 link text "click here" does not say where the link goes, and
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Pricing() {
   return (
     <p>

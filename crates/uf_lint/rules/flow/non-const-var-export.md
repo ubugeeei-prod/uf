@@ -3,7 +3,7 @@ An exported `let` or `var` can be reassigned by the module after other modules h
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export let count = 0;
 ```
 
@@ -14,7 +14,7 @@ app/example.js:2:8 exported bindings must be `const`; a mutable export is a live
 ## Good
 
 ```js
-// @flow
+"use flow";
 let count = 0;
 
 export const initial = 0;

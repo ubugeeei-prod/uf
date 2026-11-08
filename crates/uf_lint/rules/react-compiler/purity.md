@@ -3,7 +3,7 @@ Rendering must be pure: the same props and state give the same output. `Date.now
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Stamp() {
   const now = Date.now();
   return <time>{now}</time>;
@@ -17,7 +17,7 @@ app/example.js:3:15 Cannot call impure function during render. `Date.now` is an 
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Stamp(now: number) {
   return <time>{now}</time>;
 }

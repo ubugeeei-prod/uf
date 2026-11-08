@@ -3,7 +3,7 @@ A `uf-lint-disable` comment whose rule finds nothing on the lines it covers supp
 ## Bad
 
 ```js
-// @flow
+"use flow";
 // uf-lint-disable-next-line flow/unclear-type
 export type Payload = { data: mixed };
 ```
@@ -15,6 +15,6 @@ app/example.js:2:30 `flow/unclear-type` reports nothing here, so this suppressio
 ## Good
 
 ```js
-// @flow
+"use flow";
 export type Payload = { data: mixed };
 ```

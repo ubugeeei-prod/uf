@@ -3,7 +3,7 @@ Rendering must not change anything outside the component. A module variable reas
 ## Bad
 
 ```js
-// @flow
+"use flow";
 let renders = 0;
 
 export component Counter() {
@@ -19,7 +19,7 @@ app/example.js:5:3 Cannot reassign variables declared outside of the component/h
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { useRef, useEffect } from "react";
 
 export component Counter() {

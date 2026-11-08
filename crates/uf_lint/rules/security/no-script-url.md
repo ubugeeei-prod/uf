@@ -3,7 +3,7 @@ A `javascript:` URL in `src`, `action`, `formAction` or an `area`'s `href` is a 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Search() {
   return (
     <form action="javascript:search()">
@@ -20,7 +20,7 @@ app/example.js:4:11 `action` on this `<form>` is a `javascript:` URL, which is n
 ## Good
 
 ```js
-// @flow
+"use flow";
 declare function search(data: FormData): void;
 
 export component Search() {

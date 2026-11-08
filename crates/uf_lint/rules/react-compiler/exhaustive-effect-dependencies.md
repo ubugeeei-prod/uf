@@ -3,7 +3,7 @@ An effect's dependency array says when it runs again. A value read inside the ef
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useEffect } from "react";
 
 export component Title(count: number) {
@@ -21,7 +21,7 @@ app/example.js:6:25 Found missing effect dependencies. Missing dependencies can 
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { useEffect } from "react";
 
 export component Title(count: number) {

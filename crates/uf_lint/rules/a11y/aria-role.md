@@ -3,7 +3,7 @@ A `role` that is not an ARIA role, or is one of the abstract roles ARIA uses onl
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Toolbar() {
   return (
     <div role="toolbox">
@@ -20,7 +20,7 @@ app/example.js:4:10 `toolbox` is not an ARIA role, so nothing reads it: the brow
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Toolbar() {
   return (
     <div role="toolbar">

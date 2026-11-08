@@ -27,12 +27,12 @@ for the transitions an action runs in.
 
 ## Writing one
 
-A module whose first statement is `"use server";`. Every export is an action,
-and every export has to be an async function.
+A module whose directive prologue contains `"use server";`. `"use flow";` leads.
+Every export is an action, and every export has to be an async function.
 
 ```js
-"use server";
 "use flow";
+"use server";
 // app/counter/_actions/tally.js
 import { cookies } from "@uniflowed/server";
 

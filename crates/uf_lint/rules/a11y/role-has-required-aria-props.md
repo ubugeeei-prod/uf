@@ -3,7 +3,7 @@ Some roles are announced by their state: a `checkbox` by whether it is checked, 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Remember(onToggle: () => void) {
   return (
     <span role="checkbox" tabIndex={0} onClick={onToggle} onKeyDown={onToggle}>
@@ -20,7 +20,7 @@ app/example.js:4:11 `role="checkbox"` tells a screen reader this is a checkbox, 
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Remember(checked: boolean, onToggle: () => void) {
   return (
     <span

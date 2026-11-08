@@ -3,7 +3,7 @@ Whitespace at the end of a line is invisible in the editor and noisy in every di
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export const greeting = "hello";   
 ```
 
@@ -14,6 +14,6 @@ app/example.js:2:33 remove trailing whitespace
 ## Good
 
 ```js
-// @flow
+"use flow";
 export const greeting = "hello";
 ```

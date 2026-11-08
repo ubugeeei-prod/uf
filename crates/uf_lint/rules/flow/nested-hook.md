@@ -3,7 +3,7 @@ A hook declared inside a component or another hook is a new function on every re
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useState } from "react";
 
 export component Counter() {
@@ -22,7 +22,7 @@ app/example.js:5:3 declare this hook at module scope; a nested hook gets a new i
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { useState } from "react";
 
 hook useCount(): number {

@@ -3,7 +3,7 @@ uf's tracing, caching and request mocking are all built around the global `fetch
 ## Bad
 
 ```js path=src/client.js
-// @flow
+"use flow";
 const original = globalThis.fetch;
 globalThis.fetch = (input, init) => original(input, { ...init, credentials: "include" });
 ```
@@ -15,7 +15,7 @@ src/client.js:3:1 do not override global fetch; use @uniflowed/fetch explicit cl
 ## Good
 
 ```js path=src/client.js
-// @flow
+"use flow";
 export function request(input: string, init?: RequestOptions): Promise<Response> {
   return fetch(input, { ...init, credentials: "include" });
 }

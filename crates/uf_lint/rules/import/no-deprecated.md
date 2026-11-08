@@ -3,7 +3,7 @@ An export whose doc comment says `@deprecated` is on its way out, and the commen
 ## Bad
 
 ```js path=app/api.js
-// @flow
+"use flow";
 /** @deprecated Use `fetchUser`, which returns a typed result. */
 export function getUser(id: string): Promise<mixed> {
   return fetch(`/users/${id}`).then((response) => response.json());
@@ -15,7 +15,7 @@ export function fetchUser(id: string): Promise<{ readonly name: string }> {
 ```
 
 ```js path=app/page.js
-// @flow
+"use flow";
 import { getUser } from "./api.js";
 
 export const load = (id: string): Promise<mixed> => getUser(id);
@@ -28,7 +28,7 @@ app/page.js:2:10 `getUser` is deprecated by `app/api.js`; use a supported export
 ## Good
 
 ```js path=app/api.js
-// @flow
+"use flow";
 /** @deprecated Use `fetchUser`, which returns a typed result. */
 export function getUser(id: string): Promise<mixed> {
   return fetch(`/users/${id}`).then((response) => response.json());
@@ -40,7 +40,7 @@ export function fetchUser(id: string): Promise<{ readonly name: string }> {
 ```
 
 ```js path=app/page.js
-// @flow
+"use flow";
 import { fetchUser } from "./api.js";
 
 export const load = (id: string): Promise<{ readonly name: string }> => fetchUser(id);

@@ -3,7 +3,7 @@ Code the React Compiler cannot compile yet. The function is left as it is, unmem
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Temperature(celsius: number) {
   const reading = {
     get fahrenheit(): number {
@@ -21,7 +21,7 @@ app/example.js:4:5 (BuildHIR::lowerExpression) Handle get functions in ObjectExp
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Temperature(celsius: number) {
   const fahrenheit = (celsius * 9) / 5 + 32;
   return <p>{fahrenheit}°F</p>;

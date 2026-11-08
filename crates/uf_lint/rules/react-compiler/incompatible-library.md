@@ -3,7 +3,7 @@ Some libraries return functions or objects whose results change without their id
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 export component Rows(count: number, parent: { current: HTMLElement | null }) {
@@ -23,7 +23,7 @@ app/example.js:5:23 Use of incompatible library. This API returns functions whic
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Rows(labels: $ReadOnlyArray<string>) {
   return labels.map((label) => <div key={label}>{label}</div>);
 }

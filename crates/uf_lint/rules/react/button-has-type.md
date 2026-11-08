@@ -3,7 +3,7 @@ A `button` with no `type` is a submit button. Inside a form, a button meant to o
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Toolbar(onClear: () => void) {
   return <button onClick={onClear}>Clear</button>;
 }
@@ -16,7 +16,7 @@ app/example.js:3:10 this `<button>` has no `type`, and HTML defaults one to `typ
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Toolbar(onClear: () => void) {
   return (
     <button type="button" onClick={onClear}>

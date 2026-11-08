@@ -3,7 +3,7 @@ When a prop is written twice, the last one wins and the first is silently thrown
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Avatar(src: string) {
   return <img src={src} alt="" alt="Profile picture" />;
 }
@@ -16,7 +16,7 @@ app/example.js:3:32 `alt` is given twice on `<img>`, and only the last one reach
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Avatar(src: string) {
   return <img src={src} alt="Profile picture" />;
 }

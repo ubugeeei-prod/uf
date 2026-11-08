@@ -3,7 +3,7 @@ Calling a method through `.call`, `.apply` or `.bind` with a receiver of the wro
 ## Bad
 
 ```js
-// @flow
+"use flow";
 class Counter {
   count: number = 0;
   increment(): void {
@@ -18,7 +18,7 @@ counter.increment.call({ total: 0 });
 ## Good
 
 ```js
-// @flow
+"use flow";
 class Counter {
   count: number = 0;
   increment(): void {

@@ -57,9 +57,9 @@ application did before [#519](https://github.com/ubugeeei-prod/uf/issues/519).
 
 ## Three kinds of module
 
-A module's environment is decided by its first statement and by nothing else.
+A module's environment is decided by its directive prologue and by nothing else. `"use flow";` may lead it. The boundary that follows is what the table names.
 
-| First statement | Environment | What it means |
+| Directive | Environment | What it means |
 | --- | --- | --- |
 | nothing | Server | A Server Component, or ordinary server code. The default. |
 | `"use client";` | Client | A client bundle root. Its code is the browser's, and everything it imports comes with it. |
@@ -69,6 +69,7 @@ A directive is honoured under the ECMAScript *directive prologue* rules, which
 is what React and the bundlers implement:
 
 - a UTF-8 BOM, a `#!` line, comments and blank lines may come before it;
+- another directive (`"use flow";`, `"use js";`, `"use strict";`) may precede the boundary, and does not choose an environment;
 - it must be a plain single- or double-quoted string literal, so a template
   literal or a concatenation is not one;
 - it must end at `;`, at a line break, at the `}` that closes its block, or at
@@ -267,8 +268,8 @@ files, and why they are not a substitute for the analysis above.
 | --- | --- |
 | `server/no-server-only-import-in-client` | A `"use client"` module whose `import`, `export … from`, or `require` specifier is `@uniflowed/server` or a `*.server.js` file |
 | `server/no-client-secret` | A `"use client"` module reading `process.env` or `import.meta.env` when the name has a `SECRET` segment or contains `PRIVATE_` |
-| `server/use-client-directive-position` | A `"use client"` or `"use server"` statement that is not the module's first statement |
-| `server/use-server-actions` | A module under `server/` or named `*.server.js` that names the `serverAction` helper and does not open with `"use server";` |
+| `server/use-client-directive-position` | A `"use client"` or `"use server"` statement after an import or any statement other than a mode directive |
+| `server/use-server-actions` | A module under `server/` or named `*.server.js` that names the `serverAction` helper and does not declare `"use server"` before any statement other than a mode directive |
 
 All four are errors by default. The first and third answer a narrower version of
 an `rsc/` question sooner — one file, no imports resolved, no graph. The second

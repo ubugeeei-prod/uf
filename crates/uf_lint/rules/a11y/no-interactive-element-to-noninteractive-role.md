@@ -3,7 +3,7 @@ A `button` or a link keeps its keyboard behaviour whatever `role` it is given. R
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component RemoveTag(onRemove: () => void) {
   return (
     <button type="button" role="presentation" onClick={onRemove}>
@@ -20,7 +20,7 @@ app/example.js:4:27 `<button>` is a control a keyboard reaches and `role="presen
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component RemoveTag(onRemove: () => void) {
   return (
     <button type="button" aria-label="Remove tag" onClick={onRemove}>

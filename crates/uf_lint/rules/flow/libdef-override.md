@@ -3,7 +3,7 @@ A library definition that redeclares something Flow's built-in libraries already
 ## Bad
 
 ```js
-// @flow
+"use flow";
 // flow-typed/overrides.js
 declare class Promise<+R> {
   then(onFulfill: (value: R) => mixed): Promise<mixed>;
@@ -13,7 +13,7 @@ declare class Promise<+R> {
 ## Good
 
 ```js
-// @flow
+"use flow";
 // flow-typed/my-sdk.js
 declare module "my-sdk" {
   declare export function connect(url: string): Promise<void>;

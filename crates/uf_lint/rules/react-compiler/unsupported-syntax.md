@@ -3,7 +3,7 @@ Syntax the React Compiler will not compile, such as `eval` or `with`, whose effe
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Formula(source: string) {
   const value = eval(source);
   return <output>{String(value)}</output>;
@@ -17,7 +17,7 @@ app/example.js:3:17 The 'eval' function is not supported. Eval is an anti-patter
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { evaluate } from "./formula.js";
 
 export component Formula(source: string) {

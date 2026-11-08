@@ -3,7 +3,7 @@ A ref is a value React does not track. Reading or writing `ref.current` during r
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useRef } from "react";
 
 export component Clicks() {
@@ -19,7 +19,7 @@ app/example.js:6:73 Cannot access refs during render. React refs are values that
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { useState } from "react";
 
 export component Clicks() {

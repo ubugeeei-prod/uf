@@ -3,7 +3,7 @@ A button, input or other control with no text, no label and no `aria-label` is a
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Search(onSearch: () => void) {
   return (
     <button type="button" onClick={onSearch} />
@@ -18,7 +18,7 @@ app/example.js:4:5 this `<button>` has no name and no `id` for a `<label>` to po
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Search(onSearch: () => void) {
   return (
     <button type="button" aria-label="Search" onClick={onSearch} />

@@ -3,7 +3,7 @@ A link with no text and no label is announced as "link" and nothing more, so nob
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Home() {
   return (
     <a href="/" />
@@ -18,7 +18,7 @@ app/example.js:4:5 this `<a>` is empty, so a screen reader reads it as "link" an
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Home() {
   return (
     <a href="/">Home</a>

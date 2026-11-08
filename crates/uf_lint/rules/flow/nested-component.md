@@ -3,7 +3,7 @@ A component declared inside another component or hook is a new component on ever
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component List(items: $ReadOnlyArray<string>) {
   component Row(label: string) {
     return <li>{label}</li>;
@@ -19,7 +19,7 @@ app/example.js:3:3 declare this component at module scope; nesting it remounts i
 ## Good
 
 ```js
-// @flow
+"use flow";
 component Row(label: string) {
   return <li>{label}</li>;
 }

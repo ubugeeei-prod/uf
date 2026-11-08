@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export function schedule(name: string): void {
   setTimeout(`refresh("${name}")`, 1000);
   eval(`window.${name}()`);
@@ -18,7 +18,7 @@ app/example.js:4:3 `eval` executes arbitrary code; parse the data instead
 ## Good
 
 ```js
-// @flow
+"use flow";
 declare function refresh(name: string): void;
 
 export function schedule(name: string): void {

@@ -3,7 +3,7 @@ A `checked` input with no `onChange` is controlled by React and cannot be change
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Agree(accepted: boolean) {
   return <input type="checkbox" checked={accepted} />;
 }
@@ -16,7 +16,7 @@ app/example.js:3:33 `checked` makes this input controlled, so React puts the pro
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Agree(accepted: boolean, onToggle: (next: boolean) => void) {
   return (
     <input
@@ -31,7 +31,7 @@ export component Agree(accepted: boolean, onToggle: (next: boolean) => void) {
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Remembered() {
   return <input type="checkbox" defaultChecked />;
 }

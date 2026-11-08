@@ -3,7 +3,7 @@ A screen reader announces an `iframe` by its `title`. Without one, the reader he
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Map() {
   return (
     <iframe src="https://maps.example.com/embed?q=office" />
@@ -18,7 +18,7 @@ app/example.js:4:5 this `<iframe>` has no `title`, so a screen reader announces 
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Map() {
   return (
     <iframe src="https://maps.example.com/embed?q=office" title="Map of our office" />

@@ -3,7 +3,7 @@ The compiler keeps every `useMemo` and `useCallback` it finds, so code that reli
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useMemo } from "react";
 import { track } from "./track.js";
 
@@ -18,7 +18,7 @@ export component Count(a: number) {
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { useMemo } from "react";
 import { track } from "./track.js";
 

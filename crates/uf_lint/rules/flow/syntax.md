@@ -3,7 +3,7 @@ The file must parse with the official Flow parser, the parser uf compiles with. 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export const total = 1 +;
 ```
 
@@ -14,6 +14,6 @@ app/example.js:2:25 Unexpected token `;`
 ## Good
 
 ```js
-// @flow
+"use flow";
 export type Row = { id: string };
 ```

@@ -3,7 +3,7 @@ An index key ties each item's state to its position. When the list is reordered,
 ## Bad
 
 ```js
-// @flow
+"use flow";
 type Row = { id: string, name: string };
 
 export component Rows(rows: $ReadOnlyArray<Row>) {
@@ -18,7 +18,7 @@ app/example.js:5:42 `key` is built from the list index `index`, so React ties ea
 ## Good
 
 ```js
-// @flow
+"use flow";
 type Row = { id: string, name: string };
 
 export component Rows(rows: $ReadOnlyArray<Row>) {

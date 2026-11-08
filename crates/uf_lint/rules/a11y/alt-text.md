@@ -3,7 +3,7 @@ An image with no `alt` is announced by its file name, or not at all, so a screen
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Avatar() {
   return (
     <img src="/avatars/ada.png" />
@@ -18,7 +18,7 @@ app/example.js:4:5 `<img>` has no `alt`, so a screen reader announces its URL or
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Avatar() {
   return (
     <img src="/avatars/ada.png" alt="Ada Lovelace" />

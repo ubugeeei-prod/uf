@@ -3,7 +3,7 @@ Two `import` statements from the same module can be written as one. Keeping them
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useState } from "react";
 import { useEffect } from "react";
 ```
@@ -15,7 +15,7 @@ app/example.js:3:27 `react` is already imported in this file
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { useEffect, useState } from "react";
 import type { Node } from "react";
 ```

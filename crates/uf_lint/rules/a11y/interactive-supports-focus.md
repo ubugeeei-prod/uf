@@ -3,7 +3,7 @@ An element given a widget role, such as `button`, `checkbox` or `tab`, is announ
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Star(onStar: () => void) {
   return (
     <span role="button" onClick={onStar} onKeyDown={onStar}>
@@ -20,7 +20,7 @@ app/example.js:4:11 `role="button"` is a widget and `<span>` cannot take focus, 
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Star(onStar: () => void) {
   return (
     <span role="button" tabIndex={0} onClick={onStar} onKeyDown={onStar}>

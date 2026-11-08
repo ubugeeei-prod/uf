@@ -5,20 +5,20 @@ A module no other module imports, or an export nothing imports, is code that shi
 `legacy.js` is imported by nothing, and `lib.js`'s `unused` export is never imported.
 
 ```js path=app.js
-// @flow
+"use flow";
 import { used } from "./lib.js";
 
 used();
 ```
 
 ```js path=lib.js
-// @flow
+"use flow";
 export function used() {}
 export function unused() {}
 ```
 
 ```js path=legacy.js
-// @flow
+"use flow";
 export const oldPrice = 100;
 ```
 
@@ -30,13 +30,13 @@ lib.js:2:1 unused export: `unused`
 ## Good
 
 ```js path=app.js
-// @flow
+"use flow";
 import { used } from "./lib.js";
 
 used();
 ```
 
 ```js path=lib.js
-// @flow
+"use flow";
 export function used() {}
 ```

@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Save() {
   return (
     <button type="submit" accessKey="s">
@@ -20,7 +20,7 @@ app/example.js:4:27 `accessKey` asks for a keyboard shortcut the browser and the
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Save() {
   return (
     <button type="submit">Save</button>

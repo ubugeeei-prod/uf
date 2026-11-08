@@ -3,7 +3,7 @@ Reading an instance property in the constructor before it has been assigned read
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export class Cache {
   size: number;
   entries: Map<string, string>;
@@ -18,7 +18,7 @@ export class Cache {
 ## Good
 
 ```js
-// @flow
+"use flow";
 export class Cache {
   entries: Map<string, string>;
   size: number;

@@ -3,7 +3,7 @@ An `a` without a real `href` is not a link. It is not in the tab order, it opens
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Menu(onOpen: () => void) {
   return (
     <a href="#" onClick={onOpen}>
@@ -20,7 +20,7 @@ app/example.js:4:8 `href="#"` jumps to the top of the page, so with an `onClick`
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Menu(onOpen: () => void) {
   return (
     <button type="button" onClick={onOpen}>

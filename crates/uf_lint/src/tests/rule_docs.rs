@@ -38,7 +38,7 @@
 //! Optional prose about this example.
 //!
 //! ```js
-//! // @flow
+//! "use flow";
 //! type Props = { value: any };
 //! ```
 //!
@@ -49,7 +49,7 @@
 //! ## Good
 //!
 //! ```js
-//! // @flow
+//! "use flow";
 //! type Props = { value: mixed };
 //! ```
 //! ````

@@ -3,7 +3,7 @@ Each role takes a fixed set of `aria-*` states. One its role does not take, such
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Nav() {
   return (
     <a href="/inbox" aria-checked="true">
@@ -20,7 +20,7 @@ app/example.js:4:22 a `<a>` is a `link`, and ARIA gives `link` no `aria-checked`
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Nav() {
   return (
     <a href="/inbox" aria-current="page">

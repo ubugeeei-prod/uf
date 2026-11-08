@@ -3,7 +3,7 @@ Elements such as `h2`, `ul` or `article` already mean something to a screen read
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component SectionToggle(onToggle: () => void) {
   return (
     <h2 role="button" tabIndex={0} onClick={onToggle} onKeyDown={onToggle}>
@@ -20,7 +20,7 @@ app/example.js:4:9 `<h2>` already has the role `heading` and `role="button"` say
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component SectionToggle(open: boolean, onToggle: () => void) {
   return (
     <h2>

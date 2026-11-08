@@ -3,7 +3,7 @@ Headings are the outline a screen reader user navigates by. Jumping from `h2` to
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Article() {
   return (
     <article>
@@ -21,7 +21,7 @@ app/example.js:6:7 heading level jumps from `<h2>` to `<h4>`, and a reader navig
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Article() {
   return (
     <article>

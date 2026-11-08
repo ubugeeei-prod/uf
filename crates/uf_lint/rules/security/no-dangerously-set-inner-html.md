@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Comment(body: string) {
   return <div dangerouslySetInnerHTML={{ __html: body }} />;
 }
@@ -16,7 +16,7 @@ app/example.js:3:15 unsanitized HTML is an XSS sink; render it through a @uniflo
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Comment(body: string) {
   return <p>{body}</p>;
 }

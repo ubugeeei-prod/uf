@@ -3,7 +3,7 @@ Setting state synchronously in an effect renders the component a second time str
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useEffect, useState } from "react";
 
 export component Filtered(items: $ReadOnlyArray<string>, query: string) {
@@ -22,7 +22,7 @@ app/example.js:7:5 Calling setState synchronously within an effect can trigger c
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Filtered(items: $ReadOnlyArray<string>, query: string) {
   const visible = items.filter((item) => item.includes(query));
   return <p>{visible.length} matches</p>;

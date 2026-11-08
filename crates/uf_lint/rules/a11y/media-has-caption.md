@@ -3,7 +3,7 @@ Deaf and hard-of-hearing viewers rely on captions for anything a video or record
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Intro() {
   return (
     <video src="/intro.mp4" controls />
@@ -18,7 +18,7 @@ app/example.js:4:5 this `<video>` has no `<track kind="captions">`, so whoever c
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Intro() {
   return (
     <video src="/intro.mp4" controls>

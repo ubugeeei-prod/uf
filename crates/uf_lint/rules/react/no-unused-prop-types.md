@@ -3,7 +3,7 @@ A prop that a `component` declares and never reads is part of its type that does
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Badge(label: string, tone: "info" | "warning") {
   return <span>{label}</span>;
 }
@@ -16,7 +16,7 @@ app/example.js:2:39 `<Badge>` declares the prop `tone` and never reads it, so ev
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Badge(label: string, tone: "info" | "warning") {
   return <span data-tone={tone}>{label}</span>;
 }

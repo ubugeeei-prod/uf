@@ -3,7 +3,7 @@ A number on the left of `&&` in JSX renders `0` when it is zero, instead of rend
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Unread(count: number) {
   return <p>{count && <span>{count} new</span>}</p>;
 }
@@ -12,7 +12,7 @@ export component Unread(count: number) {
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Unread(count: number) {
   return <p>{count > 0 && <span>{count} new</span>}</p>;
 }

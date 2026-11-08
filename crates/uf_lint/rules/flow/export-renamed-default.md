@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 const page = { title: "Home" };
 export { page as default };
 ```
@@ -15,7 +15,7 @@ app/example.js:3:15 renaming an export to `default` hides the real name; export 
 ## Good
 
 ```js
-// @flow
+"use flow";
 const page = { title: "Home" };
 export default page;
 ```

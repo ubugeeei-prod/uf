@@ -3,7 +3,7 @@ A uf project declares its tasks in `uf.config.js`, where `uf run` caches them, o
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { execSync } from "node:child_process";
 
 execSync("npm run build");
@@ -18,7 +18,7 @@ app/example.js:5:11 declare the task in uf.config.js; uf projects do not shell o
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { execSync } from "node:child_process";
 
 execSync("uf run build");

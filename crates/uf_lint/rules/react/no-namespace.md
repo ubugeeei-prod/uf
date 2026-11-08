@@ -3,7 +3,7 @@ React cannot render a namespaced element name such as `svg:rect`. JSX parses it,
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Dot() {
   return (
     <svg viewBox="0 0 10 10">
@@ -20,7 +20,7 @@ app/example.js:5:8 `<svg:circle>` is a namespaced element name, which React does
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Dot() {
   return (
     <svg viewBox="0 0 10 10">

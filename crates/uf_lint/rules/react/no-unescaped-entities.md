@@ -3,7 +3,7 @@ A `>` or `}` in JSX text is legal, but it is usually a tag or an expression type
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Breadcrumb() {
   return <p>Home > Settings</p>;
 }
@@ -16,7 +16,7 @@ app/example.js:3:18 `>` in JSX text renders as itself, and is usually what a mis
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Breadcrumb() {
   return <p>Home &gt; Settings</p>;
 }

@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Banner() {
   return (
     <marquee>Sale ends tonight</marquee>
@@ -18,7 +18,7 @@ app/example.js:4:5 `<marquee>` animates on its own and gives the reader no way t
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Banner() {
   return (
     <p>Sale ends tonight</p>

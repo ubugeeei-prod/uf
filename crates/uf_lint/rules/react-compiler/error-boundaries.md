@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { Chart } from "./chart.js";
 
 export component Panel(data: $ReadOnlyArray<number>) {
@@ -24,7 +24,7 @@ app/example.js:7:15 Avoid constructing JSX within try/catch. React does not imme
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { ErrorBoundary } from "@uniflowed/react";
 import { Chart } from "./chart.js";
 

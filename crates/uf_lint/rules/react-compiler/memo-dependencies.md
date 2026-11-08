@@ -3,7 +3,7 @@ A `useMemo` or `useCallback` recomputes when one of its dependencies changes. A 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useMemo } from "react";
 
 export component Total(price: number, quantity: number) {
@@ -19,7 +19,7 @@ app/example.js:5:39 Found missing memoization dependencies. Missing dependencies
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { useMemo } from "react";
 
 export component Total(price: number, quantity: number) {

@@ -3,7 +3,7 @@ A `component` or `hook` is a function called by React, not a method, so `this` i
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Title(text: string) {
   return <h1>{this.props.text}</h1>;
 }
@@ -16,7 +16,7 @@ app/example.js:3:15 `this` names nothing inside a `component`: Flow calls one as
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Title(text: string) {
   return <h1>{text}</h1>;
 }

@@ -104,6 +104,29 @@ fn a_leading_boundary_directive_is_accepted() {
 }
 
 #[test]
+fn a_mode_directive_may_precede_the_boundary() {
+    for source in [
+        "\"use flow\";\n'use client';\nimport { a } from './a.js';\n",
+        "\"use flow\";\n\"use server\";\nexport async function save(): Promise<void> {}\n",
+        "'use strict';\n\"use js\";\n\"use flow\";\n'use client';\n",
+    ] {
+        let diagnostics = lint_js("server/use-client-directive-position", source);
+        assert!(diagnostics.is_empty(), "{source} -> {diagnostics:?}");
+    }
+}
+
+#[test]
+fn an_import_between_a_mode_directive_and_the_boundary_is_rejected() {
+    let diagnostics = lint_js(
+        "server/use-client-directive-position",
+        "\"use flow\";\nimport { a } from './a.js';\n'use client';\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (3, 1));
+}
+
+#[test]
 fn a_directive_inside_jsx_text_is_not_a_statement() {
     let directive = lint_js(
         "server/use-client-directive-position",
@@ -263,6 +286,17 @@ fn server_actions_accept_use_server_directive() {
     );
 
     assert!(diagnostics.is_empty());
+}
+
+#[test]
+fn server_actions_accept_a_mode_directive_before_use_server() {
+    let diagnostics = lint_one(
+        "server/use-server-actions",
+        "server/actions.js",
+        "\"use flow\";\n\"use server\";\nimport { serverAction } from '@uniflowed/server';\nexport const save = serverAction(() => {});\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
 }
 
 #[test]
