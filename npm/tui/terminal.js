@@ -38,6 +38,7 @@ import { FALLBACK_COLUMNS, FALLBACK_ROWS, detectCapabilities, detectSize } from 
 import type { Frame } from "./cells.js";
 import { frameText } from "./cells.js";
 import { osc52Clipboard } from "./clipboard.js";
+import { notificationProtocol, terminalNotifications } from "./notifications.js";
 import type { Update } from "./diff.js";
 import type { Renderer } from "./internal/host.js";
 import {
@@ -208,6 +209,17 @@ export type RenderOptions = {
    * sending a sequence a terminal policy may reject without acknowledgement.
    */
   readonly clipboard?: boolean,
+  /**
+   * Which sequence `useNotifications()` writes, or `false` to write none.
+   *
+   * An interactive terminal sends OSC 9 when this is omitted. `"osc777"` is
+   * the title-and-body sequence. A pipe writes nothing either way: nothing
+   * here asks the terminal which sequence it implements, and a query that
+   * waits for an answer is how a renderer blocks a reader who will never
+   * see a banner. `OPENTUI_NOTIFICATION_PROTOCOL` names one of those
+   * sequences, or turns them off, only when this option does not.
+   */
+  readonly notifications?: "osc9" | "osc777" | false,
 };
 
 /**
@@ -347,6 +359,16 @@ export function render(element: React.Node, options: RenderOptions = {}): Handle
   const renderer = createRenderer(size.columns, size.rows, capabilities, mouse);
   if ((options.clipboard ?? true) && interactive) {
     renderer.clipboard = osc52Clipboard((chunk) => stdout.write(chunk));
+  }
+  if (interactive) {
+    // Not a field of `TerminalEnv`. That type is the list this package and
+    // the CLI both read for colour, size and glyphs. A notification sequence
+    // is not one of those, and adding it there would make the two lists lie.
+    const requestedName: mixed = (env as $FlowFixMe).OPENTUI_NOTIFICATION_PROTOCOL;
+    const protocol = notificationProtocol(options.notifications, requestedName);
+    if (protocol !== "none") {
+      renderer.notifications = terminalNotifications(protocol, (chunk) => stdout.write(chunk));
+    }
   }
 
   let stopped = false;

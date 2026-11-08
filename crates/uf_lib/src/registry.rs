@@ -807,6 +807,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "testRender",
                 "useClipboard",
                 "useKeyboard",
+                "useNotifications",
                 "useRenderer",
                 "useTerminalSize",
             ],

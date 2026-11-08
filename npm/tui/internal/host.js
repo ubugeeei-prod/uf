@@ -64,6 +64,8 @@ import type { Frame, Rect } from "../cells.js";
 import { createFrame } from "../cells.js";
 import type { Clipboard } from "../clipboard.js";
 import { unsupportedClipboard } from "../clipboard.js";
+import type { Notifications } from "../notifications.js";
+import { unsupportedNotifications } from "../notifications.js";
 import type { Update } from "../diff.js";
 import { diffFrames } from "../diff.js";
 import type { KeyEvent } from "../keys.js";
@@ -184,6 +186,16 @@ export type Renderer = {
    * and dropping it.
    */
   clipboard: Clipboard,
+  /**
+   * The terminal notification transport.
+   *
+   * It is installed by `terminal.js`, not by the reconciler. A renderer that
+   * lives in memory or behind a pipe has no terminal that can show a banner,
+   * and the unsupported object says so explicitly instead of writing a
+   * sequence nobody will see. `notify()` reports that the sequence was
+   * written. There is no acknowledgement, and no capability query.
+   */
+  notifications: Notifications,
 };
 
 /**
@@ -242,7 +254,8 @@ export function createRenderer(
     getSelectedText() {
       return selectedText(renderer);
     },
-    clipboard: unsupportedClipboard,
+    clipboard    : unsupportedClipboard,
+    notifications: unsupportedNotifications,
   };
   return renderer;
 }
