@@ -108,7 +108,7 @@ A prerendered page can say how long its document stays true, from inside its
 own render:
 
 ```js
-// @flow
+"use flow";
 import { cacheLife, cacheTag } from "@uniflowed/server/cache";
 
 export default async function Prices() {
@@ -168,7 +168,7 @@ that says who is signed in is not. Partial prerendering prerenders the first
 part and leaves the second to the request:
 
 ```js
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 import { cookies } from "@uniflowed/server";
 
@@ -366,7 +366,7 @@ modules instead. That mode runs on React 19.2.3 or newer without
 export default defineConfig({
   app: {
     rendering: {
-      modes: ["ssg"],
+      modes     : ["ssg"],
       navigation: "document",
     },
   },

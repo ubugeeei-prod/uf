@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The collapsible `uf ui add collapsible` writes: a trigger that says whether
 // its region is showing, a closed region that is still in the document, and

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/form/field-array`: a list of rows, each of which is fields.
 //

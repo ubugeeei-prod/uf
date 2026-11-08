@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The narrowings a component test needs, in one place.
 //

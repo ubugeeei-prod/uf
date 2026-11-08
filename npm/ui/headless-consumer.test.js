@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A project that does not compile StyleX still uses `@uniflowed/ui`.
 //

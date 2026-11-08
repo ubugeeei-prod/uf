@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The text area `uf ui add textarea` writes, held to what its header promises:
 // named by its label, every attribute and the ref on the element, and nothing

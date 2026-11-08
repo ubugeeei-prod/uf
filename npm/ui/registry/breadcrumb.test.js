@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The breadcrumb `uf ui add breadcrumb` writes: a named navigation landmark,
 // links up the trail, the current page marked and not linked, and separators

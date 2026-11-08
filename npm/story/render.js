@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/story/render`: putting one story on screen, and taking it down.
 //

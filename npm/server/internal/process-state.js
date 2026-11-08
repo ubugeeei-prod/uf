@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/server`: the state there is one of per process,
 // whichever copy of this package holds it.

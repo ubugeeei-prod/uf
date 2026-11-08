@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A server action a Server Component handed to a Client Component, in the
 // browser.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A StyleX stylesheet import has to follow `"use client"`. Ahead of it, the
 // directive is an ordinary string and the RSC graph renders the module.

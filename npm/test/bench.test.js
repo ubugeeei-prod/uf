@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `bench`: registered like a test, skipped by an ordinary run, and timed by a
 // run of benchmarks.

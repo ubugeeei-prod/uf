@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The React binding: what React mutates, and how a frame comes out of it.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The input group `uf ui add input-group` writes, held to what its header
 // promises: an input named by its label rather than by its addons, addons that

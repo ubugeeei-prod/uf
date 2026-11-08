@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Top-level `await`, through the loader that actually runs it.
 //

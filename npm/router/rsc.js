@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/router/rsc`: a route, rendered as React Server Components.
 //

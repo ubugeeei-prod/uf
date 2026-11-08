@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Browser replacement for the Node-only optional renderer loader.
 

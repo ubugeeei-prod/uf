@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Tooltip: a short phrase about a control, shown on hover and on focus, and
 // never in the way.

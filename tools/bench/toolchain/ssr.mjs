@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Production HTTP comparison for #1363. This runs on the same CI runner and
 // generated application as the toolchain benchmark, with three route shapes.

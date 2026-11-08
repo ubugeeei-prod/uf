@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/core/temporal`: Temporal, on a host that has it and on one that
 // does not.

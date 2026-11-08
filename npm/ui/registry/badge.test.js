@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The badge `uf ui add badge` writes, held to what its header promises: a
 // `<span>` that passes through every attribute and is read as its words, with

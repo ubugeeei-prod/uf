@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/cache/filesystem`: one durable cache provider, on a disk.
 //

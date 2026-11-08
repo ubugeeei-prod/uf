@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What an action reaches for, and the browser must not.
 //

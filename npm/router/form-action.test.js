@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A form bound to a server action, before its page has hydrated.
 //

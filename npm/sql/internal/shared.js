@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Checks every engine's codecs share. Each one either returns the value it was
 // asked for or throws a `SqlError` that names what it expected — never a

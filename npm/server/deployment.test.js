@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The server's half of version-skew protection: a request that names another
 // build is refused before any of this one runs.

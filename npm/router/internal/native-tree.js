@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import type { RouteModule, RouteTable } from "./routing.js";
 
 export type NativeLayout = {

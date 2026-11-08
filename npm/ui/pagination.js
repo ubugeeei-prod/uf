@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Pagination: the navigation a table needs to be usable, and its four rules.
 //

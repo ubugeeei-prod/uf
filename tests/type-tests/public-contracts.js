@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // Correct inferred public types and the invalid assignments they must reject.
 
 import { useInfiniteQuery, useQuery } from "../../npm/query/index.js";

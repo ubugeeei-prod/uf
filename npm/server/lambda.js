@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/lambda`: the AWS Lambda half of serving a build.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What `uf check` says about the two surfaces that used to be `any`.
 //

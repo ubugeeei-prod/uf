@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `app.builtins.markdown.mdx`, read by the `uf:mdx` plugin. Each case compiles
 // a one-line document through the plugin `uniflowed()` returns, so what is

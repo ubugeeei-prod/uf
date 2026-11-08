@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Toggle group: a row of toggles that behaves as one control, pressing any
 // number of them or choosing one.

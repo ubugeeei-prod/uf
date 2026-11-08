@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A tooltip: the component most likely to make a page *worse* than the plain
 // HTML it replaced.

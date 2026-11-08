@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The two things you can point a rendered tree at: a terminal, or memory.
 //

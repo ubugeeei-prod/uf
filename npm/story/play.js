@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/story/play`: the half of a story that makes it a test.
 //

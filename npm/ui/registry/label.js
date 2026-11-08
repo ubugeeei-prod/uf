@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Label: a styled `<label>`, which names the control its `htmlFor` points at.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `ssr`: a page rendered for each request.
 //

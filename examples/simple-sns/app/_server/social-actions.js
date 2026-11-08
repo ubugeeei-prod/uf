@@ -1,5 +1,5 @@
 "use server";
-// @flow
+"use flow";
 // Thin transport adapters. Untrusted previous state never selects an identity or a record.
 
 import { publishNote, appreciateNote, deliverMessage, changeProfile } from "./programs.server.js";

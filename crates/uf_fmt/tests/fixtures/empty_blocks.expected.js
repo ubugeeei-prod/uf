@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // Empty blocks. Prettier collapses a body that is expected to be empty
 // sometimes and keeps open a block whose emptiness is worth seeing.
 

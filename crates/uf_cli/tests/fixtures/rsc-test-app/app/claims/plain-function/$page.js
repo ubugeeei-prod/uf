@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A Server Component handing a Client Component a function that is not a
 // server action. Only a `"use server"` export is registered as a server

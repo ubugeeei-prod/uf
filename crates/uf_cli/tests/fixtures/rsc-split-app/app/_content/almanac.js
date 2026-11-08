@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The server-only half of the fixture: content the home page renders and the
 // browser has no use for.

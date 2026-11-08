@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The month a calendar shows, and the keyboard that walks it.
 //

@@ -60,12 +60,12 @@ mapper:
 import { tryPromise, trySync } from "@uniflowed/effect";
 
 const fetched = tryPromise({
-  try: () => fetch(url).then((response) => response.json()),
+  try  : () => fetch(url).then((response) => response.json()),
   catch: (cause) => ({ kind: "network", cause }),
 });
 
 const decoded = trySync({
-  try: () => JSON.parse(source),
+  try  : () => JSON.parse(source),
   catch: () => ({ kind: "invalid-json", message: "Enter a JSON document." }),
 });
 ```
@@ -175,7 +175,11 @@ A `Schedule<In>` is plain data — a state machine, still written as a literal:
 
 ```js
 retry(request, { kind: "exponential", baseMillis: 100, factorPercent: 200 });
-retry(request, { kind: "intersect", left: { kind: "recurs", times: 5 }, right: { kind: "upTo", millis: 10_000 } });
+retry(request, {
+  kind : "intersect",
+  left : { kind: "recurs", times: 5 },
+  right: { kind: "upTo", millis: 10_000 },
+});
 ```
 
 `factorPercent` is an integer percentage rather than a float, because 1.5

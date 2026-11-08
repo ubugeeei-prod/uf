@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 type Primitive = string | number | boolean | null | void | mixed | any | empty | symbol | bigint;
 type Literal = "a" | 1 | true | -1 | 10n;
 type Nullable = ?string;

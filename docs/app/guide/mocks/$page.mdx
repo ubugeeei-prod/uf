@@ -52,7 +52,7 @@ may use both.
 Here is a module that talks to an API with `fetch`:
 
 ```js
-// @flow
+"use flow";
 export type User = {| readonly id: string, readonly name: string |};
 
 const BASE = "https://api.example.test";
@@ -68,9 +68,9 @@ export async function loadUser(id: string): Promise<User> {
 
 export async function renameUser(id: string, name: string): Promise<User> {
   const response = await fetch(`${BASE}/users/${id}`, {
-    method: "PATCH",
+    method : "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name }),
+    body   : JSON.stringify({ name }),
   });
   if (!response.ok) {
     throw new Error(`could not rename user ${id}: ${response.status}`);
@@ -83,7 +83,7 @@ export async function renameUser(id: string, name: string): Promise<User> {
 And its test, in `users.test.js` beside it:
 
 ```js
-// @flow
+"use flow";
 import { HttpResponse, http, mock } from "@uniflowed/mock";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "@uniflowed/test";
 
@@ -198,7 +198,7 @@ after all", in which case the next matching handler is asked. Handlers passed
 to `mock` are asked in the order they were written.
 
 ```js
-// @flow
+"use flow";
 import type { MockHandler, MockRegistry } from "@uniflowed/mock";
 import { HttpResponse, http, mock } from "@uniflowed/mock";
 import { expect, it } from "@uniflowed/test";
@@ -208,7 +208,7 @@ import { loadUser } from "./users.js";
 /** Listen with `handlers` for the length of `body`, and stop however it ends. */
 async function withHandlers(
   handlers: $ReadOnlyArray<MockHandler>,
-  body: (api: MockRegistry) => Promise<void>,
+  body    : (api: MockRegistry) => Promise<void>,
 ): Promise<void> {
   const api = mock(...handlers);
   api.listen();
@@ -256,7 +256,7 @@ it("lets a resolver decline, so the next handler is asked", async () => {
       const post = (name: string) =>
         fetch("https://api.example.test/users", {
           method: "POST",
-          body: JSON.stringify({ name }),
+          body  : JSON.stringify({ name }),
         });
 
       expect((await post("")).status).toBe(422);
@@ -363,7 +363,7 @@ with an `UnhandledRequestError` that names the method, the URL and every
 handler that was in force.
 
 ```js
-// @flow
+"use flow";
 import { HttpResponse, UnhandledRequestError, http, mock } from "@uniflowed/mock";
 import { expect, it } from "@uniflowed/test";
 
@@ -456,13 +456,13 @@ The point of mocking the request is that nothing above it changes. This
 component calls `loadUser` from an effect:
 
 ```js
-// @flow
+"use flow";
 import { useEffect, useState } from "react";
 
 import { loadUser } from "./users.js";
 
 export component Profile(id: string) {
-  const [name, setName] = useState<string | null>(null);
+  const [name,   setName]   = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -491,7 +491,7 @@ The test renders it with `@uniflowed/react-testing` and changes only what the
 endpoint says:
 
 ```js
-// @flow
+"use flow";
 import { HttpResponse, delay, http, mock } from "@uniflowed/mock";
 import { render, screen } from "@uniflowed/react-testing";
 import { afterAll, afterEach, beforeAll, expect, it } from "@uniflowed/test";
@@ -563,7 +563,7 @@ Here is the component the rest of this page describes. It saves a draft with a
 `PUT`:
 
 ```js
-// @flow
+"use flow";
 import { useState } from "react";
 
 export component SaveButton(draftId: string, label: string, pending: boolean = false) {
@@ -594,7 +594,7 @@ export component SaveButton(draftId: string, label: string, pending: boolean = f
 And its stories, in a file called `$story.js` beside it:
 
 ```js
-// @flow
+"use flow";
 import { HttpResponse, http } from "@uniflowed/mock";
 import { defineStories } from "@uniflowed/story";
 
@@ -606,7 +606,7 @@ export const buttonStories = defineStories({
   props: { draftId: "d1", label: "Save", pending: false },
   mocks: [http.put("https://api.example.test/drafts/:id", () => HttpResponse.json({ ok: true }))],
   stories: {
-    Idle: {},
+    Idle   : {},
     Pending: { props: { pending: true } },
     Saved: {
       play: async ({ canvas, user }) => {
@@ -754,7 +754,7 @@ declared in the story's own file, where it can be read.
 works without a test runner in the process.
 
 ```js
-// @flow
+"use flow";
 import { findStory, mountStory, renderStoryToHtml } from "@uniflowed/story";
 import { describeStories, storyTest } from "@uniflowed/story/runner";
 import { expect, it } from "@uniflowed/test";
@@ -841,7 +841,7 @@ reports a misspelling such as `$stori.js` — and uses the router's variants:
 only the default variant is a story a renderer mounts.
 
 ```js
-// @flow
+"use flow";
 import { fileURLToPath } from "node:url";
 
 import { collectStories } from "@uniflowed/story";
@@ -858,7 +858,7 @@ it("finds every story under this directory", async () => {
   ]);
   expect(index.get("button--pending")?.props).toEqual({
     draftId: "d1",
-    label: "Save",
+    label  : "Save",
     pending: true,
   });
 });
@@ -888,7 +888,7 @@ itself; putting the two together is a few lines with
 [`createBrowser`](/guide/testing#trusted-input-and-visual-comparisons):
 
 ```js
-// @flow
+"use flow";
 import { renderStoryToHtml } from "@uniflowed/story";
 import { expect, it } from "@uniflowed/test";
 import { createBrowser } from "@uniflowed/test/browser";

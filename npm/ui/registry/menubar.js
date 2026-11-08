@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Menubar: a row of menus, as along the top of a desktop application, moved
 // along with the arrow keys.

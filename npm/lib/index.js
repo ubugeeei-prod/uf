@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/lib`: reflection over the native module registry that
 // `crates/uf_lib/src/lib.rs` owns.

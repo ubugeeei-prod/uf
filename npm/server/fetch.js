@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/fetch`: a built uf application as `Request` → `Response`.
 //

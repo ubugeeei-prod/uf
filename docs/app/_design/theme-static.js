@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Theme constants shared by the document and the client toggle.
 

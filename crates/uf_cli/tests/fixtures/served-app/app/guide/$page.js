@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A nested route with no parameters, so `uf build` prerenders it to
 // `dist/guide/index.html` and both servers answer it from that file rather

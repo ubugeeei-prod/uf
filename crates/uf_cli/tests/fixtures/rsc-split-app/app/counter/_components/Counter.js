@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // The client half of the fixture: state, an event handler, a server action, a
 // form, and a marker string that has to survive into the browser bundle.

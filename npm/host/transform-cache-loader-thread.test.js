@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The transform cache, through the loader thread `register()` starts: what an
 // older Node gets, and what `@uniflowed/vite`'s driver registers. Every Node

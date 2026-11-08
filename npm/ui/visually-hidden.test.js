@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `visually-hidden.js`: the `VisuallyHidden` part, and `announce()` — one pair
 // of live regions for the whole document, React Aria's LiveAnnouncer shape.

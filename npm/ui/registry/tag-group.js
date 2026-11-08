@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 // TagGroup: a named collection with visible selection and keyboard focus.
 //
 // `uf ui add tag-group` copies this component into the project. The headless

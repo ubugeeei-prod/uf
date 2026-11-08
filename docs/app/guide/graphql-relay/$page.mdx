@@ -94,7 +94,7 @@ island that needs the data:
 ```js
 <Suspense fallback={<LoadingState kind="threads" />}>
   <Threads queryRef={relay.serverPreloadQuery(threadsQuery, {})} selected={thread} />
-</Suspense>
+</Suspense>;
 ```
 
 The island declares the query with its `graphql` tag and reads the reference

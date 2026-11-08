@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The accordion `uf ui add accordion` writes: real headings holding buttons,
 // panels named by them, one section open at a time, and the dressing

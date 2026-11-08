@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A page's typed search params, and the test that says the prop is the
 // schema's output.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as Menu from "./menu.js";
 
 /** A file menu: actions, a setting, a choice, a submenu and a disabled row. */

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/state`: atoms, stores, and the React binding over them.
 //

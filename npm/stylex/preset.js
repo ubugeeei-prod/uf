@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/stylex/preset`: the default look, as props you spread.
 //

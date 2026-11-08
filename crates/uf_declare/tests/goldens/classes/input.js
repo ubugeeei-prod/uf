@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 export class Store<T> {
   size: number;

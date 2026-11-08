@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // One file run as shares: `RunOptions.part`.
 //

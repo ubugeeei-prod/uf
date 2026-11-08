@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Replacing a *module*: `uft.mock` and the five bindings around it.
 //

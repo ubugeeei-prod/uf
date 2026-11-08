@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `ssg` with parameters: `generateStaticParams` enumerates two posts, so both
 // are prerendered — documents and RSC payloads — and a target answers them

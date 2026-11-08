@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Named imports from `@uniflowed/ui`, rewritten to the files that define them
 // before the rsc pass records client modules (ubugeeei-prod/uf#1118).

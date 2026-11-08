@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What the `options-postgresql` case's overrides point at: a settings type
 // with a checked decoder, and an opaque id that only `toExternalId` makes.

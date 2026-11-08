@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Input: a styled single-line `<input>`, for a search box or any control that
 // has no field row around it.

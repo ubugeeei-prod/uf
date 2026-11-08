@@ -31,7 +31,7 @@ answers — the pages, the route handlers, and the paths under it that match
 nothing at all:
 
 ```js
-// @flow
+"use flow";
 import { cookies } from "@uniflowed/server";
 
 export default function middleware(request: Request): Response | void {
@@ -68,7 +68,7 @@ A middleware can also serve a different route at the address the visitor asked
 for:
 
 ```js
-// @flow
+"use flow";
 import { cookies } from "@uniflowed/server";
 import { rewrite } from "@uniflowed/router/middleware";
 
@@ -118,14 +118,12 @@ A path can answer a request instead of rendering. `app/api/users/[id]/$route.js`
 serves `/api/users/42`:
 
 ```js
-// @flow
+"use flow";
 import type { HandlerContext } from "@uniflowed/router/handler";
 
 export async function GET(request: Request, context: HandlerContext): Promise<Response> {
   const user = await find(context.params.id);
-  return user == null
-    ? new Response("not found", { status: 404 })
-    : Response.json(user);
+  return user == null ? new Response("not found", { status: 404 }) : Response.json(user);
 }
 
 export async function POST(request: Request, context: HandlerContext): Promise<Response> {
@@ -156,7 +154,7 @@ methods. `uf build` reads the schemas and writes `.uf/build/meta/openapi.json`;
 handlers without schemas are still listed as untyped.
 
 ```js
-// @flow
+"use flow";
 import { object, string } from "@uniflowed/validator";
 
 export const schemas = {
@@ -164,7 +162,7 @@ export const schemas = {
     response: object({ status: string() }),
   },
   POST: {
-    body: object({ name: string() }),
+    body    : object({ name: string() }),
     response: object({ echoed: string() }),
   },
 };
@@ -196,7 +194,7 @@ prerendered document in `dist/` is allowed to answer it.
 
 ```js
 // app/api/preview/$route.js
-// @flow
+"use flow";
 import { draftMode } from "@uniflowed/server";
 
 export function GET(request: Request): Response {
@@ -249,7 +247,7 @@ has to treat a search as a mutation.
 
 ```js
 // app/api/search/$route.js
-// @flow
+"use flow";
 export async function QUERY(request: Request): Promise<Response> {
   const filters = await request.json();
   return Response.json(await search(filters));
@@ -294,7 +292,7 @@ server-sent events need nothing new from the router:
 
 ```js
 // app/api/progress/$route.js
-// @flow
+"use flow";
 import { eventStream } from "@uniflowed/server/events";
 
 export function GET(): Response {
@@ -318,7 +316,7 @@ A WebSocket is a `GET` with `Upgrade: websocket` on it, so it is a handler too:
 
 ```js
 // app/api/room/[id]/$route.js
-// @flow
+"use flow";
 import { upgradeWebSocket } from "@uniflowed/server/socket";
 
 export function GET(request: Request, context: HandlerContext): Response {
@@ -339,13 +337,13 @@ decides which WebSocket library your project has, which is the failure
 And work that should outlive the response is a job:
 
 ```js
-// @flow
+"use flow";
 import { defineJob, enqueue } from "@uniflowed/server/queue";
 
 export const sendWelcome = defineJob({
-  name: "send-welcome",
+  name : "send-welcome",
   retry: { attempts: 5 },
-  run: async (payload) => mail(payload.to),
+  run  : async (payload) => mail(payload.to),
 });
 
 export async function POST(request: Request): Promise<Response> {
@@ -370,14 +368,14 @@ for a metric and wrong for anything a user would notice missing.
 And work that no request starts at all is a schedule:
 
 ```js
-// @flow
+"use flow";
 import { defineSchedule } from "@uniflowed/server/schedule";
 import { serve } from "@uniflowed/server/node";
 
 const sweep = defineSchedule({
   name: "sweep-sessions",
   cron: "*/15 * * * *",
-  run: async () => expireSessions(),
+  run : async () => expireSessions(),
 });
 
 await serve({ handle, staticDir, beginRequest, schedules: [sweep] });
@@ -414,7 +412,7 @@ A route handler can say when it should run without being asked, so that
 
 ```js
 // app/api/sweep/$route.js
-// @flow
+"use flow";
 export const schedule = "*/15 * * * *";
 
 export function GET(): Response {

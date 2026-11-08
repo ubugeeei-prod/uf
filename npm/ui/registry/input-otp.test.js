@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The code field `uf ui add input-otp` writes: one named field under the boxes,
 // characters a numeric code refuses dropped, the boxes showing what the field

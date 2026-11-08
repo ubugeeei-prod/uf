@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Interactions: the press, the hover, the focus ring, the long press, the drag
 // and the key, each written once, so that every component above them inherits

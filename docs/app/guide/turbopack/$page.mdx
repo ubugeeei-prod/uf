@@ -29,7 +29,7 @@ reads the config. An app that is not otherwise a uf app can leave it empty:
 | Piece | Status | What it does |
 | --- | --- | --- |
 | `withUniflowed` | Implemented | Composes `next.config.js` with the loader, including a function config |
-| Turbopack | Implemented | `turbopack.rules` on `*.js`, `*.jsx`, `*.mjs` and `*.cjs`, only where a file carries `@flow` |
+| Turbopack | Implemented | `turbopack.rules` on `*.js`, `*.jsx`, `*.mjs` and `*.cjs`, only where a file carries `"use flow";` or `@flow` |
 | `@uniflowed/*` | Implemented | `transpilePackages` lists the scope that is installed, and the loader compiles the packages that ship Flow |
 | `next build --webpack` | Implemented | The same loader, and only when the config already has a `webpack` function or the command passes `--webpack` |
 | StyleX | Implemented | A stylesheet next to the file, with the generated class names left intact |
@@ -62,7 +62,7 @@ export { default } from "./page.impl.js";
 
 ```js
 // app/page.impl.js
-// @flow
+"use flow";
 import * as React from "react";
 import { stylex } from "@uniflowed/stylex";
 
@@ -96,8 +96,9 @@ and `contentType` of an `opengraph-image` or a `twitter-image`, and
 holds the component. It does not hold an export Next.js reads off the
 convention file.
 
-Only a file with a Flow pragma is compiled, and only when Next.js is not the
-one parsing it. `// @flow` or `/* @flow */` at the start of a line counts.
+Only a file that asks for Flow is compiled, and only when Next.js is not the
+one parsing it. `"use flow";` or `'use flow'` at the start of a line counts,
+and so does `// @flow` or `/* @flow */`.
 `// @noflow` does not, and neither does a mention of the pragma in the middle
 of a comment: those files stay with SWC. The same rule applies under
 `node_modules`, limited to `@uniflowed/*`, because that is the scope that ships

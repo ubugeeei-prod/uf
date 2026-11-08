@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // NativeSelect: the platform's `<select>`, drawn to match the registry's
 // inputs, with a chevron in place of the one the browser draws.

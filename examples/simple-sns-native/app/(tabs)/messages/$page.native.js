@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { ScrollView, Text, View } from "react-native";
 import { Link } from "@uniflowed/router/native-navigation";

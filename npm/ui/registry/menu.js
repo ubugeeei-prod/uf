@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Menu: a list of actions and options that opens from a button and is moved
 // through from the keyboard.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A carousel: content that moves, which is the one thing on a page a
 // specification tells you to let people stop.

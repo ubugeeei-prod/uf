@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import type { ViewStyle, TextStyle, ImageStyle } from "react-native";
 import { nativeRuntimeRequired } from "@uniflowed/core/native";
 import { nativeProps } from "./native-props.js";

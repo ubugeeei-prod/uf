@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 // ColorPicker: hex, native color and channel inputs with a preview.
 //
 // `uf ui add color-picker` copies this component into the project. The headless

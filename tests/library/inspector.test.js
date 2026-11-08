@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What left, in what order, and what each chunk built.
 //

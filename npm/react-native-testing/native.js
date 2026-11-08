@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // The app owns the Testing Library and renderer versions. v14 uses the
 // successor Test Renderer; its async API is re-exported without emulation.
 export * from "@testing-library/react-native";

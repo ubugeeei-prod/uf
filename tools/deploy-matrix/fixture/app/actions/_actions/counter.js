@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 "use server";
 
 // The server actions the matrix calls, both ways a browser can.

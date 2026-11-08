@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { createFetch } from "@uniflowed/fetch";
 import { createEnvironment } from "@uniflowed/graphql";

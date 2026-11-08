@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/query/cache`: every entry, and how to say which ones you mean.
 //

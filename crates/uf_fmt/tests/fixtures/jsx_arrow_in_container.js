@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // A JSX element reached through an arrow body, inside a JSX expression
 // container. The element asks for parentheses of its own — and so for a
 // break — only when the three nodes above it are exactly the arrow, the

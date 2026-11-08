@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Context menu: the menu a right-click or a long press opens over an area of
 // the page, where the reader is.

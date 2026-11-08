@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { readFile, writeFile, mkdir, realpath, lstat } from "node:fs/promises";
 import path from "node:path";
 import { PNG } from "pngjs";

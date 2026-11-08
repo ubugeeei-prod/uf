@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The payload URL, spelled twice.
 //

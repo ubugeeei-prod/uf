@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The head `uf dev` hands to Vite, and what comes back.
 //

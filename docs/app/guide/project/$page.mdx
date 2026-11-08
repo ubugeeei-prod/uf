@@ -63,7 +63,7 @@ Set `uf.config.js` to the following to use the task workflow in this guide.
 This also works with older uf releases whose templates use different task names:
 
 ```js
-// @flow
+"use flow";
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
@@ -98,7 +98,7 @@ for the configuration; see [all options](/reference/config).
 `app/$page.js` defines the home page:
 
 ```js
-// @flow
+"use flow";
 export component Page() {
   return <h1>Hello</h1>;
 }
@@ -107,7 +107,7 @@ export component Page() {
 `app/$layout.js` wraps the page in an HTML document:
 
 ```js
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 
 export component Layout(children: React.Node) {

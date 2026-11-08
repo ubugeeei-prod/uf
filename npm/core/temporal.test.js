@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Temporal, the clock behind it, and the seeded stream beside it.
 //

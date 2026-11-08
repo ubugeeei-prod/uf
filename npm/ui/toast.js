@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Notifications, and the live region that was already watching.
 //

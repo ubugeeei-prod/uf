@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/sql/bun-sqlite`: Bun's built-in `bun:sqlite`.
 //

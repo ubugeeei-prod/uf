@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/react-native-testing`: query helpers for React Native test trees.
 //

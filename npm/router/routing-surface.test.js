@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The React-free router surface RSC/server code can import.
 

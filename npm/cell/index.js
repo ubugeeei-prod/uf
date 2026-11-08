@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/cell`: the reactive primitive every other uf state package is
 // built from.

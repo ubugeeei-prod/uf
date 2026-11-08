@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // Hot updates that keep the page's state.
 //
 // Three edits used to reload the document under `uf dev` and now arrive as a

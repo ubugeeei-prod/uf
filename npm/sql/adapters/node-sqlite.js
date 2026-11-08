@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/sql/node-sqlite`: Node's built-in `node:sqlite`.
 //

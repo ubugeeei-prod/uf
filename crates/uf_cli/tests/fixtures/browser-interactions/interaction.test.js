@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { it, expect } from "@uniflowed/test";
 import { createBrowser } from "@uniflowed/test/browser";
 it("uses trusted pointer, keyboard and touch input and survives navigation", async () => {

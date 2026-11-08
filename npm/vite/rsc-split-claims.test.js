@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The route split, held to the sentences of
 // `docs/app/guide/server-components/$page.mdx` that `rsc-split.test.js` did

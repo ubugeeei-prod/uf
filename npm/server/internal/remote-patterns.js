@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/server`: `app.builtins.images.remotePatterns`, read
 // and matched.

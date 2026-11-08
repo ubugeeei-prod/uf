@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The six forms of every query, generated once.
 //

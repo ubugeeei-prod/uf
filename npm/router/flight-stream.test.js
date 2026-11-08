@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A Flight payload, written into the document it was rendered from.
 //

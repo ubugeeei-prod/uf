@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A read of the request, while `uf build` prerenders a page's static shell.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/sql/d1`: a Cloudflare D1 binding.
 //

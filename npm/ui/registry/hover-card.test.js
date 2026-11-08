@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The hover card `uf ui add hover-card` writes. `@uniflowed/ui`'s own suite
 // holds the timing; these hold that dressing it kept the trigger a link, the

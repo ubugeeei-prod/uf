@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: `app.router.basePath` and
 // `app.router.trailingSlash`, as the router reads them.

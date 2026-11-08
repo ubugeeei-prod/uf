@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // React DevTools, and the check that the hook survived.
 //

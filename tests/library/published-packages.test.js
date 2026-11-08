@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a package publishes has to cover what it says it exports.
 //

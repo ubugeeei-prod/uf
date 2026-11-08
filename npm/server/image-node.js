@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/image/node`: the image endpoint's fetch, for a runtime
 // with a resolver and a socket.

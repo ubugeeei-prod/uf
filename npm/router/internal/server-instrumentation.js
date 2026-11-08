@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { traceRequestPhase } from "@uniflowed/server/instrumentation";
 import { NotFoundError, RedirectError } from "./routing.js";

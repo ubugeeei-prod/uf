@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The store a form is, and the snapshots React reads from it.
 //

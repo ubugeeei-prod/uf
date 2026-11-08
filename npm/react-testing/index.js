@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/react-testing`: React Testing Library's surface, over a real DOM.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A route handler that says which path it was handed. Every front door takes
 // the base path off before the application sees a request, so the answer is

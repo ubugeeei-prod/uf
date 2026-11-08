@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/immer`: `produce` — the boundary mutation is allowed to cross.
 //

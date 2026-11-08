@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // Metro resolves an imported image to an asset-registry entry, which is what
 // `Image` takes. uf's asset declarations describe the web, where the same import
 // is a URL string, so the two meet here and nowhere else in the app.

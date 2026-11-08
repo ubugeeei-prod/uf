@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/hash`: non-cryptographic hashes JavaScript does not ship.
 //

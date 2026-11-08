@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/router/rsc/client`: starting, in the browser, an application that
 // React Server Components rendered.

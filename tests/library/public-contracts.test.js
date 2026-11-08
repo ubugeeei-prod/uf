@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // These contracts need a checker: runtime tests cannot prove a bad call fails.
 
 import { describe, it } from "@uniflowed/test";

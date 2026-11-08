@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The three Vite client APIs a real application uses. Before uf shipped a
 // libdef for them this file was five type errors; see ubugeeei-prod/uf#264.

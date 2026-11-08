@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Which words the documentation build colours as Flow's, and which Flow
 // syntax it hands to the JavaScript grammar rewritten.

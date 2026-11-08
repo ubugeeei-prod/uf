@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The table `uf ui add table` writes: a table named by its caption, headings
 // that sort and say which way, rows chosen one at a time or all at once, sort

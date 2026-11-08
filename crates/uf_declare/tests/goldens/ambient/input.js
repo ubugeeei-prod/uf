@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 declare module "other" {
   declare module.exports: string;

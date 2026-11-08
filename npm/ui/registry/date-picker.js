@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Date picker: a text field for a date, with a calendar that opens beside it to
 // choose one from.

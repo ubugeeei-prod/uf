@@ -8,7 +8,7 @@
 //! - no `.js.flow` (or any other `.flow`) declaration file exists,
 //! - no module re-exports with `export *`, except peer library facades,
 //! - no module runs anything when it is imported,
-//! - every module opens with the `// @flow` pragma,
+//! - every module opens with the `"use flow";` directive,
 //! - every `exports` subpath resolves and every shipped module is reachable,
 //! - `@uniflowed/ui` is imported through its barrel and nothing else,
 //! - no test file is published, by the allowlist or through `exports`,
@@ -134,7 +134,7 @@ const PLAIN_JAVASCRIPT_WITH_IMPORT_WORK: &[&str] = &["test/bun/index.js"];
 
 /// Individual modules that are entry points, and so run when they are loaded
 /// because that is what running them means. Everything else in their package is
-/// held to the ordinary bar — including the Flow pragma: an entry point is
+/// held to the ordinary bar — including the Flow directive: an entry point is
 /// still Flow, it just does something when it loads.
 ///
 /// Three of them, and each is the beginning of a run rather than a module
@@ -162,7 +162,7 @@ const ENTRY_POINT_MODULES: &[&str] = &[
 /// Kept apart from [`runs_at_import`] because the two exemptions answer
 /// different questions. Reaching for one predicate for both is how
 /// `npm/test/worker.js` — Flow, and a process entry point — ended up
-/// exempt from the `// @flow` pragma it in fact carries.
+/// exempt from the `"use flow";` directive it in fact carries.
 fn is_plain_javascript(module: &Utf8Path) -> bool {
     PLAIN_JAVASCRIPT_MODULES.contains(&module.as_str())
         || module
@@ -715,7 +715,7 @@ fn shipped_package_contains_no_flow_declaration_files() {
 
     assert!(
         offenders.is_empty(),
-        "user-authored and shipped Flow code is `.js` with `// @flow`; found {offenders:?}"
+        "user-authored and shipped Flow code is `.js` with `\"use flow\";`; found {offenders:?}"
     );
 }
 
@@ -743,8 +743,8 @@ fn shipped_modules_start_with_the_flow_pragma() {
         }
         let source = read(&module);
         assert!(
-            source.starts_with("// @flow\n"),
-            "{module} must open with the `// @flow` pragma"
+            source.starts_with("\"use flow\";\n"),
+            "{module} must open with the `\"use flow\";` directive"
         );
     }
 }
@@ -767,7 +767,7 @@ fn plain_javascript_modules_declare_themselves_plain_javascript() {
         let source = read(&module);
         assert!(
             source.starts_with("// @noflow\n"),
-            "{module} is exempt from the `// @flow` pragma, so it must open with \
+            "{module} is exempt from the `\"use flow\";` directive, so it must open with \
              `// @noflow` — the exemption has to be in the file the checker reads, \
              not only in this test"
         );
@@ -1736,7 +1736,7 @@ fn the_variance_fixture_is_a_flow_module_outside_the_shipped_package() {
     let fixture = crate_root().join("tests/flow/effect-variance.js");
     let source = fs::read_to_string(&fixture).unwrap_or_else(|error| panic!("{fixture}: {error}"));
 
-    assert!(source.starts_with("// @flow\n"));
+    assert!(source.starts_with("\"use flow\";\n"));
     assert!(
         source.contains("const widenedEffect: Effect<Animal> = dogEffect;"),
         "the fixture must record that Effect<+T> widens"

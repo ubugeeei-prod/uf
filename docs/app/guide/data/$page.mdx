@@ -53,7 +53,7 @@ request that is safe to repeat from one that is not. `createFetch` adds those
 three things and nothing else:
 
 ```js
-// @flow
+"use flow";
 // app/todos/_lib/api.js
 import { createFetch } from "@uniflowed/fetch";
 import { parser, v } from "@uniflowed/validator";
@@ -62,7 +62,7 @@ import type { InferOutput } from "@uniflowed/validator";
 const Todo = v.object({ id: v.number(), title: v.string(), done: v.boolean() });
 const TodoPage = v.object({ items: v.array(Todo), next: v.nullable(v.number()) });
 
-export type Todo = InferOutput<typeof Todo>;
+export type Todo     = InferOutput<typeof Todo>;
 export type TodoPage = InferOutput<typeof TodoPage>;
 
 const readTodo = parser(Todo);
@@ -149,7 +149,7 @@ A `QueryClient` holds the cache and the application's defaults, and
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/todos/_components/DataProvider.js
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
@@ -172,7 +172,7 @@ export component DataProvider(children: React.Node) {
 ```
 
 ```js
-// @flow
+"use flow";
 // app/todos/$layout.js
 import * as React from "@uniflowed/react";
 
@@ -215,7 +215,7 @@ once for what could not.
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/todos/_components/TodoList.js
 import * as React from "@uniflowed/react";
 import { useQuery } from "@uniflowed/query";
@@ -226,7 +226,7 @@ import type { Todo } from "../_lib/api.js";
 export component TodoList() {
   const { data, error, isPending, isFetching } = useQuery<$ReadOnlyArray<Todo>>({
     queryKey: ["todos"],
-    queryFn: ({ signal }) => listTodos(signal),
+    queryFn : ({ signal }) => listTodos(signal),
   });
 
   if (isPending) {
@@ -310,7 +310,7 @@ the same data still counts.
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/todos/_components/OpenCount.js
 import * as React from "@uniflowed/react";
 import { useQuery } from "@uniflowed/query";
@@ -321,8 +321,8 @@ import type { Todo } from "../_lib/api.js";
 export component OpenCount() {
   const { data: open } = useQuery<$ReadOnlyArray<Todo>, number>({
     queryKey: ["todos"],
-    queryFn: ({ signal }) => listTodos(signal),
-    select: (todos) => todos.filter((todo) => !todo.done).length,
+    queryFn : ({ signal }) => listTodos(signal),
+    select  : (todos) => todos.filter((todo) => !todo.done).length,
   });
   return <output>{open ?? "…"}</output>;
 }
@@ -338,7 +338,7 @@ second type argument is what `select` returns.
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/todos/_components/TodoPages.js
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
@@ -348,10 +348,10 @@ import { listTodoPage } from "../_lib/api.js";
 import type { TodoPage } from "../_lib/api.js";
 
 export component TodoPages() {
-  const [page, setPage] = useState(0);
+  const [page, setPage]             = useState(0);
   const { data, isPlaceholderData } = useQuery<TodoPage>({
-    queryKey: ["todos", { page }],
-    queryFn: ({ signal }) => listTodoPage(page, signal),
+    queryKey       : ["todos", { page }],
+    queryFn        : ({ signal }) => listTodoPage(page, signal),
     placeholderData: (previous) => previous,
   });
 
@@ -385,7 +385,7 @@ showing, so the button can wait.
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/todos/_components/Search.js
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
@@ -395,11 +395,11 @@ import { searchTodos } from "../_lib/api.js";
 import type { Todo } from "../_lib/api.js";
 
 export component Search() {
-  const [term, setTerm] = useState("");
+  const [term, setTerm]     = useState("");
   const { data, isLoading } = useQuery<$ReadOnlyArray<Todo>>({
     queryKey: ["todos", "search", term],
-    queryFn: ({ signal }) => searchTodos(term, signal),
-    enabled: term.trim().length >= 2,
+    queryFn : ({ signal }) => searchTodos(term, signal),
+    enabled : term.trim().length >= 2,
   });
 
   return (
@@ -433,9 +433,9 @@ reader has already typed past is aborted once nothing watches it.
 
 ```js
 const { data } = useQuery<$ReadOnlyArray<Todo>, number>({
-  queryKey: ["todos"],
-  queryFn: ({ signal }) => listTodos(signal),
-  select: (todos) => todos.length,
+  queryKey       : ["todos"],
+  queryFn        : ({ signal }) => listTodos(signal),
+  select         : (todos) => todos.length,
   refetchInterval: 10_000,
 });
 ```
@@ -455,7 +455,7 @@ that are stale, so returning to a tab after two seconds refetches nothing that
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/todos/_components/AddTodo.js
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
@@ -465,7 +465,7 @@ import { addTodo } from "../_lib/api.js";
 import type { Todo } from "../_lib/api.js";
 
 export component AddTodo() {
-  const client = useQueryClient();
+  const client            = useQueryClient();
   const [title, setTitle] = useState("");
 
   const add = useMutation<string, Todo, {| readonly previous: mixed |}>({
@@ -559,7 +559,7 @@ an action.
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/todos/_components/Feed.js
 import * as React from "@uniflowed/react";
 import { useInfiniteQuery } from "@uniflowed/query";
@@ -569,8 +569,8 @@ import type { TodoPage } from "../_lib/api.js";
 
 export component Feed() {
   const feed = useInfiniteQuery<TodoPage, number>({
-    queryKey: ["todos", "feed"],
-    queryFn: ({ pageParam, signal }) => listTodoPage(pageParam, signal),
+    queryKey        : ["todos", "feed"],
+    queryFn         : ({ pageParam, signal }) => listTodoPage(pageParam, signal),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.next,
   });
@@ -616,7 +616,7 @@ Everything on the client is callable from an event handler, a test or a script,
 with no component involved:
 
 ```js
-// @flow
+"use flow";
 import { QueryClient } from "@uniflowed/query";
 
 import { getTodo } from "./_lib/api.js";
@@ -626,7 +626,7 @@ const client = new QueryClient({ queries: { staleTime: 30_000 } });
 // Fill an entry before anything renders it. Never rejects.
 await client.prefetchQuery({
   queryKey: ["todo", 1],
-  queryFn: ({ signal }) => getTodo(1, signal),
+  queryFn : ({ signal }) => getTodo(1, signal),
 });
 
 // Read and write without a request.
@@ -660,7 +660,7 @@ moment before the reader asks:
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/todos/_components/TodoRow.js
 import * as React from "@uniflowed/react";
 import { useQueryClient } from "@uniflowed/query";
@@ -675,7 +675,7 @@ export component TodoRow(id: number, title: string, onOpen: (id: number) => void
       onPointerEnter={() => {
         void client.prefetchQuery({
           queryKey: ["todo", id],
-          queryFn: ({ signal }) => getTodo(id, signal),
+          queryFn : ({ signal }) => getTodo(id, signal),
         });
       }}
       onClick={() => onOpen(id)}

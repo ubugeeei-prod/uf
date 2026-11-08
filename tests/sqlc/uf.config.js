@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // sqlc's Flow target, checked end to end. `cases/*/gen` is what `uf` wrote
 // for each case (the same files `crates/uf_sqlc/tests/golden.rs` compares

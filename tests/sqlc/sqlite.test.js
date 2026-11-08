@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The generated code for sqlc's SQLite examples, and uf's SQLite type case,
 // run against a real SQLite, in memory, through the host's own driver:

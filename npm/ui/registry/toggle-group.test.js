@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The toggle group `uf ui add toggle-group` writes, in both of its modes: a
 // named group of pressed buttons, and a named radio group drawn as segments.

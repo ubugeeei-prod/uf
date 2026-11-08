@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The context menu `uf ui add context-menu` writes: an area that says it has a
 // menu, a named menu where it is right-clicked, rows dressed as `menu.js`

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Every uf command, timed on an application of a stated size, and the tools it
 // is compared with timed on the same application.

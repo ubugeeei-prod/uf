@@ -90,7 +90,7 @@ const MANIFEST: &str = "package.json";
 /// orders of magnitude below it.
 const MAX_PACKAGE_FILES: usize = 4_000;
 
-/// How much of a file is read while looking for its `@flow` pragma.
+/// How much of a file is read while looking for a Flow marker.
 ///
 /// A docblock is the first comment in a file, and Flow bounds how far it will
 /// look for one with `max_header_tokens`. This is the same idea in bytes, and
@@ -98,8 +98,11 @@ const MAX_PACKAGE_FILES: usize = 4_000;
 /// full read of a package that does not.
 const HEADER_BYTES: usize = 8 * 1024;
 
-/// The pragma a package uses to say its source is Flow.
-const FLOW_PRAGMA: &str = "@flow";
+/// Byte sequences a package uses to say its source is Flow.
+///
+/// `@flow` is the pragma. `"use flow"` and `'use flow'` are the directive,
+/// quotes included so a sentence that merely says "use flow" does not count.
+const FLOW_MARKERS: &[&str] = &["@flow", "\"use flow\"", "'use flow'"];
 
 /// Read every installed package `unresolved` reaches that has not been read
 /// already.
@@ -368,7 +371,8 @@ fn is_flow_beside_module(path: &Utf8Path) -> bool {
 ///
 /// Read rather than parsed: this decides whether a package is worth handing to
 /// the checker at all, and parsing it to find out would be the cost the answer
-/// exists to avoid.
+/// exists to avoid. A mention of `@flow` or of the directive counts, the same
+/// way a pragma in a comment used to be enough to read the package.
 fn declares_flow(path: &Utf8PathBuf) -> bool {
     let Ok(file) = fs::File::open(path) else {
         return false;
@@ -380,9 +384,10 @@ fn declares_flow(path: &Utf8PathBuf) -> bool {
     {
         return false;
     }
-    header
-        .windows(FLOW_PRAGMA.len())
-        .any(|window| window == FLOW_PRAGMA.as_bytes())
+    FLOW_MARKERS.iter().any(|marker| {
+        let bytes = marker.as_bytes();
+        header.windows(bytes.len()).any(|window| window == bytes)
+    })
 }
 
 #[cfg(test)]
@@ -706,6 +711,33 @@ mod tests {
         assert!(!loaded.is_empty());
         assert!(!declarations.flush());
         assert!(declarations.sources().is_empty());
+    }
+
+    #[test]
+    fn a_package_that_opens_with_the_flow_directive_is_read_as_flow() {
+        let directory = project(&[
+            (
+                "node_modules/directed/package.json",
+                r#"{ "name": "directed", "main": "./index.js" }"#,
+            ),
+            (
+                "node_modules/directed/index.js",
+                "\"use flow\";\nexport const answer: 42 = 42;\n",
+            ),
+        ]);
+        let root = root_of(&directory);
+        let mut read = FxHashSet::default();
+        let mut declarations = Declarations::uncached(&root);
+
+        let loaded = load_packages(
+            &root,
+            &[import("directed", "src/app.js")],
+            &mut read,
+            &mut declarations,
+        );
+
+        assert!(!loaded.is_empty());
+        assert!(!declarations.flush());
     }
 
     #[test]

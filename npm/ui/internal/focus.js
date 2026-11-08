@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a reader can reach, in the order they reach it.
 //

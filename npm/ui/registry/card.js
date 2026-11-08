@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Card: a surface that groups one thing's content, with an optional header,
 // body and footer.

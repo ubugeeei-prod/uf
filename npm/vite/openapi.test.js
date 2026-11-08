@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { describe, expect, it } from "@uniflowed/test";
 import { number, object, optional, string } from "@uniflowed/validator";

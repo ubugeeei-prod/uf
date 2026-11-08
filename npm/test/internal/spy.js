@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/test`: the spy behind `fn` and `uft.spyOn`.
 //

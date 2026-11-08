@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The tabs `uf ui add tabs` writes. `@uniflowed/ui`'s own suite holds the
 // keyboard map; these hold that dressing the parts kept every piece of it, and

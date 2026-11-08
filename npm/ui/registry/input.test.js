@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The input `uf ui add input` writes, held to what its header promises: named
 // by its label, every attribute and the ref on the element, text unless it

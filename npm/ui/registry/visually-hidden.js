@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 // VisuallyHidden: text for a screen reader, and a skip link that appears on focus.
 //
 // `uf ui add visually-hidden` copies this component into the project. The

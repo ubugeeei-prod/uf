@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/validator/issue`: what a failure is, and where it happened.
 //

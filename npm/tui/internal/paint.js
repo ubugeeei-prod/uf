@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Turning a laid-out tree into cells.
 //

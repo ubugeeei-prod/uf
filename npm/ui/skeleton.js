@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A loading placeholder, and the reader it is usually invisible to.
 //

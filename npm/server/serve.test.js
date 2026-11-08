@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a built uf application answers, and in what order.
 //

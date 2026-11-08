@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/sql/better-sqlite3`: the `better-sqlite3` package.
 //

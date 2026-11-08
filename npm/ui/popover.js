@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A popover: a dialog that is not modal, which is the whole of the difference.
 //

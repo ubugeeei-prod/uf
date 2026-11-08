@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The alert dialog `uf ui add alert-dialog` writes. `@uniflowed/ui`'s own suite
 // holds the behaviour; these hold that dressing it kept every piece of it

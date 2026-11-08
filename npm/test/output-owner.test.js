@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Which case a printed line is filed under.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { negotiate, parseAcceptLanguage } from "./negotiate.js";
 

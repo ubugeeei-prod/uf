@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The button `uf ui add button` writes, held to what its header promises: the
 // attributes reach the element, the default does not submit a form, both

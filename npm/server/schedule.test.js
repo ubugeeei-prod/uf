@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/schedule`: when a schedule is due, and who may hold one.
 //

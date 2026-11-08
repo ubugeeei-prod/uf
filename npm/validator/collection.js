@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/validator/collection`: containers whose contents are only known
 // when the value arrives.

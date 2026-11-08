@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/slices`: Go's `sort.Search` and `slices.BinarySearch`.
 //

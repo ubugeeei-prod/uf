@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What `@uniflowed/std` infers, and the test that says so.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 const sum = a + b * c - ((d / e) % f ** g);
 const mixed = a + b * c + d - (e * f * g) / h;
 const compare =

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: a Flight payload, written into a document
 // and read back out of one.

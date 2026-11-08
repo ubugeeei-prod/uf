@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 export const count = 42;
 

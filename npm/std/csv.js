@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/csv`: Go's `encoding/csv`, as pure Flow functions.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What WCAG requires of anything that appears because a pointer or focus
 // arrived, which is a tooltip and a hover card and nothing else in this

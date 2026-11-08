@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // On this page.
 //

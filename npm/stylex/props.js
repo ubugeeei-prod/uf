@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { nativeProps } from "./native-props.js";
 //

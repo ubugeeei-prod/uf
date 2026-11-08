@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Three spellings of one default, held to each other.
 //

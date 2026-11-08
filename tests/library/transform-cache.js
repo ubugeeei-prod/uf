@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What the transform cache promises, as one function per promise.
 //

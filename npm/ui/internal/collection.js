@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 "use client";
 //
 // The one collection behind `ListBox`, `GridList`, `Tree` and `TagGroup`.

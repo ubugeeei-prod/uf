@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Middleware that rewrites: `/gated/<id>` is answered by `/ssr/<id>` and the
 // address stays `/gated/<id>`. It guards a subtree with no page of its own, so

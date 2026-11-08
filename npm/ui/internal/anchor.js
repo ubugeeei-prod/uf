@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Where an overlay goes, given where its trigger is.
 //

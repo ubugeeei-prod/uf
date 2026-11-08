@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Fetching the next route's payload, and when the browser loads a document
 // instead.

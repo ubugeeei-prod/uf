@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Every line here must be a type error. A libdef that typed the algorithm as
 // `string` or the key as `any` would pass `web_crypto.js` and fail to catch a

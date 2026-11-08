@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/form/watch`: subscribing to a part of a form.
 //

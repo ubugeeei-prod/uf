@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { test, expect } from "@uniflowed/test";
 import { render, screen, press, changeText } from "@uniflowed/react-native-testing/native";

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Progress: a bar that says how far a task has got, and says nothing about an
 // amount it does not know.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A desktop notification this package can ask a terminal for.
 //

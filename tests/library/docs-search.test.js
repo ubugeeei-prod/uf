@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The manual's search: the index `tools/docs/search-index.js` writes from the
 // built site, and the ranking `docs/app/_design/search.js` runs in the dialog.

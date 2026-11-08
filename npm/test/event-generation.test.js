@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Which *file* an event belongs to.
 //

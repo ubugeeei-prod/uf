@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 // RangeCalendar: an inclusive date range on the shared styled calendar.
 //
 // `uf ui add range-calendar` copies this component into the project. The headless

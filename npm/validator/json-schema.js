@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/validator/json-schema`: a schema as a document somebody else can
 // read.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The page for a path that is not a page.
 //

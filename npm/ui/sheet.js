@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A sheet: a modal dialog attached to an edge of the viewport.
 //

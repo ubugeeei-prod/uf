@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The thing a suite holds: handlers, the lifetime of the interception, and the
 // record of what was asked.

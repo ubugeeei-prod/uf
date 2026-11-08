@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The `<Suspense>` fallback for everything under `/stream`: what a streaming
 // target sends before the page below it has resolved.

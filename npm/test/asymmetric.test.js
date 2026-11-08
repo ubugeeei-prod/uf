@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `expect.any` and the rest of the matchers that stand in for a value.
 //

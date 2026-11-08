@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What `uf build --adapter node` writes, at the seam it writes it against.
 //

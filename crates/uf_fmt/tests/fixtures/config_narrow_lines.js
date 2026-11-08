@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 call(alpha, beta, gamma, delta, epsilon);
 const object = { first: 1, second: 2, third: 3 };
 const chain = promise.then(onFulfilled).catch(onRejected);

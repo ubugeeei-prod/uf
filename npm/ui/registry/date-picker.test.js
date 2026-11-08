@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The date picker `uf ui add date-picker` writes: a named field holding the
 // date, a named button that opens the calendar on the chosen month, a day

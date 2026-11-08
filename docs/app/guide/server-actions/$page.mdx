@@ -32,7 +32,7 @@ and every export has to be an async function.
 
 ```js
 "use server";
-// @flow
+"use flow";
 // app/counter/_actions/tally.js
 import { cookies } from "@uniflowed/server";
 
@@ -40,11 +40,11 @@ import { tallyFor } from "./ledger.js";
 
 /** Record a count and answer with what the server made of it. */
 export async function recordCount(count: number): Promise<{|
-  readonly total: number,
+  readonly total  : number,
   readonly visitor: string,
 |}> {
   return {
-    total: tallyFor(count),
+    total  : tallyFor(count),
     visitor: cookies().get("visitor") ?? "anonymous",
   };
 }
@@ -67,7 +67,7 @@ An ordinary import and an ordinary call.
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/counter/_components/Counter.js
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
@@ -75,7 +75,7 @@ import { useState } from "@uniflowed/react";
 import { recordCount } from "../_actions/tally.js";
 
 export default component Counter() {
-  const [count, setCount] = useState<number>(0);
+  const [count,    setCount]    = useState<number>(0);
   const [recorded, setRecorded] = useState<string>("");
   return (
     <div>
@@ -170,7 +170,7 @@ see [Async React](/guide/async-react).
 
 ```js
 "use server";
-// @flow
+"use flow";
 // app/counter/_actions/notes.js
 import { maxLength, minLength, object, pipe, safeParse, string, trim } from "@uniflowed/validator";
 import { put } from "@uniflowed/validator/plain-object";
@@ -200,7 +200,7 @@ export async function submitNote(previous: NoteState, form: FormData): Promise<N
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/counter/_components/NoteForm.js
 import * as React from "@uniflowed/react";
 import { useActionState } from "@uniflowed/react";

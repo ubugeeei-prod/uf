@@ -14,7 +14,7 @@
 //!
 //! * [`scan`] is the byte-level token scanner — one scanner for uf source, used
 //!   by the eraser below and by anything else that rewrites a module;
-//! * [`strip`] erases Flow types, which is what turns a `// @flow` module into
+//! * [`strip`] erases Flow types, which is what turns a Flow module into
 //!   the JavaScript a browser runs;
 //! * [`module`] reads a module as a module, which is the one thing the port
 //!   cannot be asked and the one place ECMAScript's two goal symbols differ

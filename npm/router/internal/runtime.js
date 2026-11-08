@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The router runtime: the browser's binding.
 //

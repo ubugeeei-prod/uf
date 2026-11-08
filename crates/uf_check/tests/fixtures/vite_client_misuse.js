@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Every line here must be an error. A libdef that typed the Vite client as
 // `any` would pass the positive fixture beside this one and fail nothing —

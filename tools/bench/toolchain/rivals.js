@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The tools uf is compared with, and the input each of them is measured on.
 //

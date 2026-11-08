@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The separator `uf ui add separator` writes: a boundary announced with its
 // orientation, a decorative rule kept out of the accessibility tree, and both

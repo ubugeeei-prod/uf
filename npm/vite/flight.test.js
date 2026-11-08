@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The bundler's half of React Server Components: what `@uniflowed/vite` does
 // to a module in the rsc graph, and what it resolves there.

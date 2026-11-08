@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { ensuring, promise, runPromiseExit, sync, tryPromise } from "@uniflowed/effect";
 import { cookies } from "@uniflowed/server";

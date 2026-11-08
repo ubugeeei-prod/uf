@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/validator`: a schema is a parser, not an assertion.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { Stack } from "@uniflowed/router/native-navigation";
 

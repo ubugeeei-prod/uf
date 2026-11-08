@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { processWide } from "./process-state.js";
 

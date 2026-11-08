@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The avatar `uf ui add avatar` writes: initials shown when the picture is not,
 // a picture that is decoration beside a name, and the circle drawn.

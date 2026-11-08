@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The five measurements a page is judged on.
 //

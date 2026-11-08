@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as React from "react";
 import { View, Text, Pressable, TextInput, ScrollView } from "react-native";
 import { render, screen, press, changeText, scroll } from "@uniflowed/react-native-testing/native";

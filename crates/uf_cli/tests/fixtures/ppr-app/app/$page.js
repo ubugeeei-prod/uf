@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A page that reads nothing, so the build writes it as the plain prerendered
 // document it has always been. It is also what a test polls to learn that a

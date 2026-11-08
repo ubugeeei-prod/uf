@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/router/routing`: React-free route table helpers.
 //

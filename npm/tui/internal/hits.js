@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What is under the pointer, and what a drag over it would select.
 //

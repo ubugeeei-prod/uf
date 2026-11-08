@@ -559,14 +559,18 @@ pub(crate) fn exported_components(source: &str) -> Vec<&str> {
 /// The description a source's header opens with: the paragraph that starts
 /// `// Title: description`.
 ///
-/// Read from the first comment line after the directive and the `@flow` pragma,
-/// and from the comment lines that continue it, up to the first line that is
-/// only `//`. So a description wraps at the width the rest of the header does,
-/// and a colon further down the header is never mistaken for a title.
+/// Read from the first comment line after the directive prologue, and from the
+/// comment lines that continue it, up to the first line that is only `//`. So a
+/// description wraps at the width the rest of the header does, and a colon
+/// further down the header is never mistaken for a title.
 pub(crate) fn description(source: &str) -> Option<String> {
     let mut lines = source.lines().map(str::trim_end);
     let opening = lines.by_ref().find(|line| {
-        !(line.is_empty() || *line == "\"use client\";" || *line == "// @flow" || *line == "//")
+        !(line.is_empty()
+            || *line == "\"use client\";"
+            || *line == "\"use flow\";"
+            || *line == "// @flow"
+            || *line == "//")
     })?;
     let (title, first) = opening.strip_prefix("// ")?.split_once(": ")?;
     let mut description = first.trim().to_owned();

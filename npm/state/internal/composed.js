@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Atoms assembled out of other atoms.
 //

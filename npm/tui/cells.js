@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The cell grid: what a frame *is*.
 //

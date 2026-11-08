@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Tabs, with the keyboard behaviour the pattern requires.
 //

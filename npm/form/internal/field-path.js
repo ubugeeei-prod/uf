@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The field path, and the value tree it addresses.
 //

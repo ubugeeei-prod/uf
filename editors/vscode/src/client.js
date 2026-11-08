@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // How the language client is configured: the process to start, and the
 // settings that change what the extension does with it.

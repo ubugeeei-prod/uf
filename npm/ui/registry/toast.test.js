@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The notices `uf ui add toast` writes: a named region, a notice named by its
 // title that leaves focus where it was, dismissal from the close button and from

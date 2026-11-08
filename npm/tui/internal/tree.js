@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The node tree: the thing React mutates and the renderer reads.
 //

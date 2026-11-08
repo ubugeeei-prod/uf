@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/sql`: the codecs, the runtime helpers generated code calls, and
 // the `node:sqlite` adapter against a real database.

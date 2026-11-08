@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/test`: the `fetch` the browser runner talks to `uf`
 // with.

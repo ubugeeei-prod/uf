@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Badge: a short label beside something, such as a status, a count or a
 // category, in five tones.

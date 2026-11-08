@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The API reference's two halves: `tools/docs/api.js`, which decides what a
 // package exports and under which specifier, and the doc-comment reader in

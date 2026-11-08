@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // An avatar: three states, and an `alt` that is empty on purpose.
 //

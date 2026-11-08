@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 import { cookies } from "@uniflowed/server";
 import { Counter } from "./_components/Counter.js";

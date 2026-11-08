@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 // Flow's comment types: annotations that a file can carry and still run
 // under bare `node`. Normalising them away is not a layout decision, it is a

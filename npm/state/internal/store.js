@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A store: where an atom's value actually lives.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a route's `metadata` puts in the document.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/state`: the atom surface, stores, and the React binding rendered
 // for real — on `react-dom/server` for markup, and in a DOM where the question

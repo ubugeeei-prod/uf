@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Structural comparison, and how a mismatch is described.
 //

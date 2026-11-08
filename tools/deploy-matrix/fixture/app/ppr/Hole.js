@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The hole in `/ppr`'s static shell: it reads a cookie, so it can only be
 // rendered for a request, and it waits so its arrival is measurably after the

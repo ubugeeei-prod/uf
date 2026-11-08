@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/image/edge`: the image endpoint on a Cloudflare Worker.
 //

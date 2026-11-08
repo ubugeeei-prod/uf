@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // How `@uniflowed/react-testing` asks the host about `localStorage`.
 //

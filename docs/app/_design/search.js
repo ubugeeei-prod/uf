@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Finding a page by what it says.
 //

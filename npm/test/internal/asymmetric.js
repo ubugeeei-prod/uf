@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/test`: `expect.any`, `expect.objectContaining`, and
 // the rest of the matchers that stand in for a value instead of being one.

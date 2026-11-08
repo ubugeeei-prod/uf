@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Keeping a closing part on the page until its exit transition has finished.
 //

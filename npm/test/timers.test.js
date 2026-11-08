@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The clock a test controls.
 //

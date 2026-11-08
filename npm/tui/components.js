@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The components a caller writes, and the hooks they reach for.
 //

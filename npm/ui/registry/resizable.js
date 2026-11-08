@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Resizable: two panels side by side or stacked, with a handle between them
 // that moves the boundary.

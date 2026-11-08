@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The VS Code half of `uf lsp`: start one server per uf project, wire up the
 // four things the server actually serves, and say something useful when there

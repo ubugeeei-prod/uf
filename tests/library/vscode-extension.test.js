@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The VS Code extension's own decisions, without VS Code.
 //

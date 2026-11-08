@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Toast: a short notice that appears in a corner of the page and goes away on
 // its own or when dismissed, without taking focus from what the reader is doing.

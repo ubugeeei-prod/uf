@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The deploy-matrix fixture's configuration: the whole application, which is
 // what every target but two is built from.

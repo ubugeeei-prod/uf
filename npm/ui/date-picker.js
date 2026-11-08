@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A field somebody types a date into, and a calendar for the times they would
 // rather point at one.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // One rule about prop order, stated once.
 //

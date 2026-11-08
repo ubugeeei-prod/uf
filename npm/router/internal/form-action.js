@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: a server action as a form the browser can
 // submit before any JavaScript has run.

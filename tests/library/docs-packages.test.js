@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The packages reference says, for every package, whether a release sends it
 // to npm. A reader decides whether to type `uf add @uniflowed/form` from that

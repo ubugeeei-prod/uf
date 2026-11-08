@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A breadcrumb trail, read as a trail rather than as punctuation.
 //

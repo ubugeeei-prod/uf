@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: the way a diagnostic the browser produced
 // reaches the terminal.

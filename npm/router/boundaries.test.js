@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Which DOM subtree each boundary owns.
 //

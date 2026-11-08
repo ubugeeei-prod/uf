@@ -103,13 +103,13 @@ target. `app.targets` is the promise the project keeps satisfying; it says the
 project has a React Native surface at all.
 
 ```js
-// @flow
+"use flow";
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
   app: {
     framework: "react-native",
-    targets: ["react-native"],
+    targets  : ["react-native"],
   },
 });
 ```
@@ -164,7 +164,7 @@ not quietly use a web page just because it was the only file in the directory:
 if there is a more specific native file, that is the route.
 
 ```js
-// @flow
+"use flow";
 // app/settings/$page.native.js
 import { Pressable, Text, View } from "@uniflowed/react-native";
 
@@ -419,7 +419,7 @@ router's Server Components entries need React 19.3, and nothing a native bundle
 imports reaches them.
 
 ```js
-// @flow
+"use flow";
 import {
   createNativeScreenManifest,
   createNativeScreenRouter,
@@ -438,14 +438,14 @@ export function nativeRouter(routeTable: RouteTable) {
     push(screen, state) {
       navigation.push(screen, {
         ...state.params,
-        href: state.href,
+        href  : state.href,
         search: state.search,
       });
     },
     replace(screen, state) {
       navigation.replace(screen, {
         ...state.params,
-        href: state.href,
+        href  : state.href,
         search: state.search,
       });
     },
@@ -470,7 +470,7 @@ write the table for each platform beside `router.js`:
 Import `./router` and Metro's own platform resolution chooses the file:
 
 ```js
-// @flow
+"use flow";
 import { route, routeTable } from "./router";
 
 const router = nativeRouter(routeTable);
@@ -586,7 +586,7 @@ not guess what navigation library the app uses.
 `@uniflowed/react-native-testing` can query a tree that already exists:
 
 ```js
-// @flow
+"use flow";
 import { createNativeScreen } from "@uniflowed/react-native-testing";
 import { expect, it } from "@uniflowed/test";
 
@@ -602,7 +602,7 @@ it("finds the native button by accessible name", () => {
 
   expect(
     screen.getByRole("button", {
-      name: "Save changes",
+      name    : "Save changes",
       disabled: true,
     }).type,
   ).toBe("Pressable");
@@ -621,7 +621,7 @@ React 19.3 release line declared by `@uniflowed/react-native-testing`,
 expose the same native queries plus `rerender`, `unmount` and `toJSON`:
 
 ```js
-// @flow
+"use flow";
 import * as React from "react";
 import { render } from "@uniflowed/react-native-testing";
 import { expect, it } from "@uniflowed/test";
@@ -640,7 +640,7 @@ it("finds a rendered native action", () => {
 
   expect(
     screen.getByRole("button", {
-      name: "Save changes",
+      name    : "Save changes",
       disabled: true,
     }).type,
   ).toBe("Pressable");
@@ -657,7 +657,7 @@ layout, platform modules or a device. A test that needs the real native runtime
 should still be skipped with a reason:
 
 ```js
-// @flow
+"use flow";
 import { it } from "@uniflowed/test";
 
 it.skipBecause(
@@ -731,12 +731,14 @@ export default {
     targets: ["web", "react-native"],
     router: {
       nativeLinks: {
-        origins: ["https://example.com"],
-        routes: ["/about", "/users/:id"],
-        iosAppIds: ["ABCDE12345.com.example.app"],
+        origins       : ["https://example.com"],
+        routes        : ["/about", "/users/:id"],
+        iosAppIds     : ["ABCDE12345.com.example.app"],
         androidPackage: "com.example.app",
         // Replace with the production app-signing certificate fingerprint.
-        androidSha256: ["AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA"],
+        androidSha256: [
+          "AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA",
+        ],
       },
     },
   },
@@ -767,7 +769,9 @@ import { routeTable } from "./router";
 const links = createNativeLinking(routeTable, Linking);
 const initial = await links.getInitialURL();
 if (initial != null) await router.push(initial);
-const unsubscribe = links.subscribe((href) => { void router.push(href); });
+const unsubscribe = links.subscribe((href) => {
+  void router.push(href);
+});
 // Later: unsubscribe();
 ```
 
@@ -899,7 +903,7 @@ const navigation = createNativeNavigation({
   table: routeTable,
   layouts,
   stack: createNativeStackNavigator(),
-  tabs: createBottomTabNavigator(),
+  tabs : createBottomTabNavigator(),
   links: Linking,
 });
 AppRegistry.registerComponent("MyApp", () => navigation.Root);
@@ -930,9 +934,13 @@ import { route } from "../../router";
 
 const styles = stylex.create({ root: { padding: 12, backgroundColor: "#f3f7fb" } });
 export component Page() {
-  return <View {...stylex.props(styles.root)}>
-    <Link href={route("/users/:id", { id: "42" })}><Text>Open user</Text></Link>
-  </View>;
+  return (
+    <View {...stylex.props(styles.root)}>
+      <Link href={route("/users/:id", { id: "42" })}>
+        <Text>Open user</Text>
+      </Link>
+    </View>
+  );
 }
 ```
 
@@ -977,15 +985,21 @@ const api = createClient({ origin: "https://app.example", getToken: accessToken 
 
 export component Profile() {
   const [name, setName] = useState("");
-  return <View>
-    <Pressable onPress={async () => {
-      const response = await api.request("/api/profile/:id", { method: "GET" }, { id: "me" });
-      if (!response.ok) throw new Error("Profile request failed");
-      const profile = await response.json();
-      setName(profile.name);
-    }}><Text>Load profile</Text></Pressable>
-    <Text>{name}</Text>
-  </View>;
+  return (
+    <View>
+      <Pressable
+        onPress={async () => {
+          const response = await api.request("/api/profile/:id", { method: "GET" }, { id: "me" });
+          if (!response.ok) throw new Error("Profile request failed");
+          const profile = await response.json();
+          setName(profile.name);
+        }}
+      >
+        <Text>Load profile</Text>
+      </Pressable>
+      <Text>{name}</Text>
+    </View>
+  );
 }
 ```
 

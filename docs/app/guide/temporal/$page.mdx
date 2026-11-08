@@ -14,7 +14,7 @@ date written by a server in UTC from changing meaning when a browser opens it
 in another zone.
 
 ```js
-// @flow
+"use flow";
 import { Temporal } from "@uniflowed/temporal";
 
 const published = Temporal.Instant.from("2026-09-04T06:00:00Z");
@@ -35,7 +35,7 @@ browser. `local` and `relative` begin with that stable text, then update after
 hydration to the reader's locale or the current time.
 
 ```js
-// @flow
+"use flow";
 import { Time } from "@uniflowed/web";
 
 export component PublishedAt() {

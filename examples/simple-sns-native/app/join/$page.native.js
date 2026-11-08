@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { startTransition, useActionState, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";

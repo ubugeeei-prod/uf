@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // A button that calls a server action it was handed as a prop.
 //

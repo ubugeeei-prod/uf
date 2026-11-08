@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a `<form>` submits for a control the browser has never heard of.
 //

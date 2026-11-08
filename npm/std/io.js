@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/io`: byte readers, byte writers and stream adapters.
 //

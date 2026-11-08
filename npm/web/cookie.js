@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/web/cookie`: reading a cookie from a component.
 //

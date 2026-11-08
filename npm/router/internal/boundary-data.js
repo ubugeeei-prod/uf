@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // React-free names for the boundaries a resolved route renders.
 

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/ui`: components you own, with the behaviour you would get wrong.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/adapter`: the contract, held against the handler a build
 // writes.

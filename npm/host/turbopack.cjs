@@ -46,15 +46,17 @@ const turbopackLoaderPath = path.join(__dirname, "turbopack-loader.cjs");
 const FLOW_EXTENSIONS = Object.freeze(["*.js", "*.jsx", "*.mjs", "*.cjs"]);
 
 /**
- * A Flow pragma at the start of a line.
+ * A Flow directive or pragma at the start of a line.
  *
- * `@noflow` does not match: the letters before `flow` are not `@`. A mention
- * in the middle of a line does not match either, so a comment that talks about
- * the pragma is not a request to compile the file. The loader checks the same
- * expression again, because webpack has no content condition and a `.jsx` file
- * returned unchanged would then be parsed as JavaScript.
+ * `"use flow";` and `'use flow'` are the directive. `// @flow` is the pragma,
+ * and a block comment that opens with `@flow` counts the same way. Both stay
+ * accepted. `@noflow` does not match: the letters before `flow` are not `@`.
+ * A mention in the middle of a line does not match either, so a comment that
+ * talks about the pragma is not a request to compile the file. The loader
+ * checks the same expression again, because webpack has no content condition
+ * and a `.jsx` file returned unchanged would then be parsed as JavaScript.
  */
-const FLOW_PRAGMA = /(?:^|\n)[ \t]*(?:\/\/|\/\*)[ \t]*@flow\b/;
+const FLOW_PRAGMA = /(?:^|\n)[ \t]*(?:(?:\/\/|\/\*)[ \t]*@flow\b|["']use flow["'])/;
 
 /** `@noflow` the same way. Host and Vite ship it, and they are plain JavaScript. */
 const NOFLOW_PRAGMA = /(?:^|\n)[ \t]*(?:\/\/|\/\*)[ \t]*@noflow\b/;
@@ -69,7 +71,7 @@ const UNIFLOWED_PACKAGE = /(?:^|[\\/])node_modules[\\/]@uniflowed[\\/]/;
  * `foreign` skips `node_modules` so the content condition is not applied to
  * every package. `@uniflowed/*` is the exception `isFlowModule` already makes:
  * those packages ship Flow, so the second rule opts back in, and only for a
- * file that carries a real `@flow` pragma and not `@noflow`.
+ * file that carries `"use flow"` or a real `@flow` pragma, and not `@noflow`.
  *
  * `as: "*.js"` matters for `.jsx`. The loader lowers JSX. A file the rule
  * matched and the loader then returned untouched would be parsed as

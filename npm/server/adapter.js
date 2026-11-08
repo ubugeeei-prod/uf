@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/adapter`: the contract a deploy target implements, as
 // types a platform outside this repository can build against.

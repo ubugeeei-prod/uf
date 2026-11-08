@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Next.js loads `next.config.js` and the Turbopack loader in plain Node.
 // This suite runs under uf's hooks, so the tests that matter load the helper
@@ -61,8 +61,12 @@ describe("@uniflowed/host/turbopack", () => {
   it("recognises a pragma and not a mention, and @noflow does not match @flow", () => {
     expect(FLOW_PRAGMA.test("// @flow\nexport const x = 1;\n")).toBe(true);
     expect(FLOW_PRAGMA.test("/* @flow */\nexport const x = 1;\n")).toBe(true);
+    expect(FLOW_PRAGMA.test('"use flow";\nexport const x = 1;\n')).toBe(true);
+    expect(FLOW_PRAGMA.test("'use flow';\nexport const x = 1;\n")).toBe(true);
+    expect(FLOW_PRAGMA.test('"use client";\n"use flow";\nexport const x = 1;\n')).toBe(true);
     expect(FLOW_PRAGMA.test("// @noflow\nexport const x = 1;\n")).toBe(false);
     expect(FLOW_PRAGMA.test('const note = "see @flow";\n')).toBe(false);
+    expect(FLOW_PRAGMA.test('const note = "use flow";\n')).toBe(false);
     expect(FLOW_PRAGMA.test("export const x = 1;\n// not a pragma @flow\n")).toBe(false);
     expect(NOFLOW_PRAGMA.test("// @noflow\n")).toBe(true);
     expect(NOFLOW_PRAGMA.test("// @flow\n")).toBe(false);
@@ -77,6 +81,7 @@ describe("@uniflowed/host/turbopack", () => {
       shouldTransform("// @noflow\nexport component A() { return <b />; }\n", "/app/a.js"),
     ).toBe(false);
     expect(shouldTransform("// @flow\nexport const x = 1;\n", "/app/page.js")).toBe(true);
+    expect(shouldTransform('"use flow";\nexport const x = 1;\n', "/app/page.js")).toBe(true);
     expect(shouldTransform("// @flow\nexport const x = 1;\n", "/app/page.css")).toBe(false);
   });
 

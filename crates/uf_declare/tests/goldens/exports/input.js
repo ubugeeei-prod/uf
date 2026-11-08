@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import type { Helper } from "./helper.js";
 import { run } from "./helper.js";
 

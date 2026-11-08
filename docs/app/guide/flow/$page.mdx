@@ -129,10 +129,10 @@ error, not a runtime surprise — which is how a component library expresses
 
 ```js
 const label = match (status) {
-  "idle" => "Ready",
-  "loading" => "Working…",
+  "idle"                                        => "Ready",
+  "loading"                                     => "Working…",
   {kind: "failed", const code} if (code >= 500) => "Server error",
-  {kind: "failed", ...} => "Failed",
+  {kind: "failed", ...}                         => "Failed",
 };
 ```
 
@@ -153,9 +153,9 @@ enum Status {
   Failed,
 }
 
-Status.cast(input);      // Status | void
-Status.members();        // an iterator
-Status.Idle.toString();  // "Idle"
+Status.cast(input); // Status | void
+Status.members(); // an iterator
+Status.Idle.toString(); // "Idle"
 ```
 
 They are exhaustively checkable, they cannot be compared to a plain string by

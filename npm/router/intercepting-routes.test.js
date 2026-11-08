@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Intercepting routes: a client navigation that renders the route it reaches
 // in a slot of the page it started on.

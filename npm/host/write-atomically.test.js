@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Writing a file a second process may be reading at the same time.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // The facade returns the outer uf worker's registry, not another test runner.
 const environment: $FlowFixMe = globalThis;
 const api = environment.__UF_NATIVE_TEST_API__;

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Which store a React subtree uses.
 //

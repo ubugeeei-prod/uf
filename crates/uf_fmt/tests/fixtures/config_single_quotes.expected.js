@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 const plain = 'double';
 const apostrophe = "it's";
 const quoted = 'say "hi"';

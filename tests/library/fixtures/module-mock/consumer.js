@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A module that calls its dependency while it is being evaluated.
 //

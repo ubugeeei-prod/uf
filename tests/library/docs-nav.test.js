@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The manual's table of contents, checked against itself and against the tree.
 //

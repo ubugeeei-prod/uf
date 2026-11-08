@@ -15,7 +15,7 @@ in Flow, one export path per module so a program pays only for what it imports.
 </div>
 
 ```js fragment
-// @flow
+"use flow";
 import { as, is, wrap } from "@uniflowed/std/errors";
 import { Group } from "@uniflowed/std/sync";
 import { withTimeout, background } from "@uniflowed/std/context";
@@ -73,14 +73,14 @@ underneath, and that claim is tested rather than asserted:
 `uf check` has to report every one of them and nothing else.
 
 ```js
-const queue = new Heap((a, b) => a.due - b.due);   // Heap<Job>, from the comparator
-const next = queue.pop();                          // Job | void
+const queue = new Heap((a, b) => a.due - b.due); // Heap<Job>, from the comparator
+const next = queue.pop(); // Job | void
 
 const TRACE = key<string>("trace-id");
-withValue(ctx, TRACE, 7);                          // refused: 7 is not a string
-traced.value(TRACE);                               // string | void
+withValue(ctx, TRACE, 7); // refused: 7 is not a string
+traced.value(TRACE); // string | void
 
-as(failure, HttpError)?.status;                    // number, from the class alone
+as(failure, HttpError)?.status; // number, from the class alone
 ```
 
 ## Cancellation: why not just `AbortSignal`

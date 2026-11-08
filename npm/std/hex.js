@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/hex`: Go's `encoding/hex`.
 //

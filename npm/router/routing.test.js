@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Which file the router picks when nothing matched.
 //

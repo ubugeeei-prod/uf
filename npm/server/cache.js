@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/cache`: the cache, and the two ways to invalidate it.
 //

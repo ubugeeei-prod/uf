@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Open each case's schema in a real database, behind each adapter.
 

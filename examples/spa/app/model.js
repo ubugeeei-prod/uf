@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import type { Atom, ReadonlyAtom, WriteOnlyAtom } from "@uniflowed/state";
 import { action, atom, selector } from "@uniflowed/state";
 

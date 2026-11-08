@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Which modules uf is responsible for, asked the two ways a host can ask.
 //

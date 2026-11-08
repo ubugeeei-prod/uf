@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The primitives a page is built from.
 //

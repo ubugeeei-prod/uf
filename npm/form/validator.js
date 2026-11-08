@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/form/validator`: `@uniflowed/validator` as a form's resolver.
 //

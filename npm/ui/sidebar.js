@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A sidebar: the one of the four dialog-shaped components that is usually not a
 // dialog at all.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The `node:` builtins `@uniflowed/test` reaches for, as a browser can have
 // them.

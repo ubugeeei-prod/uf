@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Structured logging, and the request id that reaches a render.
 //

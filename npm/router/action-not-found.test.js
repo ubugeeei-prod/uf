@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `notFound()` in a hydrated server action shows the not-found page.
 //

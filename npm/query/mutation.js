@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/query/mutation`: the write, and the lie you tell before it.
 //

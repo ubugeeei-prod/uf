@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Streaming SSR: a page that suspends for `DELAY` ms while it renders.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 import * as DateRangePicker from "./date-range-picker.js";
 

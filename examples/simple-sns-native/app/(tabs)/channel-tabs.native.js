@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { stylex } from "@uniflowed/stylex/native";

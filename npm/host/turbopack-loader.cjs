@@ -161,10 +161,10 @@ async function compile(source, filename, options = {}) {
 /**
  * Whether this loader should compile `source`.
  *
- * The Turbopack rule already requires a pragma. webpack's `test` does not, so
- * the loader repeats the check and leaves a plain module for SWC. `@noflow`
- * wins over a later `@flow`: host and Vite are plain JavaScript that mention
- * the word in comments.
+ * The Turbopack rule already requires a directive or a pragma. webpack's
+ * `test` does not, so the loader repeats the check and leaves a plain module
+ * for SWC. `@noflow` wins over a later `@flow` or `"use flow"`: host and Vite
+ * are plain JavaScript that mention the word in comments.
  */
 function shouldTransform(source, filename) {
   if (!JS_EXTENSION.test(filename)) return false;

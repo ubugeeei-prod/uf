@@ -18,18 +18,18 @@ Create a shared routing value, then use it in middleware and pages. A URL such
 as `/ja/notes` can be shared and rendered without a cookie.
 
 ```js
-// @flow
+"use flow";
 // locales.js
 import { createLocaleRouting } from "@uniflowed/i18n/routing";
 
 export const locales = createLocaleRouting({
-  locales: ["en", "ja"],
+  locales      : ["en", "ja"],
   defaultLocale: "en",
 });
 ```
 
 ```js
-// @flow
+"use flow";
 // app/$middleware.js
 import { locales } from "../locales.js";
 
@@ -50,7 +50,7 @@ A message's source and its parameter kinds live together. The imported `string`
 and `number` below are runtime parameter declarations, not Flow type names.
 
 ```js
-// @flow
+"use flow";
 import { defineCatalogue, message, number, string } from "@uniflowed/i18n";
 
 const en = defineCatalogue("en-US", {

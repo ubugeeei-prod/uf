@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import {
   ACTION_CONTENT_TYPE,
   ACTION_HEADER,

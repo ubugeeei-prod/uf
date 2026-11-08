@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Route handlers: a path that answers a request instead of rendering a page.
 //
@@ -9,7 +9,7 @@
 // position is that the host is a capability rather than a target.
 //
 //   // app/api/users/[id]/$route.js
-//   // @flow
+//   "use flow";
 //   export async function GET(request: Request, context: HandlerContext) {
 //     const user = await find(context.params.id);
 //     return user == null

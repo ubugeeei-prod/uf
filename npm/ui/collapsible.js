@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A button and the region it shows: the disclosure pattern, on its own.
 //

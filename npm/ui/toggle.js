@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A toggle button: an action that stays applied.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { describe, expect, it } from "@uniflowed/test";
 import { createLocaleRouting } from "./routing.js";

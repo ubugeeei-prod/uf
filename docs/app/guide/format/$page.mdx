@@ -53,10 +53,10 @@ which is the part you notice:
 
 ```js
 const fragment = graphql`
-        fragment UserFragment on User {
-          username
-        }
-      `;
+  fragment UserFragment on User {
+    username
+  }
+`;
 ```
 
 becomes
@@ -364,7 +364,7 @@ with the reason beside it:
 ```js
 // The payload is JSON the server serialized, and React escapes a text child.
 // uf-lint-disable-next-line security/no-dangerously-set-inner-html
-<script type="application/json" dangerouslySetInnerHTML={html} />
+<script type="application/json" dangerouslySetInnerHTML={html} />;
 ```
 
 `uf-lint-disable-next-line` covers the line below it. `uf-lint-disable` covers
@@ -393,7 +393,7 @@ on in `lint.rules`. `uf lint` runs it beside uf's own rules, into one report:
 // uf.config.js
 export default {
   plugins: ["./rules/acme.js"],
-  lint: { rules: { "acme/no-foo": "error" } },
+  lint   : { rules: { "acme/no-foo": "error" } },
 };
 ```
 
@@ -721,10 +721,10 @@ them, and the pipeline calls the same thing:
 export default defineConfig({
   tasks: {
     "fmt:check": "uf fmt --check",
-    lint: "uf lint",
-    check: "uf check",
-    test: "uf test",
-    ci: { command: "echo ok", dependsOn: ["fmt:check", "lint", "check", "test"] },
+    lint       : "uf lint",
+    check      : "uf check",
+    test       : "uf test",
+    ci         : { command: "echo ok", dependsOn: ["fmt:check", "lint", "check", "test"] },
   },
 });
 ```

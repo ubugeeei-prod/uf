@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `app.rendering.modes: ["csr"]`: one shell, and the browser renders the rest.
 //

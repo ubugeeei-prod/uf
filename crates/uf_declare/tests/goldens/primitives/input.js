@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 export type Primitive = number | string | boolean | symbol | bigint;
 

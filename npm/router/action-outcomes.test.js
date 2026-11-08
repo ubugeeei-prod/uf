@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `redirect()`, `notFound()`, `unauthorized()` and `forbidden()` thrown from a
 // server action, through both doors and back into the browser.

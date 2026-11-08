@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Assertions that have to be type errors, and the test that says they are.
 //

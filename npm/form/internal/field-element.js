@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The DOM half of an uncontrolled field: reading a value out of a control, and
 // putting one back.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 "use client";
 import { useEffect, useState } from "@uniflowed/react";
 export component Counter() {

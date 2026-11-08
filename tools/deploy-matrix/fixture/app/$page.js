@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `ssg`: a page with no parameters, prerendered by the build and answered from
 // the files every target serves.

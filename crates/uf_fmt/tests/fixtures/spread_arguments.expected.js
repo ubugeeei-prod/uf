@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // A spread argument is not a function, and it is not a call either: Prettier
 // walks the raw argument nodes when it decides a call is `compose(f, g)` and
 // has to break, and `...xs` matches neither branch. react-native's

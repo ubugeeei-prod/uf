@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 const shortValue = 1;
 const aVeryLongVariableNameThatTakesUpSpace = anotherVeryLongFunctionName(withSomeArguments, andMore);
 const chained = one.two.three.four.five.six.seven.eight.nine.ten.eleven.twelve.thirteen.fourteen;

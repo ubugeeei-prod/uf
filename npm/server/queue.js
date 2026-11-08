@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/queue`: work that outlives the request that asked for it.
 //

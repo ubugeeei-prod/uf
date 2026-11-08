@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The stopwatches: a command from spawn to exit, a dev server from spawn to its
 // first document, and an edit from the write to the page having the new module.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/textproto`: MIME-style text protocol headers.
 //

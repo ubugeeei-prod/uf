@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 "use strict";
 
 import { a, b } from "./mod";

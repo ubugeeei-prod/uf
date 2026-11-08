@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Which file answers a request for a static asset, and with what headers.
 //

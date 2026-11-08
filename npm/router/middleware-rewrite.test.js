@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `rewrite()` from a middleware: another route served at the address asked for.
 //

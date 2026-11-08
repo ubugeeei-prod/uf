@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What an atom is before any store exists.
 //

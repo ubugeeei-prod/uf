@@ -31,14 +31,14 @@ not need to have it already.
 <div className="command"><code>uf.config.js</code></div>
 
 ```js
-// @flow
+"use flow";
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
-  runtime: "node@24",
+  runtime       : "node@24",
   packageManager: "pnpm@10",
-  build: { runtime: "node@26" },
-  test: { runtime: "bun@1.4" },
+  build         : { runtime: "node@26" },
+  test          : { runtime: "bun@1.4" },
 });
 ```
 
@@ -379,7 +379,7 @@ DATABASE_URL=postgres://localhost/app
 <div className="command"><code>app/$page.js</code></div>
 
 ```js
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 
 export component Page() {
@@ -535,7 +535,7 @@ reaches production and fails somewhere else entirely.
 <div className="command"><code>uf.config.js</code></div>
 
 ```js
-// @flow
+"use flow";
 export default {
   env: {
     files: ["config/shared.env", "config/local.env"],

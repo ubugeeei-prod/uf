@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a real browser answers that the DOM shim cannot, and what the shim
 // answers *wrongly*.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { Link } from "@uniflowed/router";
 import { props, stylex } from "@uniflowed/stylex";
 

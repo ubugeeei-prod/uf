@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Fixture, never shipped: `crates/uf_lib/tests/` sits outside the published
 // package, whose `files` field only reaches `crates/uf_lib/lib/core`.

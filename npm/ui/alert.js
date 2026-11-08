@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A callout, and the live region it must not be by default.
 //

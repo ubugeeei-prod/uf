@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The pagination `uf ui add pagination` writes: a named navigation landmark,
 // one current page, previous and next named in words, a disabled end that is

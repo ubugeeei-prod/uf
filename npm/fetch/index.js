@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/fetch`: typed HTTP over the platform's own `fetch`.
 //

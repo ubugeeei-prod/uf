@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { observations } from "../_shared/observations.js";
 
 export function GET() {

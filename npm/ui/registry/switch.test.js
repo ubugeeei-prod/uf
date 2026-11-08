@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The switch `uf ui add switch` writes: named by its words, flipped by a press
 // and by `Enter`, and still a switch while it is disabled.

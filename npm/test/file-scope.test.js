@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Each test file a worker runs sees the project's modules as if it were the
 // first file that worker ran. ubugeeei-prod/uf#1443.

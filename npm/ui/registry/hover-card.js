@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Hover card: the preview a link expands into on hover and on focus, with
 // links of its own a keyboard can reach.

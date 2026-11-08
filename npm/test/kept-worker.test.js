@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A worker `uf test --watch` keeps between runs, told that a file changed.
 //

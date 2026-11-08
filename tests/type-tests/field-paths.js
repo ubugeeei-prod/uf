@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a typed field path refuses, and the test that says so.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a directory name means to the route path, and the spellings uf reserves
 // inside the router root.

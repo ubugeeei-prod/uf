@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What the route cache is worth in front of a slow loader.
 //

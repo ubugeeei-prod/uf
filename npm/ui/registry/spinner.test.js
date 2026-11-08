@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The spinner `uf ui add spinner` writes, held to what its header promises: a
 // named progress bar with no value, silent where the words beside it already

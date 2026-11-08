@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Mounting a component into a real document.
 //

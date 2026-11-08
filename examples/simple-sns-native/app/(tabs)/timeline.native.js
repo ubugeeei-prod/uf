@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { useOptimistic } from "react";
 import { Text, View } from "react-native";

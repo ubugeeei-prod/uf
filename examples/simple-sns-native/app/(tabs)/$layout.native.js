@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { Tabs } from "@uniflowed/router/native-navigation";
 

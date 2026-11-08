@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The dialog `uf ui add dialog` writes. `@uniflowed/ui`'s own suite holds the
 // behaviour; these hold that dressing it kept every piece of that behaviour

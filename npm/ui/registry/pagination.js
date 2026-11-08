@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Pagination: links to the pages of a long list, with the current page marked
 // and a change of page announced.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // A comment between the `(` and a JSX element. react-devtools' Button.js and
 // rn-tester's SnapshotViewIOS.ios.js both write this, and both used to come
 // back with the element wrapped twice: once by the parentheses the element

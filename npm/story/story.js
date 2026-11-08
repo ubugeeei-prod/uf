@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/story/story`: declaring a component's states, as data.
 //

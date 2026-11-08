@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The unions these components are made of, and the typos that must not compile.
 //

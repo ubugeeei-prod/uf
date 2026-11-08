@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // A copy button on every code sample.
 //

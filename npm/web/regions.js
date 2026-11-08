@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/web/regions`: the elements that exist for a screen reader.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The object `expect` hands back, as a caller can reach it.
 //

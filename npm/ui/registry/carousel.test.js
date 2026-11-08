@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The carousel `uf ui add carousel` writes: a named carousel of slides named by
 // their place, one showing at a time, buttons that move between them and wrap

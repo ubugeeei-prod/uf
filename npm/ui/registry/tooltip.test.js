@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The tooltip `uf ui add tooltip` writes. `@uniflowed/ui`'s own suite holds the
 // timing; these hold that dressing it kept a tooltip a description of its

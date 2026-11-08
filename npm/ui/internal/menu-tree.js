@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What every menu in this package is a menu *of*.
 //

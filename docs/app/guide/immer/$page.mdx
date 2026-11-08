@@ -13,7 +13,7 @@ value. The recipe receives a temporary draft. The base is left alone, and
 unchanged branches keep their identity.
 
 ```js
-// @flow
+"use flow";
 import { produce } from "@uniflowed/immer";
 
 const before = {
@@ -38,7 +38,7 @@ passes later arguments to the recipe. It fits a reducer without a React-specific
 binding:
 
 ```js
-// @flow
+"use flow";
 import { produce } from "@uniflowed/immer";
 
 const increment = produce((draft, by: number) => {
@@ -59,7 +59,7 @@ patches. Use the inverse for an undo operation; ordinary `produce` does not pay
 to record patches.
 
 ```js
-// @flow
+"use flow";
 import { applyPatches, produceWithPatches } from "@uniflowed/immer";
 
 const base = { count: 1 };

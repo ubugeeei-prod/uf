@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The benchmark run committed as `tools/bench/toolchain/baseline.json`,
 // rendered: the machine, the versions, and every row with its command.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A route handler: the clearest thing only a server answers. Both methods echo
 // what they were sent, so a `200` from a host's fallback page cannot pass for

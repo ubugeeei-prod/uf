@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/tui` against React Ink, on the same workload, three ways.
 //

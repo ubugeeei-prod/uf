@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Alert: a callout that draws attention on the page, and announces itself only
 // when it appears after the page has loaded.

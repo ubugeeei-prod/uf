@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Button: a `<button>` in four tones and four sizes, styled with uf's tokens.
 //

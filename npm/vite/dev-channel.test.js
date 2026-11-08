@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The channel a browser reports on, and what `uf dev` does with what arrives.
 //

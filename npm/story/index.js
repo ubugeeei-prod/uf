@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/story`: a named state of a component that a person and a test
 // can both reach.

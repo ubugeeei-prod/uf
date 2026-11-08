@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The seal on an inline server closure's captured variables.
 //

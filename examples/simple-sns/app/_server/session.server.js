@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { cookies } from "@uniflowed/server";

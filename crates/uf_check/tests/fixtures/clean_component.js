@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as React from "react";
 
 opaque type UserId = string;

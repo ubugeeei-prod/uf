@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The settings a uf project wants VS Code to have, and which of them to write.
 //

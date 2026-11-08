@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A modal dialog, which is the component people most often get wrong.
 //

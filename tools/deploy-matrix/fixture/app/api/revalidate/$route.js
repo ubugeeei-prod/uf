@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The on-demand half of `isr`: expire a tag or a path from a route handler.
 //

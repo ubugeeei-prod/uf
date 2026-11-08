@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Strict Mode, which `uf dev` turns on and a build does not.
 //

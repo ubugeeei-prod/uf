@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Every registry component's example, for the components reference to render
 // live.

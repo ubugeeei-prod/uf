@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What uf ships that the manual does not document.
 //

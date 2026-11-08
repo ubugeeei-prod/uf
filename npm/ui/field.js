@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // An accessible form field, wired up for you.
 //

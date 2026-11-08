@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The other pattern every part of this package keeps writing.
 //

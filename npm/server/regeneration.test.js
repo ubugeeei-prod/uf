@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Incremental static regeneration, at each seam that makes it up.
 //

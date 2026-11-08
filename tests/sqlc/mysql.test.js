@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The generated code for sqlc's MySQL examples and uf's MySQL type case,
 // through the `mysql2` adapter, against the MySQL server `UF_SQLC_MYSQL_URL`

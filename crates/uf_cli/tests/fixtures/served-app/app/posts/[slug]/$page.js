@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A route with a parameter and no `generateStaticParams`.
 //

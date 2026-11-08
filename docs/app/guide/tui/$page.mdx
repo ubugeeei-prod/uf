@@ -25,7 +25,7 @@ React you already know.
 ## A whole application
 
 ```js
-// @flow
+"use flow";
 import { useState } from "@uniflowed/react";
 import { Box, Text, render, useKeyboard } from "@uniflowed/tui";
 
@@ -42,7 +42,14 @@ component Workers() {
   });
 
   return (
-    <Box border={true} borderStyle="rounded" padding={1} title=" uf test " titleAlignment="center" width={28}>
+    <Box
+      border={true}
+      borderStyle="rounded"
+      padding={1}
+      title=" uf test "
+      titleAlignment="center"
+      width={28}
+    >
       <Text bold={true}>Workers</Text>
       <Box flexDirection="row" justifyContent="space-between">
         <Text fg="gray">running</Text>
@@ -105,7 +112,7 @@ allowed, which is how a badge sits on its parent's border:
   <Text position="absolute" top={-1} right={1}>
     3 new
   </Text>
-</Box>
+</Box>;
 ```
 
 On a box left in the line — `position="relative"`, the default — the same four
@@ -522,7 +529,7 @@ Not here: OpenTUI's `font`, which draws the names in ASCII-art letters
   placeholder="What changed?"
   onContentChange={setMessage}
   onSubmit={(text) => commit(text)}
-/>
+/>;
 ```
 
 Lines wrap at a word by default — `wrapMode` also takes `"char"` and `"none"`,
@@ -630,7 +637,7 @@ release then produces `drag-end` and `up` at the box the drag started on, and
 `drop` at whatever it ended over, carrying `event.source`:
 
 ```js
-<Box id="done" onMouseDrop={(event) => finish(event.source)} />
+<Box id="done" onMouseDrop={(event) => finish(event.source)} />;
 ```
 
 `event.source` is the `id` of the box that was dragged, which is why boxes a
@@ -663,8 +670,8 @@ the application reads them back:
 
 ```js
 component Output(lines: Array<string>) {
-  const renderer = useRenderer();
-  const clipboard = useClipboard();
+  const renderer            = useRenderer();
+  const clipboard           = useClipboard();
   const [yanked, setYanked] = useState<string>("");
   useKeyboard((key) => {
     if (key.name === "y" && renderer.hasSelection()) {
@@ -720,7 +727,7 @@ whole status bar or a decorative frame out of a copy:
 ```js
 <Box selectable={false}>
   <Text dim={true}>3 workers · 12 files · 1.2s</Text>
-</Box>
+</Box>;
 ```
 
 `selectionFg` and `selectionBg` name the colours instead of inverting, and are
@@ -735,7 +742,7 @@ does. A box that means its own thing by a drag — a splitter, a canvas, a slide
 — suppresses it and leaves the reader's highlight alone:
 
 ```js
-<Box id="splitter" onMouseDown={(event) => event.preventDefault()} onMouseDrag={resize} />
+<Box id="splitter" onMouseDown={(event) => event.preventDefault()} onMouseDrag={resize} />;
 ```
 
 **A second press selects the word, and a third selects the line.** The presses

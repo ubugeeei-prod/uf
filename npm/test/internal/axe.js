@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The accessibility audit behind `expect(container).toHaveNoAxeViolations()`.
 //

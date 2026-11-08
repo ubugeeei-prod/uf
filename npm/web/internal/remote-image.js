@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/web`: the `src` and `srcset` `Image` writes for a
 // remote image, from what `./image-endpoint.js` says about the endpoint.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/test`: the error a `uft` binding raises when this
 // host cannot give it.

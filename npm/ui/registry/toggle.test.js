@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The toggle `uf ui add toggle` writes: pressed or not, flipped by a press, and
 // named the same way in both states.

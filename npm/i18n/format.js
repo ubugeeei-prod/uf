@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/i18n/format`: a parsed message, a locale and some arguments,
 // into a string.

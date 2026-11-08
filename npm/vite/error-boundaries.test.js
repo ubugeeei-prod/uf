@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // An `$error.js` without `"use client"` fails the route table, not the first
 // page that throws.

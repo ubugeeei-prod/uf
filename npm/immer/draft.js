@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/immer`: the draft, and the copy-on-write bookkeeping under it.
 //

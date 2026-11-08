@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A route whose loader redirects.
 //

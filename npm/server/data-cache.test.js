@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { describe, expect, it } from "@uniflowed/test";
 import { cacheFunction, cacheTag, createCacheStore, updateTag } from "./cache.js";
 import { cookies } from "./index.js";

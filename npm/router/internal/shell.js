@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: the documents an HTML renderer answers with
 // that are not a route's own markup — uf's shell around that markup, and a

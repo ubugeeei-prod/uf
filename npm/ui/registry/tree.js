@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 // Tree: a named collection with visible selection and keyboard focus.
 //
 // `uf ui add tree` copies this component into the project. The headless

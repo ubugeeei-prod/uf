@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/form`: forms that do not re-render.
 //

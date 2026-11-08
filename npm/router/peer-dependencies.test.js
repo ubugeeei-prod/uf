@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The React the router asks a project for.
 //

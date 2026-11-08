@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Navigation menu: a site's top-level links, some of which open a panel of
 // further links, as along the top of a documentation site.

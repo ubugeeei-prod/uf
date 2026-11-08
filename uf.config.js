@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // uf's own project.
 //

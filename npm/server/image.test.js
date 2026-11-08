@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/image`: the request-time image endpoint, and every
 // refusal it makes.

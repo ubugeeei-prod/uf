@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Breadcrumb: the trail from the top of a site to the page a reader is on, as
 // a row of links.

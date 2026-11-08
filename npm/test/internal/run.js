@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Walking a collected suite tree and executing it.
 //

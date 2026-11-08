@@ -14,7 +14,7 @@
 
 - [ ] Keep all core implementation in Rust native crates.
 - [x] Use `uf.config.js` as the single user-visible config surface.
-- [x] Prefer `.js` files with `// @flow` for user-authored Flow source.
+- [x] Prefer `.js` files with `"use flow";` for user-authored Flow source.
 - [ ] Default app execution to runtime-agnostic Capability JS Hosts: Node.js,
       Deno, and Bun. All three run a uf project, each through a module hook —
       Deno's is `node:module`'s `registerHooks`, from Deno 2.8, where it used to

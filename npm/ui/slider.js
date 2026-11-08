@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A slider, and the one decision that makes it reachable at all.
 //

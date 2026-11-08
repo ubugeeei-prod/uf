@@ -1,7 +1,7 @@
 
 
 
-// @flow
+"use flow";
 import a from "a";
 
 

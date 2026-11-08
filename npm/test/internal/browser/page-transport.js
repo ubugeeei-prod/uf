@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import type { BrowserTransport, ControlOptions } from "./cdp.js";
 import { runnerFetch } from "./runner-fetch.js";
 

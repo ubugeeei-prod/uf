@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What the attached terminal can actually render.
 //

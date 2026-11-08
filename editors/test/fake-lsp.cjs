@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // A language server that answers just enough for an editor to attach it, and
 // tells the editor where it was started.
 //

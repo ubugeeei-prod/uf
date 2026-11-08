@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/stylex/theme`: the shipped themes, and how to replace them.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 declare var globalVar: number;
 declare let globalLet: string;
 declare const globalConst: boolean;

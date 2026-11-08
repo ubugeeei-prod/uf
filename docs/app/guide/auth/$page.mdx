@@ -28,15 +28,15 @@ This is all of it. Nothing about uf appears in it, and nothing about your
 provider appears in uf:
 
 ```js
-// @flow
+"use flow";
 import type { OAuthProvider } from "@uniflowed/server/oauth";
 
 export const example: OAuthProvider = {
   authorizationEndpoint: "https://example.com/oauth/authorize",
-  tokenEndpoint: "https://example.com/oauth/token",
-  clientId: process.env.EXAMPLE_CLIENT_ID ?? "",
-  clientSecret: process.env.EXAMPLE_CLIENT_SECRET,
-  scope: "openid email",
+  tokenEndpoint        : "https://example.com/oauth/token",
+  clientId             : process.env.EXAMPLE_CLIENT_ID ?? "",
+  clientSecret         : process.env.EXAMPLE_CLIENT_SECRET,
+  scope                : "openid email",
   async identify(tokens) {
     const answer = await fetch("https://example.com/userinfo", {
       headers: { authorization: `Bearer ${tokens.accessToken}` },
@@ -64,16 +64,16 @@ account takeover waiting for it. Put the email in `claims`.
 ## The four handlers
 
 ```js
-// @flow
+"use flow";
 // app/auth.js
 import { createAuth, memorySessionStore } from "@uniflowed/server/oauth";
 import { example } from "./providers/example.js";
 
 export const auth = createAuth({
-  provider: example,
-  store: memorySessionStore(),
+  provider    : example,
+  store       : memorySessionStore(),
   callbackPath: "/auth/callback",
-  origin: process.env.PUBLIC_ORIGIN,
+  origin      : process.env.PUBLIC_ORIGIN,
 });
 ```
 
@@ -104,7 +104,7 @@ In a loader, a route handler or a server component — no request is threaded
 through, because `@uniflowed/server` answers about the request it is inside:
 
 ```js
-// @flow
+"use flow";
 import { auth } from "../auth.js";
 
 export async function loader() {
@@ -134,14 +134,14 @@ Four methods, one value type, and uf owns what goes in — so an implementation
 against Redis, a table or a worker's KV knows nothing about OAuth:
 
 ```js
-// @flow
+"use flow";
 import type { SessionStore } from "@uniflowed/server/oauth";
 
 export const store: SessionStore = {
   read: async (key) => decode(await redis.get(key)),
   write: async (key, value, expiresAt) =>
     void (await redis.set(key, encode(value), "PXAT", expiresAt)),
-  take: async (key) => decode(await redis.getdel(key)),
+  take   : async (key) => decode(await redis.getdel(key)),
   destroy: async (key) => void (await redis.del(key)),
 };
 ```

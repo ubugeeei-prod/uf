@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // Previously supported keys; keep this comment and custom tasks.
 export default {
   env: { toolchain: { node: "24.14.0", npm: "11.9.0" } },

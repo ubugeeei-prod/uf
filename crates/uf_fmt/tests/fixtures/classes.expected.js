@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 class Empty {}
 class Point {
   x: number;

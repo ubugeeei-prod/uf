@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as Calendar from "./calendar.js";
 
 /** Whether a date falls on a Saturday or a Sunday. */

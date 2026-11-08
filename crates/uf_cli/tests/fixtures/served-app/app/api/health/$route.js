@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A route handler, which is the clearest thing a build could not serve:
 // `createDispatcher` is complete and `uf build` never called it, so this

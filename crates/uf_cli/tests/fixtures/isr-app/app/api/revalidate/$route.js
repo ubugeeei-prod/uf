@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What an application does when the data behind a page changes: it invalidates
 // the page's tag. The regeneration tests call this on a running server and then

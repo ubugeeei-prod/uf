@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The sidebar `uf ui add sidebar` writes: a named `<nav>` beside the page, the
 // current item marked, a button that says whether the column is open, and

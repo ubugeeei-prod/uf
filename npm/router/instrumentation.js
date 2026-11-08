@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 export type NavigationTiming = {|
   readonly kind    : "document" | "router",

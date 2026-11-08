@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Whether a run of `bench.js` is slower than the baseline committed beside it.
 //

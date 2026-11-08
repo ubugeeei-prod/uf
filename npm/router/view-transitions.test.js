@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A navigation that is a transition rather than a cut.
 //

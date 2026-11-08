@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // One transaction scenario, run by each engine's suite against a real
 // database behind each adapter: `npm/sql/sql.test.js` checks the

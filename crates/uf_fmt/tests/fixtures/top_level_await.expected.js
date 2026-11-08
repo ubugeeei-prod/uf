@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { load, connect, stream } from "./io.js";
 
 // Top-level `await` is ES2022 and it is a module's, not a function's, so the

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Textarea: a styled multi-line `<textarea>`, for a control that has no field
 // row around it.

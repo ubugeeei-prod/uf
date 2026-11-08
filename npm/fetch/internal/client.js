@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Typed HTTP over the platform's `fetch`.
 //

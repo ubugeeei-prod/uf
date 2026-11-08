@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a `ScrollBox` costs as its content grows.
 //

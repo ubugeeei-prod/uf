@@ -160,21 +160,21 @@ where it is used:
 <div className="command"><code>uf.config.js</code></div>
 
 ```js
-// @flow
+"use flow";
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
-  runtime: "node@24",
+  runtime       : "node@24",
   packageManager: "pnpm@10",
-  build: { runtime: "node@24", builder: "vite" },
-  test: { runtime: "node@24", runner: "uf" },
+  build         : { runtime: "node@24", builder: "vite" },
+  test          : { runtime: "node@24", runner: "uf" },
   tasks: {
-    dev: { command: "uf dev" },
+    dev  : { command: "uf dev" },
     build: { command: "uf build" },
     check: { command: "uf check" },
-    lint: { command: "uf lint" },
-    fmt: { command: "uf fmt" },
-    test: { command: "uf test" },
+    lint : { command: "uf lint" },
+    fmt  : { command: "uf fmt" },
+    test : { command: "uf test" },
   },
 });
 ```
@@ -220,7 +220,7 @@ the host `app.runtime.capabilityJsHost` finds
 
 ### Converting the types
 
-Rename `.ts` and `.tsx` to `.js`. `// @flow` is optional: `uf check` checks every
+Rename `.ts` and `.tsx` to `.js`. `"use flow";` is optional: `uf check` checks every
 file that does not say `// @noflow`. uf runs Flow with its TypeScript syntax on,
 so much of a TypeScript file is already Flow:
 
@@ -308,7 +308,7 @@ from `@uniflowed/react-testing`.
 A route under `app/` looks like this:
 
 ```js
-// @flow
+"use flow";
 // app/users/[id]/$page.js — was <Route path="/users/:id" element={<User />} />
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";

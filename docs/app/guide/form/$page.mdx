@@ -26,13 +26,13 @@ You need a project — [Your first project](/guide/project) — and
 
 ```js
 "use client";
-// @flow
+"use flow";
 import { useForm } from "@uniflowed/form";
 
 export component SignUp() {
   const { register, handleSubmit, errorProps, formState } = useForm({
     defaultValues: { email: "" },
-    mode: "onBlur",
+    mode         : "onBlur",
   });
 
   return (
@@ -42,7 +42,7 @@ export component SignUp() {
         id="email"
         {...register("email", {
           required: "An email address is required",
-          pattern: { value: /@/, message: "That is not an email address" },
+          pattern : { value: /@/, message: "That is not an email address" },
         })}
       />
       {formState.errors.email != null && (
@@ -101,12 +101,12 @@ const { getValues, setValue, watch, getFieldState } = useForm({
   defaultValues: { email: "", address: { city: "", zip: 0 }, items: [{ price: 0 }] },
 });
 
-getValues("address", "city");        // string
-watch("items", 0, "price");          // number
+getValues("address", "city"); // string
+watch("items", 0, "price"); // number
 setValue(["items", 0, "price"], 12); // and 12 has to be a number
-getFieldState("address", "city");    // the path is checked
+getFieldState("address", "city"); // the path is checked
 
-getValues("address.city");           // still works, still mixed
+getValues("address.city"); // still works, still mixed
 ```
 
 Nothing is annotated: `TValues` is inferred from `defaultValues` and every read
@@ -201,7 +201,7 @@ Seven validators — `required`, `min`, `max`, `minLength`, `maxLength`,
 ```js
 register("age", { valueAsNumber: true, min: { value: 18, message: "18 or over" } });
 register("confirm", {
-  deps: ["password"],
+  deps    : ["password"],
   validate: (value, values) => value === values.password || "The passwords differ",
 });
 ```
@@ -224,14 +224,14 @@ import { useForm, validatorResolver } from "@uniflowed/form";
 import { email, minLength, object, pipe, string } from "@uniflowed/validator";
 
 const account = object({
-  email: pipe(string(), email()),
+  email  : pipe(string(), email()),
   profile: object({ city: pipe(string(), minLength(2)) }),
 });
 
 component Account() {
   const { register, handleSubmit } = useForm({
     defaultValues: { email: "", profile: { city: "" } },
-    resolver: validatorResolver(account),
+    resolver     : validatorResolver(account),
   });
 
   return (
@@ -274,17 +274,17 @@ and error message in the form store.
 
 ```js
 "use server";
-// @flow
+"use flow";
 // app/account/_actions/save-profile.js
 import { email, minLength, object, pipe, safeParse, string } from "@uniflowed/validator";
 
 export const Profile = object({
-  email: pipe(string(), email()),
+  email      : pipe(string(), email()),
   displayName: pipe(string(), minLength(2)),
 });
 
 export type ProfileInput = {|
-  readonly email: string,
+  readonly email      : string,
   readonly displayName: string,
 |};
 
@@ -293,7 +293,7 @@ export type ProfileResult =
   | {|
       readonly ok: false,
       readonly fields: {|
-        readonly email?: string,
+        readonly email?      : string,
         readonly displayName?: string,
       |},
     |};
@@ -302,7 +302,7 @@ export async function saveProfile(input: ProfileInput): Promise<ProfileResult> {
   const parsed = safeParse(Profile, input);
   if (!parsed.ok) {
     return {
-      ok: false,
+      ok    : false,
       fields: { email: "Use a real address", displayName: "Use at least two characters" },
     };
   }
@@ -313,7 +313,7 @@ export async function saveProfile(input: ProfileInput): Promise<ProfileResult> {
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/account/_components/ProfileForm.js
 import { useTransition } from "@uniflowed/react";
 import { useForm, validatorResolver } from "@uniflowed/form";
@@ -321,15 +321,15 @@ import { useForm, validatorResolver } from "@uniflowed/form";
 import { Profile, saveProfile } from "../_actions/save-profile.js";
 
 type Values = {|
-  readonly email: string,
+  readonly email      : string,
   readonly displayName: string,
 |};
 
 export component ProfileForm(initialValues: Values) {
-  const [pending, startTransition] = useTransition();
+  const [pending, startTransition]                                  = useTransition();
   const { register, handleSubmit, setError, errorProps, formState } = useForm({
     defaultValues: initialValues,
-    resolver: validatorResolver(Profile),
+    resolver     : validatorResolver(Profile),
   });
 
   const submit = handleSubmit((values) => {
@@ -341,7 +341,7 @@ export component ProfileForm(initialValues: Values) {
         }
         if (result.fields.displayName != null) {
           setError("displayName", {
-            type: "server",
+            type   : "server",
             message: result.fields.displayName,
           });
         }
@@ -444,9 +444,7 @@ so this package does not use it, and says so instead of quietly being slower.
 ```js
 const { fields, append, remove, move } = useFieldArray({ control, name: "items" });
 
-fields.map((field, index) => (
-  <input key={field.id} {...register(`items.${index}.name`)} />
-));
+fields.map((field, index) => <input key={field.id} {...register(`items.${index}.name`)} />);
 ```
 
 `append`, `prepend`, `insert`, `remove`, `swap`, `move`, `update` and `replace`,
@@ -475,7 +473,7 @@ editor — `Controller` binds one:
       <option value="m">medium</option>
     </select>
   )}
-/>
+/>;
 ```
 
 `bound.field.onChange` takes **the value**, not an event, though an event still
@@ -520,7 +518,7 @@ One limitation is worth reading before a server-rendered form surprises you:
 show its values before hydration should put them in the markup —
 
 ```js
-<input defaultValue={record.email} {...register("email")} />
+<input defaultValue={record.email} {...register("email")} />;
 ```
 
 — and the store adopts whatever the control already shows for any field it has

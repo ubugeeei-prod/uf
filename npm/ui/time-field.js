@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 "use client";
 import * as React from "@uniflowed/react";
 import { SegmentedField } from "./internal/segmented-field.js";

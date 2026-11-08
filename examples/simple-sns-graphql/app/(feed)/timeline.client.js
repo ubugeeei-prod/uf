@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 
 import * as React from "@uniflowed/react";
 import { startTransition, useLayoutEffect, useRef } from "@uniflowed/react";

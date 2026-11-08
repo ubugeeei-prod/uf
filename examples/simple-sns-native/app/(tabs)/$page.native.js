@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { useOptimistic, useState, useTransition } from "react";
 import { ScrollView, Text } from "react-native";

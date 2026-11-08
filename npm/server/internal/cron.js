@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A five-field cron expression, and whether a given minute matches it.
 //

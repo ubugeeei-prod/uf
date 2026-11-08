@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The `uf` namespace, and the spy behind it.
 //

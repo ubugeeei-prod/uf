@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 const simple = <div />;
 const withAttrs = <div className="container" id={id} data-value={1} disabled />;
 const spreadAttrs = <Component {...props} extra="x" {...rest} />;

@@ -125,7 +125,7 @@ So the generator does not target a driver. It targets a small interface,
 
 ```js
 export interface Queryable {
-  +engine: "postgresql" | "mysql" | "sqlite";
+  +engine   : "postgresql" | "mysql" | "sqlite";
   +maxParams: number;
   query(text: string, params: $ReadOnlyArray<SqlParam>): Promise<QueryResult>;
 }

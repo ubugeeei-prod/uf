@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A route that suspends while it renders.
 //

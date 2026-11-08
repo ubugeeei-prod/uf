@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Misuses of `@uniflowed/state`'s utilities that have to be type errors, and
 // the test that says they are.

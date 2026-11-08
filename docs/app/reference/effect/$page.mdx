@@ -19,13 +19,13 @@ guide, is the walk-through — composing, recovering, `race` and `all`, and how
 it maps from Effect-TS — and is not repeated here.
 
 ```js
-// @flow
+"use flow";
 import { effect, fail, promise, retry, runPromise, tryPromise } from "@uniflowed/effect";
 
 const fetchUser = (id: string) =>
   effect(function* () {
     const response = yield* tryPromise({
-      try: () => fetch(`/users/${id}`),
+      try  : () => fetch(`/users/${id}`),
       catch: () => ({ kind: "offline" }),
     });
     if (!response.ok) {
@@ -205,11 +205,14 @@ visible, and lets two refs that must move together share one.
 one: waiting for a value nobody has promised yet.
 
 ```js
-const handshake = yield* deferred();
-yield* fork(effect(function* () {
-  yield* deferredSucceed(handshake, yield* openConnection());
-}));
-const connection = yield* deferredAwait(handshake); // interruptible
+const handshake = yield * deferred();
+yield *
+  fork(
+    effect(function* () {
+      yield* deferredSucceed(handshake, yield* openConnection());
+    }),
+  );
+const connection = yield * deferredAwait(handshake); // interruptible
 ```
 
 It completes at most once: the first `deferredSucceed` or `deferredFail` returns
@@ -227,10 +230,10 @@ rather than the convenience.
 across call sites, which is what a rate-limited API needs:
 
 ```js
-const budget = yield* semaphore(2);
+const budget = yield * semaphore(2);
 const request = (item) => withPermit(budget, fetchItem(item));
 // Two forEaches, one budget of two between them.
-yield* all([forEach(pageOne, request), forEach(pageTwo, request)]);
+yield * all([forEach(pageOne, request), forEach(pageTwo, request)]);
 ```
 
 `withPermit` and `withPermits` give the permits back however the body ends —
@@ -250,8 +253,8 @@ The same mechanism with a buffer in front, and the one the rest was waiting on:
 with no seam to put a limit in.
 
 ```js
-const work = yield* queue(64);               // bounded: the producer waits
-const readings = yield* queue(1, "sliding"); // the newest reading, never a wait
+const work = yield * queue(64); // bounded: the producer waits
+const readings = yield * queue(1, "sliding"); // the newest reading, never a wait
 ```
 
 | Strategy | A full queue |
@@ -286,9 +289,9 @@ The same buffer, with several subscribers. A subscription *is* a `Queue`, so
 `queueTake` and `queueTakeAll` are already the operations a subscriber needs.
 
 ```js
-const topic = yield* pubSub(16);
-const listener = yield* pubSubSubscribe(topic); // needs a Scope
-yield* pubSubPublish(topic, tick);
+const topic = yield * pubSub(16);
+const listener = yield * pubSubSubscribe(topic); // needs a Scope
+yield * pubSubPublish(topic, tick);
 ```
 
 `pubSubSubscribe` requires a `Scope`, and it is not decoration: a subscription
@@ -571,7 +574,10 @@ channel, the interruption protocol and `Scope` behind to do it.
 ```js
 import { streamFromReadableStream, streamRunForEach, streamTake } from "@uniflowed/effect/stream";
 
-const firstTen = streamTake(streamFromReadableStream(() => response.body), 10);
+const firstTen = streamTake(
+  streamFromReadableStream(() => response.body),
+  10,
+);
 await runPromise(streamRunForEach(firstTen, handleChunk));
 ```
 

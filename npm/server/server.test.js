@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server`: the request a server function is inside.
 //

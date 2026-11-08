@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/story/collect`: which files are stories, and what is in them.
 //

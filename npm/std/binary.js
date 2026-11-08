@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/binary`: Go's `encoding/binary`, over `DataView`.
 //

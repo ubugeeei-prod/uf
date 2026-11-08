@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/server`: whether an IP address is one an image
 // fetch may connect to.

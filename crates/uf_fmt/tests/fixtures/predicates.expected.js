@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 // Flow's two spellings of a predicate function. The inferred one has no
 // return type, so the colon belongs to `%checks` — `function f(x) %checks {}`

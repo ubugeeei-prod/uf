@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Reading positions out of a stack trace.
 //

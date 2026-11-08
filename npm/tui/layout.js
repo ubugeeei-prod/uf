@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Flexbox, in whole cells.
 //

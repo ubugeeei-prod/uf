@@ -463,9 +463,9 @@ resolves to. Two conditions bound that, and both are Flow's rather than uf's.
 A package Flow's own library definitions describe is never read: a file in the
 batch outranks a `declare module`, so reading React's shipped JavaScript would
 replace Flow's description of React with a bundle that has no types in it. And
-a package that declares no `@flow` anywhere is not read either: it exports `any`
-whether it is in the batch or not, so reading it would buy a parse of every byte
-it ships and nothing else.
+a package that declares neither `@flow` nor `"use flow"` anywhere is not read
+either: it exports `any` whether it is in the batch or not, so reading it would
+buy a parse of every byte it ships and nothing else.
 
 Unless it has types written in TypeScript. A package with no Flow and with
 declarations — its own, or an `@types` package's — is typed from the
@@ -478,8 +478,8 @@ once. Translations are kept under `.uf/cache/dts`, keyed by the `uf` that made
 them and checked against the SHA-256 of every file they read, so a warm check
 translates nothing ([#946](https://github.com/ubugeeei-prod/uf/issues/946)).
 A package's own Flow outranks its declarations: one that publishes `@flow`
-sources, or a `.flow` file beside a module — which is read in place of that
-module, as Flow reads it — is never translated. `uf check --explain-any
+or `"use flow"` sources, or a `.flow` file beside a module — which is read in
+place of that module, as Flow reads it — is never translated. `uf check --explain-any
 <package>` lists each hole and each error Flow reports inside a package's
 translation by the declaration it is in. A translation keeps every line where it
 was, so a line of a translated module is the same line of its declaration file,
@@ -1069,7 +1069,7 @@ written down; the matrix is the matrix.
 runtime. The self-hosted Hermes-backed `uf` runtime is still documented as a
 later line, but it is no longer the default direction for app execution.
 
-User-authored Flow source uses `.js` files with `// @flow`, and so do the
+User-authored Flow source uses `.js` files with `"use flow";`, and so do the
 published `@uniflowed/*` packages: there are no `.js.flow` declaration files.
 A shipped module owns its own declarations, raises only when a native binding is
 actually called, and runs nothing at import time, so `"sideEffects": false` and
@@ -1081,7 +1081,7 @@ ships](#what-a-published-flow-library-ships).
 
 Implemented native slices already cover:
 
-- zero-config `.js` + `// @flow` project generation without npm scripts
+- zero-config `.js` + `"use flow";` project generation without npm scripts
 - router discovery and generated `router.js` route types
 - `uf build` metadata emission through `.uf/build/meta/uf-build-manifest.json`
 - Rust-native `uf dev` HTTP state and health endpoint

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/router/rsc/ssr`: a document, rendered from the payload React
 // Server Components wrote.

@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Table: rows of data under column headings, sortable by a heading and
 // selectable a row at a time.

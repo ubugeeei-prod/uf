@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The drawer `uf ui add drawer` writes. `@uniflowed/ui`'s own suite holds the
 // behaviour; these hold that dressing it kept the handle a named, focusable

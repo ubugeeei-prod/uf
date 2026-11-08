@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The link builder behind the generated `router.js`.
 //

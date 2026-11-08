@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 // A module that awaits its configuration before it exports anything: the
 // shape ubugeeei-prod/uf#204 was filed about, and ES2022 since 2021.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // ButtonGroup: related buttons joined into one bar, named as a group.
 //

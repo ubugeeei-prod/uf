@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The alert `uf ui add alert` writes: silent while it is a notice that was
 // always there, a live alert when it says so, a real heading, and every tone

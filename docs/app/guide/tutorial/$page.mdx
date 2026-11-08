@@ -36,7 +36,7 @@ Replace `uf.config.js` with this configuration so the task names match the
 commands in this tutorial:
 
 ```js
-// @flow
+"use flow";
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
@@ -61,41 +61,41 @@ The following sections replace the example pages and add the application's files
 Create `app/articles.js`:
 
 ```js
-// @flow
+"use flow";
 
 /// Supported article topics. `topicLabel` handles each one.
 export type Topic = "flow" | "react" | "rust";
 
 /// An article with a unique URL slug.
 export type Article = {
-  readonly slug: string,
-  readonly title: string,
-  readonly author: string,
+  readonly slug   : string,
+  readonly title  : string,
+  readonly author : string,
   readonly minutes: number,
-  readonly topic: Topic,
+  readonly topic  : Topic,
 };
 
 const ARTICLES: $ReadOnlyArray<Article> = [
   {
-    slug: "component-syntax",
-    title: "Component syntax, and what it removes",
-    author: "Ada",
+    slug   : "component-syntax",
+    title  : "Component syntax, and what it removes",
+    author : "Ada",
     minutes: 6,
-    topic: "flow",
+    topic  : "flow",
   },
   {
-    slug: "the-compiler-is-not-magic",
-    title: "The React Compiler is not magic",
-    author: "Grace",
+    slug   : "the-compiler-is-not-magic",
+    title  : "The React Compiler is not magic",
+    author : "Grace",
     minutes: 11,
-    topic: "react",
+    topic  : "react",
   },
   {
-    slug: "one-parse",
-    title: "One parse, five tools",
-    author: "Alan",
+    slug   : "one-parse",
+    title  : "One parse, five tools",
+    author : "Alan",
     minutes: 4,
-    topic: "rust",
+    topic  : "rust",
   },
 ];
 
@@ -109,9 +109,9 @@ export function findArticle(slug: string): Article | null {
 
 export function topicLabel(topic: Topic): string {
   return match (topic) {
-    "flow" => "Flow",
+    "flow"  => "Flow",
     "react" => "React",
-    "rust" => "Rust",
+    "rust"  => "Rust",
   };
 }
 ```
@@ -125,7 +125,7 @@ reports any missing case. Use `readonly` for read-only properties; the older
 Replace `app/$page.js`. Its `loader` runs before the page renders:
 
 ```js
-// @flow
+"use flow";
 import { Link } from "@uniflowed/router";
 
 import { AddArticle } from "./AddArticle.js";
@@ -165,7 +165,7 @@ Create `app/articles/[slug]/$page.js`. The `[slug]` directory captures a URL
 segment, such as `/articles/one-parse`:
 
 ```js
-// @flow
+"use flow";
 import { notFound } from "@uniflowed/router";
 
 import { type Article, findArticle, listArticles, topicLabel } from "../../articles.js";
@@ -174,11 +174,9 @@ export function generateStaticParams(): $ReadOnlyArray<{ readonly slug: string }
   return listArticles().map((article) => ({ slug: article.slug }));
 }
 
-export async function loader({
-  params,
-}: {
-  readonly params: { readonly slug: string },
-}): Promise<{ readonly article: Article }> {
+export async function loader({ params }: { readonly params: { readonly slug: string } }): Promise<{
+  readonly article: Article,
+}> {
   const article = findArticle(params.slug);
   if (article == null) {
     throw notFound();
@@ -210,7 +208,7 @@ Replace `app/$layout.js`. It renders the document and receives the current page
 as `children`:
 
 ```js
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 
@@ -246,7 +244,7 @@ actions update them:
 
 ```js
 "use client";
-// @flow
+"use flow";
 import { action, atom, selector } from "@uniflowed/state";
 
 /// Saved article slugs, shared by the list and header.
@@ -263,7 +261,7 @@ export const toggleSaved = action<string>((get, set, slug) => {
 
 /// A suggestion needs its own ID because titles may repeat.
 export type Suggestion = {
-  readonly id: number,
+  readonly id   : number,
   readonly title: string,
 };
 
@@ -282,7 +280,7 @@ Create `app/SavedCount.js` to display the derived count:
 
 ```js
 "use client";
-// @flow
+"use flow";
 import { useAtomValue } from "@uniflowed/state";
 
 import { savedCount } from "./state.js";
@@ -304,7 +302,7 @@ Create `app/TopicTabs.js`:
 
 ```js
 "use client";
-// @flow
+"use flow";
 import { useAtomValue, useSetAtom } from "@uniflowed/state";
 import { Tabs } from "@uniflowed/ui";
 
@@ -314,7 +312,7 @@ import { savedSlugs, toggleSaved } from "./state.js";
 const TOPICS: $ReadOnlyArray<Topic> = ["flow", "react", "rust"];
 
 component SaveButton(slug: string) {
-  const saved = useAtomValue(savedSlugs);
+  const saved  = useAtomValue(savedSlugs);
   const toggle = useSetAtom(toggleSaved);
   const isSaved = saved.includes(slug);
   return (
@@ -364,7 +362,7 @@ Create `app/AddArticle.js`:
 
 ```js
 "use client";
-// @flow
+"use flow";
 import { useForm } from "@uniflowed/form";
 import { useAtomValue, useSetAtom } from "@uniflowed/state";
 
@@ -374,8 +372,8 @@ export component AddArticle() {
   const { register, handleSubmit, errorProps, formState, reset } = useForm({
     defaultValues: { title: "", minutes: "" },
   });
-  const add = useSetAtom(suggest);
-  const added = useAtomValue(suggestions);
+  const add                                                      = useSetAtom(suggest);
+  const added                                                    = useAtomValue(suggestions);
 
   return (
     <section>
@@ -396,9 +394,9 @@ export component AddArticle() {
         <input
           id="minutes"
           {...register("minutes", {
-            required: "How long is it?",
+            required     : "How long is it?",
             valueAsNumber: true,
-            min: { value: 1, message: "At least a minute" },
+            min          : { value: 1, message: "At least a minute" },
           })}
         />
         {formState.errors.minutes != null && (
@@ -434,7 +432,7 @@ pass path segments: `getValues("profile", "city")`.
 Create `app/articles.test.js` for the data functions:
 
 ```js
-// @flow
+"use flow";
 import { describe, expect, it } from "@uniflowed/test";
 
 import { findArticle, listArticles, topicLabel } from "./articles.js";
@@ -459,7 +457,7 @@ describe("the reading list", () => {
 Create `app/TopicTabs.test.js` for tab and save-button interactions:
 
 ```js
-// @flow
+"use flow";
 import { describe, expect, it } from "@uniflowed/test";
 import { render, screen, userEvent } from "@uniflowed/react-testing";
 
@@ -488,7 +486,7 @@ test DOM on the first render; no setup file is needed.
 Create `app/AddArticle.test.js` to check validation and accessible errors:
 
 ```js
-// @flow
+"use flow";
 import { describe, expect, it } from "@uniflowed/test";
 import { fireEvent, render, screen, userEvent } from "@uniflowed/react-testing";
 

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { it, expect } from "@uniflowed/test";
 import { createBrowser } from "@uniflowed/test/browser";
 import { plan, snapshot, diff } from "@uniflowed/vrt";

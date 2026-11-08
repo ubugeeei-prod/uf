@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Signing in: the contract, and everything that must refuse.
 //

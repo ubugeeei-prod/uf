@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Root entry point of `@uniflowed/core`.
 //

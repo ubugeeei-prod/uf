@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A route with a parameter and no `generateStaticParams`, so nothing is
 // prerendered for it and every server has to render it — handed the

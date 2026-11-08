@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A module a test wants to replace: it reaches the network, so a component
 // that imports it cannot be exercised without standing in for the whole

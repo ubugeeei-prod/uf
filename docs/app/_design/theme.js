@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Light and dark.
 //

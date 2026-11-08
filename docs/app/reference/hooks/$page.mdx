@@ -16,14 +16,14 @@ render, and only then reports what the browser says.
 </div>
 
 ```js
-// @flow
+"use flow";
 import { useHash, useMediaQuery, useOnline } from "@uniflowed/hooks";
 
 component Sidebar() {
   // `false` is what the prerender assumes, and the page says so rather than
   // finding out by accident.
-  const wide = useMediaQuery("(min-width: 48rem)", false);
-  const online = useOnline();
+  const wide      = useMediaQuery("(min-width: 48rem)", false);
+  const online    = useOnline();
   const [section] = useHash();
   return <aside data-open={wide} data-section={section} data-offline={!online} />;
 }
@@ -91,7 +91,7 @@ them and [`useRoute`](/guide/routing) is where a page reads them. The fragment
 is the part nothing on the server has ever seen.
 
 ```js
-// @flow
+"use flow";
 import { useHash } from "@uniflowed/hooks";
 
 component Tabs() {
@@ -140,19 +140,19 @@ there is no combination of fields left to interpret.
 `useGeolocation` returns one of five states rather than three nullable fields:
 
 ```js
-// @flow
+"use flow";
 const where = useGeolocation();
 const label = match (where) {
   // enabled: false — nobody asked for a watch
-  {status: "idle"} => "Not watching",
+  {status: "idle"}                        => "Not watching",
   // a server render, or a browser without geolocation
-  {status: "unsupported"} => "This device cannot say",
+  {status: "unsupported"}                 => "This device cannot say",
   // the reader has been asked and has not answered
-  {status: "pending"} => "Locating…",
+  {status: "pending"}                     => "Locating…",
   // `position` is a Geoposition, guaranteed
   {status: "located", position: const at} => `${at.latitude}, ${at.longitude}`,
   // `error`, and no earlier fix to fall back on
-  {status: "failed", error: const error} => error.message,
+  {status: "failed", error: const error}  => error.message,
 };
 ```
 
@@ -167,7 +167,7 @@ the file compiling rather than falling through to the next one.
 object, and keeps `online` — the field almost every caller wants — flat:
 
 ```js
-// @flow
+"use flow";
 const network = useNetwork();
 network.online; // everywhere
 network.measured; // null unless this browser implements Network Information

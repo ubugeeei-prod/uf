@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 // NumberField: a localized numeric input with named step buttons.
 //
 // `uf ui add number-field` copies this component into the project. The headless

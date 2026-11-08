@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A progress bar, whose one line is the line everybody gets wrong.
 //

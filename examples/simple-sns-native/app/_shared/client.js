@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // React's side of the service: reads as promises a component can `use`, and the
 // one signal — a revision — that says they are out of date.
 //

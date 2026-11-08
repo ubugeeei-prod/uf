@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/test`'s own suite hooks: when `beforeAll` and `afterAll` run.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The scroll area `uf ui add scroll-area` writes: a named region a keyboard
 // user can tab into, a drawn scrollbar kept from assistive technology, and the

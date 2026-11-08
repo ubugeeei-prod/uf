@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // The web Commonplace examples keep members, notes, reactions, conversations and
 // private settings in a service, and reach it over a network. This app has no
 // backend, but it keeps the shape: every read and write is a promise that takes

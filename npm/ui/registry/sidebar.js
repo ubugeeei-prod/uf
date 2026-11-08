@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Sidebar: a column of navigation beside the page, collapsible to icons on a
 // wide screen and a sheet that slides in on a narrow one.

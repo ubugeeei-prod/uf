@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/validator/lazy`: a schema that does not exist yet.
 //

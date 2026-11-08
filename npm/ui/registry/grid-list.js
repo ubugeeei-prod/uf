@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 // GridList: a named collection with visible selection and keyboard focus.
 //
 // `uf ui add grid-list` copies this component into the project. The headless

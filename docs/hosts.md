@@ -449,14 +449,14 @@ than a runtime one. Tracked by ubugeeei-prod/uf#391.
 Declared once, in `uf.config.js`, and translated per host:
 
 ```js
-// @flow
+"use flow";
 export default defineConfig({
   permissions: {
-    read: ["./fixtures"],
+    read : ["./fixtures"],
     write: ["./.uf"],
-    net: ["registry.npmjs.org:443"],
-    env: ["CI"],
-    run: ["git"],
+    net  : ["registry.npmjs.org:443"],
+    env  : ["CI"],
+    run  : ["git"],
   },
 });
 ```

@@ -52,7 +52,7 @@ upstream contract uf is following.
 `$loading.js` declares a Suspense boundary for a route segment.
 
 ```js
-// @flow
+"use flow";
 // app/articles/$loading.js
 export default component LoadingArticles() {
   return <p aria-busy="true">Loading articles...</p>;
@@ -95,7 +95,7 @@ the first chunk rather than waiting for the page it was supposed to replace.
 The same route can still use a local boundary when only part of the page waits:
 
 ```js
-// @flow
+"use flow";
 import { Suspense, use } from "@uniflowed/react";
 
 import Comments from "./Comments.js";
@@ -103,15 +103,17 @@ import { readArticle, readComments } from "./data.server.js";
 
 export async function loader({ params }: LoaderArgs) {
   return {
-    article: await readArticle(params.slug),
+    article : await readArticle(params.slug),
     comments: readComments(params.slug),
   };
 }
 
-export default component Article(data: {|
-  +article: ArticleRecord,
-  +comments: Promise<Array<CommentRecord>>,
-|}) {
+export default component Article(
+  data: {|
+    +article : ArticleRecord,
+    +comments: Promise<Array<CommentRecord>>,
+  |},
+) {
   return (
     <article>
       <h1>{data.article.title}</h1>
@@ -143,7 +145,7 @@ Suspense is not a request API. This does not suspend:
 
 ```js
 "use client";
-// @flow
+"use flow";
 import { useEffect, useState } from "@uniflowed/react";
 
 component SearchResults(query: string) {
@@ -185,14 +187,16 @@ should not be hidden by a fallback just because the next render suspends.
 
 ```js
 "use client";
-// @flow
+"use flow";
 import { Suspense, use, useState, useTransition } from "@uniflowed/react";
 
-component ProjectTabs(projects: {|
-  +alpha: Promise<Project>,
-  +bravo: Promise<Project>,
-|}) {
-  const [selected, setSelected] = useState("alpha");
+component ProjectTabs(
+  projects: {|
+    +alpha: Promise<Project>,
+    +bravo: Promise<Project>,
+  |},
+) {
+  const [selected,  setSelected]     = useState("alpha");
   const [isPending, startTransition] = useTransition();
 
   return (
@@ -247,7 +251,7 @@ router's pending bit for a global progress bar or a dimmed nav item:
 
 ```js
 "use client";
-// @flow
+"use flow";
 import { Link, useRoute } from "@uniflowed/router";
 
 component NavLink(to: string, label: string) {
@@ -272,9 +276,12 @@ the result the user asked for before the server has confirmed it.
 
 ```js
 "use server";
-// @flow
+"use flow";
 // app/articles/_actions/favorite.js
-export async function setFavorite(id: string, favorite: boolean): Promise<{|
+export async function setFavorite(
+  id      : string,
+  favorite: boolean,
+): Promise<{|
   +favorite: boolean,
 |}> {
   await saveFavorite(id, favorite);
@@ -284,14 +291,14 @@ export async function setFavorite(id: string, favorite: boolean): Promise<{|
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/articles/_components/FavoriteButton.js
 import { startTransition, useOptimistic, useState } from "@uniflowed/react";
 
 import { setFavorite } from "../_actions/favorite.js";
 
 export default component FavoriteButton(id: string, initialFavorite: boolean) {
-  const [saved, setSaved] = useState<boolean>(initialFavorite);
+  const [saved,    setSaved]              = useState<boolean>(initialFavorite);
   const [favorite, setOptimisticFavorite] = useOptimistic<boolean>(saved);
 
   function toggle() {
@@ -322,7 +329,7 @@ Use a reducer when more than one optimistic update may be pending at once:
 
 ```js
 "use client";
-// @flow
+"use flow";
 import { startTransition, useOptimistic } from "@uniflowed/react";
 import { useRouter } from "@uniflowed/router";
 
@@ -331,11 +338,11 @@ import { postMessage } from "../_actions/messages.js";
 type Message = {| readonly id: string, readonly body: string, readonly sending?: boolean |};
 
 component Thread(messages: $ReadOnlyArray<Message>) {
-  const router = useRouter();
-  const [shown, addOptimistic] = useOptimistic<
-    $ReadOnlyArray<Message>,
-    Message,
-  >(messages, (current, message) => [...current, { ...message, sending: true }]);
+  const router                 = useRouter();
+  const [shown, addOptimistic] = useOptimistic<$ReadOnlyArray<Message>, Message>(
+    messages,
+    (current, message) => [...current, { ...message, sending: true }],
+  );
 
   async function send(message: Message) {
     startTransition(async () => {
@@ -361,7 +368,7 @@ in `startTransition`:
 
 ```js
 "use client";
-// @flow
+"use flow";
 import { useOptimistic } from "@uniflowed/react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "@uniflowed/router";
@@ -370,11 +377,15 @@ import { postMessage } from "../_actions/messages.js";
 
 component SendButton() {
   const { pending } = useFormStatus();
-  return <button disabled={pending} type="submit">Send</button>;
+  return (
+    <button disabled={pending} type="submit">
+      Send
+    </button>
+  );
 }
 
 export default component Composer(messages: $ReadOnlyArray<Message>) {
-  const router = useRouter();
+  const router                 = useRouter();
   const [shown, addOptimistic] = useOptimistic(messages, (current, body: string) => [
     ...current,
     { id: "pending", body, sending: true },

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/test`: `toMatchSnapshot` and its inline sibling.
 //

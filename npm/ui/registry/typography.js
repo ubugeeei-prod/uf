@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Typography: headings, paragraphs, a quotation, a list and inline code, on
 // one type scale, each part the element its name says.

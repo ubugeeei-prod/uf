@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A table, and the four things about one a caller cannot get right by hand.
 //

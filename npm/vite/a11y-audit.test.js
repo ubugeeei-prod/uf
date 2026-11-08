@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The accessibility audit `uf dev` runs against the page on screen.
 //

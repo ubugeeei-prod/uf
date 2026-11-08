@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/vercel`: the application as a Vercel Node.js function.
 //

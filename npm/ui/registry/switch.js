@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Switch: a setting that takes effect the moment it is flipped, drawn as a
 // track and a thumb beside its label.

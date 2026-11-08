@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Write the manual's search index from the built site.
 //

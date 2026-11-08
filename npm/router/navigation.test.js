@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `app.rendering.navigation`: what a link does.
 //

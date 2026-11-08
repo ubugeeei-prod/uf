@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/bufio`: buffered byte readers and token scanners.
 //

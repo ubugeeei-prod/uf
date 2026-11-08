@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as NavigationMenu from "./navigation-menu.js";
 
 /** A documentation site's navigation: two panels of links and a plain link. */

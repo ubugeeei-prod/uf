@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // A comment on a link of a flattened `+` chain is spliced into the chain's
 // parts, not wrapped around them: the printer separates the leftmost operand
 // from the rest by looking for the first part that is a group, and a wrapper
