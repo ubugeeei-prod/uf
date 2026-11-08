@@ -238,7 +238,7 @@ and proposed order of work are tracked in [#1368](https://github.com/ubugeeei-pr
 | Virtualizer and collection drag/drop | **Partial**: fixed row heights and single-item reordering only; no variable heights or cross-collection drops |
 | `Table` | **Partial**: sorting and row counts work; range selection, grid navigation and column resizing do not |
 | `Dialog`, `AlertDialog`, `Sheet`, `Drawer` | **Implemented** for focus containment, restore and nested Escape; a public global dismiss stack is **Missing** |
-| `Popover`, `Tooltip`, `HoverCard` | **Partial**: positioning works; no Arrow part, and tooltip warmup is shared only inside one provider |
+| `Popover`, `Tooltip`, `HoverCard` | **Partial**: positioning works; no Arrow part. Tooltip warmup is shared by every provider on the page |
 | `Menu`, `ContextMenu`, `Menubar` | **Implemented** for keyboard and submenu behaviour; hover-open safe triangles are **Declined** |
 | `Select`, `Combobox`, `Autocomplete` | **Partial**: a named select or combobox resets to `defaultValue` with the form. `Select` is single-value and opens on typeahead; `Combobox` lacks custom values and async loading; standalone `Autocomplete` is **Missing** |
 | `NumberField`, `Slider` | **Implemented**: parsing, stepping, multiple slider thumbs, form names, wheel and hold stepping, `onValueChangeEnd`, and a form reset back to `defaultValue` |
