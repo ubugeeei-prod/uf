@@ -830,12 +830,46 @@ would have meant building that first and shipping the renderer second, and in
 the meantime `@uniflowed/tui` would still have been a contract with nothing
 behind it, which is the thing this was fixing.
 
+## Notifications
+
+`useNotifications()` asks the terminal to show a desktop notification. It
+writes one escape sequence. It does not ask the terminal which sequence that
+is.
+
+An interactive terminal sends OSC 9 unless `notifications` is `"osc777"`, or
+`OPENTUI_NOTIFICATION_PROTOCOL` names `osc9`, `osc777`, or an off switch
+(`none`, `off`, `false`, `0`). OSC 9 is one message. OSC 777 is a title and a
+body. OSC 99 is not written: it is a conversation, with identifiers and
+buttons, and this hook is one sequence with no reply.
+
+`notify(title, body)` returns whether that sequence was written, not whether a
+desktop showed it. There is no acknowledgement. A tab or a newline becomes a
+space. Any other control character is refused, because writing it would end
+the sequence or start another one. In OSC 777 a semicolon is written as a
+colon, because a semicolon ends a field.
+
+A pipe, an in-memory renderer, and `notifications={false}` write nothing and
+report `supported: false`. `uf inspect` still reports nine components, because
+this is a hook.
+
+```js
+component Finished() {
+  const notifications = useNotifications();
+  useKeyboard((key) => {
+    if (key.name === "return") {
+      notifications.notify("Build", "done");
+    }
+  });
+  return <Text>press enter</Text>;
+}
+```
+
 ## What is not here yet
 
 The rich-content components (`Code`, `Markdown`, `LineNumbers`,
 `Diff`, `TextTable`); `AsciiFont`, `FrameBuffer`, `Image`, `QrCode` and
-`EmbeddedTerminal`; and OpenTUI's remaining application APIs — notifications,
-audio, `Timeline` — are not implemented. They are
+`EmbeddedTerminal`; and OpenTUI's remaining application APIs — audio and
+`Timeline` — are not implemented. They are
 [#314](https://github.com/ubugeeei-prod/uf/issues/314), and they are *absent*
 rather than present as functions that throw: `uf inspect` reports nine
 components because there are nine.

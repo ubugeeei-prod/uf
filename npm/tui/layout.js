@@ -1843,5 +1843,5 @@ function fillWrapped(node: LayoutNode, stack: ScrollIndex, width: number, height
 // case.
 //
 // Not implemented here, on purpose, and tracked rather than discovered: the
-// rich-content components, and notifications, audio and `Timeline`. That is
-// ubugeeei-prod/uf#314.
+// rich-content components, and audio and `Timeline`. Notifications are a
+// hook, not a layout. That is ubugeeei-prod/uf#314.

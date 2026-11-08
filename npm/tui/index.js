@@ -86,7 +86,9 @@
 // (`position`): an absolute child is taken out of the column and stays on
 // the window, and a relative offset nudges a row. Not here: images,
 // the rich content components, and everything under OpenTUI's "application
-// APIs" — except for the write-only OSC 52 clipboard — which is why
+// APIs" — except for the write-only OSC 52 clipboard and `useNotifications()`,
+// which writes one of OSC 9 or OSC 777 and does not ask the terminal which
+// it implements — which is why
 // `getSelectedText()` hands a string back and leaves policy to the caller.
 // Those gaps are ubugeeei-prod/uf#314, and they are absent rather than
 // present as functions that throw — because a stub is what this package
@@ -162,6 +164,7 @@ export type { Color, Frame, Rect, Style } from "./cells.js";
 export { Attributes, INHERIT, frameRow, frameText, parseColor } from "./cells.js";
 
 export type { Clipboard } from "./clipboard.js";
+export type { Notifications, NotificationProtocol } from "./notifications.js";
 
 export type {
   AlignContent,
@@ -231,6 +234,7 @@ export {
   Textarea,
   useClipboard,
   useKeyboard,
+  useNotifications,
   useRenderer,
   useTerminalSize,
 } from "./components.js";

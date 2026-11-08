@@ -60,6 +60,7 @@ import {
 
 import type { BorderStyle } from "./capability.js";
 import type { Clipboard } from "./clipboard.js";
+import type { Notifications } from "./notifications.js";
 import type { KeyEvent } from "./keys.js";
 import type { MouseEvent } from "./mouse.js";
 import type {
@@ -758,6 +759,19 @@ export function useTerminalSize(): { readonly width: number, readonly height: nu
  */
 export function useClipboard(): Clipboard {
   return useRenderer().clipboard;
+}
+
+/**
+ * The terminal's desktop notifications.
+ *
+ * Interactive terminals get one escape sequence: OSC 9 unless the caller
+ * named OSC 777. `notify(title, body)` writes that sequence. Redirected
+ * output and in-memory renders report `supported: false` and return `false`.
+ * There is no acknowledgement and no capability query, so a `true` return
+ * means the sequence was written, not that a desktop showed it.
+ */
+export function useNotifications(): Notifications {
+  return useRenderer().notifications;
 }
 
 /** Everything an `Input` accepts. */
