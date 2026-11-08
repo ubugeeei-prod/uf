@@ -233,7 +233,7 @@ and proposed order of work are tracked in [#1368](https://github.com/ubugeeei-pr
 | `FocusScope`, `useFocusManager` | **Partial**: dialog focus handling is internal; there is no public scope or manager |
 | `VisuallyHidden`, shared live `announce()` | **Implemented** in `visually-hidden.js`, with screen-reader and lifecycle tests |
 | `useLandmark` | **Missing**: only the Toast region handles F6 |
-| `usePreventScroll`, `ariaHideOutside` | **Partial**: scroll lock lacks iOS touch/viewport handling; a dialog does not hide siblings added after opening |
+| `usePreventScroll`, `ariaHideOutside` | **Partial**: scroll lock lacks iOS touch/viewport handling. A dialog hides an element added beside it while it is open, and leaves the live announcer alone |
 | `ListBox`, `GridList`, `Tree`, `TagGroup` | **Partial**: selection behaviour, ranges, actions and paging work; sections, interactive grid cells and localised announcements do not |
 | Virtualizer and collection drag/drop | **Partial**: fixed row heights and single-item reordering only; no variable heights or cross-collection drops |
 | `Table` | **Partial**: sorting and row counts work; range selection, grid navigation and column resizing do not |

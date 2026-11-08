@@ -1143,6 +1143,40 @@ describe("Dialog", () => {
     expect(trigger).not.toHaveAttribute("inert");
   });
 
+  it("hides an element added beside it while it is open", async () => {
+    render(<Example />);
+    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+    const late = document.createElement("button");
+    late.type = "button";
+    late.textContent = "Late";
+    const inside = document.createElement("button");
+    inside.type = "button";
+    inside.textContent = "Inside";
+    const announcer = document.createElement("div");
+    announcer.setAttribute("data-uf-live-announcer", "");
+    announcer.textContent = "Saved";
+    // The observer reports after the insertion, as a microtask.
+    await act(async () => {
+      document.body?.appendChild(late);
+      document.body?.appendChild(announcer);
+      screen.getByRole("dialog").appendChild(inside);
+      await Promise.resolve();
+    });
+    expect(late).toHaveAttribute("aria-hidden", "true");
+    expect(late).toHaveAttribute("inert");
+    // A control the dialog itself just rendered is the dialog, not the page.
+    expect(inside).not.toHaveAttribute("aria-hidden");
+    expect(inside).not.toHaveAttribute("inert");
+    // And the announcer has to stay readable, or a dialog cannot say what it did.
+    expect(announcer).not.toHaveAttribute("aria-hidden");
+    expect(announcer).not.toHaveAttribute("inert");
+    await userEvent.keyboard("{Escape}");
+    expect(late).not.toHaveAttribute("aria-hidden");
+    expect(late).not.toHaveAttribute("inert");
+    late.remove();
+    announcer.remove();
+  });
+
   it("holds the page still while it is open, and gives it back", async () => {
     const before = document.body?.style.overflow;
     render(<Example />);
@@ -1251,6 +1285,31 @@ describe("Dialog: two of them stacked", () => {
     await userEvent.click(trigger);
     await userEvent.keyboard("{Escape}");
     expect(trigger).toHaveFocus();
+  });
+
+  it("keeps an element added while both are open hidden after the inner one closes", async () => {
+    render(<Stacked />);
+    await userEvent.click(screen.getByRole("button", { name: "Open inner" }));
+    const late = document.createElement("button");
+    late.type = "button";
+    late.textContent = "Late";
+    await act(async () => {
+      document.body?.appendChild(late);
+      await Promise.resolve();
+    });
+    expect(late).toHaveAttribute("aria-hidden", "true");
+    expect(late).toHaveAttribute("inert");
+    await userEvent.keyboard("{Escape}");
+    // The outer dialog is still open, so the page behind both of them is still
+    // gone. The inner dialog's cleanup must not hand the element back.
+    expect(screen.getAllByRole("dialog").length).toBe(1);
+    expect(late).toHaveAttribute("aria-hidden", "true");
+    expect(late).toHaveAttribute("inert");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBe(null);
+    expect(late).not.toHaveAttribute("aria-hidden");
+    expect(late).not.toHaveAttribute("inert");
+    late.remove();
   });
 
   it("hands the page back the state the outer dialog left it in", async () => {

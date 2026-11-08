@@ -19,7 +19,9 @@
 //     about hand-written dialogs.
 //   * **The rest of the page is gone**, not merely covered. `aria-modal` says
 //     so to a screen reader and `inert` says so to the browser; a dimmed
-//     backdrop says it only to people who can see the dim.
+//     backdrop says it only to people who can see the dim. An element that
+//     arrives while the dialog is open is hidden as well. The live announcer
+//     is not: a dialog still has to be able to say what it just did.
 //   * **The page behind does not scroll**, because a wheel over a modal that
 //     scrolls the document loses the reader's position in it.
 //
@@ -485,6 +487,12 @@ component DialogClose(children: React.Node, render?: RenderProp, ...rest: Rest) 
  * any dialog is open. React Aria's `ariaHideOutside` keeps its announcer for the
  * same reason.
  *
+ * The walk runs once, when the dialog opens, and would miss a sibling inserted
+ * afterwards: a toast, a second route, a node another library appended to
+ * `<body>`. That node is the page too. A `MutationObserver` on `<body>` applies
+ * the same rule to it. A node added inside the dialog is the dialog, and is
+ * left alone.
+ *
  * Both attributes, because they address different audiences. `aria-hidden`
  * removes the subtree from the accessibility tree; `inert` also stops clicks
  * and takes it out of the tab order, which is the browser's own enforcement of
@@ -494,6 +502,23 @@ component DialogClose(children: React.Node, render?: RenderProp, ...rest: Rest) 
 function concealOutside(element: HTMLElement): () => void {
   const document = element.ownerDocument;
   const restore: Array<{| element: Element, hidden: string | null, inert: boolean |}> = [];
+  const concealed = new Set<Element>();
+
+  const conceal = (sibling: Element) => {
+    // `announce()`'s regions stay readable: a message about what the dialog
+    // just did ("Saved", "3 results") is exactly what a modal needs to say.
+    if (concealed.has(sibling) || sibling.hasAttribute("data-uf-live-announcer")) {
+      return;
+    }
+    concealed.add(sibling);
+    restore.push({
+      element: sibling,
+      hidden : sibling.getAttribute("aria-hidden") ?? null,
+      inert  : sibling.hasAttribute("inert"),
+    });
+    sibling.setAttribute("aria-hidden", "true");
+    sibling.setAttribute("inert", "");
+  };
 
   let node: Element | null = element;
   while (node != null && node !== document.body) {
@@ -502,23 +527,36 @@ function concealOutside(element: HTMLElement): () => void {
       break;
     }
     for (const sibling of Array.from(parent.children)) {
-      // `announce()`'s regions stay readable: a message about what the dialog
-      // just did ("Saved", "3 results") is exactly what a modal needs to say.
-      if (sibling === node || sibling.hasAttribute("data-uf-live-announcer")) {
-        continue;
+      if (sibling !== node) {
+        conceal(sibling);
       }
-      restore.push({
-        element: sibling,
-        hidden : sibling.getAttribute("aria-hidden") ?? null,
-        inert  : sibling.hasAttribute("inert"),
-      });
-      sibling.setAttribute("aria-hidden", "true");
-      sibling.setAttribute("inert", "");
     }
     node = parent;
   }
 
+  // The document's own constructor. A test installs its document on another
+  // host, and `globalThis.MutationObserver` is not that document's.
+  const view: $FlowFixMe = document.defaultView;
+  const Observer = view?.MutationObserver;
+  let observer = null;
+  if (Observer != null && document.body != null) {
+    observer = new Observer((records) => {
+      for (const record of records) {
+        for (const added of Array.from(record.addedNodes)) {
+          const sibling = pageSibling(element, added);
+          if (sibling != null) {
+            conceal(sibling);
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
   return () => {
+    // This observer's job ended with the dialog. Disconnecting first keeps a
+    // node the close itself removes from being read as a new sibling.
+    observer?.disconnect();
     // In reverse, so an element concealed by two nested dialogs is handed back
     // the state the outer one found rather than the state the inner one did.
     for (let index = restore.length - 1; index >= 0; index -= 1) {
@@ -537,6 +575,36 @@ function concealOutside(element: HTMLElement): () => void {
       }
     }
   };
+}
+
+/**
+ * An element inserted beside the dialog, or beside one of its ancestors.
+ *
+ * A child of the dialog is part of it. An ancestor of the dialog is the path
+ * the walk already kept. Anything inside the live announcer stays readable
+ * even when the announcer's own element was not the node that was inserted.
+ */
+function pageSibling(dialog: HTMLElement, added: Node): Element | null {
+  if (added.nodeType !== 1) {
+    return null;
+  }
+  // `nodeType` is the refinement. Flow's `Node` does not narrow to `Element`.
+  const sibling: Element = added as $FlowFixMe;
+  if (dialog.contains(sibling) || sibling.contains(dialog)) {
+    return null;
+  }
+  const parent = sibling.parentElement;
+  if (parent == null || !parent.contains(dialog)) {
+    return null;
+  }
+  let current: Element | null = sibling;
+  while (current != null) {
+    if (current.hasAttribute("data-uf-live-announcer")) {
+      return null;
+    }
+    current = current.parentElement ?? null;
+  }
+  return sibling;
 }
 
 /**
