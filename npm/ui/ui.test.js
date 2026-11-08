@@ -6247,6 +6247,96 @@ describe("Slider", () => {
     expect(now(screen.getByRole("slider"))).toBe("75");
   });
 
+  it("submits the thumbs in order, and only when it has a name", () => {
+    const { container } = render(
+      <form>
+        <Slider.Root defaultValue={[20, 60]} name="price">
+          <Slider.Track>
+            <Slider.Range />
+          </Slider.Track>
+          <Slider.Thumb aria-label="Minimum" index={0} />
+          <Slider.Thumb aria-label="Maximum" index={1} />
+        </Slider.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    const read = () => new form.ownerDocument.defaultView.FormData(form).get("price");
+    // One hidden input, not a second slider. A reader still hears two thumbs.
+    expect(screen.getAllByRole("slider").length).toBe(2);
+    expect(read()).toBe("20,60");
+  });
+
+  it("leaves a form alone when it is disabled or unnamed", () => {
+    const { container } = render(
+      <form>
+        <Slider.Root defaultValue={[20]} disabled name="volume">
+          <Slider.Track>
+            <Slider.Thumb aria-label="Volume" />
+          </Slider.Track>
+        </Slider.Root>
+        <Slider.Root defaultValue={[4]}>
+          <Slider.Track>
+            <Slider.Thumb aria-label="Quiet" />
+          </Slider.Track>
+        </Slider.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    const data = new form.ownerDocument.defaultView.FormData(form);
+    // A disabled control is omitted, which is what a native control does, and
+    // an unnamed one was never a field.
+    expect(data.get("volume")).toBe(null);
+    expect([...data.keys()]).toEqual([]);
+  });
+
+  it("reports the value when the gesture ends, not on the way there", () => {
+    const ended = fn();
+    render(
+      <Slider.Root defaultValue={[20]} onValueChangeEnd={ended}>
+        <Slider.Track data-testid="track">
+          <Slider.Range />
+        </Slider.Track>
+        <Slider.Thumb aria-label="Volume" />
+      </Slider.Root>,
+    );
+    const thumb = screen.getByRole("slider");
+    fireEvent.keyDown(thumb, { key: "ArrowRight" });
+    expect(now(thumb)).toBe("21");
+    expect(ended).not.toHaveBeenCalled();
+    fireEvent.keyUp(thumb, { key: "ArrowRight" });
+    expect(ended).toHaveBeenLastCalledWith([21]);
+
+    const track = screen.getByTestId("track");
+    measure(track, { left: 0, width: 200, top: 0, height: 10 });
+    fireEvent.pointerDown(track, { clientX: 100, clientY: 5, pointerId: 1 });
+    expect(ended).toHaveBeenCalledTimes(1);
+    fireEvent.pointerUp(track, { pointerId: 1 });
+    expect(ended).toHaveBeenLastCalledWith([50]);
+  });
+
+  it("steps a focused thumb on the wheel and lets the page scroll otherwise", () => {
+    const ended = fn();
+    render(
+      <Slider.Root defaultValue={[20]} onValueChangeEnd={ended}>
+        <Slider.Track>
+          <Slider.Range />
+        </Slider.Track>
+        <Slider.Thumb aria-label="Volume" />
+      </Slider.Root>,
+    );
+    const thumb = screen.getByRole("slider");
+    fireEvent.wheel(thumb, { deltaY: -100 });
+    // Nobody is editing it. The wheel still belongs to the page.
+    expect(now(thumb)).toBe("20");
+    expect(ended).not.toHaveBeenCalled();
+    thumb.focus();
+    fireEvent.wheel(thumb, { deltaY: -100 });
+    expect(now(thumb)).toBe("21");
+    expect(ended).toHaveBeenLastCalledWith([21]);
+    fireEvent.wheel(thumb, { deltaX: -40, deltaY: 0 });
+    expect(now(thumb)).toBe("20");
+  });
+
   it("hands root, track, range and thumb behaviour to caller-rendered elements", async () => {
     render(
       <Slider.Root

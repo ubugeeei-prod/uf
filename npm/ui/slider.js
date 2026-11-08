@@ -69,6 +69,24 @@
 // on the range — and the caller's stylesheet decides what to do with them. A
 // caller who writes no CSS sees nothing, which is the same promise every other
 // module here makes.
+//
+// # A form, a wheel, and the end of a gesture
+//
+// A thumb is a `span`. A form never sees it, so `name` renders the hidden
+// input `internal/form-value.js` argues for, and the value it carries is the
+// thumbs in order, joined by a comma — one number when there is one thumb.
+// No `name`, no input.
+//
+// `onValueChange` fires while the value is moving. `onValueChangeEnd` fires
+// when the reader lets go: the pointer comes up, the key comes up, or a wheel
+// notch lands. A parent that writes on every move and commits when the gesture
+// ends needs both, and the second one is the values the gesture left.
+//
+// The wheel is the focused thumb's. A wheel over a slider nobody is editing
+// still scrolls the page; taking it would trap every reader who merely passed
+// the control. Wheel up, and a wheel to the right when there is no vertical
+// delta, move toward the maximum. Writing direction does not flip that: a
+// wheel is not an arrow.
 
 "use client";
 
@@ -86,6 +104,7 @@ import {
 import type { Orientation } from "./internal/roving-focus.js";
 import { clamp, fraction, isReversed, snap } from "./internal/range.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { FormValue } from "./internal/form-value.js";
 
 type SliderState = {|
   readonly values     : $ReadOnlyArray<number>,
@@ -105,6 +124,11 @@ type SliderState = {|
   /** The thumb nearest a value, which is the one a press on the track moves. */
   readonly nearest : (value: number) => number,
   readonly trackRef: { current: HTMLElement | null },
+  /** The gesture is over. The values are whatever `setAt` left. */
+  readonly endGesture: () => void,
+  /** Remember that a key is held, so its `keyup` can end the gesture. */
+  readonly noteKey: () => void,
+  readonly endKey : () => void,
 |};
 
 const SliderContext: React.Context<SliderState | null> = createContext(null);
@@ -126,19 +150,21 @@ hook useSlider(part: string): SliderState {
  * caller narrow a union to read their own value back.
  */
 component SliderRoot(
-  children      : React.Node,
-  value?        : $ReadOnlyArray<number>,
-  defaultValue? : $ReadOnlyArray<number> = [0],
-  onValueChange?: (value: $ReadOnlyArray<number>) => void,
-  min?          : number = 0,
-  max?          : number = 100,
-  step?         : number = 1,
-  largeStep?    : number = 10,
-  orientation?  : Orientation = "horizontal",
-  disabled?     : boolean = false,
-  valueText?    : (value: number, index: number) => string,
-  render?       : RenderProp,
-  ...rest       : Rest
+  children         : React.Node,
+  value?           : $ReadOnlyArray<number>,
+  defaultValue?    : $ReadOnlyArray<number> = [0],
+  onValueChange?   : (value: $ReadOnlyArray<number>) => void,
+  onValueChangeEnd?: (value: $ReadOnlyArray<number>) => void,
+  name?            : string,
+  min?             : number = 0,
+  max?             : number = 100,
+  step?            : number = 1,
+  largeStep?       : number = 10,
+  orientation?     : Orientation = "horizontal",
+  disabled?        : boolean = false,
+  valueText?       : (value: number, index: number) => string,
+  render?          : RenderProp,
+  ...rest          : Rest
 ) {
   const [values, setValues] = useControlled(value, defaultValue, onValueChange);
   const trackRef            = useRef<HTMLElement | null>(null);
@@ -178,6 +204,24 @@ component SliderRoot(
     setValues(changed);
   });
 
+  const endGesture = useStableCallback(() => {
+    onValueChangeEnd?.(live.current);
+  });
+  // Set on the key that moved a thumb and read on its `keyup`, which can be a
+  // different event from the one that wrote the value. A held key repeats
+  // `keydown` and ends once.
+  const keyHeld = useRef<boolean>(false);
+  const noteKey = useStableCallback(() => {
+    keyHeld.current = true;
+  });
+  const endKey  = useStableCallback(() => {
+    if (!keyHeld.current) {
+      return;
+    }
+    keyHeld.current = false;
+    endGesture();
+  });
+
   const nearest = useStableCallback((target: number): number => {
     const currentValues = live.current;
     let at = 0;
@@ -209,14 +253,56 @@ component SliderRoot(
     setAt,
     nearest,
     trackRef,
+    endGesture,
+    noteKey,
+    endKey,
   };
+
+  const passed = withoutComposed(rest, ["onWheel"]);
+  const onWheel = composeHandlers(rest.onWheel, (event: $FlowFixMe) => {
+    if (disabled) {
+      return;
+    }
+    const root: HTMLElement | null = event.currentTarget;
+    const active: HTMLElement | null = root?.ownerDocument?.activeElement ?? null;
+    if (root == null || active == null || !root.contains(active)) {
+      return;
+    }
+    if (active.getAttribute("role") !== "slider") {
+      return;
+    }
+    const index = Number(active.getAttribute("data-uf-slider-index"));
+    if (!Number.isInteger(index)) {
+      return;
+    }
+    const move = wheelStep(event.deltaY, event.deltaX, step);
+    if (move == null) {
+      return;
+    }
+    // The page would scroll as well, and a slider that does both moves the
+    // value and the thing the reader was looking at.
+    event.preventDefault();
+    setAt(index, valueAt(index) + move);
+    endGesture();
+  });
+  const fields =
+    name == null ? null : <FormValue disabled={disabled} name={name} value={values.join(",")} />;
+  const props = withProps(passed, {
+    children: (
+      <>
+        {fields}
+        {children}
+      </>
+    ),
+    onWheel,
+  });
 
   return (
     <SliderContext.Provider value={state}>
       {
         match (render) {
-          undefined    => <div {...rest}>{children}</div>,
-          const custom => custom(withProps(rest, { children })),
+          undefined    => <div {...props} />,
+          const custom => custom(props),
         }
       }
     </SliderContext.Provider>
@@ -289,8 +375,12 @@ component SliderTrack(children: React.Node, render?: RenderProp, ...rest: Rest) 
     }),
     // uf-lint-disable-next-line react-compiler/refs
     onPointerUp: composeHandlers(rest.onPointerUp, (event: $FlowFixMe) => {
+      const started = dragging.current != null;
       dragging.current = null;
       event.currentTarget?.releasePointerCapture?.(event.pointerId);
+      if (started) {
+        slider.endGesture();
+      }
     }),
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       // React calls callback refs during commit; pointer handlers read the track later.
@@ -353,7 +443,7 @@ component SliderRange(render?: RenderProp, ...rest: Rest) {
  */
 component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
   const slider = useSlider("Slider.Thumb");
-  const passed = withoutComposed(rest, ["onKeyDown", "style"]);
+  const passed = withoutComposed(rest, ["onKeyDown", "onKeyUp", "style"]);
   const value = slider.values[index] ?? slider.min;
   const [lower, upper] = boundsOf(slider.values, index, slider.min, slider.max);
   const props = withProps(passed, {
@@ -362,10 +452,11 @@ component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
     // The neighbour's value, not the slider's end. A reader told they may
     // set this thumb to 90 while the control refuses at 60 has been told
     // something the control disagrees with.
-    "aria-valuemax" : upper,
-    "aria-valuemin" : lower,
-    "aria-valuenow" : value,
-    "aria-valuetext": slider.valueText?.(value, index),
+    "aria-valuemax"       : upper,
+    "aria-valuemin"       : lower,
+    "aria-valuenow"       : value,
+    "aria-valuetext"      : slider.valueText?.(value, index),
+    "data-uf-slider-index": String(index),
     onKeyDown: composeHandlers(rest.onKeyDown, (event: $FlowFixMe) => {
       if (slider.disabled) {
         return;
@@ -380,15 +471,20 @@ component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
         // moves the page under the reader as it moves the value is a control
         // they cannot watch.
         event.preventDefault();
+        slider.noteKey();
         slider.setAt(index, slider.valueAt(index) + move);
         return;
       }
       if (event.key === "Home" || event.key === "End") {
         event.preventDefault();
+        slider.noteKey();
         // This thumb's own ends, which for the lower thumb of a range is its
         // neighbour rather than the slider's maximum.
         slider.setAt(index, event.key === "Home" ? lowerNow : upperNow);
       }
+    }),
+    onKeyUp: composeHandlers(rest.onKeyUp, () => {
+      slider.endKey();
     }),
     role: "slider",
     style: {
@@ -413,6 +509,33 @@ component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
  * lot less", which is not a direction on the page. Neither are `ArrowUp` and
  * `ArrowDown`, since writing direction does not flip the vertical axis.
  */
+/**
+ * How far one wheel event moves the value, or nothing when it did not move.
+ *
+ * A vertical delta wins, and wheel up — a negative `deltaY` — heads toward
+ * the maximum, which is what a native range does under the pointer. A purely
+ * horizontal wheel heads toward the maximum when it goes right. One event is
+ * one step: a trackpad that reports a stream of events takes a stream of
+ * steps, the same way a held arrow does, and a smaller `step` is how a caller
+ * makes that slower.
+ */
+function finiteAxis(value: mixed): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function wheelStep(deltaY: mixed, deltaX: mixed, step: number): number | null {
+  const verticalDelta = finiteAxis(deltaY);
+  const horizontalDelta = finiteAxis(deltaX);
+  const vertical = verticalDelta !== 0;
+  const delta = vertical ? verticalDelta : horizontalDelta;
+  if (delta === 0) {
+    return null;
+  }
+  const move = step <= 0 ? 1 : step;
+  const towardMax = vertical ? verticalDelta < 0 : horizontalDelta > 0;
+  return towardMax ? move : -move;
+}
+
 function stepFor(key: string, step: number, largeStep: number, reversed: boolean): number | null {
   const forward = reversed ? -1 : 1;
   const move = step <= 0 ? 1 : step;

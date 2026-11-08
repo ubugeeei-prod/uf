@@ -8,6 +8,17 @@ import { useControlled } from "./internal/controlled-state.js";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { composeHandlers, withProps } from "./internal/merge-props.js";
 import { useLocale } from "./i18n-provider.js";
+import { FormValue } from "./internal/form-value.js";
+
+/**
+ * How long a held stepper waits before it repeats.
+ *
+ * Longer than a click, so a press that comes up immediately steps once. Short
+ * enough that holding still feels like holding.
+ */
+const HOLD_BEFORE_REPEAT_MS = 400;
+/** How often a held stepper repeats after `HOLD_BEFORE_REPEAT_MS`. */
+const HOLD_REPEAT_MS = 60;
 
 type NumberFormatter = {
   format         : (value: number) => string,
@@ -74,6 +85,12 @@ type NumberState = {
   commit   : () => void,
   stepBy   : (direction: number) => void,
   boundary : (value: number | void) => void,
+  /** The value a gesture left, after `stepBy` or `commit` has stored it. */
+  finish: () => void,
+  /** Step once and keep stepping while the pointer stays down. */
+  hold: (direction: number) => void,
+  /** The pointer came up. Stop repeating and finish the gesture. */
+  release: () => void,
 };
 const NumberContext: React.Context<NumberState | null> = createContext(null);
 hook useNumber(): NumberState {
@@ -87,7 +104,9 @@ component NumberFieldRoot(
   value?             : number | null,
   defaultValue?      : number | null = null,
   onValueChange?     : (value: number | null) => void,
+  onValueChangeEnd?  : (value: number | null) => void,
   onValidationChange?: (invalid: boolean) => void,
+  name?              : string,
   min?               : number,
   max?               : number,
   step?              : number,
@@ -131,8 +150,13 @@ component NumberFieldRoot(
   // controlled parent that refuses a change still wins the next keystroke: the
   // ref only ever spans a batch React has not rendered yet.
   const proposed = useRef<string | null>(null);
+  // The number `assign` stored, ahead of the render a controlled parent may
+  // then refuse. The effect copies `current` back, so the refusal wins the
+  // next gesture the same way `proposed` does for text.
+  const committed = useRef<number | null>(current);
   useEffect(() => {
     proposed.current = null;
+    committed.current = current;
   });
   const assess = (source: string) => {
     const parsed = parseNumber(source, formatter);
@@ -152,21 +176,28 @@ component NumberFieldRoot(
   // committed is real state, and once the effect above has cleared `proposed` it
   // is the only record of it. Reading `current` here committed the old value and
   // threw away an invalid draft the field was meant to keep for correction.
-  const latest = useStableCallback((): string => proposed.current ?? text);
-  const assign = useStableCallback((next: number | null) => {
+  const latest      = useStableCallback((): string => proposed.current ?? text);
+  const assign      = useStableCallback((next: number | null) => {
     if (disabled || readOnly) return;
     proposed.current = next == null ? "" : formatter.format(next);
+    committed.current = next;
     setDraft(null);
     setCurrent(next);
     onValidationChange?.(false);
   });
-  const commit = useStableCallback(() => {
+  const finish      = useStableCallback(() => {
+    onValueChangeEnd?.(committed.current);
+  });
+  const commit      = useStableCallback(() => {
     if (disabled || readOnly) return;
     const { parsed, invalid } = assess(latest());
     onValidationChange?.(invalid);
     if (!invalid) assign(parsed);
+    // An invalid draft stays on screen and the value does not move, so the
+    // gesture ends on the number the field already held.
+    finish();
   });
-  const stepBy = useStableCallback((direction: number) => {
+  const stepBy      = useStableCallback((direction: number) => {
     const { parsed } = assess(latest());
     const start = parsed != null && Number.isFinite(parsed) ? parsed : (current ?? min ?? 0);
     const base = min ?? 0;
@@ -181,6 +212,37 @@ component NumberFieldRoot(
         ? Infinity
         : Number((base + Math.floor((max - base) / increment + 1e-9) * increment).toPrecision(15));
     assign(Math.max(min ?? -Infinity, Math.min(ceiling, next)));
+  });
+  const repeatTimer = useRef<TimeoutID | null>(null);
+  const holding     = useRef<boolean>(false);
+  const stopRepeat = () => {
+    if (repeatTimer.current != null) {
+      clearTimeout(repeatTimer.current);
+      repeatTimer.current = null;
+    }
+  };
+  useEffect(
+    () => () => {
+      stopRepeat();
+    },
+    [],
+  );
+  const hold    = useStableCallback((direction: number) => {
+    if (disabled || readOnly) return;
+    stopRepeat();
+    holding.current = true;
+    stepBy(direction);
+    const tick = () => {
+      stepBy(direction);
+      repeatTimer.current = setTimeout(tick, HOLD_REPEAT_MS);
+    };
+    repeatTimer.current = setTimeout(tick, HOLD_BEFORE_REPEAT_MS);
+  });
+  const release = useStableCallback(() => {
+    if (!holding.current) return;
+    holding.current = false;
+    stopRepeat();
+    finish();
   });
   const state = {
     value: current,
@@ -198,6 +260,9 @@ component NumberFieldRoot(
     },
     commit,
     stepBy,
+    finish,
+    hold,
+    release,
     boundary: (next: number | void) => {
       if (next != null)
         assign(
@@ -210,7 +275,21 @@ component NumberFieldRoot(
         );
     },
   };
-  const props = withProps(rest, { children, "data-invalid": invalid ? "" : undefined });
+  const props = withProps(rest, {
+    children: (
+      <>
+        {name == null ? null : (
+          <FormValue
+            disabled={disabled}
+            name={name}
+            value={current == null ? "" : String(current)}
+          />
+        )}
+        {children}
+      </>
+    ),
+    "data-invalid": invalid ? "" : undefined,
+  });
   return (
     <NumberContext.Provider value={state}>
       {
@@ -226,6 +305,9 @@ component NumberFieldRoot(
 /** Field.Control may render this input to supply the label, description and error ids. */
 component NumberFieldInput(render?: RenderProp, ...rest: Rest) {
   const state = useNumber();
+  // Set while an arrow, page, Home or End key is down, so the matching
+  // `keyup` ends the gesture once even when the key repeated.
+  const spinning = useRef<boolean>(false);
   const props = withProps(rest, {
     type: "text",
     role: "spinbutton",
@@ -242,19 +324,44 @@ component NumberFieldInput(render?: RenderProp, ...rest: Rest) {
       state.edit(event.currentTarget.value),
     ),
     onBlur: composeHandlers(rest.onBlur, state.commit),
+    // `spinning` is set on keydown and read on keyup, which is not this render.
+    // uf-lint-disable-next-line react-compiler/refs
     onKeyDown: composeHandlers(rest.onKeyDown, (event: $FlowFixMe) => {
       if (state.disabled || state.readOnly) return;
       const key = event.key;
       if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", "Enter"].includes(key)) {
         event.preventDefault();
+        if (key === "Enter") {
+          state.commit();
+          return;
+        }
+        spinning.current = true;
         if (key === "Home") state.boundary(state.min);
         else if (key === "End") state.boundary(state.max);
-        else if (key === "Enter") state.commit();
         else
           state.stepBy(
             key === "ArrowUp" ? 1 : key === "ArrowDown" ? -1 : key === "PageUp" ? 10 : -10,
           );
       }
+    }),
+    // uf-lint-disable-next-line react-compiler/refs
+    onKeyUp: composeHandlers(rest.onKeyUp, (event: $FlowFixMe) => {
+      if (!spinning.current) return;
+      spinning.current = false;
+      if (event.key === "Enter") return;
+      state.finish();
+    }),
+    onWheel: composeHandlers(rest.onWheel, (event: $FlowFixMe) => {
+      if (state.disabled || state.readOnly) return;
+      const active = event.currentTarget?.ownerDocument?.activeElement;
+      // A wheel over a field the reader is not editing still belongs to the
+      // page. Taking it would trap the scroll on the way past.
+      if (active !== event.currentTarget) return;
+      const direction = wheelDirection(event.deltaY, event.deltaX);
+      if (direction == null) return;
+      event.preventDefault();
+      state.stepBy(direction);
+      state.finish();
     }),
   });
   return match (render) {
@@ -265,6 +372,9 @@ component NumberFieldInput(render?: RenderProp, ...rest: Rest) {
 
 component NumberFieldIncrement(children?: React.Node = "+", render?: RenderProp, ...rest: Rest) {
   const state = useNumber();
+  // Set on pointer down and still set when the click that follows it arrives,
+  // so that click does not step a second time. Cleared after that click.
+  const fromPointer = useRef<boolean>(false);
   const props = withProps(rest, {
     children,
     type        : "button",
@@ -273,7 +383,47 @@ component NumberFieldIncrement(children?: React.Node = "+", render?: RenderProp,
       state.disabled ||
       state.readOnly ||
       (state.max != null && state.value != null && state.value >= state.max),
-    onClick: composeHandlers(rest.onClick, () => state.stepBy(1)),
+    // `fromPointer` is set on pointer down and still set when the click that
+    // follows it arrives, so that click does not step a second time.
+    // uf-lint-disable-next-line react-compiler/refs
+    onPointerDown: composeHandlers(rest.onPointerDown, (event: $FlowFixMe) => {
+      if (event.button != null && event.button !== 0) return;
+      fromPointer.current = true;
+      state.hold(1);
+    }),
+    // uf-lint-disable-next-line react-compiler/refs
+    onPointerUp: composeHandlers(rest.onPointerUp, () => {
+      state.release();
+      // The click is dispatched before the next microtask, and still needs to
+      // see this. A pointer that never produces a click must not swallow the
+      // keyboard click that comes later.
+      queueMicrotask(() => {
+        fromPointer.current = false;
+      });
+    }),
+    // uf-lint-disable-next-line react-compiler/refs
+    onPointerLeave: composeHandlers(rest.onPointerLeave, () => {
+      state.release();
+      queueMicrotask(() => {
+        fromPointer.current = false;
+      });
+    }),
+    // uf-lint-disable-next-line react-compiler/refs
+    onPointerCancel: composeHandlers(rest.onPointerCancel, () => {
+      state.release();
+      queueMicrotask(() => {
+        fromPointer.current = false;
+      });
+    }),
+    // uf-lint-disable-next-line react-compiler/refs
+    onClick: composeHandlers(rest.onClick, () => {
+      if (fromPointer.current) {
+        fromPointer.current = false;
+        return;
+      }
+      state.stepBy(1);
+      state.finish();
+    }),
   });
   return match (render) {
     undefined    => <button {...props} />,
@@ -281,7 +431,8 @@ component NumberFieldIncrement(children?: React.Node = "+", render?: RenderProp,
   };
 }
 component NumberFieldDecrement(children?: React.Node = "−", render?: RenderProp, ...rest: Rest) {
-  const state = useNumber();
+  const state       = useNumber();
+  const fromPointer = useRef<boolean>(false);
   const props = withProps(rest, {
     children,
     type        : "button",
@@ -290,7 +441,43 @@ component NumberFieldDecrement(children?: React.Node = "−", render?: RenderPro
       state.disabled ||
       state.readOnly ||
       (state.min != null && state.value != null && state.value <= state.min),
-    onClick: composeHandlers(rest.onClick, () => state.stepBy(-1)),
+    // Same as Increment: the pointer's click must not step again.
+    // uf-lint-disable-next-line react-compiler/refs
+    onPointerDown: composeHandlers(rest.onPointerDown, (event: $FlowFixMe) => {
+      if (event.button != null && event.button !== 0) return;
+      fromPointer.current = true;
+      state.hold(-1);
+    }),
+    // uf-lint-disable-next-line react-compiler/refs
+    onPointerUp: composeHandlers(rest.onPointerUp, () => {
+      state.release();
+      queueMicrotask(() => {
+        fromPointer.current = false;
+      });
+    }),
+    // uf-lint-disable-next-line react-compiler/refs
+    onPointerLeave: composeHandlers(rest.onPointerLeave, () => {
+      state.release();
+      queueMicrotask(() => {
+        fromPointer.current = false;
+      });
+    }),
+    // uf-lint-disable-next-line react-compiler/refs
+    onPointerCancel: composeHandlers(rest.onPointerCancel, () => {
+      state.release();
+      queueMicrotask(() => {
+        fromPointer.current = false;
+      });
+    }),
+    // uf-lint-disable-next-line react-compiler/refs
+    onClick: composeHandlers(rest.onClick, () => {
+      if (fromPointer.current) {
+        fromPointer.current = false;
+        return;
+      }
+      state.stepBy(-1);
+      state.finish();
+    }),
   });
   return match (render) {
     undefined    => <button {...props} />,
@@ -307,6 +494,21 @@ component NumberFieldDecrement(children?: React.Node = "−", render?: RenderPro
  * stack and an error name the part a reader can find rather than one of forty
  * `Root`s.
  */
+/**
+ * Which way one wheel event steps, or nothing when it did not move.
+ *
+ * Wheel up — a negative `deltaY` — increases, as it does on a native number
+ * input. A purely horizontal wheel increases when it goes right. One event is
+ * one step.
+ */
+function wheelDirection(deltaY: mixed, deltaX: mixed): number | null {
+  const vertical = typeof deltaY === "number" && Number.isFinite(deltaY) ? deltaY : 0;
+  const horizontal = typeof deltaX === "number" && Number.isFinite(deltaX) ? deltaX : 0;
+  if (vertical !== 0) return vertical < 0 ? 1 : -1;
+  if (horizontal !== 0) return horizontal > 0 ? 1 : -1;
+  return null;
+}
+
 export {
   NumberFieldRoot as Root,
   NumberFieldInput as Input,

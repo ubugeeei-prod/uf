@@ -66,6 +66,8 @@ const EVENT_TYPES: { readonly [string]: string } = {
   pointerout        : "PointerEvent",
   gotpointercapture : "PointerEvent",
   lostpointercapture: "PointerEvent",
+  // A bare `Event` has no `deltaY`, so a wheel test was stepping by nothing.
+  wheel: "WheelEvent",
 };
 
 /**

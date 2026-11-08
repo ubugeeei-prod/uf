@@ -960,6 +960,19 @@ describe("fireEvent", () => {
     ]);
   });
 
+  it("builds a wheel event with its deltas", () => {
+    // A bare `Event` has no `deltaY`. A test that scrolled a slider was
+    // stepping by nothing and reading the miss as the component.
+    const { container } = render(<div />);
+    const box = elementIn(container, "div");
+    let delta = 0;
+    box.addEventListener("wheel", (event: $FlowFixMe) => {
+      delta = event.deltaY;
+    });
+    fireEvent.wheel(box, { deltaY: -100 });
+    expect(delta).toBe(-100);
+  });
+
   it("reaches onPointerEnter and onMouseEnter, which React builds from over and out", () => {
     // React never listens for an enter or a leave: they do not bubble, so the
     // root would not hear them. It computes them from the `over` and `out`
