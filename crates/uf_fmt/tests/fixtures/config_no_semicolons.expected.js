@@ -1,4 +1,4 @@
-"use flow";
+"use flow"
 const a = 1
 let b = 2
 function f() {
