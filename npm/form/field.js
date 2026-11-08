@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The join between a form and `@uniflowed/ui`'s `Field`.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a `Select`, a `TabSelect` and a `Textarea` draw, and how large they are.
 //

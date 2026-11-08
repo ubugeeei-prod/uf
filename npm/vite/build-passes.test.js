@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What `uf build`'s passes cost the transform, as the `uf:flow` plugin sees
 // them.

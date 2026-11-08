@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { defineConfig } from "@uniflowed/config";
 
 // Nothing about partial prerendering is configured here, and that is the

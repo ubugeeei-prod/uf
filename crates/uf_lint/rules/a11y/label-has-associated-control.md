@@ -3,7 +3,7 @@ A `label` that points at no control gives nothing its name: the field is announc
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Name() {
   return (
     <div>
@@ -21,7 +21,7 @@ app/example.js:5:7 this `<label>` is attached to no control, so clicking it does
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Name() {
   return (
     <div>

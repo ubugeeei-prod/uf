@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Skeleton: the still shapes a page shows while its content loads, with the
 // loading announced rather than only drawn.

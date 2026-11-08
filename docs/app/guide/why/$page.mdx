@@ -77,12 +77,16 @@ something the documentation asks for.
 ### Exhaustiveness you cannot forget
 
 ```js
-enum Status { Idle, Loading, Failed }
+enum Status {
+  Idle,
+  Loading,
+  Failed,
+}
 
 const label = match (status) {
-  Status.Idle => "Ready",
+  Status.Idle    => "Ready",
   Status.Loading => "Working…",
-  Status.Failed => "Failed",
+  Status.Failed  => "Failed",
 };
 ```
 

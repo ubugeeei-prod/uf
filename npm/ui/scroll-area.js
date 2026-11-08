@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A scroll area: a scrollbar you drew yourself, and the keyboard you took away
 // when you did.

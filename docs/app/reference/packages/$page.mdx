@@ -24,7 +24,7 @@ package's `private` flag, so it cannot drift from what a release sends.
 Three rules hold across all of them, and `uf_lib` has tests that enforce each:
 no `export *` unless the package is a peer facade for React, Relay or React
 Native; no side effects at import time, so a bundler can drop what you do not
-use; and a `// @flow` pragma on every file.
+use; and a `"use flow";` directive on every file.
 
 ## Private declarations
 

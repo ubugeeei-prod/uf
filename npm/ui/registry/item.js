@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Item: one row of media, a title, a description and actions, alone or in a
 // list of them.

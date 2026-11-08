@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Scroll area: a box that scrolls what it holds, with thin scrollbars drawn in
 // the page's colours instead of the platform's.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 // A chain the source wrote right-nested. The parentheses are redundant for
 // `&&`, `||` and `??`, so they are not printed, and what is left has to lay

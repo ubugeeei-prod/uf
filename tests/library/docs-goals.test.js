@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The goals map (#1421), checked against the manual it points into.
 //

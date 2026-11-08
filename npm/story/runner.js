@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/story/runner`: stories as tests `uf test` runs.
 //

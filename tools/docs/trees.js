@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Every directory tree the documentation draws is sorted.
 //

@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Drawer: a sheet with a handle, dragged between snap points or moved there
 // with the arrow keys.

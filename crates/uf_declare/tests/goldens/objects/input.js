@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 export type Exact = {| id: string, size: number |};
 

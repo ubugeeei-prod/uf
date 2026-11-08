@@ -3,7 +3,7 @@ An existence check such as `if (value)` on a `?boolean` is false both when the v
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export function describe(value: ?boolean): string {
   if (value) {
     return "set";
@@ -15,7 +15,7 @@ export function describe(value: ?boolean): string {
 ## Good
 
 ```js
-// @flow
+"use flow";
 export function describe(value: ?boolean): string {
   if (value != null) {
     return "set";

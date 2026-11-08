@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The wrong child, in every place this package refuses one, and the right one
 // beside it.

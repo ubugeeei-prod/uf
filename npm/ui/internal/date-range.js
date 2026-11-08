@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import type { PlainDate } from "@uniflowed/core/temporal";
 import { Temporal } from "@uniflowed/core/temporal";
 export type DateRange = {| readonly start: string, readonly end: string |};

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The API reference, written from the packages themselves.
 //

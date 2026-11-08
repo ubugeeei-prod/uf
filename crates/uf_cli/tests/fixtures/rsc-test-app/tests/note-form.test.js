@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 import typeof * as NoteActions from "../app/notes/_actions/notes.js";
 import { afterEach, describe, expect, it, uft } from "@uniflowed/test";

@@ -30,7 +30,7 @@ A component with parts is one namespace. Import the copy as a module, and its
 parts are members of it:
 
 ```js
-// @flow
+"use flow";
 import * as Dialog from "./components/ui/dialog.js";
 
 <Dialog.Root>
@@ -91,7 +91,7 @@ Each module's header says which interaction it exists to get right and what a
 naive version breaks; this page is the shorter version.
 
 ```js
-// @flow
+"use flow";
 // One entry point, and one name per component: `Select` is the namespace,
 // `Select.Root` and `Select.Option` are its parts.
 import { Select } from "@uniflowed/ui";
@@ -270,7 +270,7 @@ providers inherit the surrounding locale. `useLocale()` returns both values,
     selectedKeys={selected}
     onSelectionChange={setSelected}
   />
-</I18nProvider>
+</I18nProvider>;
 ```
 
 `ListBox`, `GridList`, `Tree` and `TagGroup` accept items with unique `key` and
@@ -344,7 +344,7 @@ in a polite live region. Drop callbacks receive `{ keys, target }`.
     <NumberField.Increment aria-label="Increase budget">+</NumberField.Increment>
   </NumberField.Root>
   <Field.Description>Up to 1,000 euros.</Field.Description>
-</Field.Root>
+</Field.Root>;
 ```
 
 `NumberField` values are numbers or `null`. Input commits on blur or Enter;
@@ -380,16 +380,12 @@ clamp the day. Values, default values and callbacks use strings or `null`;
 calendar systems.
 
 ```js
-<DateRangePicker.Root
-  value={stay}
-  onValueChange={setStay}
-  minValue="2026-01-01"
->
+<DateRangePicker.Root value={stay} onValueChange={setStay} minValue="2026-01-01">
   <DateRangePicker.StartField aria-label="Arrival" />
   <DateRangePicker.EndField aria-label="Departure" />
   <DateRangePicker.Trigger>Choose dates</DateRangePicker.Trigger>
   <DateRangePicker.Calendar aria-label="Choose a stay" />
-</DateRangePicker.Root>
+</DateRangePicker.Root>;
 ```
 
 `RangeCalendar.Root` accepts `{ start, end }` or `null`, plus the single-date
@@ -473,7 +469,7 @@ Most UI packages answer "I need this menu item to be a link" with either a copy
 step or an `asChild` clone. uf answers with an explicit `render` prop:
 
 ```js
-<Menu.Item render={(props) => <a href="/settings" {...props} />}>Settings</Menu.Item>
+<Menu.Item render={(props) => <a href="/settings" {...props} />}>Settings</Menu.Item>;
 ```
 
 The part still computes the role, ids, state attributes, handlers, refs and
@@ -489,17 +485,15 @@ shared roving-focus, focus-trap or prop-composition code.
 Spread the props onto one focusable element when the part is interactive:
 
 ```js
-<Tabs.Tab render={(props) => <a href="#billing" {...props} />}>Billing</Tabs.Tab>
+<Tabs.Tab render={(props) => <a href="#billing" {...props} />}>Billing</Tabs.Tab>;
 ```
 
 Spread after your own props when uf must own the semantics:
 
 ```js
-<Switch
-  render={(props) => <span role="presentation" tabIndex={-1} {...props} />}
->
+<Switch render={(props) => <span role="presentation" tabIndex={-1} {...props} />}>
   Email updates
-</Switch>
+</Switch>;
 ```
 
 That renders a switch, not a presentational span, because `role`, `tabIndex`,
@@ -556,7 +550,7 @@ combobox of ARIA 1.2, where `Combobox` is the editable one.
     <Select.Separator />
     <Select.Option value="JP">Japan</Select.Option>
   </Select.List>
-</Select.Root>
+</Select.Root>;
 ```
 
 ### Use a native `<select>` if a native `<select>` will do
@@ -639,7 +633,7 @@ Give `Select.Root` a `name` and it renders a hidden control carrying the
 ```js
 <form action={save}>
   <Select.Root name="country">…</Select.Root>
-</form>
+</form>;
 ```
 
 Without a `name` nothing is submitted, which is right for a select that drives a
@@ -670,7 +664,7 @@ its own store and prevents the native submission, so it never builds a
 whose own header names this exact case:
 
 ```js
-// @flow
+"use flow";
 import { useController } from "@uniflowed/form";
 import { Select } from "@uniflowed/ui";
 
@@ -702,7 +696,7 @@ there would be wrong and confident, telling a reader nothing is chosen when
 something is. Pass `children` to say what the value is called:
 
 ```js
-<Select.Value placeholder="Choose one">{COUNTRIES[value]}</Select.Value>
+<Select.Value placeholder="Choose one">{COUNTRIES[value]}</Select.Value>;
 ```
 
 ### Not shipped, and why
@@ -737,7 +731,7 @@ header; this is the part `Select` had and it did not.
   </Combobox.List>
   <Combobox.Empty>No matches.</Combobox.Empty>
   <Combobox.Status />
-</Combobox.Root>
+</Combobox.Root>;
 ```
 
 | Part | Renders | Notes |
@@ -781,7 +775,9 @@ useKeyCombo("mod+k", () => setOpen(true));
         <Combobox.Group>
           <Combobox.GroupLabel>Files</Combobox.GroupLabel>
           {files.map((each) => (
-            <Combobox.Option key={each} value={each}>{each}</Combobox.Option>
+            <Combobox.Option key={each} value={each}>
+              {each}
+            </Combobox.Option>
           ))}
         </Combobox.Group>
       </Combobox.List>
@@ -789,7 +785,7 @@ useKeyCombo("mod+k", () => setOpen(true));
       <Combobox.Status />
     </Combobox.Root>
   </Dialog.Body>
-</Dialog.Root>
+</Dialog.Root>;
 ```
 
 `useKeyCombo` is [`@uniflowed/hooks/keyboard`](/reference/packages). The active
@@ -819,11 +815,13 @@ the arrow keys do the movement inside it.
   <Tabs.List>
     <Tabs.Tab value="overview">Overview</Tabs.Tab>
     <Tabs.Tab value="activity">Activity</Tabs.Tab>
-    <Tabs.Tab value="billing" disabled>Billing</Tabs.Tab>
+    <Tabs.Tab value="billing" disabled>
+      Billing
+    </Tabs.Tab>
   </Tabs.List>
   <Tabs.Panel value="overview">The summary.</Tabs.Panel>
   <Tabs.Panel value="activity">The recent events.</Tabs.Panel>
-</Tabs.Root>
+</Tabs.Root>;
 ```
 
 ### Parts
@@ -872,9 +870,7 @@ steps over them.
 The default is automatic activation:
 
 ```js
-<Tabs.Root defaultValue="preview">
-  …
-</Tabs.Root>
+<Tabs.Root defaultValue="preview">…</Tabs.Root>;
 ```
 
 When focus moves to a tab, that tab is selected. This is the right default for
@@ -886,7 +882,7 @@ Manual activation is for a panel that costs something to reveal:
 ```js
 <Tabs.Root activationMode="manual" defaultValue="preview">
   …
-</Tabs.Root>
+</Tabs.Root>;
 ```
 
 There the arrows move focus only, and `Enter` or `Space` selects. A reader
@@ -924,7 +920,7 @@ browser moves on from the panel to the controls normally.
 Notifications, and the live region that was watching before them.
 
 ```js
-// @flow
+"use flow";
 import { Toast, toast } from "@uniflowed/ui";
 
 // Once, in the layout.
@@ -1061,7 +1057,7 @@ lives once, in `internal/range.js`.
   </Slider.Track>
   <Slider.Thumb aria-label="Minimum" index={0} />
   <Slider.Thumb aria-label="Maximum" index={1} />
-</Slider.Root>
+</Slider.Root>;
 ```
 
 `role="slider"` goes on the **thumb**, not on the track and not on the wrapper.
@@ -1120,7 +1116,7 @@ what to do with them. A caller who writes no CSS sees nothing.
   <Resizable.Panel primary>Files</Resizable.Panel>
   <Resizable.Handle label="Resize the file list" />
   <Resizable.Panel>Editor</Resizable.Panel>
-</Resizable.PanelGroup>
+</Resizable.PanelGroup>;
 ```
 
 The APG calls this a **window splitter** and defines it as a separator that
@@ -1218,7 +1214,7 @@ no focus.
       </Table.Row>
     ))}
   </Table.Body>
-</Table.Root>
+</Table.Root>;
 ```
 
 The markup is not what this owns. A `<table>` with `<th scope="col">` and a
@@ -1277,12 +1273,16 @@ of a table whose state you hold.
 ```js
 <Pagination.Root page={4} pageCount={25}>
   <Pagination.Content>
-    <Pagination.Previous disabled={page === 1} href={hrefFor(page - 1)}>‹</Pagination.Previous>
+    <Pagination.Previous disabled={page === 1} href={hrefFor(page - 1)}>
+      ‹
+    </Pagination.Previous>
     <Pagination.Item href={hrefFor(3)}>3</Pagination.Item>
-    <Pagination.Item current href={hrefFor(4)}>4</Pagination.Item>
+    <Pagination.Item current href={hrefFor(4)}>
+      4
+    </Pagination.Item>
     <Pagination.Next href={hrefFor(page + 1)}>›</Pagination.Next>
   </Pagination.Content>
-</Pagination.Root>
+</Pagination.Root>;
 ```
 
 A `<nav>` with a name, because a page has more than one and an unnamed one is
@@ -1325,7 +1325,7 @@ page rather than looking at it.
       <Breadcrumb.Page>Billing</Breadcrumb.Page>
     </Breadcrumb.Item>
   </Breadcrumb.List>
-</Breadcrumb.Root>
+</Breadcrumb.Root>;
 ```
 
 `Pagination`'s shape one door along, and the same three things. A `<nav>` with a
@@ -1348,14 +1348,16 @@ the reader cannot use, instead of the place they arrived at.
 <Alert.Root>
   <Alert.Title>Your trial ends on Friday</Alert.Title>
   <Alert.Description>Add a card to keep your projects.</Alert.Description>
-</Alert.Root>
+</Alert.Root>;
 
-{error != null && (
-  <Alert.Root live>
-    <Alert.Title>Could not save</Alert.Title>
-    <Alert.Description>{error}</Alert.Description>
-  </Alert.Root>
-)}
+{
+  error != null && (
+    <Alert.Root live>
+      <Alert.Title>Could not save</Alert.Title>
+      <Alert.Description>{error}</Alert.Description>
+    </Alert.Root>
+  );
+}
 ```
 
 The first has no role at all, and that is the component. `role="alert"` is a
@@ -1386,7 +1388,7 @@ HTML has is clamped, since `<h9>` is announced as nothing at all.
 <Avatar.Root>
   <Avatar.Image src={person.photo} />
   <Avatar.Fallback>{initials(person.name)}</Avatar.Fallback>
-</Avatar.Root>
+</Avatar.Root>;
 ```
 
 Three states, not two: loading, loaded and failed. The version with two renders
@@ -1442,7 +1444,7 @@ a slider, and is a control.
 ```js
 <Skeleton.Root busy={pending}>
   {pending ? <Skeleton.Box /> : <Invoices rows={invoices} />}
-</Skeleton.Root>
+</Skeleton.Root>;
 ```
 
 A screen of skeletons tells a sighted reader that content is coming. To everybody
@@ -1475,7 +1477,7 @@ motion.
 ```js
 <Skeleton.Root fallback={<Skeleton.Box />}>
   <Invoices />
-</Skeleton.Root>
+</Skeleton.Root>;
 ```
 
 ## Overlays that follow their trigger
@@ -1509,7 +1511,7 @@ modal that is not one.
       Only mine <input type="checkbox" />
     </label>
   </Popover.Body>
-</Popover.Root>
+</Popover.Root>;
 ```
 
 Focus moves to the first thing worth acting on when it opens. `Escape` closes it
@@ -1534,7 +1536,7 @@ three. A `div` that appears on `:hover` fails the first two.
     <Tooltip.Trigger aria-label="Bold">B</Tooltip.Trigger>
     <Tooltip.Body>Bold (⌘B)</Tooltip.Body>
   </Tooltip.Root>
-</Tooltip.Provider>
+</Tooltip.Provider>;
 ```
 
 The tooltip never takes focus and holds no tab stop: a focusable tooltip is a
@@ -1555,7 +1557,13 @@ outside a provider is a complete tooltip with a delay of its own.
 `Tooltip.Trigger` renders a `<button>`, or whatever you pass to `render`:
 
 ```js
-<Tooltip.Trigger render={(props) => <a href="/bold" {...props}>Bold</a>} />
+<Tooltip.Trigger
+  render={(props) => (
+    <a href="/bold" {...props}>
+      Bold
+    </a>
+  )}
+/>;
 ```
 
 Whatever it renders has to be something the keyboard can reach, and the
@@ -1573,12 +1581,18 @@ the tooltip repeat it.
 
 ```js
 <HoverCard.Root>
-  <HoverCard.Trigger render={(props) => <a href="/ada" {...props}>@ada</a>} />
+  <HoverCard.Trigger
+    render={(props) => (
+      <a href="/ada" {...props}>
+        @ada
+      </a>
+    )}
+  />
   <HoverCard.Body>
     <p>Ada Lovelace</p>
     <a href="/ada/notes">Notes</a>
   </HoverCard.Body>
-</HoverCard.Root>
+</HoverCard.Root>;
 ```
 
 It is not a tooltip, because its contents are reachable — by pointer and by
@@ -1682,7 +1696,7 @@ and that the cell an arrow key asks for is often one the grid has not rendered
 yet.
 
 ```js
-// @flow
+"use flow";
 import { Calendar } from "@uniflowed/ui";
 
 <Calendar.Root defaultValue="2026-10-14" onValueChange={setWhen}>
@@ -1749,7 +1763,7 @@ does not depend on the host's locale data.
 The composition, and the field is the control:
 
 ```js
-// @flow
+"use flow";
 import { Calendar, DatePicker } from "@uniflowed/ui";
 
 <DatePicker.Root onValueChange={setWhen} value={when}>
@@ -1803,7 +1817,7 @@ to someone who cannot see the dim.
       <button type="submit">Save</button>
     </Dialog.Footer>
   </Dialog.Body>
-</Dialog.Root>
+</Dialog.Root>;
 ```
 
 ### Parts
@@ -1882,9 +1896,11 @@ const cancelRef = useRef<HTMLElement | null>(null);
     <Dialog.Title>Delete this project?</Dialog.Title>
     <Dialog.Description>This cannot be undone.</Dialog.Description>
     <Dialog.Close ref={cancelRef}>Cancel</Dialog.Close>
-    <button type="button" onClick={remove}>Delete</button>
+    <button type="button" onClick={remove}>
+      Delete
+    </button>
   </Dialog.Body>
-</Dialog.Root>
+</Dialog.Root>;
 ```
 
 That example is exactly why `AlertDialog` exists: it fixes the role, the
@@ -1940,7 +1956,7 @@ type error at the call rather than a modal announced as a `div`.
       <AlertDialog.Action onClick={remove}>Delete</AlertDialog.Action>
     </AlertDialog.Footer>
   </AlertDialog.Body>
-</AlertDialog.Root>
+</AlertDialog.Root>;
 ```
 
 `role="alertdialog"`, a press outside that does nothing, and focus on
@@ -1967,7 +1983,7 @@ things, and one of them is where focus goes.
     <Sheet.Title>Filters</Sheet.Title>
     <Sheet.Close>Done</Sheet.Close>
   </Sheet.Body>
-</Sheet.Root>
+</Sheet.Root>;
 ```
 
 Deliberately small. Every modal promise is `Dialog`'s, unchanged; what a sheet
@@ -1992,7 +2008,7 @@ hearing "Filters, right" and wondering what "right" meant.
     <Drawer.Title>Details</Drawer.Title>
     <Drawer.Close>Close</Drawer.Close>
   </Drawer.Body>
-</Drawer.Root>
+</Drawer.Root>;
 ```
 
 A sheet plus a gesture, and the gesture is where the specifications land.
@@ -2029,7 +2045,7 @@ manipulation is not animation.
       <Gear /> Settings
     </Sidebar.Item>
   </Sidebar.Body>
-</Sidebar.Root>
+</Sidebar.Root>;
 ```
 
 The one of the four that is usually not a dialog. It is part of the page:
@@ -2074,7 +2090,7 @@ being true, the component should be deleted rather than fixed.
   </Carousel.Content>
   <Carousel.Previous />
   <Carousel.Next />
-</Carousel.Root>
+</Carousel.Root>;
 ```
 
 For a reader who can see it, a carousel gives nothing a list does not. So the
@@ -2106,7 +2122,7 @@ is rendered conditionally, and it is wrong silently.
 <ScrollArea.Root label="Release notes">
   <ScrollArea.Viewport>…</ScrollArea.Viewport>
   <ScrollArea.Scrollbar orientation="vertical" />
-</ScrollArea.Root>
+</ScrollArea.Root>;
 ```
 
 The thing a custom scrollbar takes away is keyboard scrolling. Firefox makes a
@@ -2144,7 +2160,7 @@ without measuring anything.
     <InputOtp.Slot index={4} />
     <InputOtp.Slot index={5} />
   </InputOtp.Group>
-</InputOtp.Root>
+</InputOtp.Root>;
 ```
 
 There is **one real `<input>`**, and the slots are a picture of its value. That
@@ -2187,7 +2203,7 @@ chosen, and a plain `Menu.Item` does:
     <Menu.RadioItem value="name">Name</Menu.RadioItem>
     <Menu.RadioItem value="date">Date modified</Menu.RadioItem>
   </Menu.RadioGroup>
-</Menu.Body>
+</Menu.Body>;
 ```
 
 Ticking three boxes is one visit to the menu on every platform, which is why the
@@ -2247,7 +2263,7 @@ still closed, and a closed panel has no box for `ResizeObserver`,
 <Collapsible.Root measure>
   <Collapsible.Trigger>Details</Collapsible.Trigger>
   <Collapsible.Content className="panel">…</Collapsible.Content>
-</Collapsible.Root>
+</Collapsible.Root>;
 ```
 
 ```css

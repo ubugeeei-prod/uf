@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A rule, and the one decision in it: whether anybody is told it is there.
 //

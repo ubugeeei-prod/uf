@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 // A comment between a name and its `extends` stays where it was written.
 // It used to be moved into the type that followed it, which for an

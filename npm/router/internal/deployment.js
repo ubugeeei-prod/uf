@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: which build this page is, and what it does
 // when the server is on another one.

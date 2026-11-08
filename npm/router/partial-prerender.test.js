@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A static shell, and the request's part of it.
 //

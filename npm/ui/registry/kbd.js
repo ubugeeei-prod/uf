@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Kbd: a key, or a combination of keys, that a reader presses, drawn as a
 // keycap.

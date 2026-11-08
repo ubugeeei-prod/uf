@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `tools/docs/coverage.js`, the check that what uf ships is documented.
 //

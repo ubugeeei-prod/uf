@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A page that throws at request time. A parameter and no
 // `generateStaticParams` keep it out of the build — a page that throws during

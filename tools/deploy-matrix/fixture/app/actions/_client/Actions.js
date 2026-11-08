@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 "use client";
 
 // The two ways the browser reaches a server action, on one page: a button that

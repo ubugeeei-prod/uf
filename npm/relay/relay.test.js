@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/relay`: Relay, re-exported by name.
 //

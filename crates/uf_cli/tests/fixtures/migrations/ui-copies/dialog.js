@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Dialog: `@uniflowed/ui`'s modal dialog, dressed in uf's tokens.
 //

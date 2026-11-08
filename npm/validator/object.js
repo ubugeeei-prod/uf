@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/validator/object`: an object whose keys are known when the
 // schema is written.

@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 // DateField: locale-aware segments in a bordered field.
 //
 // `uf ui add date-field` copies this component into the project. The headless

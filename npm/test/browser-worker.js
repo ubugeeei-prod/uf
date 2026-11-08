@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The process `uf test --browser` fans work out to.
 //

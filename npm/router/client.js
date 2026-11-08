@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Starting the application in the browser.
 //

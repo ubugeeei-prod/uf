@@ -3,7 +3,7 @@ React spells some DOM attributes differently from HTML: `className`, `htmlFor`, 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Field() {
   return (
     <label class="field" for="email">
@@ -21,7 +21,7 @@ app/example.js:4:26 `for` is the HTML spelling of this attribute and React spell
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Field() {
   return (
     <label className="field" htmlFor="email">

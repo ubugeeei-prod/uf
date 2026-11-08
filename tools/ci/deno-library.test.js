@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { expect, it } from "@uniflowed/test";
 import { classify } from "./deno-library.js";
 

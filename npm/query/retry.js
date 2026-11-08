@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/query/retry`: trying again without making the outage worse.
 //

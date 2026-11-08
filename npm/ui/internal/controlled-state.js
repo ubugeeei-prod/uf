@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The one contract every part of this package makes about state.
 //

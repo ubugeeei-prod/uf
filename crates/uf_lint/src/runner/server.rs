@@ -6,8 +6,8 @@
 use uf_config::UniflowedConfig;
 
 use crate::scan::{
-    FileScan, find_all, find_words, identifier_len, next_non_space, prev_non_space, previous_word,
-    starts_word, word_in_jsx_text,
+    FileScan, Line, find_all, find_words, identifier_len, next_non_space, prev_non_space,
+    previous_word, starts_word, word_in_jsx_text,
 };
 use crate::{Diagnostic, push, push_in_code, severity};
 
@@ -177,6 +177,61 @@ const BOUNDARY_DIRECTIVES: [&str; 4] = [
     "'use server'",
 ];
 
+/// Directives that choose a language or a strictness, not an environment.
+///
+/// They share the prologue with the boundary. `"use flow";` above
+/// `"use client";` is still a client module, the way `"use strict";` is.
+const MODE_DIRECTIVES: [&str; 6] = [
+    "\"use flow\"",
+    "'use flow'",
+    "\"use js\"",
+    "'use js'",
+    "\"use strict\"",
+    "'use strict'",
+];
+
+const USE_SERVER_DIRECTIVES: [&str; 2] = ["\"use server\"", "'use server'"];
+
+/// Whether `code` is one directive and nothing after it.
+///
+/// `code` is the line with comments already removed, so `"use flow"; // mode`
+/// arrives as `"use flow";`. A string built by concatenation is not one.
+fn is_bare_directive(code: &str, names: &[&str]) -> bool {
+    let Some((at, _)) = next_non_space(code, 0) else {
+        return false;
+    };
+    let rest = &code[at..];
+    let Some(name) = names.iter().copied().find(|name| rest.starts_with(name)) else {
+        return false;
+    };
+    let after = rest[name.len()..].trim();
+    after.is_empty() || after == ";"
+}
+
+/// A blank, a comment, or a mode directive. The boundary may follow these.
+fn line_is_mode_directive(line: &Line<'_>) -> bool {
+    let code = line.code();
+    code.trim().is_empty() || is_bare_directive(code, &MODE_DIRECTIVES)
+}
+
+/// `"use server"` in the prologue, with only mode directives ahead of it.
+fn prologue_declares_use_server(scan: &FileScan<'_>) -> bool {
+    for line in &scan.lines {
+        let code = line.code();
+        if code.trim().is_empty() {
+            continue;
+        }
+        if is_bare_directive(code, &USE_SERVER_DIRECTIVES) {
+            return true;
+        }
+        if is_bare_directive(code, &MODE_DIRECTIVES) {
+            continue;
+        }
+        return false;
+    }
+    false
+}
+
 pub(crate) fn run_server_use_client_directive_position(
     scan: &FileScan<'_>,
     config: &UniflowedConfig,
@@ -215,6 +270,12 @@ pub(crate) fn run_server_use_client_directive_position(
         if position == first_code_line.get() {
             continue;
         }
+        // `"use flow";` (and `"use js";`, `"use strict";`) is part of the
+        // prologue. The boundary after it is still honoured. An import, or
+        // any other statement, ends the prologue.
+        if scan.lines[..position].iter().all(line_is_mode_directive) {
+            continue;
+        }
         push_in_code(
             diagnostics,
             scan,
@@ -222,7 +283,7 @@ pub(crate) fn run_server_use_client_directive_position(
             severity,
             position,
             at,
-            "a boundary directive is only honoured as the module's first statement",
+            "a boundary directive is only honoured before any statement other than a mode directive",
         );
     }
 }
@@ -252,13 +313,9 @@ pub(crate) fn run_server_use_server_actions(
         return;
     }
 
-    let first_code_line = scan
-        .facts
-        .first_code_line
-        .map(|position| scan.lines[position.get()].code().trim())
-        .unwrap_or("");
-
-    if first_code_line != r#""use server";"# && first_code_line != r#"'use server';"# {
+    // `"use flow";` may lead. The boundary still has to be in the prologue,
+    // ahead of the import that would make it an ordinary string.
+    if !prologue_declares_use_server(scan) {
         push(
             diagnostics,
             scan.file,
@@ -266,7 +323,7 @@ pub(crate) fn run_server_use_server_actions(
             severity,
             1,
             1,
-            r#"server action modules must start with "use server";"#,
+            "server action modules must declare \"use server\" before any statement other than a mode directive",
         );
     }
 }

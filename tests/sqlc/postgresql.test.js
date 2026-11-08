@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The generated code for sqlc's PostgreSQL examples, and uf's PostgreSQL type
 // and options cases, run against a real PostgreSQL behind each adapter:

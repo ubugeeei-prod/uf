@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Empty: what a list, a table or a page shows when it has nothing in it yet,
 // and the action that fills it.

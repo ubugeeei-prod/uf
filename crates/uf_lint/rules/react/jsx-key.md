@@ -3,7 +3,7 @@ React matches list items between renders by `key`. Without one it matches them b
 ## Bad
 
 ```js
-// @flow
+"use flow";
 type Todo = { id: string, title: string };
 
 export component Todos(todos: $ReadOnlyArray<Todo>) {
@@ -18,7 +18,7 @@ app/example.js:5:35 `<li>` is returned from `map` with no `key`, so React matche
 ## Good
 
 ```js
-// @flow
+"use flow";
 type Todo = { id: string, title: string };
 
 export component Todos(todos: $ReadOnlyArray<Todo>) {

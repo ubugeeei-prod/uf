@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What `uf dev` says when a hydration fails.
 //

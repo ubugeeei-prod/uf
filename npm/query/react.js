@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/query/react`: the binding, and why it is this thin.
 //

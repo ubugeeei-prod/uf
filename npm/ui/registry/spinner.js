@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Spinner: something is under way and nobody knows how far along it is, drawn
 // as a turning arc and announced as a progress bar with no value.

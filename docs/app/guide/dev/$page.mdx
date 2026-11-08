@@ -296,9 +296,14 @@ outright, so the branch behind it is statically dead. Reach through it with
 optional chaining, or bind it to a name first:
 
 ```js
-import.meta.hot?.accept((next) => { /* … */ });   // or
+import.meta.hot?.accept((next) => {
+  /* … */
+}); // or
 const hot = import.meta.hot;
-if (hot) hot.accept((next) => { /* … */ });
+if (hot)
+  hot.accept((next) => {
+    /* … */
+  });
 ```
 
 Not `if (import.meta.hot) { import.meta.hot.accept(…) }`, which every Vite
@@ -365,14 +370,14 @@ level of `uf.config.js` is appended to the plugins uf installs, and `dev` and
 a server option can be added without leaving uf:
 
 ```js
-// @flow
+"use flow";
 import { defineConfig } from "@uniflowed/config";
 import svgr from "vite-plugin-svgr";
 
 export default defineConfig({
-  app: { router: { entry: "app.js", root: "app" } },
+  app    : { router: { entry: "app.js", root: "app" } },
   plugins: [svgr()],
-  dev: { port: 4000 },
+  dev    : { port: 4000 },
 });
 ```
 

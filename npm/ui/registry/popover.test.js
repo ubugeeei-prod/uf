@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The popover `uf ui add popover` writes. `@uniflowed/ui`'s own suite holds the
 // behaviour; these hold that dressing it kept a popover a popover — named by

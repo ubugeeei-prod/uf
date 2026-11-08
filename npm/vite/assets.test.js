@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The join between the pipeline and the page.
 //

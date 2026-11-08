@@ -3,7 +3,7 @@ React's `style` takes an object of properties, not a CSS string. A string throws
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Spacer() {
   return <div style="height: 1rem" />;
 }
@@ -16,7 +16,7 @@ app/example.js:3:15 `style` on this `<div>` is a string, and React's `style` pro
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Spacer() {
   return <div style={{ height: "1rem" }} />;
 }

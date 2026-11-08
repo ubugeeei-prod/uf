@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/oauth`: signing in, as a contract rather than a provider.
 //
@@ -17,7 +17,7 @@
 // # The whole of a provider
 //
 //     // app/providers/example.js
-//     // @flow
+//     "use flow";
 //     import type { OAuthProvider } from "@uniflowed/server/oauth";
 //
 //     export const example: OAuthProvider = {

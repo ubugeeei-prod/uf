@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Module-free summaries of resolved routes.
 

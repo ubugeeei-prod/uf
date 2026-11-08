@@ -3,7 +3,7 @@ Handlers on an element announced as content, such as an `article` or a paragraph
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Story(onOpen: () => void) {
   return (
     <article onClick={onOpen} onKeyDown={onOpen}>
@@ -20,7 +20,7 @@ app/example.js:4:5 `<article>` has the role `article` and is not a control, so h
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Story(onOpen: () => void) {
   return (
     <article>

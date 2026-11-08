@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A tab opened on build N, after build N+1 is what answers it.
 //

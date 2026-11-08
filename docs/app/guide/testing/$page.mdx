@@ -57,7 +57,7 @@ When a run feels slow, first decide which number moved:
 ## Writing a test
 
 ```js
-// @flow
+"use flow";
 import { describe, expect, it } from "@uniflowed/test";
 
 import { total } from "./cart.js";
@@ -91,7 +91,7 @@ up for fails with its error, and none of their bodies runs.
 Use `skipBecause` when the skipped case is a contract, not a TODO:
 
 ```js
-// @flow
+"use flow";
 import { expect, it } from "@uniflowed/test";
 
 it("runs the portable half", () => {
@@ -116,11 +116,14 @@ own. `import.meta.uf.test` is a block that lives in the module it tests, the way
 `import.meta.vitest` does:
 
 ```js
-// @flow
+"use flow";
 import { expect, it } from "@uniflowed/test";
 
 export function slugify(title: string): string {
-  return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 if (import.meta.uf.test) {
@@ -163,7 +166,7 @@ Two things worth knowing:
 `expect(container).toHaveNoAxeViolations()` runs axe-core over a rendered tree:
 
 ```js
-// @flow
+"use flow";
 import { expect, it } from "@uniflowed/test";
 import { render } from "@uniflowed/react-testing";
 
@@ -194,7 +197,7 @@ export default defineConfig({
       // `color-contrast` needs layout, and the DOM a Node worker renders into
       // has none — axe reports it as *incomplete* rather than as a violation.
       disabledRules: ["color-contrast"],
-      minImpact: "serious",
+      minImpact    : "serious",
     },
   },
 });
@@ -231,12 +234,12 @@ When another host, app-owned harness or renderer already produced the tree,
 pass that JSON directly:
 
 ```js
-// @flow
+"use flow";
 import { createNativeScreen } from "@uniflowed/react-native-testing";
 import { expect, it } from "@uniflowed/test";
 
 const tree = {
-  type: "ScrollView",
+  type : "ScrollView",
   props: { testID: "settings-screen" },
   children: [
     {
@@ -244,7 +247,7 @@ const tree = {
       props: {
         accessibilityLabel: "Save changes",
         accessibilityState: { busy: true, disabled: true },
-        testID: "save",
+        testID            : "save",
       },
       children: [{ type: "Text", props: {}, children: ["Save"] }],
     },
@@ -252,7 +255,7 @@ const tree = {
       type: "View",
       props: {
         accessibilityLabel: "Upload photo",
-        accessibilityRole: "progressbar",
+        accessibilityRole : "progressbar",
         accessibilityValue: { min: 0, max: 100, now: 75, text: "75 percent" },
       },
       children: [],
@@ -261,14 +264,14 @@ const tree = {
       type: "View",
       props: {
         accessibilityLabel: "Volume",
-        accessibilityRole: "adjustable",
+        accessibilityRole : "adjustable",
         accessibilityValue: { min: 0, max: 10, now: 6, text: "6 of 10" },
       },
       children: [],
     },
     {
-      type: "TextInput",
-      props: { accessibilityLabel: "Search settings", disabled: false },
+      type    : "TextInput",
+      props   : { accessibilityLabel: "Search settings", disabled: false },
       children: [],
     },
   ],
@@ -278,8 +281,8 @@ it("queries the native tree by role, state and value", () => {
   const screen = createNativeScreen(tree);
 
   const save = screen.getByRole("button", {
-    name: "Save changes",
-    busy: true,
+    name    : "Save changes",
+    busy    : true,
     disabled: true,
   });
 
@@ -289,13 +292,13 @@ it("queries the native tree by role, state and value", () => {
   expect(screen.getByRole("textbox", { name: /Search/ }).type).toBe("TextInput");
   expect(
     screen.getByRole("progressbar", {
-      name: "Upload photo",
+      name : "Upload photo",
       value: { min: 0, max: 100, now: 75, text: /percent/ },
     }).type,
   ).toBe("View");
   expect(
     screen.getByRole("adjustable", {
-      name: "Volume",
+      name : "Volume",
       value: { now: 6, text: "6 of 10" },
     }).type,
   ).toBe("View");
@@ -308,7 +311,7 @@ mounts the element through that JSON renderer and returns the same queries plus
 `rerender`, `unmount` and `toJSON`:
 
 ```js
-// @flow
+"use flow";
 import * as React from "react";
 import { render } from "@uniflowed/react-native-testing";
 import { expect, it } from "@uniflowed/test";
@@ -320,7 +323,7 @@ it("queries a rendered native component", () => {
       {
         accessibilityLabel: "Save changes",
         accessibilityState: { disabled: true },
-        testID: "save",
+        testID            : "save",
       },
       React.createElement("Text", null, "Save"),
     ),
@@ -328,7 +331,7 @@ it("queries a rendered native component", () => {
 
   expect(
     screen.getByRole("button", {
-      name: "Save changes",
+      name    : "Save changes",
       disabled: true,
     }).props?.testID,
   ).toBe("save");
@@ -347,7 +350,7 @@ suite to install that peer or pass an already-produced tree to
 platform permissions, still needs a device test:
 
 ```js
-// @flow
+"use flow";
 import { it } from "@uniflowed/test";
 
 it.skipBecause(
@@ -434,7 +437,7 @@ such object — the import is the only seam — so `uft.mock` replaces the whole
 module.
 
 ```js
-// @flow
+"use flow";
 import typeof * as ClientModule from "./client.js";
 import { describe, expect, it, uft } from "@uniflowed/test";
 
@@ -944,7 +947,7 @@ under a Bun runner.
 like `it`:
 
 ```js
-// @flow
+"use flow";
 import { bench } from "@uniflowed/test";
 
 import { total } from "./cart.js";
@@ -1111,30 +1114,34 @@ the real application with `createTestApp`. This uses the same configuration, RSC
 Vite environments and request scope as `uf dev`.
 
 ```js
-// @flow
+"use flow";
 import { it, expect } from "@uniflowed/test";
 import { createTestApp } from "@uniflowed/test/app";
 import { createBrowser } from "@uniflowed/test/browser";
 
-it("renders server data and hydrates the counter", async () => {
-  const app = await createTestApp({ root: new URL("./", import.meta.url) });
-  let page;
-  try {
-    const html = await (await app.render("/products")).text();
-    expect(html).toContain("Products");
-    const flight = await app.flight("/products");
-    expect(flight.headers.get("content-type")).toContain("text/x-component");
-    await flight.text();
-    page = await createBrowser();
-    await page.visit(app.origin() + "/products");
-    await page.waitFor('[data-hydrated="yes"]');
-    await page.click("#counter");
-    expect(await page.text("#counter")).toBe("1");
-  } finally {
-    await page?.close();
-    await app.close();
-  }
-}, { timeout: 60000 });
+it(
+  "renders server data and hydrates the counter",
+  async () => {
+    const app = await createTestApp({ root: new URL("./", import.meta.url) });
+    let page;
+    try {
+      const html = await (await app.render("/products")).text();
+      expect(html).toContain("Products");
+      const flight = await app.flight("/products");
+      expect(flight.headers.get("content-type")).toContain("text/x-component");
+      await flight.text();
+      page = await createBrowser();
+      await page.visit(app.origin() + "/products");
+      await page.waitFor('[data-hydrated="yes"]');
+      await page.click("#counter");
+      expect(await page.text("#counter")).toBe("1");
+    } finally {
+      await page?.close();
+      await app.close();
+    }
+  },
+  { timeout: 60000 },
+);
 ```
 
 Run this integration test with `uf test`. For `createBrowser` in a Node worker,
@@ -1298,8 +1305,8 @@ CI fails on has to be the number a laptop fails on.
 export default defineConfig({
   test: {
     coverage: {
-      reporters: ["text", "lcov"],
-      thresholds: { lines: 80, branches: 70 },
+      reporters        : ["text", "lcov"],
+      thresholds       : { lines: 80, branches: 70 },
       perFileThresholds: { lines: 50 },
     },
   },
@@ -1603,12 +1610,22 @@ import { Text, Pressable } from "react-native";
 import { render, screen, press } from "@uniflowed/react-native-testing/native";
 
 component Save(onSave: () => void) {
-  return <Pressable accessibilityRole="button" onPress={onSave}><Text>Save</Text></Pressable>;
+  return (
+    <Pressable accessibilityRole="button" onPress={onSave}>
+      <Text>Save</Text>
+    </Pressable>
+  );
 }
 
 test("saves from a native press", async () => {
   let saved = false;
-  await render(<Save onSave={() => { saved = true; }} />);
+  await render(
+    <Save
+      onSave={() => {
+        saved = true;
+      }}
+    />,
+  );
   await press(screen.getByRole("button"));
   expect(saved).toBe(true);
 });

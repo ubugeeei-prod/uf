@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The progress bar `uf ui add progress` writes: a named bar whose fill is drawn
 // from the value it announces, and an unknown amount announced as unknown.

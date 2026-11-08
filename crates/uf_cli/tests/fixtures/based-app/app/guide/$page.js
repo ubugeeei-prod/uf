@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A nested route with no parameters, so `uf build` prerenders it. Under
 // `trailingSlash: "never"` the file is `dist/guide.html` rather than

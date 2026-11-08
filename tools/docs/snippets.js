@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Every JavaScript sample in the manual parses.
 //

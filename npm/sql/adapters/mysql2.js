@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/sql/mysql2`: the `mysql2` package's promise API.
 //

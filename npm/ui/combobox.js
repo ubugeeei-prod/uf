@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A combobox: a text field with a list of options attached to it.
 //

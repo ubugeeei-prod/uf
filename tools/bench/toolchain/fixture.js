@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The application `bench.js` measures, written out from a preset.
 //
@@ -155,7 +155,7 @@ export component Layout(children: mixed) {
 `;
 
 const HOT_COUNTER = `"use client";
-// @flow
+"use flow";
 import { useCallback, useState } from "@uniflowed/react";
 
 // The benchmark's HMR stage rewrites this string, and only this string, once an
@@ -285,7 +285,7 @@ export component Panel${id}(grade: Grade${id}) {
 function toggle(n: number): string {
   const id = pad(n);
   return `"use client";
-// @flow
+"use flow";
 import { useCallback, useState } from "@uniflowed/react";
 
 export component Toggle${id}(label: string) {

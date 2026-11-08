@@ -28,14 +28,14 @@ modes](/guide/rendering). Fetch directly inside Server Components; loaders are o
 <div className="command"><code>uf.config.js</code></div>
 
 ```js
-// @flow
+"use flow";
 export default {
   app: {
     rendering: {
       cache: {
         route: true,
         fetch: true,
-        data: true,
+        data : true,
       },
     },
   },
@@ -49,7 +49,7 @@ Turning `route` on does not start caching anything. It makes a *stated* lifetime
 take effect, and a page states one from inside its own render:
 
 ```js
-// @flow
+"use flow";
 import { cacheLife, cacheTag } from "@uniflowed/server/cache";
 
 export default async function Posts() {
@@ -133,7 +133,7 @@ changes by the minute.
 ## Invalidating on demand
 
 ```js
-// @flow
+"use flow";
 import { revalidatePath, revalidateTag } from "@uniflowed/server/cache";
 
 export async function POST(request: Request): Promise<Response> {
@@ -208,7 +208,7 @@ promise, a timeout, and a retry policy — so caching wraps it rather than growi
 inside it:
 
 ```js
-// @flow
+"use flow";
 import { createFetch } from "@uniflowed/fetch";
 import { createCachedFetch } from "@uniflowed/server/cache";
 
@@ -241,7 +241,7 @@ Naming a store is what fixes it:
 <div className="command"><code>uf.config.js</code></div>
 
 ```js
-// @flow
+"use flow";
 export default {
   app: {
     rendering: {
@@ -295,7 +295,7 @@ write and name:
 <div className="command"><code>cache/redis.js</code></div>
 
 ```js
-// @flow
+"use flow";
 import type { CacheProvider, DurableCacheEntry } from "@uniflowed/server/cache";
 
 export function createCacheProvider(): CacheProvider {

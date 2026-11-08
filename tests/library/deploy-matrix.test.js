@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The deploy guide's compatibility matrix is `tools/deploy-matrix/matrix.json`,
 // rendered — never a table somebody edited by hand.

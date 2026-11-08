@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { Text, View } from "react-native";
 import { stylex } from "@uniflowed/stylex";
 import { Link } from "@uniflowed/router/native-navigation";

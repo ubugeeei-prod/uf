@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/path`: Go's `path/filepath`, for runtime-agnostic slash paths.
 //

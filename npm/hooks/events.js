@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/hooks/events`: a stream the server is pushing.
 //

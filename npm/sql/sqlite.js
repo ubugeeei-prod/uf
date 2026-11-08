@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/sql/sqlite`: SQLite's storage classes, both ways.
 //

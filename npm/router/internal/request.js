@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: the request the server half runs inside.
 //

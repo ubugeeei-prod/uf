@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The skeleton `uf ui add skeleton` writes: a busy region, shapes nobody hears,
 // a status that says the page is loading, and every shape drawn.

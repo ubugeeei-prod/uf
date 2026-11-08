@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // What the sidebar cannot say without a script: that it goes on.
 //

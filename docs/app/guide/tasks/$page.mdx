@@ -22,23 +22,23 @@ A task can be a command string or an object with options. This example assumes
 the project has scripts for generating tokens, icons and an asset summary:
 
 ```js
-// @flow
+"use flow";
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
   tasks: {
     tokens: {
       command: "node scripts/tokens.js",
-      inputs: ["tokens/**", "scripts/tokens.js"],
+      inputs : ["tokens/**", "scripts/tokens.js"],
       outputs: ["generated/tokens.css"],
     },
     icons: {
       command: "node scripts/icons.js",
-      inputs: ["icons/**", "scripts/icons.js"],
+      inputs : ["icons/**", "scripts/icons.js"],
       outputs: ["generated/icons.txt"],
     },
     assets: { command: "node scripts/done.js", dependsOn: ["tokens", "icons"] },
-    greet: "node scripts/greet.js",
+    greet : "node scripts/greet.js",
   },
 });
 ```

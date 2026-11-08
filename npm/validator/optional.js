@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/validator/optional`: a value that might not be there.
 //

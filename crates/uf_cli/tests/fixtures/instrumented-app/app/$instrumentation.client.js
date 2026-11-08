@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 export function register() {
   document.documentElement.dataset.instrumented = "true";
 }

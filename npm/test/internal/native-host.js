@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // Jest's module environment executes RN's own mocks. uf still owns discovery,
 // scheduling, hooks, timeouts, isolation and the result protocol.
 

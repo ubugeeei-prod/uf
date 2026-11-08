@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Which URL a module a test file reaches is loaded under, so that every test
 // file gets its own copy of the project's modules. `./internal/file-scope.js`

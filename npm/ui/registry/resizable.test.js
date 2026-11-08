@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The panels `uf ui add resizable` writes: a named handle that says where the
 // boundary is and which panel it resizes, the keys that send it to either end,

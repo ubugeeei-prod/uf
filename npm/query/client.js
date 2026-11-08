@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/query/client`: the cache as something you can talk to.
 //

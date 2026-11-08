@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Search() {
   return (
     <input type="search" aria-label="Search" autoFocus />
@@ -18,7 +18,7 @@ app/example.js:4:46 `autoFocus` moves focus before the reader has been told wher
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Search() {
   return (
     <input type="search" aria-label="Search" />

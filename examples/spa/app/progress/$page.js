@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 "use client";
 
 import { Link } from "@uniflowed/router";

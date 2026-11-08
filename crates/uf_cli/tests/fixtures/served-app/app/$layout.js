@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The document, and nothing else.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The bytes of `dist/` on their way into a compiled binary.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Server actions: the grammar, the endpoint, and the tables the bundler builds.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/server`: the seam a durable cache is written to.
 //

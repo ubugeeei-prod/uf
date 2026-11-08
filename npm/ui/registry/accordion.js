@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Accordion: a stack of headed sections, each opened by its heading, one at a
 // time or several.

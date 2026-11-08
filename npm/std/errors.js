@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/errors`: Go's `errors`, over JavaScript's `cause`.
 //

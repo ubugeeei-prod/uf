@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A checkbox that is not an `<input>`, with the third state a checkbox has.
 //

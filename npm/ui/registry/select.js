@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Select: `@uniflowed/ui`'s select-only combobox, drawn as a field and a list.
 //

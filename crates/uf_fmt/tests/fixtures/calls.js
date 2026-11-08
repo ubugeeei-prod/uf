@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 call(alpha, beta, gamma, delta, epsilon, zeta, eta, theta, iota, kappa, lambda, mu, nu, xi, omicron);
 callWithCallback(argument, (error, result) => {
   if (error) throw error;

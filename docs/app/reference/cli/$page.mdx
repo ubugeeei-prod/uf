@@ -1690,7 +1690,7 @@ in review, and visible only to somebody reading English on a Japanese page.
 ### uf i18n merge FILE
 
 Reads a translated catalogue and writes the locale module `defineLocales`
-loads — a `// @flow` module default-exporting the keys and their translations,
+loads — a `"use flow";` module default-exporting the keys and their translations,
 next to `FILE` and named for the locale, which is where
 `() => import("./ja-JP.js")` already points. `--out PATH` puts it elsewhere;
 `--json` reports and writes nothing.

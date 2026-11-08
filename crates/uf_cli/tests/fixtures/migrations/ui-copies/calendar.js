@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Calendar: a month of days to choose one from, moved through from the keyboard
 // and paged a month at a time.

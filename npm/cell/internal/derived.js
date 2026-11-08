@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Derived cells and effects: the two nodes that run a function.
 //

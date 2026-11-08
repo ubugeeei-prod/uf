@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Alert dialog: a confirmation that interrupts, says what answering costs,
 // and waits for an answer.

@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 
 import { promise, runPromiseExit } from "@uniflowed/effect";
 

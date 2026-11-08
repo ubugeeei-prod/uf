@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 "use client";
 //
 // Text for assistive technology and nobody else, and the announcer built on it.

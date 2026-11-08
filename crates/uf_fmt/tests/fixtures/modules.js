@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import defaultExport from "module";
 import * as namespace from "module";
 import { named } from "module";

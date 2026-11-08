@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Where the `uf` binary is, on the machine the editor is actually running on.
 //

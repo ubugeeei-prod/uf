@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Typed search params: a page exports a `@uniflowed/validator` schema as
 // `searchParams`, and is given the schema's output instead of the string map.

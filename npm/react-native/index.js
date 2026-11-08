@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/react-native`: React Native, re-exported.
 //

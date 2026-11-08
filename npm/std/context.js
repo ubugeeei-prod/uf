@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/context`: Go's `context`, over `AbortSignal`.
 //

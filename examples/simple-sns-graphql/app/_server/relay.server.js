@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { headers } from "@uniflowed/server";
 import { createServerEnvironment } from "@uniflowed/relay/rsc_EXPERIMENTAL";

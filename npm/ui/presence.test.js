@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `internal/presence.js`: a closing part stays on the page, marked
 // `data-state="closed"`, until the animations on it have finished, and no

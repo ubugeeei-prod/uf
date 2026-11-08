@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // An ordinary module with an in-source test in it.
 //

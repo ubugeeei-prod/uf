@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A bounded cache of prepared statements, for the SQLite adapters.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A middleware that rewrites: `/shop/<slug>` is answered by `/posts/<slug>`,
 // and the address stays `/shop/<slug>`.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The field `uf ui add field` writes: a control named by its label, described
 // by its help, invalid and explained only while it is invalid, and every piece

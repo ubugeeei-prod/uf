@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/i18n/negotiate`: which of the locales we have does this reader
 // want.

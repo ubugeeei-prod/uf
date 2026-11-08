@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/cell` under the runner that ships with the toolchain.
 

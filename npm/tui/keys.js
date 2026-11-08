@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Terminal bytes in, key events out.
 //

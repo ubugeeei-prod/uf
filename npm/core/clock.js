@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/core/clock`: the one place uf reads a clock.
 //

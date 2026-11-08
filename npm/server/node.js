@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/node`: the Node half of serving a build.
 //

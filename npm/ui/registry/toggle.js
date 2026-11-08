@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Toggle: a button that stays pressed until it is pressed again, for a mode
 // such as bold or a filter that is on.

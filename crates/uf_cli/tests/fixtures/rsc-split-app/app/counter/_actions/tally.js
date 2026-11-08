@@ -1,5 +1,5 @@
 "use server";
-// @flow
+"use flow";
 //
 // The server action the counter calls.
 //

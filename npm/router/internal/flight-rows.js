@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: a finished Flight payload, with the rows a
 // partial prerender left for the request taken out.

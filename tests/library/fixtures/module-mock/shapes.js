@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // One of each kind of export, so the automatic stand-in's rules can be
 // asserted rather than assumed.

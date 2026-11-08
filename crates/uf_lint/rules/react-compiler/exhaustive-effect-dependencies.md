@@ -3,7 +3,7 @@ An effect's dependency array says when it runs again. A value read inside the ef
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useEffect } from "react";
 
 export component Title(count: number) {
@@ -15,13 +15,13 @@ export component Title(count: number) {
 ```
 
 ```diagnostics
-app/example.js:6:25 Found missing effect dependencies. Missing dependencies can cause an effect to fire less often than it should.
+app/example.js:6:25 Found missing effect dependencies. Missing dependencies can cause an effect to fire less often than it should. Inferred dependencies: `[count]`.
 ```
 
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { useEffect } from "react";
 
 export component Title(count: number) {

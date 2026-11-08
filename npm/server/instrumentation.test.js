@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { afterAll, describe, expect, it } from "@uniflowed/test";
 import { context, propagation, trace } from "@opentelemetry/api";

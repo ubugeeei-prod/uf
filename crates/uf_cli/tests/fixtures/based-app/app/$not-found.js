@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A path under the base path with no route is this page, with a 404. A path
 // outside the base path is not the application's at all, and gets the plain

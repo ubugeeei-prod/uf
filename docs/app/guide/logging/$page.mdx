@@ -32,7 +32,7 @@ instance, and each Worker isolate or serverless instance starts independently.
 
 ```js
 // app/$instrumentation.js
-// @flow
+"use flow";
 import { logger } from "@uniflowed/server";
 import { startTelemetry } from "./_server/telemetry.js";
 
@@ -43,8 +43,8 @@ export async function register() {
 export async function onRequestError(error, context) {
   logger().error("request failed", {
     error,
-    phase: context.phase,
-    route: context.route,
+    phase    : context.phase,
+    route    : context.route,
     requestId: context.requestId,
   });
 }
@@ -118,7 +118,7 @@ server module, so server credentials and SDKs stay out of client bundles.
 ## Saying something
 
 ```js
-// @flow
+"use flow";
 import { logger } from "@uniflowed/server";
 
 export async function loader({ params }: LoaderArgs) {
@@ -145,7 +145,7 @@ backwards.
 ## The request id
 
 ```js
-// @flow
+"use flow";
 import { requestId } from "@uniflowed/server";
 
 export default function ErrorPage() {
@@ -209,13 +209,13 @@ stream by level would put a log line in the middle of a protocol.
 ## Sending it somewhere else
 
 ```js
-// @flow
+"use flow";
 import { createLogger, installLogger } from "@uniflowed/server/log";
 
 installLogger(
   createLogger({
     level: "info",
-    sink: (record) => myCollector.send(record),
+    sink : (record) => myCollector.send(record),
   }),
 );
 ```

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/sql/pglite`: PGlite, PostgreSQL compiled to WebAssembly.
 //

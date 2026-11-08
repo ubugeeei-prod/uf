@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 import { StrictMode, useState } from "@uniflowed/react";
 import { afterEach, describe, expect, fn, it } from "@uniflowed/test";

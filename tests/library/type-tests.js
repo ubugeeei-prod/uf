@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The one harness every negative type test in this suite runs through.
 //

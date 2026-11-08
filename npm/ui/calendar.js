@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A month of dates, as one stop in the page's tab order.
 //

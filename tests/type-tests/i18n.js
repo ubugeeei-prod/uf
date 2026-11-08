@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The five misuses `@uniflowed/i18n` exists to refuse, and the calls it must
 // keep accepting.

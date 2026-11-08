@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/immer`: freezing, and the switch that turns it off.
 //

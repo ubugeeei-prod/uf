@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // A page written against @uniflowed/ui 0.2, which exported every part twice.
 "use client";
 

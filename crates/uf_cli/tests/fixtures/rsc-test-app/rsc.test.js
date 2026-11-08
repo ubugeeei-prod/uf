@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { it, expect } from "@uniflowed/test";
 import { createTestApp } from "@uniflowed/test/app";
 import { createBrowser } from "@uniflowed/test/browser";

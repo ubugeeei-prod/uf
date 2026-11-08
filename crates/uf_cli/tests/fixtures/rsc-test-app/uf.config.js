@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { defineConfig } from "@uniflowed/config";
 export default defineConfig({
   app: {

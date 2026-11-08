@@ -3,7 +3,7 @@ An element that is the role, such as `button`, `nav` or `h2`, comes with the key
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Links() {
   return (
     <div role="navigation">
@@ -20,7 +20,7 @@ app/example.js:4:10 `role="navigation"` names what `<nav>` already is: the eleme
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Links() {
   return (
     <nav>

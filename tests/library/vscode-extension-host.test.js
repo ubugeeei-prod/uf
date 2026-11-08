@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The VS Code extension's wiring, against a stand-in for VS Code.
 //

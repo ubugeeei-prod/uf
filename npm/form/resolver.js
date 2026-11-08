@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/form/resolver`: the contract between a form and a schema.
 //

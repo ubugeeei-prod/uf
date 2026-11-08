@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `tools/docs/snippets.js`, the check that every sample in the manual parses.
 //

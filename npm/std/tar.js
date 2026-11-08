@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/tar`: ustar archive reading and writing.
 //

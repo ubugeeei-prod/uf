@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/web/time`: rendering an instant.
 //

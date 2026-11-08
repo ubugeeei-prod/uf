@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 import { TagGroup } from "./tag-group.js";
 const items = [

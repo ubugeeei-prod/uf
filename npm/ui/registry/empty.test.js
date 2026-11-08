@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The empty state `uf ui add empty` writes, held to what its header promises:
 // a title that is a heading at the level asked for, a picture nobody hears, a

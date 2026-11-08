@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `app.router`'s base path, trailing-slash policy, redirects, rewrites and
 // headers, as every front door reads them. `tests/library/deploy.test.js` asks

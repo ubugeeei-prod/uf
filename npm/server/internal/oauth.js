@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/server`: the parts of signing in that are not a flow.
 //

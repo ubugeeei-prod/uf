@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // A cast that is the object of a member access or the callee of a call gets a
 // line of its own between the parentheses it already wears — but only after a
 // member lookup and an argument list have both failed to make room.

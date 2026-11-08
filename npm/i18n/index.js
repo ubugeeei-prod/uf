@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/i18n`: a message's arguments have a type.
 //

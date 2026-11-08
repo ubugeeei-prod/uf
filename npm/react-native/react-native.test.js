@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // React Native package integration that does not require the peer runtime.
 //

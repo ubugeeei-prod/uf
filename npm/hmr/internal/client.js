@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/core/hmr` — the browser half of `uf dev`'s update channel.
 //

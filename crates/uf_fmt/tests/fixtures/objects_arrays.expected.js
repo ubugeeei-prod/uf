@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 const empty = {};
 const emptyArray = [];
 const oneLine = { a: 1, b: 2 };

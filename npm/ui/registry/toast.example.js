@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 import { Button } from "./button.js";
 import { toast } from "./toast.js";
 import * as Toast from "./toast.js";

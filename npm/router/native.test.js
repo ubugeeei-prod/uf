@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // React Native uses the route table, not the browser history API.
 

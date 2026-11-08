@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Where `describe` and `it` say they were written.
 //

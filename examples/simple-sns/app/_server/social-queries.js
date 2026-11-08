@@ -1,5 +1,5 @@
 "use server";
-// @flow
+"use flow";
 // These are callable read capabilities. uf does not yet send a Flight component tree.
 // Each read establishes its own identity, even when invoked outside a page loader.
 

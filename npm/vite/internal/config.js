@@ -5,7 +5,7 @@
 // Loading `uf.config.js`.
 //
 // The config is a Flow module — `import { defineConfig } from
-// "@uniflowed/config"` and the `// @flow` docblock are the documented shape —
+// "@uniflowed/config"` and the `"use flow";` directive are the documented shape —
 // so no host can import it as written. It is transformed through
 // `uf transform` like every other module, written under `.uf/config/`, and
 // imported from there. Relative imports inside the config are rewritten to

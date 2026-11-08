@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The card `uf ui add card` writes, held to what its header promises: no role
 // of its own, a title that is a real heading at the level it is given, the

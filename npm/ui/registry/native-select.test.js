@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The select `uf ui add native-select` writes, held to what its header
 // promises: a real `<select>` named by its label, the caller's own options and

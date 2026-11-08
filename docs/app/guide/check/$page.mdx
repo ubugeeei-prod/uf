@@ -29,7 +29,7 @@ package it cannot find as `any`, which is the reason
 Two files, one of them wrong:
 
 ```js
-// @flow
+"use flow";
 // lib/total.js
 export type LineItem = {| readonly name: string, readonly cents: number |};
 
@@ -39,7 +39,7 @@ export function total(items: $ReadOnlyArray<LineItem>): number {
 ```
 
 ```js
-// @flow
+"use flow";
 // lib/summary.js
 import { total } from "./total.js";
 
@@ -100,7 +100,7 @@ Every `.js`, `.jsx`, `.mjs` and `.cjs` file in the project, and each
 top-level `ignore` list in `uf.config.js` is applied — `node_modules`, `dist` and
 `target` by default — and `.uf` and `.git` are never read.
 
-A file needs no `// @flow` to be checked. One that says `// @noflow` is parsed,
+A file needs no `"use flow";` to be checked. One that says `// @noflow` is parsed,
 so a syntax error in it is still reported, and not inferred; the footer counts it
 on a row of its own:
 
@@ -154,7 +154,7 @@ error: no file matched `./lib/summary.js`
 | --- | --- |
 | a file in the project, with or without its extension, or a directory with an `index` file | that file, typed |
 | a module a library definition declares — `react`, `node:fs` and the rest Flow ships | the declaration, whatever `node_modules` holds |
-| a package installed in `node_modules` that ships Flow — a file with `@flow` in its first 8 KiB, or a `.flow` file beside a module | that package's files, through its `exports` map, each `.flow` file read in place of the module it sits beside |
+| a package installed in `node_modules` that ships Flow — a file with `@flow` or `"use flow"` in its first 8 KiB, or a `.flow` file beside a module | that package's files, through its `exports` map, each `.flow` file read in place of the module it sits beside |
 | a package installed in `node_modules` that ships TypeScript declarations and no Flow — its own, or an `@types` package's | a Flow translation of the declarations TypeScript reads for it, with what the translation cannot say typed `any` and counted in the report |
 | a package in the same workspace | the file its manifest publishes |
 | an image, a stylesheet or `?raw`, and `import.meta.glob` or `import.meta.hot` | uf's declarations for Vite's client API |

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/standalone`: what a compiled binary does with a request.
 //

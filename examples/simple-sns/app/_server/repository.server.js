@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import type { SyncQueryable } from "@uniflowed/sql";
 

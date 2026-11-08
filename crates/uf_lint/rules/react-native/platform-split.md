@@ -3,7 +3,7 @@ React Native picks `Button.ios.js` or `Button.android.js` at build time, so each
 ## Bad
 
 ```js path=app/Button.js
-// @flow
+"use flow";
 import { Platform } from "react-native";
 
 export const radius: number = Platform.OS === "ios" ? 8 : 2;
@@ -16,11 +16,11 @@ app/Button.js:4:31 prefer platform-specific files for React Native platform bran
 ## Good
 
 ```js path=app/Button.ios.js
-// @flow
+"use flow";
 export const radius: number = 8;
 ```
 
 ```js path=app/Button.android.js
-// @flow
+"use flow";
 export const radius: number = 2;
 ```

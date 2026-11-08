@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { Pressable, ScrollView, Text } from "react-native";
 import { useNativeRouter, useParams } from "@uniflowed/router/native-navigation";

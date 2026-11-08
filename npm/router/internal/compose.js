@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: one walk from a resolved route to the tree
 // that renders it.

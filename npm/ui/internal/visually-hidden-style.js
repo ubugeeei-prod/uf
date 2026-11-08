@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The one inline style for "hidden from sight, present for a screen reader".
 //

@@ -3,7 +3,7 @@ An element with a `role` and an `onClick` is announced as a control, so keyboard
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Toggle(onToggle: () => void) {
   return (
     <div role="button" tabIndex={0} onClick={onToggle}>
@@ -22,7 +22,7 @@ app/example.js:4:37 `<div role="button">` answers a click and no key press, so a
 A real `button` gets Enter, Space and focus from the browser.
 
 ```js
-// @flow
+"use flow";
 export component Toggle(onToggle: () => void) {
   return (
     <button type="button" onClick={onToggle}>

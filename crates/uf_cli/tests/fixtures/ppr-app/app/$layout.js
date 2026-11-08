@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The document, and nothing else: every assertion made against this
 // application is about which bytes of it arrived when.

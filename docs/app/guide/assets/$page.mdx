@@ -72,7 +72,7 @@ for an opaque image too.
 ### The one above the fold
 
 ```js
-<Image src={hero} alt="…" priority={true} />
+<Image src={hero} alt="…" priority={true} />;
 ```
 
 `priority` makes the image eager, gives it `fetchpriority="high"`, and emits a
@@ -114,7 +114,7 @@ export default defineConfig({
 Then pass the URL to `Image` as a string, with its dimensions:
 
 ```js
-<Image src={post.cover.url} alt={post.cover.alt} width={1600} height={900} />
+<Image src={post.cover.url} alt={post.cover.alt} width={1600} height={900} />;
 ```
 
 `Image` sends it through `/__uf/image` and writes the `srcset` for you — one
@@ -205,7 +205,7 @@ export function createImageTransformer() {
         : await resized.png().toBuffer();
     return {
       bytes: new Uint8Array(encoded),
-      type: avif ? "image/avif" : type === "image/jpeg" ? "image/jpeg" : "image/png",
+      type : avif ? "image/avif" : type === "image/jpeg" ? "image/jpeg" : "image/png",
     };
   };
 }
@@ -324,7 +324,7 @@ up front, which is what the split existed to stop, and four preloaded faces have
 pushed your own stylesheet down the same connection.
 
 ```js
-<Font src={inter} preload={false} />
+<Font src={inter} preload={false} />;
 ```
 
 for a face that does not paint the first screen. `app.builtins.fonts.preload`
@@ -344,7 +344,9 @@ export component Layout(children: React.Node) {
   return (
     <>
       <IconSprite sprite={sprite} />
-      <button type="button"><Icon icon={star} label="Favourite" /></button>
+      <button type="button">
+        <Icon icon={star} label="Favourite" />
+      </button>
       {children}
     </>
   );
@@ -489,16 +491,16 @@ export default defineConfig({
   app: {
     builtins: {
       images: {
-        widths: [640, 750, 828, 1080, 1200, 1440, 1920],
-        quality: 75,
-        placeholder: true,
-        remotePatterns: [],
-        qualities: [],
+        widths                          : [640, 750, 828, 1080, 1200, 1440, 1920],
+        quality                         : 75,
+        placeholder                     : true,
+        remotePatterns                  : [],
+        qualities                       : [],
         dangerouslyAllowPrivateAddresses: false,
       },
       fonts: { display: "swap", fallback: "Arial", subset: "none", preload: true },
       icons: { dir: "icons" },
-      og: { font: null },
+      og   : { font: null },
     },
   },
 });

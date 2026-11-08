@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // `a?.b(c)` is an optional call whose own `optional` flag is false — the `?.`
 // belongs to the member it is called on — so a chain ending in `?.name(…)` is
 // still a member chain and still breaks one link per line. Only `(a?.b)()`,

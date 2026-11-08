@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Node-only loader for the optional React Test Renderer peer.
 

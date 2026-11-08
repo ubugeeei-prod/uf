@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: a route's metadata, as the elements React
 // hoists into `<head>`.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/mock`: request mocking at the level MSW works at.
 //

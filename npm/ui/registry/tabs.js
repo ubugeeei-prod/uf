@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Tabs: `@uniflowed/ui`'s tab set, with the selected tab underlined.
 //

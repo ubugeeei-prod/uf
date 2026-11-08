@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Middleware: what runs before a path answers, whatever answers it.
 //
@@ -9,7 +9,7 @@
 // already use and the reason uf does not inherit Next's regular expressions.
 //
 //   // app/dashboard/$middleware.js
-//   // @flow
+//   "use flow";
 //   import { cookies } from "@uniflowed/server";
 //
 //   export default function middleware(request: Request): Response | void {

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { catchAll, die, fail, type Effect } from "@uniflowed/effect";
 

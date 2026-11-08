@@ -3,7 +3,7 @@ Each `aria-*` attribute takes a fixed kind of value: `true` or `false`, a token 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Nav() {
   return (
     <a href="/docs" aria-current="yes">
@@ -20,7 +20,7 @@ app/example.js:4:21 `aria-current` takes one of `page`, `step`, `location`, `dat
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Nav() {
   return (
     <a href="/docs" aria-current="page">

@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export type Toggle = { readonly on: bool };
 ```
 
@@ -14,6 +14,6 @@ app/example.js:2:37 the `bool` type alias is deprecated; write `boolean`
 ## Good
 
 ```js
-// @flow
+"use flow";
 export type Toggle = { readonly on: boolean };
 ```

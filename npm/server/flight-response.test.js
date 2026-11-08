@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Answering a browser that asks for a route's payload.
 //

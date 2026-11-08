@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A page with a static shell and one hole.
 //

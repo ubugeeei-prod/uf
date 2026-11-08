@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Separator: a line between groups of content, announced when it marks a
 // boundary and silent when it is only a line.

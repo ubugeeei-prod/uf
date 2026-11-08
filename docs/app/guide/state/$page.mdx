@@ -80,7 +80,7 @@ needs, and everything else in this package is built from them.
 
 ```js
 "use client";
-// @flow
+"use flow";
 import { useAtomValue, useSetAtom } from "@uniflowed/state";
 
 component Controls() {
@@ -173,7 +173,8 @@ a filtered list — takes a third argument saying what "unchanged" means for it:
 const ids = selectAtom(
   rows,
   (all) => all.map((row) => row.id),
-  (previous, next) => previous.length === next.length && previous.every((id, at) => id === next[at]),
+  (previous, next) =>
+    previous.length === next.length && previous.every((id, at) => id === next[at]),
 );
 ```
 
@@ -253,9 +254,9 @@ renders it:
 component Name() {
   const loadable = useAtomValue(user);
   return match (loadable.state) {
-    "loading" => <p>…</p>,
+    "loading"  => <p>…</p>,
     "hasError" => <p>could not load</p>,
-    "hasData" => <p>{loadable.data}</p>,
+    "hasData"  => <p>{loadable.data}</p>,
   };
 }
 ```
@@ -321,7 +322,11 @@ a handler happened to look at something would be very hard to explain.
 ```js
 import { RESET, atomWithStorage, createJSONStorage } from "@uniflowed/state";
 
-const theme = atomWithStorage("theme", "light", createJSONStorage(() => localStorage));
+const theme = atomWithStorage(
+  "theme",
+  "light",
+  createJSONStorage(() => localStorage),
+);
 ```
 
 The thunk is what makes that line safe in a file a server imports, and the

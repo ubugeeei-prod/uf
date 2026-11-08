@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a kept `uf test --watch` worker loads afresh after an edit, and what it
 // refuses to promise. `./internal/module-epochs.js` says why each rule is

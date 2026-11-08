@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import type { TestPage, ScreenshotResult } from "@uniflowed/test/browser";
 export type VisualSnapshot = {|
   readonly storyId : string,

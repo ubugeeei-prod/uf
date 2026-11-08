@@ -3,7 +3,7 @@ A `Promise` that nobody awaits or handles fails silently: its rejection becomes 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 declare function save(value: string): Promise<void>;
 
 export async function submit(value: string): Promise<void> {
@@ -14,7 +14,7 @@ export async function submit(value: string): Promise<void> {
 ## Good
 
 ```js
-// @flow
+"use flow";
 declare function save(value: string): Promise<void>;
 
 export async function submit(value: string): Promise<void> {

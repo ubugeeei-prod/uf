@@ -3,7 +3,7 @@ A tab is as wide as each editor, terminal and code review tool decides, so tab-i
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export function total(prices: $ReadOnlyArray<number>): number {
 	return prices.reduce((sum, price) => sum + price, 0);
 }
@@ -16,7 +16,7 @@ app/example.js:3:1 replace tabs with spaces
 ## Good
 
 ```js
-// @flow
+"use flow";
 export function total(prices: $ReadOnlyArray<number>): number {
   return prices.reduce((sum, price) => sum + price, 0);
 }

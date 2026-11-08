@@ -3,7 +3,7 @@ Without a `lang` on `html`, a screen reader reads the page in the user's default
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import * as React from "react";
 
 export component Document(children: React.Node) {
@@ -22,7 +22,7 @@ app/example.js:6:5 `<html>` names no language, so a screen reader reads the page
 ## Good
 
 ```js
-// @flow
+"use flow";
 import * as React from "react";
 
 export component Document(children: React.Node) {

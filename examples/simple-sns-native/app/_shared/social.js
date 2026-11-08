@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // Public view models and the result types every screen matches on. They are the
 // web Commonplace examples' model, so the two apps describe one product.
 

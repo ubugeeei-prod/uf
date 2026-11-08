@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The item `uf ui add item` writes, held to what its header promises: rows
 // that are a list when they belong together, a title that is text rather than

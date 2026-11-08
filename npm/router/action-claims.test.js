@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The claims `docs/app/guide/server-actions/$page.mdx` makes that nothing else
 // asserts (ubugeeei-prod/uf#1501).

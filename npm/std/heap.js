@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/heap`: Go's `container/heap`, as a class with a comparator.
 //

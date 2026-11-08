@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What counts as a uf project, and which files in one this extension claims.
 //

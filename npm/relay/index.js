@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // Relay owns the runtime, normalized cache, compiler, and public types.
 // Named value re-exports preserve Vite's CommonJS interop in the browser;
 // export-star alone does not expose a prebundled CommonJS module's members.

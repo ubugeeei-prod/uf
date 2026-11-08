@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A dev server's edit, arriving as a render rather than a reload.
 //

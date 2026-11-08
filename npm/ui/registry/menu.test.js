@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The menu `uf ui add menu` writes: a trigger that opens a menu it names,
 // checkbox and radio rows that say what they are, a disabled row, a shortcut

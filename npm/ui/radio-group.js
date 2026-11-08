@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A radio group: several answers, where choosing one unchooses the rest.
 //

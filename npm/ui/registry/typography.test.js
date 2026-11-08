@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The type scale `uf ui add typography` writes, held to what its header
 // promises: every part the element its name says, headings at the level their

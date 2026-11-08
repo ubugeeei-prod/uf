@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/web/head`: the document head, from a component.
 //

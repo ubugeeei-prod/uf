@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Every Markdown table row in the repository is inside a table.
 //

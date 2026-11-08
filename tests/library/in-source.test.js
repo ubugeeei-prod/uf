@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // In-source tests: what the marker is, and who is allowed to see it.
 //

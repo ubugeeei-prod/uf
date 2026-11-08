@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The calendar `uf ui add calendar` writes: a grid named by its month, the
 // chosen day and today marked, one day in the tab order, a click choosing a day,

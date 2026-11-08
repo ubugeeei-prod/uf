@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 import { client } from "./_shared/fetch.js";
 

@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Slider: a value, or a range between two values, chosen by dragging a thumb
 // along a rail or with the arrow keys.

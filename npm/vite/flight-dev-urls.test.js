@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The URL `uf dev` names a client module by, and the file a server reads back
 // from it.

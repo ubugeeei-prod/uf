@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // Casts written as comments, the way Relay writes every generated artifact:
 // the file ships in an npm package and is read by tools that do not strip
 // Flow, so the cast lives in a comment and only Flow sees it.

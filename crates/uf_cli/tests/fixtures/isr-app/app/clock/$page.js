@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A page that regenerates. It states a one-second lifetime, so `uf build`
 // writes its document for regeneration rather than at `dist/clock/`, and every

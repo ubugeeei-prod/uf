@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The keyboard pattern shared by every list of things in this package.
 //

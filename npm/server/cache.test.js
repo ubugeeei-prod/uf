@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The cache uf did not have, and what it promises.
 //

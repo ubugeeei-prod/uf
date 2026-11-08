@@ -3,7 +3,7 @@ Setting state unconditionally during render starts another render, which sets it
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useState } from "react";
 
 export component Greeting(name: string) {
@@ -20,7 +20,7 @@ app/example.js:6:3 Cannot call setState during render. Calling setState during r
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Greeting(name: string) {
   const text = `Hello, ${name}`;
   return <p>{text}</p>;

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // A spread as the last element takes the trailing comma; a pattern's rest
 // cannot, because nothing may follow it.
 

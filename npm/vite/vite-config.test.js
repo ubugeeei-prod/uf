@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/vite`'s configuration merge.
 //

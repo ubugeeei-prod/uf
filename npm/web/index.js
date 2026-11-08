@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/web`: the primitives a page is built from.
 //

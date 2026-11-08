@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/validator/union`: several schemas over one value.
 //

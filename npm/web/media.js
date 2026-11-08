@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/web/media`: the elements that load bytes.
 //

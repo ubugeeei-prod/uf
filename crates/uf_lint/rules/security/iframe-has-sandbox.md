@@ -3,7 +3,7 @@ An `iframe` without `sandbox` gives the embedded page everything a top-level pag
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Map() {
   return <iframe src="https://maps.example/embed" title="Store location" />;
 }
@@ -16,7 +16,7 @@ app/example.js:3:10 this `<iframe>` has no `sandbox`, so the document inside it 
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Map() {
   return (
     <iframe sandbox="allow-scripts" src="https://maps.example/embed" title="Store location" />

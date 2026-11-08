@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Close(onClose: () => void) {
   return (
     <button type="button" aria-hidden="true" onClick={onClose}>
@@ -22,7 +22,7 @@ app/example.js:4:27 `<button>` is hidden from assistive technology but still tak
 Hide the decorative glyph, not the control.
 
 ```js
-// @flow
+"use flow";
 export component Close(onClose: () => void) {
   return (
     <button type="button" aria-label="Close" onClick={onClose}>

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/sql`: the runtime sqlc's Flow target generates code against.
 //

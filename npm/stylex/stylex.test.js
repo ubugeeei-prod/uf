@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/stylex`: the merge that runs, and the preset the compiler makes.
 //

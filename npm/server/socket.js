@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/socket`: the upgrade a route handler can accept.
 //
@@ -10,7 +10,7 @@
 // they disagree about anything else in this package.
 //
 //   // app/api/room/[id]/$route.js
-//   // @flow
+//   "use flow";
 //   import { upgradeWebSocket } from "@uniflowed/server/socket";
 //
 //   export function GET(request: Request, context: HandlerContext): Response {

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `$error.js`: what renders when a route does not.
 //

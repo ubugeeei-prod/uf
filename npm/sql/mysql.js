@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/sql/mysql`: MySQL's text representation, both ways.
 //

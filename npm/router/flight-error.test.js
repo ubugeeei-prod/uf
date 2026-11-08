@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What of a route's error may cross into a Flight payload.
 //

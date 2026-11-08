@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

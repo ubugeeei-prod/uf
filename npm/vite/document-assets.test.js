@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The tags a served document links, as the build recorded them.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Checkbox: one answer in a form, checked, unchecked or mixed, drawn as a box
 // beside its label.

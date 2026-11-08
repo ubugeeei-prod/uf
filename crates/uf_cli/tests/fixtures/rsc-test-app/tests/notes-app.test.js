@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { beforeAll, describe, expect, it } from "@uniflowed/test";
 import { type BuiltApp, buildApp } from "@uniflowed/router/testing";
 

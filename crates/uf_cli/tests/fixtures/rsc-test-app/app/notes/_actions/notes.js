@@ -1,5 +1,5 @@
 "use server";
-// @flow
+"use flow";
 import { cookies } from "@uniflowed/server";
 import { revalidateTag } from "@uniflowed/server/cache";
 import { forbidden, notFound } from "@uniflowed/router";

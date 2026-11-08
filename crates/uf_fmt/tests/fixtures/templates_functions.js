@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 const plain = `no substitutions`;
 const multi = `line one
 line two ${value}

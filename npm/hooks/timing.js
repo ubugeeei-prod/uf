@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/hooks/timing`: timers that stop when the component does.
 //

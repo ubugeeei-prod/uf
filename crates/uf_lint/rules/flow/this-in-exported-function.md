@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export function fullName(): string {
   return `${this.first} ${this.last}`;
 }
@@ -12,7 +12,7 @@ export function fullName(): string {
 ## Good
 
 ```js
-// @flow
+"use flow";
 export function fullName(person: { readonly first: string, readonly last: string }): string {
   return `${person.first} ${person.last}`;
 }

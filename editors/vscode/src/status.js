@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What the status bar says about the language servers in this window.
 //

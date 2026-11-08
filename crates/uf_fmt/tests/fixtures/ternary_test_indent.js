@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // A ternary's test keeps its own indentation unless the ternary sits in an
 // argument list, and `new Error(…)` and `import(…)` are not argument lists for
 // this purpose — Prettier asks `isCallExpression`, which `new` is not.

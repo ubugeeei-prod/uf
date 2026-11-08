@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `uf dev` renders inside a cache scope, the way `uf start` does.
 //

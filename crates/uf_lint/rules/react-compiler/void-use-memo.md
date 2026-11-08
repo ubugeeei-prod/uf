@@ -3,7 +3,7 @@ A `useMemo` whose callback returns nothing memoizes `undefined`. It is usually a
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useMemo } from "react";
 
 export component Total(prices: $ReadOnlyArray<number>) {
@@ -21,7 +21,7 @@ app/example.js:5:25 useMemo() callbacks must return a value. This useMemo() call
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { useMemo } from "react";
 
 export component Total(prices: $ReadOnlyArray<number>) {

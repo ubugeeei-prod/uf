@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The select `uf ui add select` writes. `@uniflowed/ui`'s own suite holds the
 // keyboard map; these hold that dressing the parts kept it, that the cursor and

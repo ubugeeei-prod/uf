@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The navigation `uf ui add navigation-menu` writes: a named `<nav>` whose
 // triggers disclose one panel at a time, a panel named by its trigger and gone

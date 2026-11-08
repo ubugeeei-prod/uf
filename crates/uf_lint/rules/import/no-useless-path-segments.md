@@ -3,7 +3,7 @@
 ## Bad
 
 ```js path=app/page.js
-// @flow
+"use flow";
 import { load } from "./features/../model.js";
 ```
 
@@ -14,7 +14,7 @@ app/page.js:2:22 `./features/../model.js` can be written as `./model.js`
 ## Good
 
 ```js path=app/page.js
-// @flow
+"use flow";
 import { load } from "./model.js";
 import { routes } from "./routes/index.js";
 ```

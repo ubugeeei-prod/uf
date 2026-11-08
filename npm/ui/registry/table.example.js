@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 import { useState } from "@uniflowed/react";
 
 import type { Sort } from "./table.js";

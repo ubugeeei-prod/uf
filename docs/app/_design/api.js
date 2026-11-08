@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The API reference: every export of every published package, as the package
 // declares it.

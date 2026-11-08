@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/router/testing`, held to the claim in its header: every helper
 // is the real code path at its level. So each case asks the question a test

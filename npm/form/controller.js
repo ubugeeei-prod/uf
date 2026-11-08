@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/form/controller`: the field that cannot be uncontrolled.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `ppr`: a static shell with a hole.
 //

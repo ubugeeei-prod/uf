@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The terminal clipboard this package implements: OSC 52, write-only.
 //

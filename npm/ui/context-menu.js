@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The same menu, opened by the right button.
 //

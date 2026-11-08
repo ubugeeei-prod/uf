@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Photo(src: string) {
   return <img src={src}>A cat asleep</img>;
 }
@@ -16,7 +16,7 @@ app/example.js:3:10 `<img>` is a void element and cannot hold children: React th
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Photo(src: string) {
   return <img src={src} alt="A cat asleep" />;
 }

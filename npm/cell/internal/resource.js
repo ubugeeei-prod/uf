@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Asynchronous cells: a value that arrives later, in a graph that is otherwise
 // synchronous.

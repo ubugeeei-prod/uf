@@ -5,7 +5,7 @@ Meta's `fbt` internationalization library has JSX with rules of its own, and the
 An `fbt` tag must be the module-level import, not a local value that happens to be called `fbt`.
 
 ```js
-// @flow
+"use flow";
 export component Greeting(fbt: (text: string) => string) {
   return <fbt desc="Greeting">Hello</fbt>;
 }
@@ -14,7 +14,7 @@ export component Greeting(fbt: (text: string) => string) {
 ## Good
 
 ```js
-// @flow
+"use flow";
 import fbt from "fbt";
 
 export component Greeting(name: string) {

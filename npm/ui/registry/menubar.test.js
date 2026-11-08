@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The menubar `uf ui add menubar` writes: a named bar of triggers with one tab
 // stop, the arrow keys moving along it, a trigger that opens and names its

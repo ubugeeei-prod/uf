@@ -3,7 +3,7 @@ Code the React Compiler rejects as invalid, even though the parser accepted it. 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Counter() {
   const count = 0;
   count = 1;
@@ -18,7 +18,7 @@ app/example.js:4:3 Cannot reassign a `const` variable. `count` is declared as co
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Counter() {
   let count = 0;
   count = 1;

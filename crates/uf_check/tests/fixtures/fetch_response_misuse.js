@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Every numbered line here must be a type error. A libdef that typed
 // `Response.json` loosely would pass `fetch_response.js` and none of these.

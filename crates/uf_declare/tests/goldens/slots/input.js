@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 export type Callable = {
   [[call]]: (input: string) => number,

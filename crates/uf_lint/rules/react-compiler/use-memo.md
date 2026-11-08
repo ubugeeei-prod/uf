@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useMemo } from "react";
 
 export component Profile(id: string) {
@@ -22,7 +22,7 @@ app/example.js:5:24 useMemo() callbacks may not be async or generator functions.
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { use, useMemo } from "react";
 
 export component Profile(id: string) {

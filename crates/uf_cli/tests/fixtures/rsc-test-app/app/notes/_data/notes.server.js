@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Where the notes live: in this process's memory.
 //

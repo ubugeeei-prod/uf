@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // An accordion: a stack of disclosures that know about each other.
 //

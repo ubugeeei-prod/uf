@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/events`, `/socket` and `/queue`.
 //

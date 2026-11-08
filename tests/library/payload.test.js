@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The payload, and the rows that arrive after the document did.
 //

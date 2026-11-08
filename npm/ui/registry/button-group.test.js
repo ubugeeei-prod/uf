@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The button group `uf ui add button-group` writes, held to what its header
 // promises: a named group of real buttons that are each a tab stop, which

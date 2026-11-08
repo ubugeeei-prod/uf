@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { mkdtemp, readFile, writeFile, chmod, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

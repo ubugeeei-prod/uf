@@ -3,7 +3,7 @@ An `invariant` whose condition Flow already knows is true checks nothing, and su
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import invariant from "invariant";
 
 export function first(items: [string, string]): string {
@@ -16,7 +16,7 @@ export function first(items: [string, string]): string {
 ## Good
 
 ```js
-// @flow
+"use flow";
 import invariant from "invariant";
 
 export function first(items: $ReadOnlyArray<string>): string {

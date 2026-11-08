@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `isr`, on demand: a page whose lifetime is an hour, so only an invalidation
 // replaces it during a test. `POST /api/revalidate?tag=isr-tag` expires it; the

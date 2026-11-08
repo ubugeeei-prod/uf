@@ -3,7 +3,7 @@ The `lang` on `html` decides the voice and pronunciation a screen reader uses. A
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import * as React from "react";
 
 export component Document(children: React.Node) {
@@ -22,7 +22,7 @@ app/example.js:6:11 `lang="en_GB"` is not a language tag, so a screen reader can
 ## Good
 
 ```js
-// @flow
+"use flow";
 import * as React from "react";
 
 export component Document(children: React.Node) {

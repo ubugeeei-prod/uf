@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: what a server action's arguments and its
 // result are allowed to be.

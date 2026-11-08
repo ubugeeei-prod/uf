@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `Response.json`, which the vendored `bom.js` leaves out of `Response`'s
 // statics, and the rest of the class, which `libdefs/fetch.js` repeats.

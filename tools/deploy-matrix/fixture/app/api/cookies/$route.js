@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Two `Set-Cookie` headers on one answer — the adapter contract's rule 5 ("keep
 // every Set-Cookie separate"), which a platform that joins headers with a comma

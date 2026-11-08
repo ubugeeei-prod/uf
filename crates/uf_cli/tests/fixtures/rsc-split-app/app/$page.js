@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The static route: server-rendered content, no client boundary, no state.
 //

@@ -3,7 +3,7 @@ Browsers and password managers fill a field from its `autoComplete` token, and a
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Email() {
   return (
     <input type="email" name="email" autoComplete="mail" />
@@ -18,7 +18,7 @@ app/example.js:4:38 `mail` is not an autofill token, so the browser cannot tell 
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Email() {
   return (
     <input type="email" name="email" autoComplete="email" />

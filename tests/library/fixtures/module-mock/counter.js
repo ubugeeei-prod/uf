@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Module state, so that "evaluated again" is something a test can see.
 //

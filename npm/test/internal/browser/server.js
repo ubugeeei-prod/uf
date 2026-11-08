@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/test`: the modules a page imports, over HTTP.
 //

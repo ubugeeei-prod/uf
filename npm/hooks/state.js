@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/hooks/state`: state with a shape.
 //

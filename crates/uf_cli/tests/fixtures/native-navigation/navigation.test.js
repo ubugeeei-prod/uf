@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as React from "react";
 import { act, render, screen, fireEvent } from "@testing-library/react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";

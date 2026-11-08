@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Two panes and the handle between them — a slider wearing a different role.
 //

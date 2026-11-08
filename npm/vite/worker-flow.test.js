@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A Web Worker written in Flow, as a build bundles it.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/temporal`: the name an application imports Temporal by.
 //

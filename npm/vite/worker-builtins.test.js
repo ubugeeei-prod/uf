@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What `uf build --adapter edge` says about a Node built-in a Worker does not
 // provide. The table itself is checked against a real workerd by

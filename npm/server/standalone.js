@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/standalone`: the application, serving itself, from one file.
 //

@@ -3,7 +3,7 @@ In the app directory, a file name starting with `$` is reserved for the router: 
 ## Bad
 
 ```js path=app/$handler.js
-// @flow
+"use flow";
 export default function handler(): string {
   return "hello";
 }
@@ -16,7 +16,7 @@ app/$handler.js:1:1 reserved file names are $<layout|template|page|default|middl
 ## Good
 
 ```js path=app/api/$route.js
-// @flow
+"use flow";
 export function GET(): Response {
   return new Response("hello");
 }

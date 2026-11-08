@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A loader redirect: the answer's whole content is its `Location` header, so a
 // target that writes the status and the body and drops the headers is caught.

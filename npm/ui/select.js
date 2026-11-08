@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A select: a button that opens a list of options and takes one of them.
 //

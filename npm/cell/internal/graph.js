@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The dependency graph: what a cell is, how it learns what it depends on, and
 // how one write reaches everything that cares — exactly once, with no

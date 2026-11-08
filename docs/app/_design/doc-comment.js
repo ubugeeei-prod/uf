@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A doc comment's text as blocks: paragraphs, fenced code and bulleted lists.
 //

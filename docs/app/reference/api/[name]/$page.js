@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // One package's API reference: `/reference/api/query` for `@uniflowed/query`.
 //

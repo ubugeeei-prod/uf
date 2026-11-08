@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // The error boundary for `/boom`: what a page that throws while rendering is
 // answered with, inside the layouts above it, with a `500`.

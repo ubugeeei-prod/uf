@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { describe, expect, it } from "@uniflowed/test";
 import { NotFoundError } from "@uniflowed/router";
 import { withRequest } from "@uniflowed/router/testing";

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a test prints.
 //

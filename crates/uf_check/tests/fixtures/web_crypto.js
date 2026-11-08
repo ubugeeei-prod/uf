@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The Web Crypto a uf project actually calls. Every line here must check
 // clean; `web_crypto_misuse.js` is the other half.

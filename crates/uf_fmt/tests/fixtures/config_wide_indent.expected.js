@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 function outer() {
     if (condition) {
         inner();

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Whether a module is being compiled for `uf.config.js`, as the loader thread
 // sees it.

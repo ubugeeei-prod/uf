@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export class Timer {
   elapsed: number = 0;
   read(): number {
@@ -19,7 +19,7 @@ app/example.js:5:12 `this` is never nullish; drop the `?.`
 ## Good
 
 ```js
-// @flow
+"use flow";
 export class Timer {
   elapsed: number = 0;
   read(): number {

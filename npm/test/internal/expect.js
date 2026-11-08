@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `expect`, and the matchers it carries.
 //

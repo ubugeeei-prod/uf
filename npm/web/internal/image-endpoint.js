@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/web`: where `Image` sends a remote `src`.
 //

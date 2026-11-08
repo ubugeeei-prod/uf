@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The interactive route: a Server Component that renders a Client Component.
 //

@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Input OTP: a one-time code typed into one field and drawn as a row of boxes,
 // one character in each.

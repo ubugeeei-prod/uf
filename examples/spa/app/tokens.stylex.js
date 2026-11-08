@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { stylex, type CompiledStyle } from "@uniflowed/stylex";
 

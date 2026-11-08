@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as InputOtp from "./input-otp.js";
 
 /** A six-digit code in two groups of three. */

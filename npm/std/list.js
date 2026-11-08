@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/list`: Go's `container/list`, with stable element handles.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // The app uses only React Navigation's no-config, dynamic navigator factories.
 // Keep this boundary explicit: its TypeScript state-bag constraints rely on
 // mutable-array covariance, which cannot be represented faithfully in Flow.

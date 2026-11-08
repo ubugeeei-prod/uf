@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export type Props = { value: any };
 ```
 
@@ -14,6 +14,6 @@ app/example.js:2:30 avoid `any`; use `mixed`, opaque types, or generated router/
 ## Good
 
 ```js
-// @flow
+"use flow";
 export type Props = { value: mixed };
 ```

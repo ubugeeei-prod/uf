@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The pieces the documentation is built from.
 //

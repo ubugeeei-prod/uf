@@ -3,7 +3,7 @@ An import that starts at the filesystem root, such as `/Users/me/app/format.js` 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { format } from "/Users/me/app/lib/format.js";
 ```
 
@@ -14,7 +14,7 @@ app/example.js:2:24 import paths must be portable; use a package name or a relat
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { format } from "./lib/format.js";
 import { useState } from "react";
 ```

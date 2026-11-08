@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A value in a range: the arithmetic, and which way the arrow keys move it.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { beforeEach, describe, expect, it } from "@uniflowed/test";
 import { createCacheStore } from "@uniflowed/server/cache";
 import { callAction } from "@uniflowed/router/testing";

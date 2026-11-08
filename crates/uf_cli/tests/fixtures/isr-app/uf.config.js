@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { defineConfig } from "@uniflowed/config";
 
 // Regeneration takes two things from this file and one from the page. The

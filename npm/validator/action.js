@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/validator/action`: the steps that come ready-made.
 //

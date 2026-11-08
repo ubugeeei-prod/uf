@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The deploy-matrix fixture as a static export.
 //

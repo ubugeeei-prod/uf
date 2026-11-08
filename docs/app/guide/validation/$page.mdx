@@ -29,11 +29,22 @@ helps with the first of the three boundaries.
 ## A schema is a parser
 
 ```js
-import { email, integer, min, object, parse, pipe, safeParse, string, transform, trim } from "@uniflowed/validator";
+import {
+  email,
+  integer,
+  min,
+  object,
+  parse,
+  pipe,
+  safeParse,
+  string,
+  transform,
+  trim,
+} from "@uniflowed/validator";
 
 const Signup = object({
   email: pipe(string(), trim(), email()),
-  age: pipe(string(), transform(Number), integer(), min(18)),
+  age  : pipe(string(), transform(Number), integer(), min(18)),
 });
 
 const result = safeParse(Signup, { email: "  ada@example.com ", age: "36", admin: true });
@@ -99,7 +110,16 @@ fields.
 something to wait for, such as a uniqueness check that needs a database:
 
 ```js
-import { checkAsync, isAsync, minLength, object, pipe, safeParse, safeParseAsync, string } from "@uniflowed/validator";
+import {
+  checkAsync,
+  isAsync,
+  minLength,
+  object,
+  pipe,
+  safeParse,
+  safeParseAsync,
+  string,
+} from "@uniflowed/validator";
 
 const Handle = pipe(
   string(),
@@ -233,7 +253,13 @@ module's output. A map entry can fail at its key or at its value, and the path
 says which:
 
 ```js
-safeParse(map(string(), number()), new Map([["ada", 36], [2, "grace"]]));
+safeParse(
+  map(string(), number()),
+  new Map([
+    ["ada", 36],
+    [2, "grace"],
+  ]),
+);
 // issues at ["1", "key"] and ["1", "value"]
 ```
 
@@ -276,10 +302,10 @@ on one value, or you get an `intersect` issue rather than a guess.
 
 ```js
 const Query = object({
-  q: optional(string()),
-  page: withDefault(number(), 1),
+  q     : optional(string()),
+  page  : withDefault(number(), 1),
   cursor: nullable(string()),
-  sort: fallback(enum_(["new", "top"]), "new"),
+  sort  : fallback(enum_(["new", "top"]), "new"),
 });
 
 parse(Query, { cursor: null, sort: "oldest" });
@@ -334,7 +360,17 @@ infinite loop the laziness exists to avoid.
 `pipe` takes a schema and then steps, and runs them left to right:
 
 ```js
-import { integer, min, minLength, pipe, startsWith, string, toLowerCase, transform, trim } from "@uniflowed/validator";
+import {
+  integer,
+  min,
+  minLength,
+  pipe,
+  startsWith,
+  string,
+  toLowerCase,
+  transform,
+  trim,
+} from "@uniflowed/validator";
 
 const Handle = pipe(string(), trim(), toLowerCase(), minLength(3), startsWith("@"));
 parse(Handle, "  @Ada "); // "@ada"
@@ -514,7 +550,10 @@ empty one. `flatten` puts its message in `root`:
 ```js
 const Booking = pipe(
   object({ from: number(), to: number() }),
-  check((range: {| from: number, to: number |}) => range.from < range.to, "The booking ends before it starts"),
+  check(
+    (range: {| from: number, to: number |}) => range.from < range.to,
+    "The booking ends before it starts",
+  ),
 );
 
 safeParse(Booking, { from: 5, to: 2 });
@@ -569,13 +608,26 @@ line of defence there, not the only one.
 ## Handing the schema to somebody else
 
 ```js
-import { integer, maxLength, min, minLength, nullable, number, optional, pipe, strictObject, string, toJsonSchema, url } from "@uniflowed/validator";
+import {
+  integer,
+  maxLength,
+  min,
+  minLength,
+  nullable,
+  number,
+  optional,
+  pipe,
+  strictObject,
+  string,
+  toJsonSchema,
+  url,
+} from "@uniflowed/validator";
 
 const Account = strictObject({
-  name: pipe(string(), minLength(2), maxLength(40)),
-  age: pipe(number(), integer(), min(18)),
+  name    : pipe(string(), minLength(2), maxLength(40)),
+  age     : pipe(number(), integer(), min(18)),
   nickname: optional(string()),
-  website: nullable(pipe(string(), url())),
+  website : nullable(pipe(string(), url())),
 });
 
 toJsonSchema(Account);
@@ -668,10 +720,20 @@ necessarily made by your code.
 
 ```js
 "use server";
-// @flow
+"use flow";
 // app/notes/_actions/save-note.js
 import type { FlatIssues, Schema } from "@uniflowed/validator";
-import { boolean, flatten, maxLength, nonEmpty, pipe, safeParse, strictObject, string, trim } from "@uniflowed/validator";
+import {
+  boolean,
+  flatten,
+  maxLength,
+  nonEmpty,
+  pipe,
+  safeParse,
+  strictObject,
+  string,
+  trim,
+} from "@uniflowed/validator";
 
 import { insertNote } from "../../_lib/notes.js";
 import { requireEditor } from "../../_lib/session.js";
@@ -679,8 +741,8 @@ import { requireEditor } from "../../_lib/session.js";
 export type NoteInput = {| title: string, body: string, pinned: boolean |};
 
 const NewNote: Schema<NoteInput, NoteInput> = strictObject({
-  title: pipe(string(), trim(), nonEmpty(), maxLength(80)),
-  body: pipe(string(), maxLength(10_000)),
+  title : pipe(string(), trim(), nonEmpty(), maxLength(80)),
+  body  : pipe(string(), maxLength(10_000)),
   pinned: boolean(),
 });
 
@@ -745,7 +807,7 @@ the form's fields, then hand each one to `setError`. For an action that takes a
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/signup/_components/SignupForm.js
 import { useForm, validatorResolver } from "@uniflowed/form";
 import type { InferInput, InferOutput } from "@uniflowed/validator";
@@ -753,7 +815,7 @@ import { email, integer, min, object, pipe, string, transform, trim } from "@uni
 
 export const Signup = object({
   email: pipe(string(), trim(), email()),
-  age: pipe(string(), transform(Number), integer(), min(18)),
+  age  : pipe(string(), transform(Number), integer(), min(18)),
 });
 
 type SignupValues = InferInput<typeof Signup>;
@@ -762,7 +824,7 @@ type SignupOutput = InferOutput<typeof Signup>;
 export component SignupForm(onSignup: (account: SignupOutput) => mixed) {
   const { register, handleSubmit, errorProps, formState } = useForm<SignupValues, SignupOutput>({
     defaultValues: { email: "", age: "" },
-    resolver: validatorResolver<SignupValues, SignupOutput>(Signup),
+    resolver     : validatorResolver<SignupValues, SignupOutput>(Signup),
   });
 
   return (
@@ -775,9 +837,7 @@ export component SignupForm(onSignup: (account: SignupOutput) => mixed) {
 
       <label htmlFor="age">Age</label>
       <input id="age" inputMode="numeric" {...register("age")} />
-      {formState.errors.age != null && (
-        <p {...errorProps("age")}>{formState.errors.age.message}</p>
-      )}
+      {formState.errors.age != null && <p {...errorProps("age")}>{formState.errors.age.message}</p>}
 
       <button type="submit">Sign up</button>
     </form>

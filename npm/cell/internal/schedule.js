@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // When subscribers are told, as opposed to when values change.
 //

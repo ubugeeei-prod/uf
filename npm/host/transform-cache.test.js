@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The transform cache, through the in-thread hooks `register.js` installs
 // wherever `node:module` has `registerHooks` — which is every Node this suite

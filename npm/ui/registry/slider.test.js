@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The slider `uf ui add slider` writes: a named thumb for every value, the keys
 // that move it, a range whose thumbs stop at each other, and the dressing

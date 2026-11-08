@@ -3,7 +3,7 @@ Props, state, context and values returned from hooks belong to React and must no
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Name(user: { name: string }) {
   user.name = user.name.trim();
   return <p>{user.name}</p>;
@@ -19,7 +19,7 @@ app/example.js:3:3 This value cannot be modified. Modifying component props or h
 A context value is shared by every component that reads it.
 
 ```js
-// @flow
+"use flow";
 import { useContext } from "react";
 import { Settings } from "./settings.js";
 
@@ -37,7 +37,7 @@ app/example.js:7:3 This value cannot be modified. Modifying a value returned fro
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Name(user: { name: string }) {
   const name = user.name.trim();
   return <p>{name}</p>;

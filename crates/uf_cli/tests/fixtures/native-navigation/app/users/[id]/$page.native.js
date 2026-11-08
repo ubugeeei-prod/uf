@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { Text, View, Pressable } from "react-native";
 import { useParams, useNativeRouter } from "@uniflowed/router/native-navigation";
 export component Page() {

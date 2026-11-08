@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Popover: a small panel anchored to the button that opened it, with the page
 // still usable around it.

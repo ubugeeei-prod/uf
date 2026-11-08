@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 import type { ActionResult, Session } from "../../examples/simple-sns/app/_shared/social-model.js";
 import { PostList } from "../../examples/simple-sns/app/(feed)/timeline.client.js";

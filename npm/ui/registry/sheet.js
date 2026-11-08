@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Sheet: a modal panel against one edge of the screen, for the settings or
 // filters a page slides in beside itself.

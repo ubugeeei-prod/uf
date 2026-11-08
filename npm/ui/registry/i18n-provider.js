@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 // I18nProvider: an explicit locale and direction for a region.
 //
 // `uf ui add i18n-provider` copies this component into the project. The headless

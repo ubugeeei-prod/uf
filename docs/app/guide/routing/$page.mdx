@@ -112,7 +112,7 @@ segment.
 Parameters arrive as props:
 
 ```js
-// @flow
+"use flow";
 import type { PageProps } from "@uniflowed/router";
 
 export default component Post(params: {| readonly slug: string |}) {
@@ -132,15 +132,25 @@ A page can declare its query with a
 given the schema's output, typed:
 
 ```js
-// @flow
+"use flow";
 // app/search/$page.js
 import type { PageProps, SearchParamsOf } from "@uniflowed/router";
-import { array, number, object, optional, pipe, integer, min, string, withDefault } from "@uniflowed/validator";
+import {
+  array,
+  number,
+  object,
+  optional,
+  pipe,
+  integer,
+  min,
+  string,
+  withDefault,
+} from "@uniflowed/validator";
 
 export const searchParams = object({
-  q: optional(string()),
+  q   : optional(string()),
   page: withDefault(pipe(number(), integer(), min(1)), 1),
-  tag: array(string()),
+  tag : array(string()),
 });
 
 export default component Search(
@@ -196,7 +206,7 @@ question. A layout persists; a template is thrown away and built again on every
 navigation.
 
 ```js
-// @flow
+"use flow";
 // app/guide/$template.js
 import * as React from "react";
 
@@ -242,7 +252,7 @@ app/dashboard/members/$page.js        →  /dashboard/members  as `children`
 The layout receives the slot under the directory's name without its `@`:
 
 ```js
-// @flow
+"use flow";
 // app/dashboard/$layout.js
 import * as React from "react";
 
@@ -328,7 +338,7 @@ app/feed/photo/[id]/$page.js            →  /feed/photo/:id   the photo page
 ```
 
 ```js
-// @flow
+"use flow";
 // app/feed/$layout.js
 import * as React from "react";
 
@@ -507,7 +517,7 @@ mounted: the layouts, the navigation, whatever state they hold.
 
 ```js
 "use client";
-// @flow
+"use flow";
 // app/guide/$error.js
 import type { RouteError } from "@uniflowed/router";
 
@@ -515,14 +525,18 @@ export default component Error(error: RouteError, reset: () => void) {
   return (
     <section>
       <h1>
-        {match (error) {
-          {kind: "badRequest", ...} => "That search does not make sense",
-          {kind: "unauthorized"} => "Please sign in",
-          {kind: "forbidden"} => "You cannot read this page",
-          {kind: "thrown", ...} => "This page did not load",
-        }}
+        {
+          match (error) {
+            {kind: "badRequest", ...} => "That search does not make sense",
+            {kind: "unauthorized"}    => "Please sign in",
+            {kind: "forbidden"}       => "You cannot read this page",
+            {kind: "thrown", ...}     => "This page did not load",
+          }
+        }
       </h1>
-      <button type="button" onClick={reset}>Try again</button>
+      <button type="button" onClick={reset}>
+        Try again
+      </button>
     </section>
   );
 }
@@ -563,7 +577,7 @@ The broader Async React shape — local Suspense, transitions and optimistic UI 
 is in [Async React](/guide/async-react).
 
 ```js
-// @flow
+"use flow";
 // app/guide/$loading.js
 export default component Loading() {
   return <p aria-busy="true">Loading…</p>;
@@ -676,8 +690,8 @@ promise still pending, and the value arrives in the same response, later:
 ```js
 export async function loader({ params }: LoaderArgs) {
   return {
-    post: await readPost(params.slug),      // waited for
-    comments: readComments(params.slug),    // not waited for
+    post: await readPost(params.slug), // waited for
+    comments: readComments(params.slug), // not waited for
   };
 }
 
@@ -695,7 +709,13 @@ export default component Post(
 }
 
 component Comments(comments: Promise<Array<Comment>>) {
-  return <ul>{use(comments).map((one) => <li key={one.id}>{one.body}</li>)}</ul>;
+  return (
+    <ul>
+      {use(comments).map((one) => (
+        <li key={one.id}>{one.body}</li>
+      ))}
+    </ul>
+  );
 }
 ```
 
@@ -734,11 +754,11 @@ function when it needs the loaded data:
 import type { Metadata } from "@uniflowed/router";
 
 export const metadata: Metadata = {
-  title: "Install · uf",
+  title      : "Install · uf",
   description: "One command, no plugin assembly.",
-  canonical: "/guide/install",
-  openGraph: { images: ["/brand/uf.png"] },
-  twitter: { card: "summary_large_image" },
+  canonical  : "/guide/install",
+  openGraph  : { images: ["/brand/uf.png"] },
+  twitter    : { card: "summary_large_image" },
 };
 ```
 
@@ -828,8 +848,8 @@ export const metadata: Metadata = {
   jsonLd: [
     {
       "@context": "https://schema.org",
-      "@type": "TechArticle",
-      headline: "Install uf",
+      "@type"   : "TechArticle",
+      headline  : "Install uf",
     },
   ],
 };
@@ -905,7 +925,7 @@ cannot know it, and the relative URLs written here are resolved against it.
 ```js
 import { Link } from "@uniflowed/router";
 
-<Link to="/guide/install">Install</Link>
+<Link to="/guide/install">Install</Link>;
 ```
 
 `prefetch="render"` fetches as soon as the link is on screen, and
@@ -1042,12 +1062,19 @@ export default defineConfig({
     router: {
       redirects: [
         { source: "/blog/:slug", destination: "/posts/:slug", permanent: true },
-        { source: "/docs/:path*", destination: "https://docs.example.com/:path*", permanent: false },
+        {
+          source     : "/docs/:path*",
+          destination: "https://docs.example.com/:path*",
+          permanent  : false,
+        },
       ],
       rewrites: [{ source: "/me", destination: "/users/me" }],
       headers: [
         { source: "/:path*", headers: { "X-Frame-Options": "DENY" } },
-        { source: "/assets/:file*", headers: { "Cache-Control": "public, max-age=31536000, immutable" } },
+        {
+          source : "/assets/:file*",
+          headers: { "Cache-Control": "public, max-age=31536000, immutable" },
+        },
       ],
     },
   },
@@ -1146,7 +1173,7 @@ a path is the page.
 export default defineConfig({
   app: {
     router: {
-      basePath: "/docs",
+      basePath     : "/docs",
       trailingSlash: "never",
     },
   },
@@ -1300,12 +1327,12 @@ so `route` throws rather than build a link to it.
 Each of these is a type error rather than a 404 in production:
 
 ```js
-route("/nope");                              // not a path this router serves
-route("/posts/:slug");                       // the parameter is missing
-route("/posts/:slug", { slug: 1 });          // and here it is the wrong type
+route("/nope"); // not a path this router serves
+route("/posts/:slug"); // the parameter is missing
+route("/posts/:slug", { slug: 1 }); // and here it is the wrong type
 route("/posts/:slug", { slug: "a", b: "c" }); // `b` is not a parameter of it
-route("/about", { id: "1" });                // this route takes none
-route("/docs/:path*", { path: "guide" });    // a catch-all is an array
+route("/about", { id: "1" }); // this route takes none
+route("/docs/:path*", { path: "guide" }); // a catch-all is an array
 ```
 
 `route` returns the URL with each parameter encoded, so a value containing a

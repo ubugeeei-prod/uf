@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Radio group: one answer out of several, drawn as a list of circles beside
 // their labels.

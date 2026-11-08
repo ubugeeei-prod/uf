@@ -3,7 +3,7 @@ A component created during render is a new component on every render, so React u
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Card(title: string) {
   const Heading = () => <h2>{title}</h2>;
   return (
@@ -21,7 +21,7 @@ app/example.js:6:8 Cannot create components during render. Components created du
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { makeField } from "./fields.js";
 
 export component Field(kind: string) {
@@ -37,7 +37,7 @@ app/example.js:6:11 Cannot create components during render. Components created d
 ## Good
 
 ```js
-// @flow
+"use flow";
 component Heading(title: string) {
   return <h2>{title}</h2>;
 }

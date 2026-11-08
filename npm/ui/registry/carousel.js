@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Carousel: slides shown one at a time, with buttons to move between them and
 // one to stop them when they turn on their own.

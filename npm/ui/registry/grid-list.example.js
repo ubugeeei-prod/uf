@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 import { GridList } from "./grid-list.js";
 const items = [

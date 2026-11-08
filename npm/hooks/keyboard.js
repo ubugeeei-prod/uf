@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/hooks/keyboard`: a chord is not an event.
 //

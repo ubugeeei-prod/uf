@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 /** Local, attributed stock media and its display metadata; no remote user upload is implied. */
 

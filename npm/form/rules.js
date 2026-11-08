@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/form/rules`: what a built-in rule means.
 //

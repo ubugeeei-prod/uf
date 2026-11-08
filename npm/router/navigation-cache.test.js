@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `app.rendering.staleTime`: the routes a navigation keeps.
 //

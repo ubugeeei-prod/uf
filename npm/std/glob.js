@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/glob`: slash-path glob matching, without a host file system.
 //

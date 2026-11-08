@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What `bench.js` prints, and the file it writes.
 //

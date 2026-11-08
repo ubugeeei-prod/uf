@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `happy-dom`, as a page has it: not at all, and it does not need it.
 //

@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 import * as React from "react";
 import { useState, useEffect, useCallback } from "react";
 import type { Node } from "react";

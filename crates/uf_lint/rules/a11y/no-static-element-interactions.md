@@ -3,7 +3,7 @@ A `div` or `span` with an `onClick` cannot be reached with the keyboard and is a
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Card(onOpen: () => void) {
   return (
     <div onClick={onOpen}>Open the report</div>
@@ -18,7 +18,7 @@ app/example.js:4:5 `<div>` has an `onClick` but no `role` and no key handler, so
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Card(onOpen: () => void) {
   return (
     <button type="button" onClick={onOpen}>

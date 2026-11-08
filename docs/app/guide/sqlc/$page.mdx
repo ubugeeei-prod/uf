@@ -102,9 +102,9 @@ against `CREATE TABLE authors (id BIGSERIAL PRIMARY KEY, name text NOT NULL, bio
 
 ```js
 export type Author = {|
-  readonly id: bigint,
+  readonly id  : bigint,
   readonly name: string,
-  readonly bio: string | null,
+  readonly bio : string | null,
 |};
 ```
 

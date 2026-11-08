@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A document for a test process that has none.
 //

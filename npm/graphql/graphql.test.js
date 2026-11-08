@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/graphql`: the Relay environment, without the boilerplate.
 //

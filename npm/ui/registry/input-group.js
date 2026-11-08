@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // InputGroup: an input with text, icons or buttons attached to its sides,
 // drawn as one field.

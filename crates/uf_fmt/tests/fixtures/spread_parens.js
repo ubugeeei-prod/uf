@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 // A spread argument keeps its parentheses whatever the brackets around it.
 // An object's spread is an `ObjectProperty` rather than a `Spread`, which is

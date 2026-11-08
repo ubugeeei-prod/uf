@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `register`: the boundary between a DOM control and the form.
 //

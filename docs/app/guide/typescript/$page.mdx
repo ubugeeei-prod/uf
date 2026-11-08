@@ -75,7 +75,7 @@ TypeScript project gets `@types/*` for practically any package that ships no
 types of its own, and a `node:` builtin is described down to its overloads.
 Flow's own library definitions cover the DOM, the standard library and React,
 and stop well short of that. `uf check` resolves a dependency that opts into
-Flow with `@flow`: it reads the package's manifest out of `node_modules`,
+Flow with `@flow` or `"use flow"`: it reads the package's manifest out of `node_modules`,
 follows its `exports` map and types your code against the package's real
 declarations. A dependency that ships TypeScript declarations instead is typed
 from a translation of them, which the next section measures. A dependency with
@@ -269,12 +269,16 @@ which is the thing a design system actually means.
 ### Exhaustiveness that is a language feature
 
 ```js
-enum Status { Idle, Loading, Failed }
+enum Status {
+  Idle,
+  Loading,
+  Failed,
+}
 
 const label = match (status) {
-  Status.Idle => "Ready",
+  Status.Idle    => "Ready",
   Status.Loading => "Working…",
-  Status.Failed => "Failed",
+  Status.Failed  => "Failed",
 };
 ```
 

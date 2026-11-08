@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The documentation home page: what uf is, how to install it, and where to go next.
 

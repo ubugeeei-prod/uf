@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import * as React from "react";
 import { Image, Pressable, Text, TextInput, View } from "react-native";

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 /** Canonical, bounded JSON arguments; no getters, coercions, or user serializers. */
 export function dataKey(args: $ReadOnlyArray<mixed>): string {

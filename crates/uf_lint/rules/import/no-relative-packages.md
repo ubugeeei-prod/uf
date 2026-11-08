@@ -3,7 +3,7 @@ A relative path from one workspace package into another, such as `../../state/in
 ## Bad
 
 ```js path=npm/web/src/page.js
-// @flow
+"use flow";
 import { createStore } from "../../state/index.js";
 ```
 
@@ -14,7 +14,7 @@ npm/web/src/page.js:2:29 use the `state` package name instead of a relative path
 ## Good
 
 ```js path=npm/web/src/page.js
-// @flow
+"use flow";
 import { createStore } from "@uniflowed/state";
 import { Header } from "./header.js";
 ```

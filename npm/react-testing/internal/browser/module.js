@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `node:module`, as `uf test --browser` has it.
 //

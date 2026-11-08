@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What `@uniflowed/vite` asks of a project before its routes render as React
 // Server Components, and what it leaves out of a project whose routes do not.

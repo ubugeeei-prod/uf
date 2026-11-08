@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The process `uf test` fans work out to.
 //

@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Avatar: a person's picture in a circle, and their initials when the picture
 // cannot be shown.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The hole: it reads the request, and then waits for something slower than a
 // shell — the stand-in for a session store or an API that answers per person.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/edge`: the Cloudflare Workers half of serving a build.
 //

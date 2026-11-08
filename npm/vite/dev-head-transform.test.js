@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What Vite's `transformIndexHtml` does with the one chunk `uf dev` gives it.
 //

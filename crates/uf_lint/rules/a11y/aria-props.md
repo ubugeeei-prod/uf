@@ -3,7 +3,7 @@ An `aria-*` attribute that ARIA does not define is ignored by every browser, so 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Close() {
   return (
     <button type="button" aria-lable="Close">
@@ -20,7 +20,7 @@ app/example.js:4:27 `aria-lable` is not an ARIA attribute, so nothing reads it: 
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Close() {
   return (
     <button type="button" aria-label="Close">

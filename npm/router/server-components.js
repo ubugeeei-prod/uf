@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/router`, as a React Server Component imports it.
 //

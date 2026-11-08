@@ -18,13 +18,11 @@ Give a remote `Image` dimensions so the page can reserve its space before the
 bytes arrive. A local imported asset already carries its build-time metadata.
 
 ```js
-// @flow
+"use flow";
 import { Image } from "@uniflowed/web";
 
 export component Portrait() {
-  return (
-    <Image src="/people/ada.jpg" alt="Ada at her desk" width={480} height={640} />
-  );
+  return <Image src="/people/ada.jpg" alt="Ada at her desk" width={480} height={640} />;
 }
 ```
 
@@ -41,7 +39,7 @@ to the reader's locale after hydration. Use a fixed format when the visible
 text must stay the same without JavaScript.
 
 ```js
-// @flow
+"use flow";
 import { Time } from "@uniflowed/web";
 
 export component Timestamp() {

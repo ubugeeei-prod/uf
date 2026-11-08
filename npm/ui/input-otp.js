@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A one-time-code field: six boxes that are one `<input>`.
 //

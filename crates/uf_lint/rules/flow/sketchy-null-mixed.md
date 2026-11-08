@@ -3,7 +3,7 @@ An existence check such as `if (value)` on a `mixed` value is false for `null` a
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export function present(value: mixed): boolean {
   if (value) {
     return true;
@@ -15,7 +15,7 @@ export function present(value: mixed): boolean {
 ## Good
 
 ```js
-// @flow
+"use flow";
 export function present(value: mixed): boolean {
   return value != null;
 }

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // Public, serializable view models. Database rows and credentials stay on the server.
 
 /** Destinations represented by the shared navigation shell. */

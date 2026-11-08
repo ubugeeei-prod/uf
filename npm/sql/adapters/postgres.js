@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/sql/postgres`: the `postgres` package (postgres.js).
 //

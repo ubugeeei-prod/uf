@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 /**
  * An expected input or ownership rejection with user-safe field feedback.

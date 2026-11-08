@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 if (import.meta.hot) {
   import.meta.hot.accept();
 }
@@ -16,7 +16,7 @@ app/example.js:3:3 `import.meta.hot` is undefined in a build, and `if (import.me
 ## Good
 
 ```js
-// @flow
+"use flow";
 import.meta.hot?.accept();
 
 const hot = import.meta.hot;

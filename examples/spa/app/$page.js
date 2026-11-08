@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 "use client";
 
 import { useState } from "@uniflowed/react";

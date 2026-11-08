@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/query/observer`: turning an entry into something React can read.
 //

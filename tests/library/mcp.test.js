@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `uf mcp`, driven the way an agent drives it.
 //

@@ -3,7 +3,7 @@ The HTML parser moves elements it does not allow where they were written: a `div
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Note() {
   return (
     <p>
@@ -20,7 +20,7 @@ app/example.js:5:7 `<div>` inside `<p>` is not markup a browser keeps: the parse
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Note() {
   return (
     <div>

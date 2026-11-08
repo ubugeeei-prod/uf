@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/query/presence`: the world moved while nobody was looking.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Rendering one URL to an HTML document.
 //

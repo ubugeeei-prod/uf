@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Field: a label, a text input or text area, help text and an error, wired to
 // each other and drawn as one form row.

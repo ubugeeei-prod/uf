@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A switch: two states, and a screen reader that says which.
 //

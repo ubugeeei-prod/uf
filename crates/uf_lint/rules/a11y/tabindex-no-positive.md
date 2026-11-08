@@ -3,7 +3,7 @@ A `tabIndex` above zero moves the element ahead of everything else in the tab or
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Login() {
   return (
     <input type="email" aria-label="Email" tabIndex={1} />
@@ -18,7 +18,7 @@ app/example.js:4:44 a `tabIndex` of 1 puts this element ahead of everything the 
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Login() {
   return (
     <input type="email" aria-label="Email" />

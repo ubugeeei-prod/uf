@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a reader can do with uf, and the pages that get them there.
 //

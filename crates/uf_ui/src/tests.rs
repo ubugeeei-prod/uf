@@ -378,6 +378,10 @@ fn a_description_is_the_first_header_paragraph_after_its_title() {
         description("// @flow\n// Button: a button.\n").as_deref(),
         Some("a button.")
     );
+    assert_eq!(
+        description("\"use flow\";\n// Button: a button.\n").as_deref(),
+        Some("a button.")
+    );
     // Wrapped at the header's width, and ended by the paragraph break.
     assert_eq!(
         description(

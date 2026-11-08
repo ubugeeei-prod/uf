@@ -3,7 +3,7 @@ Everything a `"use client"` module reads ships to the browser. A server secret r
 ## Bad
 
 ```js
-// @flow
+"use flow";
 "use client";
 
 const token = process.env.PRIVATE_TOKEN;
@@ -20,7 +20,7 @@ app/example.js:4:27 client modules must not read private server secrets
 ## Good
 
 ```js path=app/checkout.server.js
-// @flow
+"use flow";
 export async function charge(amount: number): Promise<void> {
   const token = process.env.PRIVATE_TOKEN;
   await fetch("https://payments.example/charge", {

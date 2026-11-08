@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //

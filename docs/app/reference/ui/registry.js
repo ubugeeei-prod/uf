@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The registry, rendered: every component `uf ui add` writes, its example
 // running, and the source of both.
@@ -69,7 +69,14 @@ function entries(): $ReadOnlyArray<Entry> {
 function description(source: string): string {
   const lines = source.split("\n").map((line) => line.trimEnd());
   const first = lines.findIndex(
-    (line) => !(line === "" || line === '"use client";' || line === "// @flow" || line === "//"),
+    (line) =>
+      !(
+        line === "" ||
+        line === '"use client";' ||
+        line === '"use flow";' ||
+        line === "// @flow" ||
+        line === "//"
+      ),
   );
   const opening = first < 0 ? "" : lines[first];
   const colon = opening.indexOf(": ");

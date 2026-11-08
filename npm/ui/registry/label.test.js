@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The label `uf ui add label` writes, held to what its header promises: a real
 // `<label>` that names its control, with nothing that fails an accessibility

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A route handler writing to the store the notes page reads.
 //

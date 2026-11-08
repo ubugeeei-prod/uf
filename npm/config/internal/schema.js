@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Owns the Flow shape of `uf.config.js`; `index.js` keeps the public package
 // entry point thin.

@@ -3,7 +3,7 @@ A value used as a JSX component whose type overlaps an intrinsic element's name,
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Box(as: string) {
   const Tag = as;
   return <Tag />;
@@ -13,7 +13,7 @@ export component Box(as: string) {
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Box(as: "section" | "article") {
   return as === "section" ? <section /> : <article />;
 }

@@ -1,7 +1,7 @@
 //! uf borrows the plugin *semantics* of the existing ecosystem so those plugins
 //! keep working. It does not borrow the bundler names.
 //!
-//! A developer using uf writes `uf.config.js` and `.js` files with `// @flow`.
+//! A developer using uf writes `uf.config.js` and `.js` files with `"use flow";`.
 //! They never chose an underlying bundler, so no id, no diagnostic, no report
 //! field, and no generated file may hand them one to reason about. Vite Task is
 //! different: it is the public task-runner engine in `uf.config.js`, not a hidden

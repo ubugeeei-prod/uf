@@ -3,7 +3,7 @@ Testing a Flow enum value for truthiness hides which members you meant, and a me
 ## Bad
 
 ```js
-// @flow
+"use flow";
 enum Status {
   Active,
   Paused,
@@ -17,7 +17,7 @@ export function isOn(status: ?Status): boolean {
 ## Good
 
 ```js
-// @flow
+"use flow";
 enum Status {
   Active,
   Paused,

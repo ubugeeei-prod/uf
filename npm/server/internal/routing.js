@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/server`: `app.router`'s base path, trailing-slash
 // policy, redirects, rewrites and response headers, read one way for every

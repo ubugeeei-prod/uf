@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 export opaque type Id = string;
 

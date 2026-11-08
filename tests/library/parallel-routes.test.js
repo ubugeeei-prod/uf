@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Parallel routes: `@slot` directories, and the `$default.js` that fills one
 // the URL said nothing about.

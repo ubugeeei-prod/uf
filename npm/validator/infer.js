@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/validator/infer`: reading a value's type off its schema.
 //

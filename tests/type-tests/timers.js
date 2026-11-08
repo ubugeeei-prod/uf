@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Correct uses of `uft` timer controls from plain test functions.
 //

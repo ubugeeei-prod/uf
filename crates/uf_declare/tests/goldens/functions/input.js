@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 export type Handler = (event: string, count?: number) => void;
 

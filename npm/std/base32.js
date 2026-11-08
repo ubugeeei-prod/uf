@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/base32`: Go's `encoding/base32`.
 //

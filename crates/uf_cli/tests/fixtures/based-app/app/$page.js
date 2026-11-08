@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The application's root, which under a base path is the base itself: `/docs`,
 // and `/docs/` is a `308` to it under `trailingSlash: "never"`.

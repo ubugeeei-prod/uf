@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A menu, which is the widget whose keyboard map people know by feel and cannot
 // name.

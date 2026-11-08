@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { currentContext } from "./context.js";
 
 export type NativeActionAuthorization = {|

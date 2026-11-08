@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Prices() {
   return (
     <table>
@@ -25,7 +25,7 @@ app/example.js:7:15 HTML defines `scope` on `<th>` and nowhere else, so on a `<t
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Prices() {
   return (
     <table>

@@ -737,14 +737,14 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         category: RuleCategory::Server,
         default_level: RuleLevel::Error,
         requirement: SourceText,
-        description: "`use client`/`use server` must be the module's first statement",
+        description: "`use client`/`use server` must lead the module, before any statement other than a mode directive",
     },
     RuleDescriptor {
         id: "server/use-server-actions",
         category: RuleCategory::Server,
         default_level: RuleLevel::Error,
         requirement: SourceText,
-        description: "server action modules must open with `\"use server\";`",
+        description: "server action modules must declare `\"use server\"` before any statement other than a mode directive",
     },
     RuleDescriptor {
         id: "router/reserved-files",

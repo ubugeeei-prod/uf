@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The suite the testing guide's "Where it stands" table is measured on,
 // written out in one idiomatic copy per runner.

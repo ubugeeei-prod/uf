@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a collection's selection becomes after one gesture, as pure functions.
 //

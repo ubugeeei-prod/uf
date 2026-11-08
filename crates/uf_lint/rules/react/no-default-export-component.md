@@ -3,7 +3,7 @@ A named export keeps a component's name the same at every import site, so it can
 ## Bad
 
 ```js
-// @flow
+"use flow";
 component Settings() {
   return <h1>Settings</h1>;
 }
@@ -18,7 +18,7 @@ app/example.js:6:1 export the component by name: the router reads a named `Page`
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Settings() {
   return <h1>Settings</h1>;
 }

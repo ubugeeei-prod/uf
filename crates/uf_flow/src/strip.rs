@@ -1,4 +1,4 @@
-//! Flow type erasure: turning `// @flow` source into the JavaScript that ships.
+//! Flow type erasure: turning Flow source into the JavaScript that ships.
 //!
 //! `uf` projects are written in Flow and shipped as JavaScript, so something
 //! has to remove the types. That job belongs to this crate — the one that owns

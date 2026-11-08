@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { routerView } from "@uniflowed/router";
 

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/react-native-testing` queries React Native test trees without
 // going through a DOM renderer.

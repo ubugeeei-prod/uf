@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The toolchain benchmark's arithmetic and its fixture, checked without a clock.
 //

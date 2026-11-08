@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The sheet `uf ui add sheet` writes. `@uniflowed/ui`'s own suite holds the
 // behaviour; these hold that dressing it kept every piece of it reachable, that

@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Combobox: a text field with a list of suggestions, navigated without leaving
 // the field, and filtered by the page that owns the options.

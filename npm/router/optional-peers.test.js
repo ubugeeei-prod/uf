@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The router without the peers it lists as optional, and on the oldest React it
 // lists.

@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 // TimeField: locale-aware segments in a bordered field.
 //
 // `uf ui add time-field` copies this component into the project. The headless

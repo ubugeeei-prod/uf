@@ -18,7 +18,7 @@ supported locale union to middleware, the prerender and components:
 import { createLocaleRouting } from "@uniflowed/i18n/routing";
 
 export const locales = createLocaleRouting({
-  locales: ["en", "ja"],
+  locales      : ["en", "ja"],
   defaultLocale: "en",
 });
 ```
@@ -70,7 +70,7 @@ runtime already ships.
 </div>
 
 ```js
-// @flow
+"use flow";
 import { defineCatalogue, message, number, string } from "@uniflowed/i18n";
 
 const messages = {

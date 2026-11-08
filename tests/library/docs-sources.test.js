@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A sample that names its source is a verbatim excerpt of that source.
 //

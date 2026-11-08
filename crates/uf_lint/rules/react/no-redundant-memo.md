@@ -3,7 +3,7 @@ The React Compiler memoizes every component and hook it compiles. A hand-written
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useMemo } from "react";
 
 export component Total(prices: $ReadOnlyArray<number>) {
@@ -19,7 +19,7 @@ app/example.js:5:17 the React Compiler memoizes this already; `useMemo` here is 
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Total(prices: $ReadOnlyArray<number>) {
   const total = prices.reduce((sum, price) => sum + price, 0);
   return <output>{total}</output>;

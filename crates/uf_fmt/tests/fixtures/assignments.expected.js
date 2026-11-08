@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 const shortValue = 1;
 const aVeryLongVariableNameThatTakesUpSpace = anotherVeryLongFunctionName(
   withSomeArguments,

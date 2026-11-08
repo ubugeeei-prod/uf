@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/cache/kv`: a durable cache provider over Workers KV.
 //

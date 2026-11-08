@@ -5,7 +5,7 @@ An internal assumption of the React Compiler that did not hold: a bug in the com
 A named function expression that refers to itself trips an assertion in this compiler version.
 
 ```js
-// @flow
+"use flow";
 export component Countdown(from: number) {
   const tick = function step(n: number): $ReadOnlyArray<number> {
     return n <= 0 ? [] : [n, ...step(n - 1)];
@@ -21,7 +21,7 @@ app/example.js:4:33 [InferMutationAliasingEffects] Expected value kind to be ini
 ## Good
 
 ```js
-// @flow
+"use flow";
 function step(n: number): $ReadOnlyArray<number> {
   return n <= 0 ? [] : [n, ...step(n - 1)];
 }

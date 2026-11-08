@@ -49,7 +49,7 @@ files.
 
 ```js source=crates/uf_cli/tests/fixtures/rsc-test-app/app/notes/_actions/notes.js
 "use server";
-// @flow
+"use flow";
 import { cookies } from "@uniflowed/server";
 import { revalidateTag } from "@uniflowed/server/cache";
 import { forbidden, notFound } from "@uniflowed/router";
@@ -103,7 +103,7 @@ because the caller chooses the URL
 <div className="command"><code>callAction(action, args, init)</code></div>
 
 ```js source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/notes-actions.test.js
-// @flow
+"use flow";
 import { beforeEach, describe, expect, it } from "@uniflowed/test";
 import { createCacheStore } from "@uniflowed/server/cache";
 import { callAction } from "@uniflowed/router/testing";
@@ -214,7 +214,7 @@ action expired. The store's own methods are put back after the call.
 <div className="command"><code>withRequest(request, body)</code></div>
 
 ```js source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/note-page.test.js
-// @flow
+"use flow";
 import { describe, expect, it } from "@uniflowed/test";
 import { NotFoundError } from "@uniflowed/router";
 import { withRequest } from "@uniflowed/router/testing";
@@ -260,7 +260,7 @@ nothing encoded, and with none of the endpoint's refusals. Give `uft.mock` the
 module's references instead:
 
 ```js source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/note-form.test.js
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 import typeof * as NoteActions from "../app/notes/_actions/notes.js";
 import { afterEach, describe, expect, it, uft } from "@uniflowed/test";
@@ -340,7 +340,7 @@ Two things about the host:
 <div className="command"><code>buildApp(options)</code></div>
 
 ```js fragment source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/notes-app.test.js
-// @flow
+"use flow";
 import { beforeAll, describe, expect, it } from "@uniflowed/test";
 import { type BuiltApp, buildApp } from "@uniflowed/router/testing";
 

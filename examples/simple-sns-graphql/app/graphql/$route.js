@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { endpoint, sessionCookie } from "../_server/upstream.js";
 

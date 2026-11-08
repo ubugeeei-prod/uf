@@ -3,7 +3,7 @@ Names like `React$Node` and `$TEMPORARY$object` are internal to Flow's library d
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export type Slot = React$Node;
 ```
 
@@ -14,7 +14,7 @@ app/example.js:2:20 this is a Flow-internal type; use the public equivalent
 ## Good
 
 ```js
-// @flow
+"use flow";
 import type { Node } from "react";
 
 export type Slot = Node;

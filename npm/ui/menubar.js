@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A row of menus that behaves as one control: File, Edit, View.
 //

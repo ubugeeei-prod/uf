@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // An alert dialog: the modal a reader has to answer.
 //

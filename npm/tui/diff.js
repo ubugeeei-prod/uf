@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The difference between two frames, as the bytes that turn one into the other.
 //

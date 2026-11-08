@@ -3,7 +3,7 @@ A function whose name starts with a capital is read as a component. Called like 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { FormatPrice } from "./format.js";
 
 export component Price(amount: number) {
@@ -19,7 +19,7 @@ app/example.js:5:16 Capitalized functions are reserved for components, which mus
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { formatPrice } from "./format.js";
 
 export component Price(amount: number) {

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A hover card: the preview a name expands into, taken seriously.
 //

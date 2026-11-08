@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // One request, one context, settled after the response.
 //

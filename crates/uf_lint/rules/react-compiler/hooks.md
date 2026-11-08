@@ -3,7 +3,7 @@ The Rules of Hooks: call hooks at the top level of a component or hook, in the s
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useState } from "react";
 
 export component Search(enabled: boolean) {
@@ -22,7 +22,7 @@ app/example.js:8:29 Hooks must always be called in a consistent order, and may n
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { useState } from "react";
 
 export component Search(enabled: boolean) {

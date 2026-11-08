@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Making things happen to the page.
 //

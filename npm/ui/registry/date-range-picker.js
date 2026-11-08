@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 // DateRangePicker: two segmented date fields and a shared range calendar.
 //
 // `uf ui add date-range-picker` copies this component into the project. The headless

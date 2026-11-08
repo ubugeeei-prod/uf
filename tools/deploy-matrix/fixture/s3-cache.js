@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A route-cache provider over an S3 bucket, for the fixture's `serverless`
 // variant.

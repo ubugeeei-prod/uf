@@ -3,7 +3,7 @@ Flow's `component` syntax types props exactly, lets `renders` say what a compone
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import * as React from "react";
 
 export function Greeting({ name }: { name: string }): React.Node {
@@ -18,7 +18,7 @@ app/example.js:4:1 prefer Flow `component` syntax for React components
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Greeting(name: string) {
   return <p>Hello, {name}</p>;
 }
@@ -29,7 +29,7 @@ export component Greeting(name: string) {
 A component whose type says what it renders.
 
 ```js
-// @flow
+"use flow";
 component Item(label: string) {
   return <li>{label}</li>;
 }

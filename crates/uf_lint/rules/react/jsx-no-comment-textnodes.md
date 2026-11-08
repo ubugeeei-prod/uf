@@ -3,7 +3,7 @@ Between JSX tags, `//` and `/*` are text, not comments, so they end up on the pa
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Empty() {
   return <div>// nothing yet</div>;
 }
@@ -16,7 +16,7 @@ app/example.js:3:15 `//` between JSX tags is text, not a comment, so it shows on
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Empty() {
   return <div>{/* nothing yet */}</div>;
 }

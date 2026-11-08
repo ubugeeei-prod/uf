@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/web/vitals`: the five numbers a page is judged on, and where
 // they go.

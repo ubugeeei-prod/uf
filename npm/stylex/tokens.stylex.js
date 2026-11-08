@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/stylex/tokens.stylex.js`: the tokens a project gets for free.
 //

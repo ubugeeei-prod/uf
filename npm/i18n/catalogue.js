@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/i18n/catalogue`: the messages an application has, and the types
 // that make calling one checkable.

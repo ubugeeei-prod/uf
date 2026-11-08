@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: a page's `searchParams` schema, run against
 // the query string.

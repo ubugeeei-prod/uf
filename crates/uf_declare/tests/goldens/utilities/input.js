@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 export type Frozen<T> = $ReadOnly<T>;
 

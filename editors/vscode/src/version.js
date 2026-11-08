@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Whether the `uf` this extension found is one it can talk to.
 //

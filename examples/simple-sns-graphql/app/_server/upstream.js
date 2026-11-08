@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 /** Configure an upstream service, never a URL supplied by the browser. */
 
 export function endpoint(): string {

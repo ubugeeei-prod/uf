@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `uf lsp`, driven the way an editor drives it.
 //

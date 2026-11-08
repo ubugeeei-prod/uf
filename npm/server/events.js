@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/events`: a route handler that answers with a stream.
 //
@@ -16,7 +16,7 @@
 // returns one:
 //
 //   // app/api/progress/$route.js
-//   // @flow
+//   "use flow";
 //   import { eventStream } from "@uniflowed/server/events";
 //
 //   export function GET(): Response {

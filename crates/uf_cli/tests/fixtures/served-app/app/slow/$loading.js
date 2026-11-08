@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The fallback for everything under `/slow`.
 //

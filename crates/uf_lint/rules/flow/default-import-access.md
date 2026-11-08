@@ -3,7 +3,7 @@ Reading a named export off a default import, as in `React.useState` where `React
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import React from "react";
 
 export hook useCount(): number {
@@ -15,7 +15,7 @@ export hook useCount(): number {
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { useState } from "react";
 
 export hook useCount(): number {

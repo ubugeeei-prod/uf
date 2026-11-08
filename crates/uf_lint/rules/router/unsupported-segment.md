@@ -3,7 +3,7 @@ An intercepting segment such as `(.)photo` renders a route in place of another, 
 ## Bad
 
 ```js path=app/feed/(.)photo/$page.js
-// @flow
+"use flow";
 export component Page() {
   return <img alt="" src="/photo.jpg" />;
 }
@@ -16,7 +16,7 @@ app/feed/(.)photo/$page.js:1:1 `(.)photo` is an intercepting route, and an inter
 ## Good
 
 ```js path=app/feed/@modal/(.)photo/$page.js
-// @flow
+"use flow";
 export component Page() {
   return <img alt="" src="/photo.jpg" />;
 }

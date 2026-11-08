@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 "use client";
 
 // The proof that a page hydrated, and that it stays interactive.

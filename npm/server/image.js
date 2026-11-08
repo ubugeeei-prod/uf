@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/server/image`: `/__uf/image`, the request-time image endpoint.
 //

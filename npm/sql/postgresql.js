@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/sql/postgresql`: PostgreSQL's text format, both ways.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Site navigation, which is not a menu.
 //

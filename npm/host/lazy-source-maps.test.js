@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Stacks mapped when they are read: `internal/lazy-source-maps.js`.
 //

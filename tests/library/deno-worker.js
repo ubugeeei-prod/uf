@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // Nested fixture workers need the same host as their parent. These grants are
 // for the repository's process/filesystem tests, not an application's defaults.
 export function denoWorkerArguments(repository: string): Array<string> {

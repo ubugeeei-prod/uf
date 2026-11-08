@@ -3,7 +3,7 @@
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Options() {
   return (
     <div role="listbox" aria-activedescendant="option-1">
@@ -22,7 +22,7 @@ app/example.js:4:25 `aria-activedescendant` says which element focus is standing
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Options() {
   return (
     <div role="listbox" aria-activedescendant="option-1" tabIndex={0}>

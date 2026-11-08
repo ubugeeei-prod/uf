@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The browser runner's own requests do not go through a test's request mock.
 // ubugeeei-prod/uf#1394.

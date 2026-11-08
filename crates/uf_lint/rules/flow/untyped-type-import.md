@@ -3,7 +3,7 @@ Importing a type from a module Flow has no types for gives you an `any` alias, w
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import type { Options } from "legacy-widget"; // no types, no library definition
 
 export const defaults: Options = { size: 10 };
@@ -12,7 +12,7 @@ export const defaults: Options = { size: 10 };
 ## Good
 
 ```js
-// @flow
+"use flow";
 export type Options = { readonly size: number };
 
 export const defaults: Options = { size: 10 };

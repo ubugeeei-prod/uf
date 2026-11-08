@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/i18n` under the runner that ships with the toolchain.
 //

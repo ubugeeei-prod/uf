@@ -3,7 +3,7 @@ State computed from props or other state in an effect renders twice: once with t
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useEffect, useState } from "react";
 
 export component Name(first: string, last: string) {
@@ -22,7 +22,7 @@ app/example.js:7:5 Values derived from props and state should be calculated duri
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Name(first: string, last: string) {
   const full = `${first} ${last}`;
   return <p>{full}</p>;

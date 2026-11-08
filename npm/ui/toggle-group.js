@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A row of toggle buttons that behaves as one control.
 //

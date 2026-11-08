@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { createTransport } from "./internal/browser/transport.js";
 
 export type Viewport = {|

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 call(
   alpha,
   beta,

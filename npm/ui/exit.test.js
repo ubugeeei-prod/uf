@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Every overlay leaves visibly, and nothing about leaving waits for the eye.
 //

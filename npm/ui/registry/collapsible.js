@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 //
 // Collapsible: a button that shows and hides one region, with the region's
 // text still findable while it is closed.

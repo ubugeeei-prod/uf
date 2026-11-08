@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/hooks/channels`: a value that came from outside this page.
 //

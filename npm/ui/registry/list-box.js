@@ -1,5 +1,5 @@
 "use client";
-// @flow
+"use flow";
 // ListBox: a named collection with visible selection and keyboard focus.
 //
 // `uf ui add list-box` copies this component into the project. The headless

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { expect, test } from "@uniflowed/test";
 import { props } from "./props.js";
 import { props as nativeProps } from "./native.js";

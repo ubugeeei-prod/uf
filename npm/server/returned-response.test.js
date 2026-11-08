@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // When a host that returns its `Response` (Bun, Deno) settles the request: once
 // the body has gone, not before the response does. The route-cache case that

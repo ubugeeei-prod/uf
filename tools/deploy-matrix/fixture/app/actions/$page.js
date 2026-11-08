@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Server actions: the page is prerendered, and everything it does after that
 // is a `POST` back to the target.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/test`: the test API a project writes against.
 //

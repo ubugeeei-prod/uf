@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Correct uses of `userEvent` with elements found by `screen`.
 //

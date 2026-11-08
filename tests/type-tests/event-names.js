@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Ways of firing an event that have to be type errors, and the test that says
 // they are.

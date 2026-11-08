@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The key `uf ui add kbd` writes, held to what its header promises: a `<kbd>`
 // with no role and nothing to focus, a combination written as the HTML

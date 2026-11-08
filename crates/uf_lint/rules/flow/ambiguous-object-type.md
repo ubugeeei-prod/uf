@@ -3,7 +3,7 @@ An object type written as `{ id: string }` means exact or inexact depending on t
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export type Props = { id: string };
 ```
 
@@ -14,7 +14,7 @@ app/example.js:2:21 object type is neither exact (`{| |}`) nor explicitly inexac
 ## Good
 
 ```js
-// @flow
+"use flow";
 export type Exact = {| id: string |};
 export type Open = { id: string, ... };
 ```

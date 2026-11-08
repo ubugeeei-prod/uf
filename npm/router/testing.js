@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/router/testing`: Server Components and server actions, under test.
 //

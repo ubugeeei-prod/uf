@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: whether React DevTools can actually attach
 // to the page this browser just hydrated.

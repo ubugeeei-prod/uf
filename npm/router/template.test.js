@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `$template.js`: a layout that remounts.
 //

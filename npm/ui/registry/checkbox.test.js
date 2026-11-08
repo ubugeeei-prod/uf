@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The checkbox `uf ui add checkbox` writes: named by its words, checked,
 // unchecked or mixed, toggled by a press, and still a checkbox while disabled.

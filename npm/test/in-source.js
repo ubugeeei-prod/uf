@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // In-source tests: `if (import.meta.uf.test) { … }` in the file being tested.
 //

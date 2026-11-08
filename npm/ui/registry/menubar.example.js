@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import * as Menubar from "./menubar.js";
 
 /** An editor's File, Edit and View menus. */

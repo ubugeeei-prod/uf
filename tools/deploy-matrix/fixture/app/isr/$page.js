@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `isr`, time-based: a prerendered page whose document stays true for two
 // seconds. The first request past that is answered with the old document and

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `expect(container).toHaveNoAxeViolations()`.
 //

@@ -3,7 +3,7 @@ A module that uses both `import` and `require` runs through two module systems, 
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { readFile } from "node:fs/promises";
 const path = require("node:path");
 
@@ -19,7 +19,7 @@ app/example.js:3:14 this module already uses `import`; do not mix in `require`
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 

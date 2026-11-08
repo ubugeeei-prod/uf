@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `$loading.js` and a renderer that streams.
 //

@@ -3,7 +3,7 @@ An empty heading still shows up in a screen reader's list of headings, as a head
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Section() {
   return (
     <section>
@@ -21,7 +21,7 @@ app/example.js:5:7 this `<h2>` has nothing a screen reader can announce, so a re
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Section() {
   return (
     <section>

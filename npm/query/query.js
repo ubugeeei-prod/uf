@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/query/query`: one key, and everything that can happen to it.
 //

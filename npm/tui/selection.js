@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a drag over the frame selected: two cells, and the order between them.
 //

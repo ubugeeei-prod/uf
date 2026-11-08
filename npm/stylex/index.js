@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/stylex`: uf's style engine, and the preset it ships.
 //

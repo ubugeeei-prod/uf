@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // What a `uf` command drawn in Flow would cost before it drew anything.
 //

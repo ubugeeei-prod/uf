@@ -49,7 +49,7 @@ module, and its parts are members of it. A component that is one element is
 that name.
 
 ```js
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 
 import { Button } from "./components/ui/button.js";
@@ -209,7 +209,7 @@ that function is handed.
 `<a>`" without copying anything:
 
 ```js
-<Menu.Item render={(props) => <a href="/settings" {...props} />}>Settings</Menu.Item>
+<Menu.Item render={(props) => <a href="/settings" {...props} />}>Settings</Menu.Item>;
 ```
 
 The part computes every attribute, every id, every composed handler and every
@@ -369,7 +369,7 @@ the package is concerned:
     Bold
   </ToggleGroup.Item>
   <ToggleGroup.Item value="italic">Italic</ToggleGroup.Item>
-</ToggleGroup.Root>
+</ToggleGroup.Root>;
 ```
 
 The group is still a `role="group"` with `aria-orientation` and the roving
@@ -412,7 +412,7 @@ control is whatever you render.
   <Field.Control render={(props) => <input type="email" {...props} />} />
   <Field.Description>We will not share it.</Field.Description>
   <Field.Error>{error}</Field.Error>
-</Field.Root>
+</Field.Root>;
 ```
 
 `Field.Control` takes a `render` function rather than children, and hands it
@@ -451,7 +451,7 @@ A part used outside a `Field.Root` throws and says which part it was.
   </Tabs.List>
   <Tabs.Panel value="one">…</Tabs.Panel>
   <Tabs.Panel value="two">…</Tabs.Panel>
-</Tabs.Root>
+</Tabs.Root>;
 ```
 
 `defaultValue` is required. `value` and `onValueChange` make it controlled;
@@ -497,7 +497,7 @@ vanishing from the list.
       <Dialog.Close>Cancel</Dialog.Close>
     </Dialog.Footer>
   </Dialog.Body>
-</Dialog.Root>
+</Dialog.Root>;
 ```
 
 | Key or gesture | What happens | Test |
@@ -548,7 +548,7 @@ from, so an `aria-label` you pass survives.
       </Menu.Body>
     </Menu.Sub>
   </Menu.Body>
-</Menu.Root>
+</Menu.Root>;
 ```
 
 | Key | Where | What happens | Test |
@@ -589,12 +589,14 @@ at a time.
   <Combobox.Input />
   <Combobox.List>
     {matches.map((each) => (
-      <Combobox.Option key={each} value={each}>{each}</Combobox.Option>
+      <Combobox.Option key={each} value={each}>
+        {each}
+      </Combobox.Option>
     ))}
   </Combobox.List>
   <Combobox.Empty>No matches.</Combobox.Empty>
   <Combobox.Status />
-</Combobox.Root>
+</Combobox.Root>;
 ```
 
 **It never filters.** The options are the ones you rendered, and matching them
@@ -635,7 +637,7 @@ Options can be grouped, and a group is named by its own heading:
     <Combobox.GroupLabel>Europe</Combobox.GroupLabel>
     <Combobox.Option value="FR">France</Combobox.Option>
   </Combobox.Group>
-</Combobox.List>
+</Combobox.List>;
 ```
 
 `Combobox.Label` is the field's label and `Combobox.GroupLabel` is a group's,
@@ -698,16 +700,16 @@ The pieces are meant to be composed. A settings dialog is not a new component in
 this package; it is the exact point where the existing contracts meet:
 
 ```js
-// @flow
+"use flow";
 import { Checkbox, Dialog, Field, Switch, Tabs } from "@uniflowed/ui";
 
 component WorkspaceSettings(
-  email: string,
-  setEmail: (string) => mixed,
-  notifications: boolean,
+  email           : string,
+  setEmail        : (string) => mixed,
+  notifications   : boolean,
   setNotifications: (boolean) => mixed,
-  compactRows: boolean,
-  setCompactRows: (boolean) => mixed,
+  compactRows     : boolean,
+  setCompactRows  : (boolean) => mixed,
 ) {
   return (
     <Dialog.Root>

@@ -49,7 +49,7 @@ into CSS: a `stylex.create` call stays in the module, and the runtime stub
 throws if that call runs.
 
 ```js
-// @flow
+"use flow";
 import * as React from "@uniflowed/react";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
@@ -57,9 +57,9 @@ import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 const styles = stylex.create({
   card: {
     backgroundColor: ufTokens.surface,
-    color: ufTokens.ink,
-    borderRadius: ufTokens.radiusMd,
-    padding: ufTokens.space4,
+    color          : ufTokens.ink,
+    borderRadius   : ufTokens.radiusMd,
+    padding        : ufTokens.space4,
   },
 });
 
@@ -143,7 +143,7 @@ prop the page has to keep in step with it:
 ```js
 const styles = stylex.create({
   tab: {
-    color: { default: ufTokens.muted, ":is([aria-selected=true])": ufTokens.ink },
+    color            : { default: ufTokens.muted, ":is([aria-selected=true])": ufTokens.ink },
     borderBottomColor: { default: "transparent", ":is([aria-selected=true])": ufTokens.accent },
   },
 });
@@ -189,7 +189,7 @@ presets and every component built on them look like:
 
 ```js
 export const brandTheme = stylex.createTheme(ufTokens, {
-  accent: "#0f766e",
+  accent     : "#0f766e",
   accentHover: "#115e59",
 });
 ```
@@ -305,7 +305,7 @@ export default defineConfig({
         mdx: {
           highlight: {
             themes: { light: "min-light", dark: "vitesse-dark" },
-            langs: ["python", "sql"],
+            langs : ["python", "sql"],
           },
         },
       },

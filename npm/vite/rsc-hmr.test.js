@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // A server-component edit has no browser module to hot replace. The RSC
 // environment tells the client environment to render its URL again
 // (`uf:refresh`) rather than reload the document, so client state survives.

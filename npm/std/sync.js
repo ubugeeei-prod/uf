@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/std/sync`: Go's `sync` and `errgroup`, for one thread.
 //

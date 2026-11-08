@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/i18n/syntax`: MessageFormat 2 source into a tree.
 //

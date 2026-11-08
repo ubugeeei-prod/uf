@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // How many terminal columns a piece of text occupies.
 //

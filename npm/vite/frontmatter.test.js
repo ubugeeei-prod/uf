@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Front matter, as `@uniflowed/vite` reads it: YAML, exported as
 // `frontmatter`, and no parser for a format it never reads.

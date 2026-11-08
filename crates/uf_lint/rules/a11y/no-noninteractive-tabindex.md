@@ -3,7 +3,7 @@ A `tabIndex` on content that does nothing adds a stop to the tab order that lead
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Notice() {
   return (
     <p tabIndex={0}>Your changes were saved.</p>
@@ -20,7 +20,7 @@ app/example.js:4:8 `<p>` is not a control, so this `tabIndex` adds a stop with n
 If the text must be announced, make it a live region instead of a tab stop.
 
 ```js
-// @flow
+"use flow";
 export component Notice() {
   return (
     <p role="status">Your changes were saved.</p>

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The server/client split, on both sides of the line it draws.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 export function isNumber(value: mixed): value is number {
   return typeof value === "number";

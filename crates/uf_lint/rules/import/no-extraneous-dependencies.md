@@ -7,7 +7,7 @@ A package imported by name but not declared in the nearest `package.json` works 
 ```
 
 ```js path=app/page.js
-// @flow
+"use flow";
 import { useState } from "react";
 import { format } from "date-fns";
 ```
@@ -23,7 +23,7 @@ app/page.js:3:24 `date-fns` must be declared in the nearest package.json
 ```
 
 ```js path=app/page.js
-// @flow
+"use flow";
 import { useState } from "react";
 import { format } from "date-fns";
 import { readFile } from "node:fs/promises";

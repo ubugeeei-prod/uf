@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // The web examples draw their navigation icons as SVG paths. This app adds no
 // SVG dependency, so the same four ideas are drawn from views: a feed of lines,
 // a clip with its play mark, a message with its lines, and two sliders.

@@ -3,7 +3,7 @@ Flow's `hook` syntax makes a hook a hook to the type checker: Flow then enforces
 ## Bad
 
 ```js
-// @flow
+"use flow";
 import { useState } from "react";
 
 function useToggle(initial: boolean): [boolean, () => void] {
@@ -21,7 +21,7 @@ app/example.js:4:1 prefer Flow `hook` syntax for React hooks
 ## Good
 
 ```js
-// @flow
+"use flow";
 import { useState } from "react";
 
 export hook useToggle(initial: boolean): [boolean, () => void] {

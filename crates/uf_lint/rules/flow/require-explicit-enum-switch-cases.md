@@ -3,7 +3,7 @@ A `default` branch in a `switch` over a Flow enum catches members added later wi
 ## Bad
 
 ```js
-// @flow
+"use flow";
 enum Status {
   Active,
   Paused,
@@ -23,7 +23,7 @@ export function label(status: Status): string {
 ## Good
 
 ```js
-// @flow
+"use flow";
 enum Status {
   Active,
   Paused,

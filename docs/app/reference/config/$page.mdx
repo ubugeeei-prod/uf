@@ -98,10 +98,10 @@ it is used. This pair is the default; `build.runtime`, `test.runtime` and
 
 ```js
 export default defineConfig({
-  runtime: "node@24",
+  runtime       : "node@24",
   packageManager: "pnpm@10",
-  build: { runtime: "node@26" },
-  test: { runtime: "bun@1.4" },
+  build         : { runtime: "node@26" },
+  test          : { runtime: "bun@1.4" },
 });
 ```
 
@@ -268,7 +268,7 @@ contains `"web"`.
 export default defineConfig({
   app: {
     framework: "react-native",
-    targets: ["react-native"],
+    targets  : ["react-native"],
   },
 });
 ```
@@ -663,10 +663,10 @@ nothing else. `permissions: {}` is a legitimate thing to write and means
 | `run` | `[]` | Programs it may start |
 
 ```js
-// @flow
+"use flow";
 export default defineConfig({
   permissions: {
-    read: ["./fixtures"],
+    read : ["./fixtures"],
     write: ["./.uf"],
   },
 });
@@ -964,8 +964,8 @@ tomorrow rather than after a uf release that names it.
 ```js
 export default defineConfig({
   vite: {
-    server: { warmup: { clientFiles: ["./src/big-module.js"] } },
-    build: { target: "es2022" },
+    server : { warmup: { clientFiles: ["./src/big-module.js"] } },
+    build  : { target: "es2022" },
     resolve: { alias: { "~": "/src" } },
   },
 });
@@ -1037,7 +1037,7 @@ setting only it stops resolving.
 export default defineConfig({
   pm: {
     registry: "https://registry.npmjs.org",
-    scopes: { "@company": "https://npm.company.example" },
+    scopes  : { "@company": "https://npm.company.example" },
   },
 });
 ```
@@ -1079,7 +1079,7 @@ files:
 ```js
 export default defineConfig({
   tasks: {
-    format: "uf fmt",
+    format   : "uf fmt",
     stylelint: "node_modules/.bin/stylelint --fix",
   },
   staged: {
@@ -1155,12 +1155,12 @@ export default defineConfig({
     lint: "uf lint",
     // The long form takes seven more fields, all optional.
     check: {
-      command: "uf check",
-      cwd: "npm/core",
+      command  : "uf check",
+      cwd      : "npm/core",
       dependsOn: ["lint"],
-      env: { NODE_OPTIONS: "--max-old-space-size=4096" },
-      inputs: ["npm/core/**/*.js", "uf.config.js"],
-      outputs: ["npm/core/dist/**"],
+      env      : { NODE_OPTIONS: "--max-old-space-size=4096" },
+      inputs   : ["npm/core/**/*.js", "uf.config.js"],
+      outputs  : ["npm/core/dist/**"],
     },
     ci: { command: "echo ok", dependsOn: ["check", "test"] },
     deploy: {

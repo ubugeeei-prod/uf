@@ -3,7 +3,7 @@ Something that happens on hover has to happen on focus too, or keyboard users ne
 ## Bad
 
 ```js
-// @flow
+"use flow";
 export component Hint(onShow: () => void, onHide: () => void) {
   return (
     <button type="button" onMouseOver={onShow} onMouseOut={onHide}>
@@ -21,7 +21,7 @@ app/example.js:4:48 `onMouseOut` fires for a pointer and nothing else, so whatev
 ## Good
 
 ```js
-// @flow
+"use flow";
 export component Hint(onShow: () => void, onHide: () => void) {
   return (
     <button

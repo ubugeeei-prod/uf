@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The document every page of the deploy-matrix fixture renders in.
 //

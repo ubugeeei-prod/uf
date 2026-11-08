@@ -3,7 +3,7 @@ When a module exports `Button` by name and something else as its default, `impor
 ## Bad
 
 ```js path=app/Button.js
-// @flow
+"use flow";
 export component Button(label: string) {
   return <button type="button">{label}</button>;
 }
@@ -14,7 +14,7 @@ export default component IconButton(icon: string) {
 ```
 
 ```js path=app/page.js
-// @flow
+"use flow";
 import Button from "./Button.js";
 ```
 
@@ -25,7 +25,7 @@ app/page.js:2:8 `Button` is a named export of `app/Button.js`; import it by name
 ## Good
 
 ```js path=app/Button.js
-// @flow
+"use flow";
 export component Button(label: string) {
   return <button type="button">{label}</button>;
 }
@@ -36,6 +36,6 @@ export default component IconButton(icon: string) {
 ```
 
 ```js path=app/page.js
-// @flow
+"use flow";
 import IconButton, { Button } from "./Button.js";
 ```

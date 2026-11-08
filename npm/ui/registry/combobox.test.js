@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The combobox `uf ui add combobox` writes: a named field whose focus never
 // leaves it, a cursor drawn from `data-active`, an option taken on `Enter`, a

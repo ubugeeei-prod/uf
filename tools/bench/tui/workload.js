@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The workload, written once as data and twice as components.
 //

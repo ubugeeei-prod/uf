@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Source cells: the roots of the graph, and the only nodes anything writes to.
 //

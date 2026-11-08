@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 component Empty() {}
 component Simple(name: string, count?: number = 0) renders Node { return <p>{name}</p>; }
 component WithRest(name: string, ...rest: Props) { return null; }

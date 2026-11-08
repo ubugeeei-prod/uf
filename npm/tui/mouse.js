@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The mouse: what a terminal reports, and what a handler is given.
 //

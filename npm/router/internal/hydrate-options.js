@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Internal to `@uniflowed/router`: what both hydrating entries hand
 // `hydrateRoot` besides the tree.

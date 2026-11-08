@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A drawer: the sheet you can drag away, and the one with a specification
 // attached.

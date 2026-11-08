@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `tools/docs/trees.js`, the check that every directory tree in the
 // documentation is sorted by code point — the order `LC_ALL=C ls` gives, which

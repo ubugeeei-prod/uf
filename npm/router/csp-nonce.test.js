@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Every `<script>` in a uf document, against the response's CSP nonce.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // One request on a host that hands the runtime a `Response` rather than
 // writing a socket: `Bun.serve` (`../bun.js`) and `Deno.serve` (`../deno.js`).

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The harness in `./type-tests.js`, on its own: what it promises about how
 // often it starts `uf check`, which no fixture-reading test can see.

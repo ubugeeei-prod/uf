@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The radio group `uf ui add radio-group` writes: a named group with one tab
 // stop, arrow keys that check as they move, and the value a form submits.

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // The web Commonplace examples' visual language, in React Native's terms: the
 // same ink, muted and rule colours, 6 px corners, hairline rules between rows
 // rather than cards, and a 32 px medium heading.

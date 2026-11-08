@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The version the extension is published as, from the version of uf it ships
 // with.

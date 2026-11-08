@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import type { RouteTable } from "./routing.js";
 import { hasClientPage, matchRoute } from "./routing.js";
 

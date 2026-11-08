@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";

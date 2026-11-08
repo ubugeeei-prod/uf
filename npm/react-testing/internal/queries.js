@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Finding an element the way a person would.
 //

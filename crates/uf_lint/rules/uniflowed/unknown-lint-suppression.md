@@ -3,7 +3,7 @@ A `uf-lint-disable` comment that names a rule uf does not know suppresses nothin
 ## Bad
 
 ```js
-// @flow
+"use flow";
 // uf-lint-disable-next-line flow/unclear-typo
 export type Payload = { data: mixed };
 ```
@@ -15,7 +15,7 @@ app/example.js:2:30 unknown lint rule `flow/unclear-typo` in suppression comment
 ## Good
 
 ```js
-// @flow
+"use flow";
 // The payload is validated by the caller, and Flow cannot express its shape.
 // uf-lint-disable-next-line flow/unclear-type
 export type Payload = { data: any };

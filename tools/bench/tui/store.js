@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The state both applications read, through the hook both Reacts have.
 //

@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/tui`: a React renderer whose host is a terminal.
 //

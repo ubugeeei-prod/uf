@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Collecting `describe` / `it` into a tree, and running it.
 //

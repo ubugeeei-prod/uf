@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 
 import { layerMerge, layerSucceed, provide, runPromiseExit, type Cause } from "@uniflowed/effect";
 

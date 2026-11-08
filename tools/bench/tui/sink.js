@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // The terminal both libraries are measured against.
 //

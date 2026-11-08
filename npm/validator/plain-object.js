@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/validator/plain-object`: reading and writing an object whose
 // keys came from outside.

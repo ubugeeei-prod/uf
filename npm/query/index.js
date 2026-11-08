@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // `@uniflowed/query`: asking for the same thing twice should cost once.
 //

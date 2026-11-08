@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // A path with no route must be answered by this, with a 404 — not by the home
 // page with a 200, which is what a static host's SPA fallback does and what

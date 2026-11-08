@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 // On the right of an `=`, a `.property` whose object is a call with arguments
 // stays glued to the call: the call's argument list is the better place to
 // break, and it is measured first, so leaving the lookup breakable hands it an

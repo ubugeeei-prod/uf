@@ -1,4 +1,4 @@
-// @flow
+"use flow";
 //
 // Server actions misused, and the test that says the checker catches it.
 //
