@@ -15,7 +15,7 @@ export component Title(count: number) {
 ```
 
 ```diagnostics
-app/example.js:6:25 Found missing effect dependencies. Missing dependencies can cause an effect to fire less often than it should.
+app/example.js:6:25 Found missing effect dependencies. Missing dependencies can cause an effect to fire less often than it should. Inferred dependencies: `[count]`.
 ```
 
 ## Good

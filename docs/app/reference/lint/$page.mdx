@@ -2012,7 +2012,7 @@ export component Title(count: number) {
 `uf lint` reports:
 
 ```text
-app/example.js:6:25 Found missing effect dependencies. Missing dependencies can cause an effect to fire less often than it should.
+app/example.js:6:25 Found missing effect dependencies. Missing dependencies can cause an effect to fire less often than it should. Inferred dependencies: `[count]`.
 ```
 
 #### Good
@@ -2295,7 +2295,7 @@ export component Total(price: number, quantity: number) {
 `uf lint` reports:
 
 ```text
-app/example.js:5:39 Found missing memoization dependencies. Missing dependencies can cause a value to update less often than it should, resulting in stale UI.
+app/example.js:5:39 Found missing memoization dependencies. Missing dependencies can cause a value to update less often than it should, resulting in stale UI. Inferred dependencies: `[price, quantity]`.
 ```
 
 #### Good
