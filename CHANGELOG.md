@@ -1,5 +1,11 @@
 # Changelog
 
+## uf@0.48.0
+
+- feat(ui): hide an element that arrives while a dialog is open (#1916) (904e22e4)
+- feat(ui): share tooltip warmup across providers (#1918) (f7cffb05)
+- feat(ui): reset a number, a slider, a select, and a combobox with the form (#1917) (99030181)
+
 ## uf@0.47.0
 
 - feat(ui): submit a checkbox and a switch, and reset them with the form (#1913) (7fff7f9f)
