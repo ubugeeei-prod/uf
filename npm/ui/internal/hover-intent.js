@@ -86,9 +86,13 @@ export type HoverIntent = {|
  * `Tooltip.Provider` holds it; `Tooltip.Root` asks it what delay to use. A
  * tooltip outside a provider never sees one and uses its own delay, which is
  * the behaviour a tooltip on its own has always had.
+ *
+ * Providers on the same page share the skip window. Moving from a tooltip in
+ * one toolbar to a tooltip in another is the same gesture as moving along one
+ * toolbar.
  */
 export type DelayGroup = {|
-  /** `own`, or nought while the group is inside its skip window. */
+  /** `own`, or nought while this group or another provider is inside its skip window. */
   readonly delayFor: (own: number) => number,
   /** Told that a tooltip in the group has opened. */
   readonly opened: () => void,
@@ -151,11 +155,28 @@ export hook useHoverIntent(setOpen: (open: boolean) => void): HoverIntent {
  *
  * The window is open while a tooltip in the group is showing — moving along a
  * toolbar with one already open is the case that must not stutter — and for
- * `skipDelay` after the last one closes.
+ * `skipDelay` after the last one closes. Every provider on the page reads
+ * every other provider's window, so the same move across two toolbars does
+ * not wait again. A tooltip with no provider is not in that set.
  */
+type WarmGroup = {| skipping: () => boolean |};
+
+/** Every provider currently mounted. A tooltip with no provider is not here. */
+const warmGroups: Set<WarmGroup> = new Set();
+
+function anotherGroupIsWarm(self: WarmGroup): boolean {
+  for (const group of warmGroups) {
+    if (group !== self && group.skipping()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export hook useDelayGroup(skipDelay: number): DelayGroup {
   const skipping = useRef(false);
   const timer    = useRef<TimeoutID | null>(null);
+  const identity = useRef<WarmGroup>({ skipping: () => skipping.current });
 
   const stop = useStableCallback(() => {
     if (timer.current != null) {
@@ -165,6 +186,13 @@ export hook useDelayGroup(skipDelay: number): DelayGroup {
   });
 
   useEffect(() => stop, [stop]);
+  useEffect(() => {
+    const group = identity.current;
+    warmGroups.add(group);
+    return () => {
+      warmGroups.delete(group);
+    };
+  }, []);
 
   return {
     closed: () => {
@@ -179,7 +207,7 @@ export hook useDelayGroup(skipDelay: number): DelayGroup {
         skipping.current = false;
       }, skipDelay);
     },
-    delayFor: (own: number) => (skipping.current ? 0 : own),
+    delayFor: (own: number) => (skipping.current || anotherGroupIsWarm(identity.current) ? 0 : own),
     opened: () => {
       // While one is open the group is answering instantly, and the window
       // does not start counting down until it closes.

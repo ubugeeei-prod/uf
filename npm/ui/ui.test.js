@@ -4901,6 +4901,64 @@ describe("Tooltip: one clock for a toolbar", () => {
     expect(screen.getByRole("tooltip")).toHaveTextContent("Italic");
   });
 
+  it("opens a tooltip in a second provider without waiting again", () => {
+    uft.useFakeTimers();
+    render(
+      <div>
+        <Tooltip.Provider delayDuration={700} skipDelayDuration={300}>
+          <Tooltip.Root>
+            <Tooltip.Trigger aria-label="Bold">B</Tooltip.Trigger>
+            <Tooltip.Body>Bold</Tooltip.Body>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+        <Tooltip.Provider delayDuration={700} skipDelayDuration={300}>
+          <Tooltip.Root>
+            <Tooltip.Trigger aria-label="Italic">I</Tooltip.Trigger>
+            <Tooltip.Body>Italic</Tooltip.Body>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+      </div>,
+    );
+    readTheFirst();
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "Italic" }));
+    // The first provider's window is the page's. A second toolbar is not a
+    // second wait.
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Italic");
+  });
+
+  it("does not warm another provider when the skip window is zero", () => {
+    uft.useFakeTimers();
+    render(
+      <div>
+        <Tooltip.Provider delayDuration={700} skipDelayDuration={0}>
+          <Tooltip.Root>
+            <Tooltip.Trigger aria-label="Bold">B</Tooltip.Trigger>
+            <Tooltip.Body>Bold</Tooltip.Body>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+        <Tooltip.Provider delayDuration={50}>
+          <Tooltip.Root>
+            <Tooltip.Trigger aria-label="Italic">I</Tooltip.Trigger>
+            <Tooltip.Body>Italic</Tooltip.Body>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+      </div>,
+    );
+    const first = screen.getByRole("button", { name: "Bold" });
+    fireEvent.pointerEnter(first);
+    advance(700);
+    fireEvent.pointerLeave(first);
+    // While the first tooltip is still open the page is warm, skip window or
+    // not. Wait until it has actually closed. This provider's skip is zero,
+    // so closing does not leave a window behind.
+    advance(300);
+    expect(screen.queryByRole("tooltip")).toBe(null);
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "Italic" }));
+    expect(screen.queryByRole("tooltip")).toBe(null);
+    advance(50);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Italic");
+  });
+
   it("waits again once the window has passed", () => {
     uft.useFakeTimers();
     render(<Toolbar />);

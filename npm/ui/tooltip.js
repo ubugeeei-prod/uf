@@ -146,7 +146,9 @@ hook useTooltip(part: string): TooltipState {
  * `delayDuration` is the delay each tooltip inside uses unless it sets its own,
  * so a toolbar says it once. `skipDelayDuration` is the window after one closes
  * during which the next opens immediately — the interaction that makes a row of
- * icon buttons readable rather than tedious.
+ * icon buttons readable rather than tedious. The window is the page's: a
+ * tooltip in another provider opens immediately too. A tooltip with no
+ * provider does not join it.
  *
  * Renders no element: it is a context and a clock, and a `<div>` around a
  * toolbar is the caller's business.
