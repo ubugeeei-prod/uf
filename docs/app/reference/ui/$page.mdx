@@ -242,7 +242,7 @@ and proposed order of work are tracked in [#1368](https://github.com/ubugeeei-pr
 | `Menu`, `ContextMenu`, `Menubar` | **Implemented** for keyboard and submenu behaviour; hover-open safe triangles are **Declined** |
 | `Select`, `Combobox`, `Autocomplete` | **Partial**: `Select` is single-value and opens on typeahead; `Combobox` lacks custom values and async loading; standalone `Autocomplete` is **Missing** |
 | `NumberField`, `Slider` | **Implemented**: parsing, stepping, multiple slider thumbs, form names, wheel and hold stepping, and `onValueChangeEnd` |
-| `Checkbox`, `Switch`, `RadioGroup` | **Partial**: `RadioGroup` has form names; Checkbox and Switch lack native form participation and reset |
+| `Checkbox`, `Switch`, `RadioGroup` | **Implemented**: a checkbox or switch submits `value` (default `on`) only while checked, and resets to `defaultChecked`. A radio group submits its answer and resets to `defaultValue`; nothing chosen still submits an empty string |
 | `CheckboxGroup`, `SearchField`, `TextField`, `Meter`, `Toolbar`, `DropZone`, `FileTrigger` | **Missing** as public primitives |
 | `ColorPicker` and colour field/area/wheel/slider | **Partial**: hex and RGBA controls exist; HSL/HSB and the other colour primitives are **Missing** |
 | `Calendar`, `RangeCalendar`, `DateField`, `TimeField`, `DatePicker`, `DateRangePicker` | **Partial**: Gregorian dates and segmented fields work; no non-Gregorian calendar or zoned date-time values, and DatePicker uses a text input rather than segmented DateField |
@@ -2372,6 +2372,15 @@ state alone, and calls `requestSubmit` on the owning form with that form's
 default submit button, including a button outside the form that names it with
 `form="…"`. A buttonless form follows the platform's implicit-submission rule:
 it submits with at most one blocking text-like field and stays quiet with two.
+
+`name` is how a form reads either control. The submitted string is `value`, and
+`on` when `value` is omitted — the same default a native checkbox uses. A clear
+control and a disabled one are omitted; an empty string would still be a field,
+and a native checkbox is not one when it is clear. `indeterminate` does not
+submit. Mixed follows `checked`. Reset puts an uncontrolled control back to
+`defaultChecked`. A controlled one reports that default and stays where the
+parent leaves it. A radio group resets to `defaultValue` the same way. Nothing
+chosen there still submits an empty string, which is the field it already had.
 
 `render` changes the element, not the semantics. A rendered switch is still a
 switch with `aria-checked` and the switch keyboard contract; a rendered checkbox

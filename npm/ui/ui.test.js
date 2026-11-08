@@ -7926,6 +7926,96 @@ describe("Switch and Checkbox", () => {
     // moved back on the next render, which reads as a flicker and is a bug.
     expect(screen.getByRole("switch")).not.toBeChecked();
   });
+
+  it("submits a checked box and omits one that is clear, disabled, or unnamed", async () => {
+    render(
+      <form data-testid="signup">
+        <Checkbox aria-label="Subscribe" defaultChecked name="subscribe" />
+        <Checkbox aria-label="Remember" name="remember" />
+        <Checkbox aria-label="Terms" defaultChecked disabled name="terms" />
+        <Checkbox aria-label="Unnamed" defaultChecked />
+        <Switch aria-label="Notifications" defaultChecked name="notifications" value="yes" />
+        <Switch aria-label="Digest" name="digest" />
+      </form>,
+    );
+    const form: $FlowFixMe = screen.getByTestId("signup");
+    const data = () => new form.ownerDocument.defaultView.FormData(form);
+    expect(data().get("subscribe")).toBe("on");
+    expect(data().get("remember")).toBe(null);
+    expect(data().get("terms")).toBe(null);
+    expect(data().get("notifications")).toBe("yes");
+    expect(data().get("digest")).toBe(null);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Remember" }));
+    await userEvent.click(screen.getByRole("switch", { name: "Digest" }));
+    expect(data().get("remember")).toBe("on");
+    expect(data().get("digest")).toBe("on");
+  });
+
+  it("submits into the form it names, from outside that form", () => {
+    render(
+      <div>
+        <form data-testid="signup" id="signup" />
+        <Checkbox aria-label="Subscribe" defaultChecked form="signup" name="subscribe" />
+      </div>,
+    );
+    const form: $FlowFixMe = screen.getByTestId("signup");
+    expect(new form.ownerDocument.defaultView.FormData(form).get("subscribe")).toBe("on");
+  });
+
+  it("returns a checkbox and a switch to defaultChecked when the form resets", async () => {
+    render(
+      <form data-testid="signup">
+        <Checkbox aria-label="Subscribe" defaultChecked name="subscribe" />
+        <Switch aria-label="Notifications" name="notifications" />
+      </form>,
+    );
+    const form: $FlowFixMe = screen.getByTestId("signup");
+    const data = () => new form.ownerDocument.defaultView.FormData(form);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Subscribe" }));
+    await userEvent.click(screen.getByRole("switch", { name: "Notifications" }));
+    expect(data().get("subscribe")).toBe(null);
+    expect(data().get("notifications")).toBe("on");
+    // The reset listener waits out the browser's own reset, which is a microtask
+    // after `reset()` returns.
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("checkbox", { name: "Subscribe" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Notifications" })).not.toBeChecked();
+    expect(data().get("subscribe")).toBe("on");
+    expect(data().get("notifications")).toBe(null);
+  });
+
+  it("tells a controlled checkbox the form reset, and keeps the value the parent kept", async () => {
+    const onCheckedChange = fn();
+    component Kept() {
+      const [on, setOn] = useState(true);
+      return (
+        <form data-testid="signup">
+          <Checkbox
+            aria-label="Subscribe"
+            checked={on}
+            defaultChecked={false}
+            name="subscribe"
+            onCheckedChange={(next) => {
+              onCheckedChange(next);
+              setOn(true);
+            }}
+          />
+        </form>
+      );
+    }
+    render(<Kept />);
+    const form: $FlowFixMe = screen.getByTestId("signup");
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(onCheckedChange).toHaveBeenCalledWith(false);
+    expect(screen.getByRole("checkbox", { name: "Subscribe" })).toBeChecked();
+    expect(new form.ownerDocument.defaultView.FormData(form).get("subscribe")).toBe("on");
+  });
 });
 
 describe("Toggle", () => {
@@ -8190,6 +8280,28 @@ describe("RadioGroup", () => {
     await userEvent.click(screen.getByRole("radio", { name: "Pro" }));
     // A control a reader can operate and a form cannot read is half a control.
     expect(submitted()).toBe("pro");
+  });
+
+  it("returns to defaultValue when the form resets", async () => {
+    render(
+      <form data-testid="signup">
+        <RadioGroup.Root aria-label="Plan" defaultValue="free" name="plan">
+          <RadioGroup.Item value="free">Free</RadioGroup.Item>
+          <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+        </RadioGroup.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = screen.getByTestId("signup");
+    const submitted = () => new form.ownerDocument.defaultView.FormData(form).get("plan");
+    await userEvent.click(screen.getByRole("radio", { name: "Pro" }));
+    expect(submitted()).toBe("pro");
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("radio", { name: "Free" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "false");
+    expect(submitted()).toBe("free");
   });
 
   it("says which part was used outside a root", () => {

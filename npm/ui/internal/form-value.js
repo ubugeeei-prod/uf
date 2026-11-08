@@ -78,6 +78,12 @@
  * omitted from the submission by the browser, which is the behaviour a native
  * `<select disabled>` has and the one a caller who disabled the widget expects.
  */
-export component FormValue(name: string, value: string | null, disabled?: boolean = false) {
-  return <input disabled={disabled} name={name} type="hidden" value={value ?? ""} />;
+export component FormValue(
+  name     : string,
+  value    : string | null,
+  disabled?: boolean = false,
+  /** The form that owns this control when it is not an ancestor. A `form` attribute. */
+  form?: string,
+) {
+  return <input disabled={disabled} form={form} name={name} type="hidden" value={value ?? ""} />;
 }

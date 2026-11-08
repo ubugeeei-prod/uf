@@ -75,6 +75,7 @@
 
 import * as React from "@uniflowed/react";
 import { createContext, useCallback, useContext, useId, useMemo, useRef } from "@uniflowed/react";
+import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
 import {
@@ -86,6 +87,7 @@ import {
 import { moveOnKey, useFirstItem } from "./internal/roving-focus.js";
 import type { Orientation, RovingSet } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { useFormReset } from "./internal/checkable-form.js";
 
 /**
  * What the keyboard steps across in a radio group, and what owns one.
@@ -171,6 +173,21 @@ component RadioGroupRoot(
   );
   const [selected, select] = useControlled<string | null>(value, defaultValue, report);
   const rootRef            = useRef<HTMLElement | null>(null);
+  const owned = value === undefined;
+  // Reset restores `defaultValue`. `select` reports only a string, so a
+  // controlled group whose default is "nothing" is not told — there is no
+  // event for clearing — and the field stays on the answer still showing.
+  const restore = useStableCallback(() => {
+    select(defaultValue);
+    if (owned) {
+      return;
+    }
+    const input: $FlowFixMe = rootRef.current?.querySelector?.("input[type='hidden']");
+    if (input != null) {
+      input.value = selected ?? "";
+    }
+  });
+  useFormReset(rootRef, restore, typeof rest.form === "string" ? rest.form : undefined);
   // Only while nothing is chosen. Once there is an answer it holds the tab
   // stop, and asking the document which item comes first is work with no reader.
   const firstId = useFirstItem(rootRef, radioSet(orientation), selected == null);
@@ -192,7 +209,14 @@ component RadioGroupRoot(
         leaves elements a form's own validation would then point its
         "please choose one" at.
       */}
-      {name == null ? null : <input name={name} type="hidden" value={selected ?? ""} />}
+      {name == null ? null : (
+        <input
+          form={typeof rest.form === "string" ? rest.form : undefined}
+          name={name}
+          type="hidden"
+          value={selected ?? ""}
+        />
+      )}
     </>
   );
   const props = withProps(passed, {
