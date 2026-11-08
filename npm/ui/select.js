@@ -147,6 +147,7 @@ import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-
 import type { Movement } from "./internal/roving-focus.js";
 import { isTypeaheadKey, itemsOf, moveTo, useTypeahead } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { useFormReset } from "./internal/checkable-form.js";
 import { FormValue } from "./internal/form-value.js";
 import { presenceProps, usePresence } from "./internal/presence.js";
 
@@ -296,6 +297,24 @@ component SelectRoot(
     );
   });
 
+  const rootRef = useRef<HTMLElement | null>(null);
+  const owned = value === undefined;
+  const form = typeof rest.form === "string" ? rest.form : undefined;
+  // The trigger is a button. Reset has nothing of the select's to restore
+  // except the hidden input, which the browser puts back to the value it was
+  // mounted with.
+  const restore = useStableCallback(() => {
+    setChosen(defaultValue);
+    if (owned) {
+      return;
+    }
+    const input: $FlowFixMe = rootRef.current?.querySelector?.("input[type='hidden']");
+    if (input != null) {
+      input.value = chosen ?? "";
+    }
+  });
+  useFormReset(rootRef, restore, form);
+
   const state = {
     base,
     open: isOpen,
@@ -315,11 +334,19 @@ component SelectRoot(
     typeahead,
   };
 
+  const passed = withoutComposed(rest, ["ref"]);
   return (
     <SelectContext.Provider value={state}>
-      <div {...rest}>
+      <div
+        {...passed}
+        ref={composeRefs(rest.ref, (element: HTMLElement | null) => {
+          rootRef.current = element;
+        })}
+      >
         {children}
-        {name == null ? null : <FormValue disabled={disabled} name={name} value={chosen} />}
+        {name == null ? null : (
+          <FormValue disabled={disabled} form={form} name={name} value={chosen} />
+        )}
       </div>
     </SelectContext.Provider>
   );

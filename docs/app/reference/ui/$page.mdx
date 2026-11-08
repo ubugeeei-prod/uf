@@ -240,8 +240,8 @@ and proposed order of work are tracked in [#1368](https://github.com/ubugeeei-pr
 | `Dialog`, `AlertDialog`, `Sheet`, `Drawer` | **Implemented** for focus containment, restore and nested Escape; a public global dismiss stack is **Missing** |
 | `Popover`, `Tooltip`, `HoverCard` | **Partial**: positioning works; no Arrow part, and tooltip warmup is shared only inside one provider |
 | `Menu`, `ContextMenu`, `Menubar` | **Implemented** for keyboard and submenu behaviour; hover-open safe triangles are **Declined** |
-| `Select`, `Combobox`, `Autocomplete` | **Partial**: `Select` is single-value and opens on typeahead; `Combobox` lacks custom values and async loading; standalone `Autocomplete` is **Missing** |
-| `NumberField`, `Slider` | **Implemented**: parsing, stepping, multiple slider thumbs, form names, wheel and hold stepping, and `onValueChangeEnd` |
+| `Select`, `Combobox`, `Autocomplete` | **Partial**: a named select or combobox resets to `defaultValue` with the form. `Select` is single-value and opens on typeahead; `Combobox` lacks custom values and async loading; standalone `Autocomplete` is **Missing** |
+| `NumberField`, `Slider` | **Implemented**: parsing, stepping, multiple slider thumbs, form names, wheel and hold stepping, `onValueChangeEnd`, and a form reset back to `defaultValue` |
 | `Checkbox`, `Switch`, `RadioGroup` | **Implemented**: a checkbox or switch submits `value` (default `on`) only while checked, and resets to `defaultChecked`. A radio group submits its answer and resets to `defaultValue`; nothing chosen still submits an empty string |
 | `CheckboxGroup`, `SearchField`, `TextField`, `Meter`, `Toolbar`, `DropZone`, `FileTrigger` | **Missing** as public primitives |
 | `ColorPicker` and colour field/area/wheel/slider | **Partial**: hex and RGBA controls exist; HSL/HSB and the other colour primitives are **Missing** |

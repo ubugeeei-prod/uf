@@ -105,6 +105,7 @@ import {
 import type { Orientation } from "./internal/roving-focus.js";
 import { clamp, fraction, isReversed, snap } from "./internal/range.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { useFormReset } from "./internal/checkable-form.js";
 import { FormValue } from "./internal/form-value.js";
 
 type SliderState = {|
@@ -278,6 +279,25 @@ component SliderRoot(
     },
     { passive: false },
   );
+  // Same rule as a number field: the browser restores the hidden input to the
+  // value it was mounted with, and the thumbs are still wherever the reader
+  // left them until this runs.
+  const owned = value === undefined;
+  const form = typeof rest.form === "string" ? rest.form : undefined;
+  const restore = useStableCallback(() => {
+    if (owned) {
+      live.current = defaultValue;
+    }
+    setValues(defaultValue);
+    if (owned) {
+      return;
+    }
+    const input: $FlowFixMe = rootRef.current?.querySelector?.("input[type='hidden']");
+    if (input != null) {
+      input.value = values.join(",");
+    }
+  });
+  useFormReset(rootRef, restore, form);
   const passed = withoutComposed(rest, ["onWheel", "ref"]);
   const onWheel = composeHandlers(rest.onWheel, (event: $FlowFixMe) => {
     const move = thumbWheel(event, disabled, step);
@@ -292,7 +312,9 @@ component SliderRoot(
     endGesture();
   });
   const fields =
-    name == null ? null : <FormValue disabled={disabled} name={name} value={values.join(",")} />;
+    name == null ? null : (
+      <FormValue disabled={disabled} form={form} name={name} value={values.join(",")} />
+    );
   const props = withProps(passed, {
     children: (
       <>

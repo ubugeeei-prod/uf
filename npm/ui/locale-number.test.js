@@ -1,5 +1,6 @@
 // @flow
 import * as React from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
 import { afterEach, describe, expect, fn, it, uft } from "@uniflowed/test";
 import { act, cleanup, fireEvent, render, screen, userEvent } from "@uniflowed/react-testing";
 import {
@@ -204,6 +205,84 @@ describe("NumberField", () => {
     expect(screen.getByRole("spinbutton")).toHaveValue("1,5");
     expect(read()).toBe("1.5");
     expect(screen.getAllByRole("spinbutton").length).toBe(1);
+  });
+
+  it("returns to defaultValue when the form resets", async () => {
+    const { container } = render(
+      <form>
+        <NumberField.Root defaultValue={2} name="count">
+          <NumberField.Input aria-label="Count" />
+        </NumberField.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    const read = () => new form.ownerDocument.defaultView.FormData(form).get("count");
+    const input = screen.getByRole("spinbutton");
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(input).toHaveValue("3");
+    expect(read()).toBe("3");
+    // The reset listener waits out the browser's own reset, which is a microtask
+    // after `reset()` returns.
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(input).toHaveValue("2");
+    expect(read()).toBe("2");
+  });
+
+  it("resets into the form it names, from outside that form", async () => {
+    const { container } = render(
+      <div>
+        <form id="qty" />
+        <NumberField.Root defaultValue={2} form="qty" name="count">
+          <NumberField.Input aria-label="Count" />
+        </NumberField.Root>
+      </div>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    const read = () => new form.ownerDocument.defaultView.FormData(form).get("count");
+    const input = screen.getByRole("spinbutton");
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(read()).toBe("3");
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(input).toHaveValue("2");
+    expect(read()).toBe("2");
+  });
+
+  it("tells a controlled number field the form reset, and keeps the value the parent kept", async () => {
+    const onValueChange = fn();
+    component Kept() {
+      const [count, setCount] = useState<number | null>(4);
+      return (
+        <form>
+          <NumberField.Root
+            defaultValue={2}
+            name="count"
+            onValueChange={(next) => {
+              onValueChange(next);
+              setCount(4);
+            }}
+            value={count}
+          >
+            <NumberField.Input aria-label="Count" />
+          </NumberField.Root>
+        </form>
+      );
+    }
+    const { container } = render(<Kept />);
+    const form: $FlowFixMe = container.querySelector("form");
+    const read = () => new form.ownerDocument.defaultView.FormData(form).get("count");
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(onValueChange).toHaveBeenCalledWith(2);
+    expect(screen.getByRole("spinbutton")).toHaveValue("4");
+    expect(read()).toBe("4");
   });
 
   it("steps on the wheel only while the field is focused, and says when a key is finished", () => {

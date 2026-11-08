@@ -6,6 +6,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "@uniflow
 import { useEventListener } from "@uniflowed/hooks/dom";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import { useControlled } from "./internal/controlled-state.js";
+import { useFormReset } from "./internal/checkable-form.js";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import {
   composeHandlers,
@@ -156,6 +157,7 @@ component NumberFieldRoot(
   // controlled parent that refuses a change still wins the next keystroke: the
   // ref only ever spans a batch React has not rendered yet.
   const proposed = useRef<string | null>(null);
+  const rootRef  = useRef<HTMLElement | null>(null);
   // The number `assign` stored, ahead of the render a controlled parent may
   // then refuse. The effect copies `current` back, so the refusal wins the
   // next gesture the same way `proposed` does for text.
@@ -281,12 +283,40 @@ component NumberFieldRoot(
         );
     },
   };
-  const props = withProps(rest, {
+  // A form reset puts both inputs back to the value they were mounted with.
+  // That is not `defaultValue` once the reader has stepped. The microtask is
+  // `useFormReset`'s: happy-dom resets before the event, a browser resets
+  // after the listener, and either way the microtask is afterwards.
+  const owned = value === undefined;
+  const form = typeof rest.form === "string" ? rest.form : undefined;
+  const restore = useStableCallback(() => {
+    proposed.current = null;
+    setDraft(null);
+    setCurrent(defaultValue);
+    if (owned) {
+      return;
+    }
+    // The parent was told. Until it renders, both fields would show whatever
+    // the browser just restored, which is not the number still on screen.
+    const root: $FlowFixMe = rootRef.current;
+    const hidden = root?.querySelector?.("input[type='hidden']");
+    if (hidden != null) {
+      hidden.value = current == null ? "" : String(current);
+    }
+    const spin = root?.querySelector?.("[role='spinbutton']");
+    if (spin != null) {
+      spin.value = text;
+    }
+  });
+  useFormReset(rootRef, restore, form);
+  const passed = withoutComposed(rest, ["ref"]);
+  const props = withProps(passed, {
     children: (
       <>
         {name == null ? null : (
           <FormValue
             disabled={disabled}
+            form={form}
             name={name}
             value={current == null ? "" : String(current)}
           />
@@ -295,6 +325,11 @@ component NumberFieldRoot(
       </>
     ),
     "data-invalid": invalid ? "" : undefined,
+    // React calls callback refs during commit; the reset listener reads this later.
+    // uf-lint-disable-next-line react-compiler/refs
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      rootRef.current = element;
+    }),
   });
   return (
     <NumberContext.Provider value={state}>
