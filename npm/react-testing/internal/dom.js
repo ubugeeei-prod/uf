@@ -113,6 +113,9 @@ const CLASSES = [
   "InputEvent",
   "FocusEvent",
   "PointerEvent",
+  // A wheel built as a bare `Event` has no `deltaY`, and a document rejects
+  // an event from a constructor it does not own. `events.js` asks for this one.
+  "WheelEvent",
   "SubmitEvent",
   // React form Actions construct FormData from this document's form element.
   "FormData",

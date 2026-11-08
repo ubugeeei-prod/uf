@@ -66,6 +66,8 @@ const EVENT_TYPES: { readonly [string]: string } = {
   pointerout        : "PointerEvent",
   gotpointercapture : "PointerEvent",
   lostpointercapture: "PointerEvent",
+  // A bare `Event` has no `deltaY`, so a wheel test was stepping by nothing.
+  wheel: "WheelEvent",
 };
 
 /**
@@ -135,12 +137,15 @@ const ALSO_BUBBLES: { readonly [string]: string } = {
  * `EventInit` cannot reach an event constructor under any spelling, and this
  * stays one cast at one line rather than a dozen errors at every call.
  */
-function construct(name: string, init: EventInit): Event {
+function construct(name: string, init: EventInit, target?: EventTarget): Event {
   // One cast, covering the lookup and both constructions; see above. Suppressed
   // rather than left to fail `check:lib`, because the half that would have to
   // change is Flow's library definition for the event initialiser dictionaries.
+  // The realm is the target's document when it has one. A `WheelEvent` built
+  // from `globalThis` is a foreign object to a document that owns its own
+  // classes, and that document rejects it.
   // uf-lint-disable-next-line flow/unclear-type
-  const classes: any = globalThis;
+  const classes: any = eventRealm(target);
   const Constructor = classes[EVENT_TYPES[name] ?? "Event"] ?? classes.Event;
   const options = optionsFor(name, init);
   try {
@@ -162,6 +167,19 @@ function construct(name: string, init: EventInit): Event {
  * caller from passing `bubbles: false`; the loop keeps the caller on top,
  * which is what the spread said.
  */
+/** The document's classes, or the global ones when the target has no document. */
+function eventRealm(target: EventTarget | void): mixed {
+  if (target != null) {
+    const node: $FlowFixMe = target;
+    const owner = node.ownerDocument ?? (node.nodeType === 9 ? node : null);
+    const view = owner?.defaultView;
+    if (view != null) {
+      return view;
+    }
+  }
+  return globalThis;
+}
+
 function optionsFor(name: string, init: EventInit): EventInit {
   const options: { [string]: mixed } = {
     bubbles   : !NON_BUBBLING.has(name),
@@ -203,7 +221,7 @@ const PRECEDED_BY: { readonly [string]: string } = {
  * asserting "the form did not submit" needs.
  */
 export function dispatch(target: EventTarget, name: string, init?: EventInit): boolean {
-  const event = construct(name, init ?? {});
+  const event = construct(name, init ?? {}, target);
   const paired = ALSO_BUBBLES[name];
   const preceding = PRECEDED_BY[name];
   let ran = true;
@@ -211,13 +229,13 @@ export function dispatch(target: EventTarget, name: string, init?: EventInit): b
     if (preceding != null) {
       // Before, and inside the same `act`, for the reasons `ALSO_BUBBLES`
       // gives about its pair.
-      target.dispatchEvent(construct(preceding, init ?? {}));
+      target.dispatchEvent(construct(preceding, init ?? {}, target));
     }
     ran = target.dispatchEvent(event);
     if (paired != null) {
       // Both, in the order a browser sends them, and inside the same `act` so
       // the component re-renders once rather than twice.
-      target.dispatchEvent(construct(paired, init ?? {}));
+      target.dispatchEvent(construct(paired, init ?? {}, target));
     }
   });
   return ran;

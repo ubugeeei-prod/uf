@@ -960,6 +960,27 @@ describe("fireEvent", () => {
     ]);
   });
 
+  it("builds a wheel event with its deltas", () => {
+    // A bare `Event` has no `deltaY`. A test that scrolled a slider was
+    // stepping by nothing and reading the miss as the component.
+    const { container } = render(<div />);
+    const box = elementIn(container, "div");
+    let delta = 0;
+    let constructed: mixed = null;
+    box.addEventListener("wheel", (event: $FlowFixMe) => {
+      delta = event.deltaY;
+      constructed = event.constructor;
+    });
+    fireEvent.wheel(box, { deltaY: -100 });
+    expect(delta).toBe(-100);
+    // The document's own class. A WheelEvent from another realm is rejected,
+    // and a test that never heard the event would read that as a delta of 0.
+    const view = box.ownerDocument?.defaultView;
+    if (view?.WheelEvent != null) {
+      expect(constructed).toBe(view.WheelEvent);
+    }
+  });
+
   it("reaches onPointerEnter and onMouseEnter, which React builds from over and out", () => {
     // React never listens for an enter or a leave: they do not bubble, so the
     // root would not hear them. It computes them from the `over` and `out`
