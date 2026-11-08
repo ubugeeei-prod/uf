@@ -92,6 +92,7 @@
 
 import * as React from "@uniflowed/react";
 import { createContext, useContext, useEffect, useRef } from "@uniflowed/react";
+import { useEventListener } from "@uniflowed/hooks/dom";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
@@ -126,9 +127,10 @@ type SliderState = {|
   readonly trackRef: { current: HTMLElement | null },
   /** The gesture is over. The values are whatever `setAt` left. */
   readonly endGesture: () => void,
-  /** Remember that a key is held, so its `keyup` can end the gesture. */
-  readonly noteKey: () => void,
-  readonly endKey : () => void,
+  /** Remember which movement key is held, so its `keyup` can end the gesture. */
+  readonly noteKey: (key: string) => void,
+  /** End that key's gesture. A blur passes no key and ends whichever is held. */
+  readonly endKey: (key?: string) => void,
 |};
 
 const SliderContext: React.Context<SliderState | null> = createContext(null);
@@ -207,18 +209,21 @@ component SliderRoot(
   const endGesture = useStableCallback(() => {
     onValueChangeEnd?.(live.current);
   });
-  // Set on the key that moved a thumb and read on its `keyup`, which can be a
-  // different event from the one that wrote the value. A held key repeats
-  // `keydown` and ends once.
-  const keyHeld = useRef<boolean>(false);
-  const noteKey = useStableCallback(() => {
-    keyHeld.current = true;
+  // The movement key that is down. A held key repeats `keydown` and ends once,
+  // on the `keyup` of that same key. Releasing Shift while ArrowRight is still
+  // down is not the end of the gesture, and a blur before the key comes up is.
+  const movementKey = useRef<string | null>(null);
+  const noteKey     = useStableCallback((key: string) => {
+    movementKey.current = key;
   });
-  const endKey  = useStableCallback(() => {
-    if (!keyHeld.current) {
+  const endKey      = useStableCallback((key?: string) => {
+    if (movementKey.current == null) {
       return;
     }
-    keyHeld.current = false;
+    if (key != null && movementKey.current !== key) {
+      return;
+    }
+    movementKey.current = null;
     endGesture();
   });
 
@@ -258,31 +263,32 @@ component SliderRoot(
     endKey,
   };
 
-  const passed = withoutComposed(rest, ["onWheel"]);
+  const rootRef = useRef<HTMLElement | null>(null);
+  // React registers `wheel` as a passive listener, so `preventDefault` in
+  // `onWheel` does not stop the page. This listener is not passive, and it
+  // cancels only a wheel `onWheel` will apply.
+  useEventListener(
+    rootRef,
+    "wheel",
+    (event: Event) => {
+      if (thumbWheel(event, disabled, step) == null) {
+        return;
+      }
+      event.preventDefault();
+    },
+    { passive: false },
+  );
+  const passed = withoutComposed(rest, ["onWheel", "ref"]);
   const onWheel = composeHandlers(rest.onWheel, (event: $FlowFixMe) => {
-    if (disabled) {
-      return;
-    }
-    const root: HTMLElement | null = event.currentTarget;
-    const active: HTMLElement | null = root?.ownerDocument?.activeElement ?? null;
-    if (root == null || active == null || !root.contains(active)) {
-      return;
-    }
-    if (active.getAttribute("role") !== "slider") {
-      return;
-    }
-    const index = Number(active.getAttribute("data-uf-slider-index"));
-    if (!Number.isInteger(index)) {
-      return;
-    }
-    const move = wheelStep(event.deltaY, event.deltaX, step);
+    const move = thumbWheel(event, disabled, step);
     if (move == null) {
       return;
     }
     // The page would scroll as well, and a slider that does both moves the
-    // value and the thing the reader was looking at.
+    // value and the thing the reader was looking at. The native listener above
+    // is what actually stops it; this call is a no-op on React's passive one.
     event.preventDefault();
-    setAt(index, valueAt(index) + move);
+    setAt(move.index, valueAt(move.index) + move.delta);
     endGesture();
   });
   const fields =
@@ -294,7 +300,13 @@ component SliderRoot(
         {children}
       </>
     ),
+    "data-uf-slider": "",
     onWheel,
+    // React calls callback refs during commit; the wheel listener reads this later.
+    // uf-lint-disable-next-line react-compiler/refs
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      rootRef.current = element;
+    }),
   });
 
   return (
@@ -319,7 +331,14 @@ component SliderRoot(
  */
 component SliderTrack(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const slider = useSlider("Slider.Track");
-  const passed = withoutComposed(rest, ["onPointerDown", "onPointerMove", "onPointerUp", "ref"]);
+  const passed = withoutComposed(rest, [
+    "onPointerDown",
+    "onPointerMove",
+    "onPointerUp",
+    "onPointerCancel",
+    "onLostPointerCapture",
+    "ref",
+  ]);
   const dragging = useRef<number | null>(null);
 
   /** The value the pointer is over, from the track's own box. */
@@ -353,6 +372,21 @@ component SliderTrack(children: React.Node, render?: RenderProp, ...rest: Rest) 
     slider.setAt(at, target);
   };
 
+  // `release` is false for `lostpointercapture`: the capture is already gone,
+  // and asking for it again would re-enter this function. The drag is cleared
+  // first, so the `pointerup` that released the capture and the capture event
+  // that follows it end the gesture once.
+  const finishDrag = (event: $FlowFixMe, release: boolean) => {
+    const started = dragging.current != null;
+    dragging.current = null;
+    if (release) {
+      event.currentTarget?.releasePointerCapture?.(event.pointerId);
+    }
+    if (started) {
+      slider.endGesture();
+    }
+  };
+
   const props = withProps(passed, {
     children,
     // Pointer handlers keep the active thumb in a ref between events.
@@ -375,12 +409,17 @@ component SliderTrack(children: React.Node, render?: RenderProp, ...rest: Rest) 
     }),
     // uf-lint-disable-next-line react-compiler/refs
     onPointerUp: composeHandlers(rest.onPointerUp, (event: $FlowFixMe) => {
-      const started = dragging.current != null;
-      dragging.current = null;
-      event.currentTarget?.releasePointerCapture?.(event.pointerId);
-      if (started) {
-        slider.endGesture();
-      }
+      finishDrag(event, true);
+    }),
+    // A finger that the browser takes back never sends `pointerup`. Leaving
+    // the drag set would let a later move change the value with no press.
+    // uf-lint-disable-next-line react-compiler/refs
+    onPointerCancel: composeHandlers(rest.onPointerCancel, (event: $FlowFixMe) => {
+      finishDrag(event, true);
+    }),
+    // uf-lint-disable-next-line react-compiler/refs
+    onLostPointerCapture: composeHandlers(rest.onLostPointerCapture, (event: $FlowFixMe) => {
+      finishDrag(event, false);
     }),
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       // React calls callback refs during commit; pointer handlers read the track later.
@@ -443,7 +482,7 @@ component SliderRange(render?: RenderProp, ...rest: Rest) {
  */
 component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
   const slider = useSlider("Slider.Thumb");
-  const passed = withoutComposed(rest, ["onKeyDown", "onKeyUp", "style"]);
+  const passed = withoutComposed(rest, ["onKeyDown", "onKeyUp", "onBlur", "style"]);
   const value = slider.values[index] ?? slider.min;
   const [lower, upper] = boundsOf(slider.values, index, slider.min, slider.max);
   const props = withProps(passed, {
@@ -471,19 +510,24 @@ component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
         // moves the page under the reader as it moves the value is a control
         // they cannot watch.
         event.preventDefault();
-        slider.noteKey();
+        slider.noteKey(event.key);
         slider.setAt(index, slider.valueAt(index) + move);
         return;
       }
       if (event.key === "Home" || event.key === "End") {
         event.preventDefault();
-        slider.noteKey();
+        slider.noteKey(event.key);
         // This thumb's own ends, which for the lower thumb of a range is its
         // neighbour rather than the slider's maximum.
         slider.setAt(index, event.key === "Home" ? lowerNow : upperNow);
       }
     }),
-    onKeyUp: composeHandlers(rest.onKeyUp, () => {
+    onKeyUp: composeHandlers(rest.onKeyUp, (event: $FlowFixMe) => {
+      slider.endKey(event.key);
+    }),
+    // Focus left before the key came up. Ending here is the gesture; a later
+    // keyup of something else must not report it again.
+    onBlur: composeHandlers(rest.onBlur, () => {
       slider.endKey();
     }),
     role: "slider",
@@ -519,6 +563,42 @@ component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
  * steps, the same way a held arrow does, and a smaller `step` is how a caller
  * makes that slower.
  */
+/**
+ * The thumb a wheel should move, and how far, or nothing when it should not.
+ *
+ * The focused thumb has to belong to this root. A thumb inside a nested slider
+ * is inside both roots, and the outer one would otherwise take the same wheel.
+ */
+function thumbWheel(
+  event   : $FlowFixMe,
+  disabled: boolean,
+  step    : number,
+): { index: number, delta: number } | null {
+  if (disabled) {
+    return null;
+  }
+  const root: HTMLElement | null = event.currentTarget;
+  const active: HTMLElement | null = root?.ownerDocument?.activeElement ?? null;
+  if (root == null || active == null || !root.contains(active)) {
+    return null;
+  }
+  if (active.getAttribute("role") !== "slider") {
+    return null;
+  }
+  if (active.closest("[data-uf-slider]") !== root) {
+    return null;
+  }
+  const index = Number(active.getAttribute("data-uf-slider-index"));
+  if (!Number.isInteger(index)) {
+    return null;
+  }
+  const delta = wheelStep(event.deltaY, event.deltaX, step);
+  if (delta == null) {
+    return null;
+  }
+  return { index, delta };
+}
+
 function finiteAxis(value: mixed): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }

@@ -966,11 +966,19 @@ describe("fireEvent", () => {
     const { container } = render(<div />);
     const box = elementIn(container, "div");
     let delta = 0;
+    let constructed: mixed = null;
     box.addEventListener("wheel", (event: $FlowFixMe) => {
       delta = event.deltaY;
+      constructed = event.constructor;
     });
     fireEvent.wheel(box, { deltaY: -100 });
     expect(delta).toBe(-100);
+    // The document's own class. A WheelEvent from another realm is rejected,
+    // and a test that never heard the event would read that as a delta of 0.
+    const view = box.ownerDocument?.defaultView;
+    if (view?.WheelEvent != null) {
+      expect(constructed).toBe(view.WheelEvent);
+    }
   });
 
   it("reaches onPointerEnter and onMouseEnter, which React builds from over and out", () => {

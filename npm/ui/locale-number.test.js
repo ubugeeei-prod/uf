@@ -214,11 +214,13 @@ describe("NumberField", () => {
       </NumberField.Root>,
     );
     const input = screen.getByRole("spinbutton");
-    fireEvent.wheel(input, { deltaY: -100 });
+    // Not cancelled: the page still scrolls.
+    expect(fireEvent.wheel(input, { deltaY: -100 })).toBe(true);
     expect(input).toHaveValue("1");
     expect(ended).not.toHaveBeenCalled();
     input.focus();
-    fireEvent.wheel(input, { deltaY: -100 });
+    // Cancelled. React's wheel listener is passive, so this is the native one.
+    expect(fireEvent.wheel(input, { deltaY: -100 })).toBe(false);
     expect(input).toHaveValue("2");
     expect(ended).toHaveBeenLastCalledWith(2);
     fireEvent.keyDown(input, { key: "ArrowUp" });
@@ -259,6 +261,47 @@ describe("NumberField", () => {
     expect(screen.getByRole("spinbutton")).toHaveValue("4");
     expect(ended).toHaveBeenLastCalledWith(4);
     uft.useRealTimers();
+  });
+
+  it("stops a held stepper when its button unmounts", () => {
+    uft.useFakeTimers();
+    const ended = fn();
+    component Example(show: boolean) {
+      return (
+        <NumberField.Root defaultValue={1} onValueChangeEnd={ended}>
+          <NumberField.Input aria-label="Count" />
+          {show ? <NumberField.Increment /> : null}
+        </NumberField.Root>
+      );
+    }
+    const view = render(<Example show />);
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Increase" }), { button: 0 });
+    expect(screen.getByRole("spinbutton")).toHaveValue("2");
+    view.rerender(<Example show={false} />);
+    expect(ended).toHaveBeenLastCalledWith(2);
+    act(() => {
+      uft.advanceTimersByTime(1000);
+    });
+    expect(screen.getByRole("spinbutton")).toHaveValue("2");
+    uft.useRealTimers();
+  });
+
+  it("does not end a key again after blur already committed it", () => {
+    const ended = fn();
+    render(
+      <NumberField.Root defaultValue={1} onValueChangeEnd={ended}>
+        <NumberField.Input aria-label="Count" />
+      </NumberField.Root>,
+    );
+    const input = screen.getByRole("spinbutton");
+    input.focus();
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    fireEvent.blur(input);
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(ended).toHaveBeenLastCalledWith(2);
+    input.focus();
+    fireEvent.keyUp(input, { key: "a" });
+    expect(ended).toHaveBeenCalledTimes(1);
   });
 });
 

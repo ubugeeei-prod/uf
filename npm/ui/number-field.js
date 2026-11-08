@@ -3,10 +3,16 @@
 
 import * as React from "@uniflowed/react";
 import { createContext, useContext, useEffect, useRef, useState } from "@uniflowed/react";
+import { useEventListener } from "@uniflowed/hooks/dom";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import { useControlled } from "./internal/controlled-state.js";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
-import { composeHandlers, withProps } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import { useLocale } from "./i18n-provider.js";
 import { FormValue } from "./internal/form-value.js";
 
@@ -308,7 +314,23 @@ component NumberFieldInput(render?: RenderProp, ...rest: Rest) {
   // Set while an arrow, page, Home or End key is down, so the matching
   // `keyup` ends the gesture once even when the key repeated.
   const spinning = useRef<boolean>(false);
-  const props = withProps(rest, {
+  const inputRef = useRef<HTMLElement | null>(null);
+  // React's own wheel listener is passive, so `preventDefault` inside `onWheel`
+  // does not stop the page. This one is not passive, and it only cancels the
+  // wheel the handler below will step.
+  useEventListener(
+    inputRef,
+    "wheel",
+    (event: Event) => {
+      if (focusedWheelDirection(event, state.disabled, state.readOnly) == null) {
+        return;
+      }
+      event.preventDefault();
+    },
+    { passive: false },
+  );
+  const passed = withoutComposed(rest, ["ref"]);
+  const props = withProps(passed, {
     type: "text",
     role: "spinbutton",
     inputMode: "decimal",
@@ -323,7 +345,12 @@ component NumberFieldInput(render?: RenderProp, ...rest: Rest) {
     onChange: composeHandlers(rest.onChange, (event: $FlowFixMe) =>
       state.edit(event.currentTarget.value),
     ),
-    onBlur: composeHandlers(rest.onBlur, state.commit),
+    // Blur commits, and it is finished. A later keyup must not end it again.
+    // uf-lint-disable-next-line react-compiler/refs
+    onBlur: composeHandlers(rest.onBlur, () => {
+      spinning.current = false;
+      state.commit();
+    }),
     // `spinning` is set on keydown and read on keyup, which is not this render.
     // uf-lint-disable-next-line react-compiler/refs
     onKeyDown: composeHandlers(rest.onKeyDown, (event: $FlowFixMe) => {
@@ -352,16 +379,16 @@ component NumberFieldInput(render?: RenderProp, ...rest: Rest) {
       state.finish();
     }),
     onWheel: composeHandlers(rest.onWheel, (event: $FlowFixMe) => {
-      if (state.disabled || state.readOnly) return;
-      const active = event.currentTarget?.ownerDocument?.activeElement;
-      // A wheel over a field the reader is not editing still belongs to the
-      // page. Taking it would trap the scroll on the way past.
-      if (active !== event.currentTarget) return;
-      const direction = wheelDirection(event.deltaY, event.deltaX);
+      const direction = focusedWheelDirection(event, state.disabled, state.readOnly);
       if (direction == null) return;
       event.preventDefault();
       state.stepBy(direction);
       state.finish();
+    }),
+    // React calls callback refs during commit; the wheel listener reads this later.
+    // uf-lint-disable-next-line react-compiler/refs
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      inputRef.current = element;
     }),
   });
   return match (render) {
@@ -375,6 +402,15 @@ component NumberFieldIncrement(children?: React.Node = "+", render?: RenderProp,
   // Set on pointer down and still set when the click that follows it arrives,
   // so that click does not step a second time. Cleared after that click.
   const fromPointer = useRef<boolean>(false);
+  // The repeat timer is the root's. Unmounting the button while it is held
+  // has to release that hold, or the timer keeps stepping and the gesture
+  // never reports that it ended.
+  useEffect(
+    () => () => {
+      state.release();
+    },
+    [state.release],
+  );
   const props = withProps(rest, {
     children,
     type        : "button",
@@ -433,6 +469,12 @@ component NumberFieldIncrement(children?: React.Node = "+", render?: RenderProp,
 component NumberFieldDecrement(children?: React.Node = "−", render?: RenderProp, ...rest: Rest) {
   const state       = useNumber();
   const fromPointer = useRef<boolean>(false);
+  useEffect(
+    () => () => {
+      state.release();
+    },
+    [state.release],
+  );
   const props = withProps(rest, {
     children,
     type        : "button",
@@ -494,6 +536,25 @@ component NumberFieldDecrement(children?: React.Node = "−", render?: RenderPro
  * stack and an error name the part a reader can find rather than one of forty
  * `Root`s.
  */
+/**
+ * Which way a wheel over the focused field steps, or nothing when it does not.
+ *
+ * A wheel over a field the reader is not editing still belongs to the page.
+ * Taking it would trap the scroll on the way past. The native listener and
+ * `onWheel` both ask this, so one of them cannot start cancelling wheels the
+ * other will not step.
+ */
+function focusedWheelDirection(
+  event   : $FlowFixMe,
+  disabled: boolean,
+  readOnly: boolean,
+): number | null {
+  if (disabled || readOnly) return null;
+  const node = event.currentTarget;
+  if (node == null || node.ownerDocument?.activeElement !== node) return null;
+  return wheelDirection(event.deltaY, event.deltaX);
+}
+
 /**
  * Which way one wheel event steps, or nothing when it did not move.
  *

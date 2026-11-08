@@ -359,7 +359,8 @@ editing and stepping.
 
 `name` submits that number, not the formatted text, through a hidden input.
 Give no name and the form gains no field. A wheel steps the field only while
-it is focused, so scrolling the page past it still scrolls the page. Holding
+it is focused, and that wheel does not also scroll the page. A wheel over a
+field nobody is editing still scrolls the page. Holding
 `Increment` or `Decrement` steps once and then repeats until the pointer comes
 up or leaves the button; a click is shorter than the pause, so it steps once.
 `onValueChange` fires as the number moves. `onValueChangeEnd` fires when the
@@ -1102,9 +1103,10 @@ input. One thumb submits its number. No name submits nothing, and a disabled
 slider is omitted the way a disabled native control is. `onValueChange` fires
 while the value moves. `onValueChangeEnd` fires when the pointer or the key
 comes up, and when a wheel notch lands, with the values the gesture left. The
-wheel belongs to the focused thumb: a wheel over a slider nobody is editing
-still scrolls the page. Wheel up moves toward the maximum. Writing direction
-does not flip it.
+wheel belongs to the focused thumb. That wheel does not also scroll the
+page, and it does not move a slider nested around the one the thumb belongs
+to. A wheel over a slider nobody is editing still scrolls the page. Wheel up
+moves toward the maximum. Writing direction does not flip it.
 
 Nothing here has a width or a position. Each thumb carries
 `--uf-slider-fraction` and the range carries `--uf-slider-start` and
