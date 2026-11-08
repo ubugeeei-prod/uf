@@ -63,14 +63,34 @@
 // answered below: a submit button belongs to the form that *owns* it rather
 // than to the form it sits inside, and a form with no submit button submits
 // itself only while at most one of its fields blocks implicit submission.
+//
+// # A form reads `name`, and reset puts `defaultChecked` back
+//
+// A button is not a successful control, so `name` renders the hidden input
+// `internal/form-value.js` is for. The value is `value`, and `"on"` when the
+// caller did not give one — the string a native checkbox submits. Unchecked,
+// and disabled, that input is disabled, so the form omits it. An empty string
+// would still be a field. `indeterminate` is not a submitted state; the field
+// follows `checked`.
+//
+// Reset is the form's event. An uncontrolled box returns to `defaultChecked`.
+// A controlled one reports that value and stays where the parent leaves it,
+// and the field stays with what is still on screen. The shared half of this,
+// including the switch, is `internal/checkable-form.js`.
 
 "use client";
 
 import * as React from "@uniflowed/react";
 
 import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
-import { composeHandlers, withProps, withoutComposed } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { useNamedCheck } from "./internal/checkable-form.js";
 
 /**
  * The button a form would submit itself through, or nothing.
@@ -217,19 +237,39 @@ export component Checkbox(
   indeterminate?  : boolean = false,
   onCheckedChange?: (checked: boolean) => void,
   disabled?       : boolean = false,
-  children?       : React.Node,
-  render?         : RenderProp,
-  ...rest         : Rest
+  /** Submitted while checked. `"on"` when omitted, which is what a native checkbox sends. */
+  value?   : string = "on",
+  name?    : string,
+  children?: React.Node,
+  render?  : RenderProp,
+  ...rest  : Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
+  const form = typeof rest.form === "string" ? rest.form : undefined;
+  const { field, ref } = useNamedCheck(
+    name,
+    value,
+    on,
+    disabled,
+    defaultChecked,
+    checked === undefined,
+    setOn,
+    form,
+  );
   // A mixed checkbox moves to checked, not to "the opposite of the boolean
   // underneath it": a half-selected "select all" that clears itself on the
   // first click is the behaviour every table in every application gets wrong.
   const next = indeterminate ? true : !on;
-  const props = withProps(withoutComposed(rest, ["onClick", "onKeyDown"]), {
+  const props = withProps(withoutComposed(rest, ["onClick", "onKeyDown", "ref"]), {
     "aria-checked": indeterminate ? "mixed" : on ? "true" : "false",
-    children,
+    children: (
+      <>
+        {field}
+        {children}
+      </>
+    ),
     disabled,
+    ref: composeRefs(rest.ref, ref),
     onClick: composeHandlers(rest.onClick, () => {
       if (!disabled) {
         setOn(next);
