@@ -24,14 +24,29 @@
 // native `<input type="checkbox">` does with the key and what a reader
 // answering a question on their way to a submit button is asking for. That is
 // the whole reason these are not one file with a flag.
+//
+// # A form still has to be able to read it
+//
+// There is no native switch, so a form reads this the way it reads a checkbox:
+// `name` submits `value` (default `"on"`) while the switch is on, and omits
+// the field while it is off or disabled. Reset returns an uncontrolled switch
+// to `defaultChecked`. `Enter` still toggles — that half did not change. The
+// field and the reset are `internal/checkable-form.js`, shared with the
+// checkbox so the two cannot drift about what "off" submits.
 
 "use client";
 
 import * as React from "@uniflowed/react";
 
 import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
-import { composeHandlers, withProps, withoutComposed } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { useNamedCheck } from "./internal/checkable-form.js";
 
 /**
  * A two-state switch: on or off.
@@ -46,15 +61,35 @@ export component Switch(
   defaultChecked? : boolean = false,
   onCheckedChange?: (checked: boolean) => void,
   disabled?       : boolean = false,
-  children?       : React.Node,
-  render?         : RenderProp,
-  ...rest         : Rest
+  /** Submitted while on. `"on"` when omitted, the same default a checkbox uses. */
+  value?   : string = "on",
+  name?    : string,
+  children?: React.Node,
+  render?  : RenderProp,
+  ...rest  : Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
-  const props = withProps(withoutComposed(rest, ["onClick", "onKeyDown"]), {
-    "aria-checked": on ? "true" : "false",
-    children,
+  const form = typeof rest.form === "string" ? rest.form : undefined;
+  const { field, ref } = useNamedCheck(
+    name,
+    value,
+    on,
     disabled,
+    defaultChecked,
+    checked === undefined,
+    setOn,
+    form,
+  );
+  const props = withProps(withoutComposed(rest, ["onClick", "onKeyDown", "ref"]), {
+    "aria-checked": on ? "true" : "false",
+    children: (
+      <>
+        {field}
+        {children}
+      </>
+    ),
+    disabled,
+    ref: composeRefs(rest.ref, ref),
     onClick: composeHandlers(rest.onClick, () => {
       if (!disabled) {
         setOn(!on);
