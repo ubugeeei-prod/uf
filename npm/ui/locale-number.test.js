@@ -1,6 +1,6 @@
 // @flow
 import * as React from "@uniflowed/react";
-import { afterEach, describe, expect, fn, it } from "@uniflowed/test";
+import { afterEach, describe, expect, fn, it, uft } from "@uniflowed/test";
 import { act, cleanup, fireEvent, render, screen, userEvent } from "@uniflowed/react-testing";
 import {
   Field,
@@ -186,6 +186,122 @@ describe("NumberField", () => {
     });
     expect(changed).toHaveBeenLastCalledWith(6);
     expect(input).toHaveValue("6");
+  });
+
+  it("submits the number, not the text a reader sees", () => {
+    const { container } = render(
+      <form>
+        <I18nProvider locale="de-DE">
+          <NumberField.Root defaultValue={1.5} name="weight">
+            <NumberField.Input aria-label="Weight" />
+          </NumberField.Root>
+        </I18nProvider>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    const read = () => new form.ownerDocument.defaultView.FormData(form).get("weight");
+    // The field shows "1,5". The form carries the number.
+    expect(screen.getByRole("spinbutton")).toHaveValue("1,5");
+    expect(read()).toBe("1.5");
+    expect(screen.getAllByRole("spinbutton").length).toBe(1);
+  });
+
+  it("steps on the wheel only while the field is focused, and says when a key is finished", () => {
+    const ended = fn();
+    render(
+      <NumberField.Root defaultValue={1} onValueChangeEnd={ended}>
+        <NumberField.Input aria-label="Count" />
+      </NumberField.Root>,
+    );
+    const input = screen.getByRole("spinbutton");
+    // Not cancelled: the page still scrolls.
+    expect(fireEvent.wheel(input, { deltaY: -100 })).toBe(true);
+    expect(input).toHaveValue("1");
+    expect(ended).not.toHaveBeenCalled();
+    input.focus();
+    // Cancelled. React's wheel listener is passive, so this is the native one.
+    expect(fireEvent.wheel(input, { deltaY: -100 })).toBe(false);
+    expect(input).toHaveValue("2");
+    expect(ended).toHaveBeenLastCalledWith(2);
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(ended).toHaveBeenCalledTimes(1);
+    fireEvent.keyUp(input, { key: "ArrowUp" });
+    expect(ended).toHaveBeenLastCalledWith(3);
+  });
+
+  it("keeps stepping while the button is held, and stops when the pointer comes up", () => {
+    uft.useFakeTimers();
+    const ended = fn();
+    render(
+      <NumberField.Root defaultValue={1} onValueChangeEnd={ended}>
+        <NumberField.Input aria-label="Count" />
+        <NumberField.Increment />
+      </NumberField.Root>,
+    );
+    const button = screen.getByRole("button", { name: "Increase" });
+    fireEvent.pointerDown(button, { button: 0, pointerId: 1 });
+    expect(screen.getByRole("spinbutton")).toHaveValue("2");
+    expect(ended).not.toHaveBeenCalled();
+    act(() => {
+      uft.advanceTimersByTime(399);
+    });
+    expect(screen.getByRole("spinbutton")).toHaveValue("2");
+    act(() => {
+      uft.advanceTimersByTime(1);
+    });
+    expect(screen.getByRole("spinbutton")).toHaveValue("3");
+    act(() => {
+      uft.advanceTimersByTime(60);
+    });
+    expect(screen.getByRole("spinbutton")).toHaveValue("4");
+    fireEvent.pointerUp(button, { button: 0, pointerId: 1 });
+    act(() => {
+      uft.advanceTimersByTime(500);
+    });
+    expect(screen.getByRole("spinbutton")).toHaveValue("4");
+    expect(ended).toHaveBeenLastCalledWith(4);
+    uft.useRealTimers();
+  });
+
+  it("stops a held stepper when its button unmounts", () => {
+    uft.useFakeTimers();
+    const ended = fn();
+    component Example(show: boolean) {
+      return (
+        <NumberField.Root defaultValue={1} onValueChangeEnd={ended}>
+          <NumberField.Input aria-label="Count" />
+          {show ? <NumberField.Increment /> : null}
+        </NumberField.Root>
+      );
+    }
+    const view = render(<Example show />);
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Increase" }), { button: 0 });
+    expect(screen.getByRole("spinbutton")).toHaveValue("2");
+    view.rerender(<Example show={false} />);
+    expect(ended).toHaveBeenLastCalledWith(2);
+    act(() => {
+      uft.advanceTimersByTime(1000);
+    });
+    expect(screen.getByRole("spinbutton")).toHaveValue("2");
+    uft.useRealTimers();
+  });
+
+  it("does not end a key again after blur already committed it", () => {
+    const ended = fn();
+    render(
+      <NumberField.Root defaultValue={1} onValueChangeEnd={ended}>
+        <NumberField.Input aria-label="Count" />
+      </NumberField.Root>,
+    );
+    const input = screen.getByRole("spinbutton");
+    input.focus();
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    fireEvent.blur(input);
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(ended).toHaveBeenLastCalledWith(2);
+    input.focus();
+    fireEvent.keyUp(input, { key: "a" });
+    expect(ended).toHaveBeenCalledTimes(1);
   });
 });
 

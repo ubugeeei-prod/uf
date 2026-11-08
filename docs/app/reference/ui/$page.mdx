@@ -241,7 +241,7 @@ and proposed order of work are tracked in [#1368](https://github.com/ubugeeei-pr
 | `Popover`, `Tooltip`, `HoverCard` | **Partial**: positioning works; no Arrow part, and tooltip warmup is shared only inside one provider |
 | `Menu`, `ContextMenu`, `Menubar` | **Implemented** for keyboard and submenu behaviour; hover-open safe triangles are **Declined** |
 | `Select`, `Combobox`, `Autocomplete` | **Partial**: `Select` is single-value and opens on typeahead; `Combobox` lacks custom values and async loading; standalone `Autocomplete` is **Missing** |
-| `NumberField`, `Slider` | **Partial**: parsing, stepping and multiple slider thumbs work; form names, wheel/hold stepping and `onChangeEnd` do not |
+| `NumberField`, `Slider` | **Implemented**: parsing, stepping, multiple slider thumbs, form names, wheel and hold stepping, and `onValueChangeEnd` |
 | `Checkbox`, `Switch`, `RadioGroup` | **Partial**: `RadioGroup` has form names; Checkbox and Switch lack native form participation and reset |
 | `CheckboxGroup`, `SearchField`, `TextField`, `Meter`, `Toolbar`, `DropZone`, `FileTrigger` | **Missing** as public primitives |
 | `ColorPicker` and colour field/area/wheel/slider | **Partial**: hex and RGBA controls exist; HSL/HSB and the other colour primitives are **Missing** |
@@ -334,8 +334,8 @@ in a polite live region. Drop callbacks receive `{ keys, target }`.
   <NumberField.Root
     value={budget}
     onValueChange={setBudget}
-    minValue={0}
-    maxValue={1000}
+    min={0}
+    max={1000}
     step={0.5}
     formatOptions={{ style: "currency", currency: "EUR" }}
   >
@@ -351,11 +351,21 @@ in a polite live region. Drop callbacks receive `{ keys, target }`.
 invalid drafts remain visible with `aria-invalid` and do not change the value.
 `onValidationChange(invalid)` lets the application display a `Field.Error`.
 ArrowUp/Down step, PageUp/Down take ten steps and Home/End use finite bounds.
-The step origin is `minValue` or zero; an unaligned maximum is rounded down to
+The step origin is `min` or zero; an unaligned maximum is rounded down to
 the last permitted step. Percent formats default to a step of `0.01` and other
 formats to `1`. Currency, unit, accounting, decimal and locale digit forms are
 parsed; arbitrary expressions are rejected. `disabled` and `readOnly` guard
 editing and stepping.
+
+`name` submits that number, not the formatted text, through a hidden input.
+Give no name and the form gains no field. A wheel steps the field only while
+it is focused, and that wheel does not also scroll the page. A wheel over a
+field nobody is editing still scrolls the page. Holding
+`Increment` or `Decrement` steps once and then repeats until the pointer comes
+up or leaves the button; a click is shorter than the pause, so it steps once.
+`onValueChange` fires as the number moves. `onValueChangeEnd` fires when the
+key, the wheel notch, the held button or the commit is finished, with the
+number the field is committed to — an invalid draft ends on the previous one.
 
 `DateField` stores a Gregorian ISO date (`YYYY-MM-DD`); `TimeField` stores a
 24-hour ISO time (`HH:mm`, or `HH:mm:ss` with `granularity="second"`). Both use
@@ -1087,6 +1097,16 @@ caller cannot write down a string for a number they have not been told.
 A press anywhere on `Slider.Track` moves the nearest thumb there. That is WCAG
 2.5.7, *Dragging Movements*: a control operated by dragging needs a way that is
 not a drag, and the arrow keys are only half of it.
+
+`name` submits the thumbs in order, joined by a comma, through one hidden
+input. One thumb submits its number. No name submits nothing, and a disabled
+slider is omitted the way a disabled native control is. `onValueChange` fires
+while the value moves. `onValueChangeEnd` fires when the pointer or the key
+comes up, and when a wheel notch lands, with the values the gesture left. The
+wheel belongs to the focused thumb. That wheel does not also scroll the
+page, and it does not move a slider nested around the one the thumb belongs
+to. A wheel over a slider nobody is editing still scrolls the page. Wheel up
+moves toward the maximum. Writing direction does not flip it.
 
 Nothing here has a width or a position. Each thumb carries
 `--uf-slider-fraction` and the range carries `--uf-slider-start` and
