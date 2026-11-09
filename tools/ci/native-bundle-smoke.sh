@@ -99,6 +99,17 @@ NODE
   if [ "$provider" = expo ]; then
     CI=1 node_modules/.bin/expo prebuild --platform android --no-install
     node --input-type=commonjs -e 'const fs=require("node:fs"),assert=require("node:assert/strict"); assert(fs.readFileSync("android/app/build.gradle","utf8").includes("export:embed"));'
+    # networkTimeout is the connection and read wait, not the whole download.
+    # CI hit a 10s read timeout fetching Gradle.
+    node --input-type=commonjs <<'NODE'
+const fs = require('node:fs');
+const path = 'android/gradle/wrapper/gradle-wrapper.properties';
+const text = fs.readFileSync(path, 'utf8');
+const next = /^networkTimeout=/m.test(text)
+  ? text.replace(/^networkTimeout=.*/m, 'networkTimeout=180000')
+  : text.replace(/\s*$/, '\nnetworkTimeout=180000\n');
+fs.writeFileSync(path, next);
+NODE
     # Execute the generated native project's real JS bundle phase, including
     # Hermes compilation and asset copying, with uf inherited by Gradle.
     (cd android && ./gradlew :app:createBundleReleaseJsAndAssets --no-daemon --console=plain)
