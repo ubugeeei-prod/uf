@@ -227,7 +227,7 @@ describe("React Server Components on React 19.2.3", () => {
     const { hydrateFlight } = await routerModule(olderReactProject(), "rsc-client.js");
     const refusal = await failureOf(() => hydrateFlight({ App: () => null }));
 
-    expect(refusal).toContain("@uniflowed/router/rsc/client needs React 19.3.0 or newer");
+    expect(refusal).toContain("@uniflowed/router/rsc/client needs React 19.3.1 or newer");
     expect(refusal).toContain("the React it loaded is 19.2.3");
   });
 
@@ -241,7 +241,7 @@ describe("React Server Components on React 19.2.3", () => {
       }),
     );
 
-    expect(refusal).toContain("@uniflowed/router/rsc/ssr needs React 19.3.0 or newer");
+    expect(refusal).toContain("@uniflowed/router/rsc/ssr needs React 19.3.1 or newer");
     expect(refusal).toContain("the React it loaded is 19.2.3");
   });
 
@@ -249,7 +249,7 @@ describe("React Server Components on React 19.2.3", () => {
     const { fetchFlight } = await routerModule(olderReactProject(), "internal/flight-browser.js");
     const refusal = await failureOf(() => fetchFlight("/next"));
 
-    expect(refusal).toContain("@uniflowed/router/rsc/client needs React 19.3.0 or newer");
+    expect(refusal).toContain("@uniflowed/router/rsc/client needs React 19.3.1 or newer");
   });
 
   it("refuses a Server Component's route hook", async () => {
@@ -258,7 +258,7 @@ describe("React Server Components on React 19.2.3", () => {
     const { serverRoute } = await routerModule(olderReactProject(), "internal/server-route.js");
     const refusal = await failureOf(() => serverRoute("useRoute"));
 
-    expect(refusal).toContain("useRoute() needs React 19.3.0 or newer");
+    expect(refusal).toContain("useRoute() needs React 19.3.1 or newer");
   });
 
   it("lets React 19.3 through to the rule behind the check", async () => {
@@ -271,18 +271,24 @@ describe("React Server Components on React 19.2.3", () => {
 });
 
 describe("the React a refusal names", () => {
-  it("is refused below 19.3.0, with the version found, the one needed and the way out", () => {
-    for (const version of ["19.2.3", "19.2.99", "18.3.1"]) {
+  it("is refused below 19.3.1, with the version found, the one needed and the way out", () => {
+    for (const version of [
+      "19.2.3",
+      "19.2.99",
+      "19.3.0",
+      "19.3.0-canary-2c8725fb-20250130",
+      "18.3.1",
+    ]) {
       const refusal = serverComponentsRefusal("@uniflowed/router/rsc", version) ?? "";
 
-      expect(refusal).toContain("@uniflowed/router/rsc needs React 19.3.0 or newer");
+      expect(refusal).toContain("@uniflowed/router/rsc needs React 19.3.1 or newer");
       expect(refusal).toContain(`the React it loaded is ${version}`);
       expect(refusal).toContain("`app.rsc: false`");
     }
   });
 
-  it("is accepted from 19.3.0, a canary of 19.3 included", () => {
-    const versions = ["19.3.0", "19.3.0-canary-2c8725fb-20250130", "19.4.1", "20.0.0"];
+  it("is accepted from 19.3.1, a canary of 19.3.1 included", () => {
+    const versions = ["19.3.1", "19.3.1-canary-2c8725fb-20250130", "19.4.1", "20.0.0"];
 
     expect(
       versions.map((version) => serverComponentsRefusal("@uniflowed/router/rsc", version)),

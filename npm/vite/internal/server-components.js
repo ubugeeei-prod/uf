@@ -25,7 +25,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The oldest React, and `react-server-dom-parcel`, that Server Components render on. */
-export const SERVER_COMPONENTS_REACT = "19.3.0";
+export const SERVER_COMPONENTS_REACT = "19.3.1";
 
 /**
  * What stops the project at `root` from rendering React Server Components, as a
@@ -64,7 +64,7 @@ export function serverComponentsProblem(root) {
   return (
     "uf: routes render as React Server Components unless `app.rsc` is false, and that needs " +
     `react-server-dom-parcel and React ${SERVER_COMPONENTS_REACT} or newer. This project has ` +
-    `${found.join(" and ")}. Install react, react-dom and react-server-dom-parcel at ^19.3.0, ` +
+    `${found.join(" and ")}. Install react, react-dom and react-server-dom-parcel at ^19.3.1, ` +
     "or set `app.rsc: false` in uf.config.js to render routes from their modules, which the " +
     "router supports from React 19.2.3."
   );

@@ -15,8 +15,8 @@ const manifest = JSON.parse(fs.readFileSync(file));
 Object.assign(manifest.dependencies, JSON.parse(fs.readFileSync(`${root}/packs/dependencies.json`)));
 fs.writeFileSync(file, JSON.stringify(manifest));
 JS
-# react-dom 19.3.1, published 2026-10-14, peers react ^19.3.1. The fixture pins
-# 19.3.0 so @uniflowed/vite's react-dom >=19 peer does not install 19.3.1.
+# The fixture pins react and react-dom at 19.3.1 together. react-dom 19.3.1
+# peers react ^19.3.1, and react-server-dom-* 19.3.0 is GHSA-xqc2-xf4c-x3h3.
 (cd "$scratch/app" && npm install --ignore-scripts --no-audit --no-fund)
 "$binary" --cwd "$scratch/app" test --threads 1
 "$binary" --cwd "$scratch/app" test --threads 2

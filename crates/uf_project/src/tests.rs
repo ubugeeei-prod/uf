@@ -261,12 +261,12 @@ fn both_templates_pin_the_version_of_the_uf_that_wrote_them() {
     )
     .unwrap();
     let package = fs::read_to_string(root.join("package.json")).unwrap();
-    assert!(package.contains(r#""react": "^19.3.0""#), "{package}");
-    assert!(package.contains(r#""react-dom": "^19.3.0""#), "{package}");
+    assert!(package.contains(r#""react": "^19.3.1""#), "{package}");
+    assert!(package.contains(r#""react-dom": "^19.3.1""#), "{package}");
     // Routes render as React Server Components by default, and React's Flight
     // renderer is a package of its own that has to match React's version.
     assert!(
-        package.contains(r#""react-server-dom-parcel": "^19.3.0""#),
+        package.contains(r#""react-server-dom-parcel": "^19.3.1""#),
         "{package}"
     );
 }

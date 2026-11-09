@@ -10,8 +10,8 @@
     "@uniflowed/router": "0.48.0",
     "@uniflowed/vite": "0.48.0",
     "@uniflowed/web": "0.48.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "react-server-dom-parcel": "^19.3.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-server-dom-parcel": "^19.3.1"
   }
 }
