@@ -24,7 +24,21 @@ esac
 DIR=${1:-target/sqlc}
 mkdir -p "$DIR"
 ARCHIVE="$DIR/sqlc_${VERSION}_${PLATFORM}.tar.gz"
-curl -fsSL -o "$ARCHIVE" "https://github.com/sqlc-dev/sqlc/releases/download/v${VERSION}/sqlc_${VERSION}_${PLATFORM}.tar.gz"
+URL="https://github.com/sqlc-dev/sqlc/releases/download/v${VERSION}/sqlc_${VERSION}_${PLATFORM}.tar.gz"
+# GitHub's release downloads answer 504 often enough that one attempt fails CI.
+attempt=1
+while [ "$attempt" -le 5 ]; do
+  if curl -fsSL -o "$ARCHIVE" "$URL"; then
+    break
+  fi
+  rm -f "$ARCHIVE"
+  if [ "$attempt" -eq 5 ]; then
+    echo "install-sqlc: could not download $URL" >&2
+    exit 1
+  fi
+  attempt=$((attempt + 1))
+  sleep 3
+done
 # `sha256sum` is the coreutils spelling and `shasum` the macOS one. Either
 # refuses a download that is not the pinned release.
 if command -v sha256sum >/dev/null 2>&1; then
