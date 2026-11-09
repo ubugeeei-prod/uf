@@ -910,7 +910,7 @@ that does the rendering. The server-components guide states this for
 application authors.
 
 Those three entries are the only modules of the router that reach
-`react-server-dom-parcel`, and each refuses a React older than 19.3 before it
+`react-server-dom-parcel`, and each refuses a React older than 19.3.1 before it
 does anything. The router's peers admit React 19.2.3 and list `react-dom` and
 `react-server-dom-parcel` as optional, because Expo SDK 57 and React Native 0.87
 ship React 19.2.3 and a native app renders no Server Component (#992). So

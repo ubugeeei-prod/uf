@@ -7,8 +7,9 @@
 // from its modules need nothing newer (ubugeeei-prod/uf#992). React Server
 // Components do. They render through `react-server-dom-parcel`, React's own
 // Flight renderer and client, which is released with React and requires the
-// React it was released with: 19.3. So that package is an optional peer, and
-// every module that loads it asks here first.
+// React it was released with. 19.3.0 of that package is GHSA-xqc2-xf4c-x3h3,
+// so the floor is 19.3.1. The package is an optional peer, and every module
+// that loads it asks here first.
 //
 // # Why a check at run time
 //
@@ -27,7 +28,7 @@
 import * as React from "react";
 
 /** The oldest React that React Server Components render on. */
-export const SERVER_COMPONENTS_REACT: string = "19.3.0";
+export const SERVER_COMPONENTS_REACT: string = "19.3.1";
 
 /**
  * Why `entry` cannot run on React `installed`, or `null` when it can.
@@ -44,7 +45,7 @@ export function serverComponentsRefusal(entry: string, installed: string): strin
   return (
     `@uniflowed/router: ${entry} needs React ${SERVER_COMPONENTS_REACT} or newer for React ` +
     `Server Components, and the React it loaded is ${installed}. Install react, react-dom and ` +
-    "react-server-dom-parcel at ^19.3.0, or set `app.rsc: false` in uf.config.js to render " +
+    "react-server-dom-parcel at ^19.3.1, or set `app.rsc: false` in uf.config.js to render " +
     "routes from their modules, which the router supports from React 19.2.3."
   );
 }
