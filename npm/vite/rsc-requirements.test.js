@@ -123,7 +123,7 @@ describe("the router entry an application starts from", () => {
 describe("what a project needs before its routes render as Server Components", () => {
   it("is nothing more than React 19.3.1, react-dom, and react-server-dom-parcel", () => {
     const ready = installedIn({
-      "react"                  : "19.3.1",
+      react                    : "19.3.1",
       "react-dom"              : "19.3.1",
       "react-server-dom-parcel": "19.3.1",
     });
@@ -145,7 +145,7 @@ describe("what a project needs before its routes render as Server Components", (
 
   it("names only what is wrong", () => {
     expect(serverComponentsProblem(installedIn({ react: "19.3.1" }))).toContain(
-      "This project has no react-server-dom-parcel.",
+      "This project has no react-dom and no react-server-dom-parcel.",
     );
     expect(
       serverComponentsProblem(
@@ -155,7 +155,7 @@ describe("what a project needs before its routes render as Server Components", (
     expect(
       serverComponentsProblem(
         installedIn({
-          "react"                  : "19.3.0",
+          react                    : "19.3.0",
           "react-dom"              : "19.3.0",
           "react-server-dom-parcel": "19.3.0",
         }),
@@ -166,7 +166,7 @@ describe("what a project needs before its routes render as Server Components", (
     expect(
       serverComponentsProblem(
         installedIn({
-          "react"                  : "19.3.1",
+          react                    : "19.3.1",
           "react-dom"              : "19.3.0",
           "react-server-dom-parcel": "19.3.1",
         }),
@@ -175,7 +175,7 @@ describe("what a project needs before its routes render as Server Components", (
     expect(
       serverComponentsProblem(
         installedIn({
-          "react"                  : "19.4.0",
+          react                    : "19.4.0",
           "react-dom"              : "19.4.1",
           "react-server-dom-parcel": "19.4.0",
         }),
