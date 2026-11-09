@@ -1,5 +1,10 @@
 # Changelog
 
+## uf@0.49.0
+
+- fix: require React 19.3.1 for Server Components (#1921) (9425083d)
+- style: write Flow with "use flow" and format the manual (#1920) (c6a0f811)
+
 ## uf@0.48.0
 
 - feat(ui): hide an element that arrives while a dialog is open (#1916) (904e22e4)
