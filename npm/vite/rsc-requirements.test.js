@@ -121,8 +121,12 @@ describe("the router entry an application starts from", () => {
 });
 
 describe("what a project needs before its routes render as Server Components", () => {
-  it("is nothing more than React 19.3 and react-server-dom-parcel", () => {
-    const ready = installedIn({ react: "19.3.1", "react-server-dom-parcel": "19.3.1" });
+  it("is nothing more than React 19.3.1, react-dom, and react-server-dom-parcel", () => {
+    const ready = installedIn({
+      "react"                  : "19.3.1",
+      "react-dom"              : "19.3.1",
+      "react-server-dom-parcel": "19.3.1",
+    });
 
     expect(serverComponentsProblem(ready)).toBe(null);
     // And this workspace, whose documentation site renders them.
@@ -132,7 +136,9 @@ describe("what a project needs before its routes render as Server Components", (
   it("names the React the project has and the package it lacks", () => {
     const problem = serverComponentsProblem(installedIn({ react: "19.2.3" }));
 
-    expect(problem).toContain("This project has React 19.2.3 and no react-server-dom-parcel.");
+    expect(problem).toContain(
+      "This project has React 19.2.3 and no react-dom and no react-server-dom-parcel.",
+    );
     expect(problem).toContain("React 19.3.1 or newer");
     expect(problem).toContain("`app.rsc: false`");
   });
@@ -148,8 +154,32 @@ describe("what a project needs before its routes render as Server Components", (
     ).toContain("This project has React 19.2.3.");
     expect(
       serverComponentsProblem(
-        installedIn({ react: "19.3.0", "react-server-dom-parcel": "19.3.0" }),
+        installedIn({
+          "react"                  : "19.3.0",
+          "react-dom"              : "19.3.0",
+          "react-server-dom-parcel": "19.3.0",
+        }),
       ),
-    ).toContain("This project has React 19.3.0 and react-server-dom-parcel 19.3.0.");
+    ).toContain(
+      "This project has React 19.3.0 and react-dom 19.3.0 and react-server-dom-parcel 19.3.0.",
+    );
+    expect(
+      serverComponentsProblem(
+        installedIn({
+          "react"                  : "19.3.1",
+          "react-dom"              : "19.3.0",
+          "react-server-dom-parcel": "19.3.1",
+        }),
+      ),
+    ).toContain("This project has react-dom 19.3.0.");
+    expect(
+      serverComponentsProblem(
+        installedIn({
+          "react"                  : "19.4.0",
+          "react-dom"              : "19.4.1",
+          "react-server-dom-parcel": "19.4.0",
+        }),
+      ),
+    ).toContain("This project has React 19.4.0 and react-dom 19.4.1.");
   });
 });

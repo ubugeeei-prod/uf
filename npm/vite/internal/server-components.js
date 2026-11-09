@@ -24,17 +24,21 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** The oldest React, and `react-server-dom-parcel`, that Server Components render on. */
+/**
+ * The oldest `react`, `react-dom`, and `react-server-dom-parcel` that Server
+ * Components render on.
+ */
 export const SERVER_COMPONENTS_REACT = "19.3.1";
 
 /**
  * What stops the project at `root` from rendering React Server Components, as a
  * sentence, or `null` when nothing does.
  *
- * Both packages are resolved the way the router's own imports resolve them: from
- * the `@uniflowed/router` the project resolves, or from the one this package
- * depends on when the project names none. A prerelease tag is ignored, so a 19.3
- * canary counts as 19.3.
+ * The three packages are resolved the way the router's own imports resolve them:
+ * from the `@uniflowed/router` the project resolves, or from the one this package
+ * depends on when the project names none. A prerelease tag is ignored, so a
+ * 19.3.1 canary counts as 19.3.1. `react` and `react-dom` must also be the same
+ * version string: `react-dom` refuses any other pair when the renderer loads.
  *
  * @param {string} root
  * @returns {string | null}
@@ -45,6 +49,7 @@ export function serverComponentsProblem(root) {
     resolveFrom(fileURLToPath(import.meta.url), "@uniflowed/router/package.json") ??
     path.join(root, "package.json");
   const react = versionOf(resolveFrom(router, "react/package.json"));
+  const dom = versionOf(resolveFrom(router, "react-dom/package.json"));
   const flight = versionOf(resolveFrom(router, "react-server-dom-parcel/package.json"));
 
   const found = [];
@@ -52,6 +57,14 @@ export function serverComponentsProblem(root) {
     found.push("no react");
   } else if (!isRecentEnough(react)) {
     found.push(`React ${react}`);
+  }
+  if (dom == null) {
+    found.push("no react-dom");
+  } else if (!isRecentEnough(dom)) {
+    found.push(`react-dom ${dom}`);
+  } else if (react != null && isRecentEnough(react) && dom !== react) {
+    found.push(`React ${react}`);
+    found.push(`react-dom ${dom}`);
   }
   if (flight == null) {
     found.push("no react-server-dom-parcel");
