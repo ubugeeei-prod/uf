@@ -151,7 +151,7 @@ describe("what a project needs before its routes render as Server Components", (
       serverComponentsProblem(
         installedIn({ react: "19.2.3", "react-server-dom-parcel": "19.3.1" }),
       ),
-    ).toContain("This project has React 19.2.3.");
+    ).toContain("This project has React 19.2.3 and no react-dom.");
     expect(
       serverComponentsProblem(
         installedIn({
