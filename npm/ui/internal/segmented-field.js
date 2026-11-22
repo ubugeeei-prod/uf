@@ -27,6 +27,12 @@ export type DateFieldProps = {
   required?         : boolean,
   /** Submits the committed ISO value. No name, no field. */
   name?: string,
+  /**
+   * A controlled field tells `onValueChange` when the form resets.
+   * A date-range end passes false: the root restores both ends, and a report
+   * from one end would rebuild the range from the other end's stale value.
+   */
+  reportsReset?: boolean,
   /** The form that owns this control when it is not an ancestor. */
   form?              : string,
   granularity?       : "minute" | "second",
@@ -101,6 +107,7 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
     required = false,
     name,
     form,
+    reportsReset = true,
     granularity = "minute",
     hourCycle,
     segmentLabels,
@@ -118,25 +125,24 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
   // so none of them acts on — or commits — a render's stale copy.
   const pending = useRef<Fields | null>(null);
   const rootRef = useRef<HTMLElement | null>(null);
-  // A controlled field with no name is one end of a range. Notifying
-  // `onValueChange(null)` from here would clear that range in the moment
-  // before the picker restores both ends. A named field is the control, so
-  // it tells its parent, and the hidden input stays on the value still
-  // showing until that parent renders. The segments are a draft until Enter
-  // or blur; the form submits `current`, which is the last committed ISO value.
+  // The segments are a draft until Enter or blur; the form submits `current`,
+  // the last committed ISO value. A controlled field tells its parent, and
+  // the hidden input stays on the value still showing until that parent
+  // renders. A date-range end does not tell: the root restores both ends,
+  // and a report from one end would rebuild the range from the stale other.
   const owned = value === undefined;
   const restore = useStableCallback(() => {
     pending.current = null;
     setDraft(null);
-    if (!owned) {
-      if (name != null) {
-        setCurrent(defaultValue);
-        const input: $FlowFixMe = rootRef.current?.querySelector?.("input[type='hidden']");
-        if (input != null) input.value = current ?? "";
-      }
+    if (owned) {
+      setCurrent(defaultValue);
       return;
     }
-    setCurrent(defaultValue);
+    if (name != null) {
+      const input: $FlowFixMe = rootRef.current?.querySelector?.("input[type='hidden']");
+      if (input != null) input.value = current ?? "";
+    }
+    if (reportsReset) setCurrent(defaultValue);
   });
   useFormReset(rootRef, restore, form);
   const [announcement, announce] = useState("");

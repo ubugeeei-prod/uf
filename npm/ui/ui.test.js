@@ -5868,6 +5868,38 @@ describe("Date Picker", () => {
     const form: $FlowFixMe = container.querySelector("form");
     expect([...new form.ownerDocument.defaultView.FormData(form).keys()]).toEqual([]);
   });
+
+  it("tells a controlled date picker once when the form resets", async () => {
+    const change = fn();
+    component Kept() {
+      const [value, setValue] = useState<string | null>("2026-10-14");
+      return (
+        <form>
+          <DatePicker.Root
+            defaultValue={null}
+            name="arrive"
+            onValueChange={(next) => {
+              change(next);
+              setValue("2026-10-14");
+            }}
+            value={value}
+          >
+            <DatePicker.Input aria-label="Arrive on" />
+          </DatePicker.Root>
+        </form>
+      );
+    }
+    const { container } = render(<Kept />);
+    const form: $FlowFixMe = container.querySelector("form");
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(change).toHaveBeenCalledTimes(1);
+    expect(change).toHaveBeenLastCalledWith(null);
+    expect(screen.getByRole("textbox", { name: "Arrive on" })).toHaveValue("2026-10-14");
+    expect(new form.ownerDocument.defaultView.FormData(form).get("arrive")).toBe("2026-10-14");
+  });
 });
 
 describe("ColorPicker", () => {
@@ -5908,6 +5940,29 @@ describe("ColorPicker", () => {
     );
     const form: $FlowFixMe = container.querySelector("form");
     expect([...new form.ownerDocument.defaultView.FormData(form).keys()]).toEqual([]);
+  });
+
+  it("clears an invalid color draft when the form resets", async () => {
+    const { container } = render(
+      <form>
+        <ColorPicker.Root defaultValue="#112233" name="ink">
+          <ColorPicker.Field aria-label="Ink" />
+        </ColorPicker.Root>
+      </form>,
+    );
+    const field = screen.getByRole("textbox", { name: "Ink" });
+    replaceValue(field, "nope");
+    fireEvent.change(field);
+    expect(field).toHaveValue("nope");
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    const form: $FlowFixMe = container.querySelector("form");
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(field).toHaveValue("#112233");
+    expect(field).not.toHaveAttribute("aria-invalid");
+    expect(new form.ownerDocument.defaultView.FormData(form).get("ink")).toBe("#112233");
   });
 });
 

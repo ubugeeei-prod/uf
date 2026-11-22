@@ -61,7 +61,7 @@ import type { DateValue } from "./calendar.js";
 import { Root as CalendarRoot } from "./calendar.js";
 import { useFormReset } from "./internal/checkable-form.js";
 import { useControlled } from "./internal/controlled-state.js";
-import { FormValue } from "./internal/form-value.js";
+import { FormAnchor, FormValue } from "./internal/form-value.js";
 import type { Align, LogicalSide } from "./internal/anchor.js";
 import type { PartEvent, Rest } from "./internal/merge-props.js";
 import {
@@ -150,6 +150,7 @@ component DatePickerRoot(
 ) {
   const fieldRef          = useRef<HTMLElement | null>(null);
   const hiddenRef         = useRef<HTMLInputElement | null>(null);
+  const anchorRef         = useRef<HTMLElement | null>(null);
   const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
 
   const controlled =
@@ -205,10 +206,9 @@ component DatePickerRoot(
   });
 
   const dateSettings = { isDateDisabled, locale, today, weekStartsOn };
-  // The text field finds the form when the picker is unnamed. The hidden input
-  // finds it when `name` is set. Either listener restores the same way; a
-  // picker that rendered both runs it twice, and the second write is the same
-  // date.
+  // One listener. The anchor is always mounted, so a picker with no text
+  // field and a picker with no name both hear the reset, and a picker that
+  // has both tells `onValueChange` once.
   const owned = value === undefined;
   const restore = useStableCallback(() => {
     setDraft(null);
@@ -219,8 +219,7 @@ component DatePickerRoot(
       hiddenRef.current.value = chosen == null ? "" : chosen.toString();
     }
   });
-  useFormReset(fieldRef, restore, form);
-  useFormReset(hiddenRef, restore, form);
+  useFormReset(anchorRef, restore, form);
 
   const state = {
     choose,
@@ -237,6 +236,13 @@ component DatePickerRoot(
     <DatePickerContext.Provider value={state}>
       <CalendarSettings.Provider value={dateSettings}>
         <PopoverRoot onOpenChange={setOpen} open={isOpen}>
+          <FormAnchor
+            form={form}
+            inputRef={(element) => {
+              // The reset listener reads this after commit, not during render.
+              anchorRef.current = element;
+            }}
+          />
           {name == null ? null : (
             <FormValue
               form={form}

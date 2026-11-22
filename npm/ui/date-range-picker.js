@@ -19,6 +19,7 @@ import { Root as PopoverRoot, Body as PopoverBody, Trigger as PopoverTrigger } f
 type Picker = {
   range         : DateRange | null,
   defaultValue  : DateRange | null,
+  form          : string | void,
   set           : (range: DateRange | null) => void,
   close         : () => void,
   minValue      : string | void,
@@ -48,13 +49,10 @@ component DateRangePickerRoot(
   const [range,  setRange] = useControlled(value, defaultValue, onValueChange);
   const [isOpen, setOpen]  = useControlled(open, defaultOpen, onOpenChange);
   const anchorRef          = useRef<HTMLElement | null>(null);
-  // Each named field hears the same reset and would restore only itself, and
-  // the second write would keep the end the first had already replaced. This
-  // listener is registered after the fields' — it is the parent's — so
-  // `defaultValue` is the write that stands, for both ends, including a range
-  // chosen from the calendar. A controlled range tells `onValueChange` and
-  // leaves the hidden inputs to the fields, which put back the value still
-  // showing until the parent renders.
+  // The ends do not report the reset. This is the only write, so a field that
+  // mounts later cannot rebuild the range from the other end's stale value.
+  // A controlled range tells `onValueChange`. The ends put their own hidden
+  // inputs back to the value still showing until the parent renders.
   const restore = useStableCallback(() => {
     setRange(defaultValue);
   });
@@ -63,6 +61,7 @@ component DateRangePickerRoot(
   const state = {
     range,
     defaultValue,
+    form,
     set  : setRange,
     close: () => setOpen(false),
     minValue,
@@ -89,6 +88,8 @@ component DateRangePickerStartField(...rest: Rest) renders DateField {
   return (
     <DateField
       {...forwarded(rest)}
+      form={typeof rest.form === "string" ? rest.form : picker.form}
+      reportsReset={false}
       value={picker.range?.start ?? null}
       defaultValue={picker.defaultValue?.start ?? null}
       minValue={picker.minValue}
@@ -108,6 +109,8 @@ component DateRangePickerEndField(...rest: Rest) renders DateField {
   return (
     <DateField
       {...forwarded(rest)}
+      form={typeof rest.form === "string" ? rest.form : picker.form}
+      reportsReset={false}
       value={picker.range?.end ?? null}
       defaultValue={picker.defaultValue?.end ?? null}
       minValue={picker.range?.start ?? picker.minValue}

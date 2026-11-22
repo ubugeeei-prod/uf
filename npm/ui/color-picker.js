@@ -1,7 +1,7 @@
 "use flow";
 "use client";
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useRef, useState } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import { useFormReset } from "./internal/checkable-form.js";
 import { useControlled } from "./internal/controlled-state.js";
@@ -27,7 +27,13 @@ export function parseColor(value: string): string | null {
         .join("");
   return hex;
 }
-type ColorState = { value: string, disabled: boolean, set: (value: string) => void };
+type ColorState = {
+  value   : string,
+  disabled: boolean,
+  set     : (value: string) => void,
+  /** Clears a text draft. Reset runs every one, so an invalid draft does not stay. */
+  clearDrafts: React.RefObject<Array<() => void>>,
+};
 const ColorContext: React.Context<ColorState | null> = createContext(null);
 hook useColor(): ColorState {
   const color = useContext(ColorContext);
@@ -46,18 +52,22 @@ component ColorPickerRoot(
   ...rest: Rest
 ) {
   const rootRef               = useRef<HTMLElement | null>(null);
+  const hiddenRef             = useRef<HTMLInputElement | null>(null);
+  const clearDrafts           = useRef<Array<() => void>>([]);
   const [current, setCurrent] = useControlled(value, defaultValue, onValueChange);
   const normalized = parseColor(current);
   const owned = value === undefined;
   const form = typeof rest.form === "string" ? rest.form : undefined;
   // The channels and the text field are drafts of one color. `name` submits
   // the canonical hex, not a channel and not an invalid draft. Reset returns
-  // to `defaultValue`. A disabled picker is omitted, as a disabled control is.
+  // to `defaultValue` and drops the text draft. A disabled picker is omitted,
+  // as a disabled control is. The write below is this picker's own input: a
+  // hidden input a caller rendered inside the root is not it.
   const restore = useStableCallback(() => {
     setCurrent(defaultValue);
-    if (owned) return;
-    const input: $FlowFixMe = rootRef.current?.querySelector?.("input[type='hidden']");
-    if (input != null) input.value = normalized ?? "";
+    for (const clear of clearDrafts.current) clear();
+    if (owned || name == null) return;
+    if (hiddenRef.current != null) hiddenRef.current.value = normalized ?? "";
   });
   useFormReset(rootRef, restore, form);
   if (normalized == null) throw new RangeError("ColorPicker value must be a CSS hex color");
@@ -68,13 +78,23 @@ component ColorPickerRoot(
       const color = parseColor(next);
       if (!disabled && color != null) setCurrent(color);
     },
+    clearDrafts,
   };
   const passed = withoutComposed(rest, ["form", "ref"]);
   const props = withProps(passed, {
     children: (
       <>
         {name == null ? null : (
-          <FormValue disabled={disabled} form={form} name={name} value={normalized} />
+          <FormValue
+            disabled={disabled}
+            form={form}
+            inputRef={(element) => {
+              // The reset listener reads this after commit, not during render.
+              hiddenRef.current = element;
+            }}
+            name={name}
+            value={normalized}
+          />
         )}
         {children}
       </>
@@ -114,6 +134,17 @@ component ColorPickerInput(render?: RenderProp, ...rest: Rest) {
 component ColorPickerField(render?: RenderProp, ...rest: Rest) {
   const color             = useColor();
   const [draft, setDraft] = useState<string | null>(null);
+  // Registered, rather than listening for `reset` here: the root is the
+  // element that is in the form, and a field rendered through `render` may not be.
+  useEffect(() => {
+    const clear = () => setDraft(null);
+    color.clearDrafts.current.push(clear);
+    return () => {
+      const list = color.clearDrafts.current;
+      const at = list.indexOf(clear);
+      if (at !== -1) list.splice(at, 1);
+    };
+  }, [color.clearDrafts]);
   const text = draft ?? color.value;
   const invalid = parseColor(text) == null;
   const commit = () => {

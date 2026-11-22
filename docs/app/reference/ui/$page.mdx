@@ -362,7 +362,8 @@ Give no name and the form gains no field. The same contract covers a date, a
 time, a date picker and a color: `name` submits the committed ISO value or the
 canonical hex, an empty value is an empty string, a disabled control is
 omitted, and reset returns an uncontrolled control to `defaultValue`. A date
-range names each end (`StartField` and `EndField`) and reset restores the
+range names each end (`StartField` and `EndField`). The root's `form` is the
+form both ends submit with, unless an end names its own. Reset restores the
 root's `defaultValue` for both, including a range chosen from the calendar.
 A segment draft or an unreadable date-picker draft is not the value the form
 submits. A multiple toggle group submits each pressed value under `name`, in

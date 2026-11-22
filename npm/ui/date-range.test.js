@@ -306,6 +306,57 @@ it("tells a controlled date the form reset, and keeps the value the parent kept"
   expect(read()).toBe("2026-02-10");
 });
 
+it("tells a controlled date with no name that the form reset", async () => {
+  const change = fn();
+  component Kept() {
+    const [value, setValue] = useState<string | null>("2026-02-10");
+    return (
+      <form>
+        <DateField
+          aria-label="Birthday"
+          defaultValue={null}
+          onValueChange={(next) => {
+            change(next);
+            setValue("2026-02-10");
+          }}
+          value={value}
+        />
+      </form>
+    );
+  }
+  const { container } = render(<Kept />);
+  const form: $FlowFixMe = container.querySelector("form");
+  await act(async () => {
+    form.reset();
+    await Promise.resolve();
+  });
+  expect(change).toHaveBeenLastCalledWith(null);
+  const birthday = screen.getByRole("group", { name: "Birthday" });
+  expect(within(birthday).getByRole("spinbutton", { name: "year" })).toHaveValue("2026");
+});
+
+it("submits a range into the form the root names", () => {
+  render(
+    <div>
+      <form data-testid="booking" id="booking" />
+      <form data-testid="other" id="other" />
+      <DateRangePicker.Root
+        defaultValue={{ start: "2026-02-10", end: "2026-02-12" }}
+        form="booking"
+      >
+        <DateRangePicker.StartField aria-label="Arrival" name="from" />
+        <DateRangePicker.EndField aria-label="Departure" form="other" name="to" />
+      </DateRangePicker.Root>
+    </div>,
+  );
+  const booking: $FlowFixMe = screen.getByTestId("booking");
+  const other: $FlowFixMe = screen.getByTestId("other");
+  const data = (form: $FlowFixMe) => new form.ownerDocument.defaultView.FormData(form);
+  expect(data(booking).get("from")).toBe("2026-02-10");
+  expect(data(booking).get("to")).toBe(null);
+  expect(data(other).get("to")).toBe("2026-02-12");
+});
+
 it("rejects typed ranges that cross an unavailable day", async () => {
   const change = fn();
   render(
