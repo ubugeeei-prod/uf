@@ -1,10 +1,18 @@
 "use flow";
 "use client";
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useState } from "@uniflowed/react";
+import { createContext, useContext, useRef, useState } from "@uniflowed/react";
+import { useStableCallback } from "@uniflowed/hooks/lifecycle";
+import { useFormReset } from "./internal/checkable-form.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { FormValue } from "./internal/form-value.js";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
-import { composeHandlers, withProps } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import { directionOf } from "./internal/roving-focus.js";
 
 /** Canonical #rrggbb or #rrggbbaa, with CSS's short hex forms accepted at the boundary. */
@@ -32,11 +40,26 @@ component ColorPickerRoot(
   defaultValue? : string = "#000000",
   onValueChange?: (value: string) => void,
   disabled?     : boolean = false,
-  render?       : RenderProp,
-  ...rest       : Rest
+  /** Submits the canonical hex, `#rrggbb` or `#rrggbbaa`. No name, no field. */
+  name?  : string,
+  render?: RenderProp,
+  ...rest: Rest
 ) {
+  const rootRef               = useRef<HTMLElement | null>(null);
   const [current, setCurrent] = useControlled(value, defaultValue, onValueChange);
   const normalized = parseColor(current);
+  const owned = value === undefined;
+  const form = typeof rest.form === "string" ? rest.form : undefined;
+  // The channels and the text field are drafts of one color. `name` submits
+  // the canonical hex, not a channel and not an invalid draft. Reset returns
+  // to `defaultValue`. A disabled picker is omitted, as a disabled control is.
+  const restore = useStableCallback(() => {
+    setCurrent(defaultValue);
+    if (owned) return;
+    const input: $FlowFixMe = rootRef.current?.querySelector?.("input[type='hidden']");
+    if (input != null) input.value = normalized ?? "";
+  });
+  useFormReset(rootRef, restore, form);
   if (normalized == null) throw new RangeError("ColorPicker value must be a CSS hex color");
   const state = {
     value: normalized,
@@ -46,7 +69,22 @@ component ColorPickerRoot(
       if (!disabled && color != null) setCurrent(color);
     },
   };
-  const props = withProps(rest, { children });
+  const passed = withoutComposed(rest, ["form", "ref"]);
+  const props = withProps(passed, {
+    children: (
+      <>
+        {name == null ? null : (
+          <FormValue disabled={disabled} form={form} name={name} value={normalized} />
+        )}
+        {children}
+      </>
+    ),
+    // React calls callback refs during commit; the reset listener reads this later.
+    // uf-lint-disable-next-line react-compiler/refs
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      rootRef.current = element;
+    }),
+  });
   return (
     <ColorContext.Provider value={state}>
       {

@@ -51,6 +51,7 @@ import {
   Checkbox,
   Collapsible,
   Combobox,
+  ColorPicker,
   ContextMenu,
   DatePicker,
   Dialog,
@@ -5825,6 +5826,89 @@ describe("Date Picker", () => {
     expect(field).toHaveValue("next Tuesday");
     expect(field).toHaveAttribute("aria-invalid", "true");
   });
+
+  it("submits the chosen date, not the draft, and resets to defaultValue", async () => {
+    const { container } = render(
+      <form>
+        <DatePicker.Root defaultValue="2026-10-14" name="arrive">
+          <DatePicker.Input aria-label="Arrive on" />
+        </DatePicker.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    const read = () => new form.ownerDocument.defaultView.FormData(form).get("arrive");
+    const field = screen.getByRole("textbox", { name: "Arrive on" });
+    // The textbox is the draft. Naming it as well would submit the words.
+    expect(field).not.toHaveAttribute("name");
+    expect(read()).toBe("2026-10-14");
+    field.focus();
+    replaceValue(field, "next Tuesday");
+    await userEvent.keyboard("{Enter}");
+    expect(field).toHaveValue("next Tuesday");
+    expect(read()).toBe("2026-10-14");
+    replaceValue(field, "2026-11-05");
+    await userEvent.keyboard("{Enter}");
+    expect(read()).toBe("2026-11-05");
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(field).toHaveValue("2026-10-14");
+    expect(read()).toBe("2026-10-14");
+  });
+
+  it("adds no field when a date picker is unnamed", () => {
+    const { container } = render(
+      <form>
+        <DatePicker.Root defaultValue="2026-10-14">
+          <DatePicker.Input aria-label="Arrive on" />
+        </DatePicker.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    expect([...new form.ownerDocument.defaultView.FormData(form).keys()]).toEqual([]);
+  });
+});
+
+describe("ColorPicker", () => {
+  it("submits the canonical hex and resets to defaultValue", async () => {
+    const { container } = render(
+      <form>
+        <ColorPicker.Root name="ink">
+          <ColorPicker.Channel channel="red" />
+        </ColorPicker.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    const read = () => new form.ownerDocument.defaultView.FormData(form).get("ink");
+    expect(read()).toBe("#000000");
+    // One field. The channel is a slider, and naming that would submit a byte.
+    expect(screen.getAllByRole("slider").length).toBe(1);
+    expect([...new form.ownerDocument.defaultView.FormData(form).keys()]).toEqual(["ink"]);
+    fireEvent.keyDown(screen.getByRole("slider", { name: "red" }), { key: "ArrowRight" });
+    expect(read()).toBe("#010000");
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("slider", { name: "red" })).toHaveValue("0");
+    expect(read()).toBe("#000000");
+  });
+
+  it("omits a disabled or unnamed color", () => {
+    const { container } = render(
+      <form>
+        <ColorPicker.Root disabled name="ink">
+          <ColorPicker.Swatch />
+        </ColorPicker.Root>
+        <ColorPicker.Root defaultValue="#112233">
+          <ColorPicker.Swatch />
+        </ColorPicker.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    expect([...new form.ownerDocument.defaultView.FormData(form).keys()]).toEqual([]);
+  });
 });
 
 describe("Toast", () => {
@@ -8685,6 +8769,67 @@ describe("ToggleGroup", () => {
     }
     expect(message).toContain("ToggleGroup.Item must be rendered inside a ToggleGroup.Root");
   });
+
+  it("submits one answer, and each pressed value, and resets both", async () => {
+    const { container } = render(
+      <form>
+        <ToggleGroup.Root aria-label="Alignment" defaultValue={["left"]} name="align" type="single">
+          <ToggleGroup.Item value="left">Left</ToggleGroup.Item>
+          <ToggleGroup.Item value="right">Right</ToggleGroup.Item>
+        </ToggleGroup.Root>
+        <ToggleGroup.Root
+          aria-label="Formatting"
+          defaultValue={["bold"]}
+          name="style"
+          type="multiple"
+        >
+          <ToggleGroup.Item value="bold">Bold</ToggleGroup.Item>
+          <ToggleGroup.Item value="italic">Italic</ToggleGroup.Item>
+        </ToggleGroup.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    const data = () => new form.ownerDocument.defaultView.FormData(form);
+    expect(data().get("align")).toBe("left");
+    expect(data().getAll("style")).toEqual(["bold"]);
+    await userEvent.click(screen.getByRole("radio", { name: "Right" }));
+    await userEvent.click(screen.getByRole("button", { name: "Italic" }));
+    expect(data().get("align")).toBe("right");
+    // Pressed order, which is the order the values were turned on.
+    expect(data().getAll("style")).toEqual(["bold", "italic"]);
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("radio", { name: "Left" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Italic" })).toHaveAttribute("aria-pressed", "false");
+    expect(data().get("align")).toBe("left");
+    expect(data().getAll("style")).toEqual(["bold"]);
+  });
+
+  it("returns a single group to an empty default", async () => {
+    const { container } = render(
+      <form>
+        <ToggleGroup.Root aria-label="Alignment" defaultValue={[]} name="align" type="single">
+          <ToggleGroup.Item value="left">Left</ToggleGroup.Item>
+          <ToggleGroup.Item value="right">Right</ToggleGroup.Item>
+        </ToggleGroup.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    const data = () => new form.ownerDocument.defaultView.FormData(form);
+    expect(data().get("align")).toBe("");
+    await userEvent.click(screen.getByRole("radio", { name: "Right" }));
+    expect(data().get("align")).toBe("right");
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("radio", { name: "Right" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("radio", { name: "Left" })).toHaveAttribute("aria-checked", "false");
+    expect(data().get("align")).toBe("");
+  });
 });
 
 describe("Collapsible", () => {
@@ -9710,6 +9855,31 @@ describe("Input OTP", () => {
     expect(onComplete.mock.calls.length).toBe(0);
     await userEvent.type(field, "4");
     expect(onComplete).toHaveBeenCalledWith("1234");
+  });
+
+  it("submits the code and returns it to defaultValue when the form resets", async () => {
+    const { container } = render(
+      <form>
+        <InputOtp.Root defaultValue="12" label="One-time code" length={4} name="code">
+          <InputOtp.Slot index={0} />
+          <InputOtp.Slot index={1} />
+          <InputOtp.Slot index={2} />
+          <InputOtp.Slot index={3} />
+        </InputOtp.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = container.querySelector("form");
+    const read = () => new form.ownerDocument.defaultView.FormData(form).get("code");
+    const field = screen.getByRole("textbox", { name: "One-time code" });
+    expect(read()).toBe("12");
+    await userEvent.type(field, "99");
+    expect(read()).toBe("1299");
+    await act(async () => {
+      form.reset();
+      await Promise.resolve();
+    });
+    expect(field).toHaveValue("12");
+    expect(read()).toBe("12");
   });
 });
 

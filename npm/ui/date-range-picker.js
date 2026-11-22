@@ -2,8 +2,11 @@
 "use client";
 import * as React from "@uniflowed/react";
 import { createContext, useContext, useRef } from "@uniflowed/react";
+import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import type { PlainDate } from "@uniflowed/core/temporal";
+import { useFormReset } from "./internal/checkable-form.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { FormAnchor } from "./internal/form-value.js";
 import type { Rest } from "./internal/merge-props.js";
 import { forwarded } from "./internal/merge-props.js";
 import type { DateRange } from "./internal/date-range.js";
@@ -15,6 +18,7 @@ import { Root as PopoverRoot, Body as PopoverBody, Trigger as PopoverTrigger } f
 
 type Picker = {
   range         : DateRange | null,
+  defaultValue  : DateRange | null,
   set           : (range: DateRange | null) => void,
   close         : () => void,
   minValue      : string | void,
@@ -38,12 +42,27 @@ component DateRangePickerRoot(
   minValue?      : string,
   maxValue?      : string,
   isDateDisabled?: (date: PlainDate) => boolean,
+  /** The form that owns this control when it is not an ancestor. */
+  form?: string,
 ) {
   const [range,  setRange] = useControlled(value, defaultValue, onValueChange);
   const [isOpen, setOpen]  = useControlled(open, defaultOpen, onOpenChange);
+  const anchorRef          = useRef<HTMLElement | null>(null);
+  // Each named field hears the same reset and would restore only itself, and
+  // the second write would keep the end the first had already replaced. This
+  // listener is registered after the fields' — it is the parent's — so
+  // `defaultValue` is the write that stands, for both ends, including a range
+  // chosen from the calendar. A controlled range tells `onValueChange` and
+  // leaves the hidden inputs to the fields, which put back the value still
+  // showing until the parent renders.
+  const restore = useStableCallback(() => {
+    setRange(defaultValue);
+  });
+  useFormReset(anchorRef, restore, form);
   validateRange(range);
   const state = {
     range,
+    defaultValue,
     set  : setRange,
     close: () => setOpen(false),
     minValue,
@@ -52,6 +71,13 @@ component DateRangePickerRoot(
   };
   return (
     <PickerContext.Provider value={state}>
+      <FormAnchor
+        form={form}
+        inputRef={(element) => {
+          // The reset listener reads this after commit, not during render.
+          anchorRef.current = element;
+        }}
+      />
       <PopoverRoot open={isOpen} onOpenChange={setOpen}>
         {children}
       </PopoverRoot>
@@ -64,6 +90,7 @@ component DateRangePickerStartField(...rest: Rest) renders DateField {
     <DateField
       {...forwarded(rest)}
       value={picker.range?.start ?? null}
+      defaultValue={picker.defaultValue?.start ?? null}
       minValue={picker.minValue}
       maxValue={picker.range?.end ?? picker.maxValue}
       isDateUnavailable={(start) =>
@@ -82,6 +109,7 @@ component DateRangePickerEndField(...rest: Rest) renders DateField {
     <DateField
       {...forwarded(rest)}
       value={picker.range?.end ?? null}
+      defaultValue={picker.defaultValue?.end ?? null}
       minValue={picker.range?.start ?? picker.minValue}
       maxValue={picker.maxValue}
       isDateUnavailable={(end) =>

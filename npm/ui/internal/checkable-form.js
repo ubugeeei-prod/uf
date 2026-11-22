@@ -64,10 +64,12 @@ function owningForm(element: HTMLElement, form: string | void): HTMLElement | nu
  * Run `restore` once a form reset has finished putting native fields back.
  *
  * `form` is the control's `form` attribute, when it has one. It is a
- * dependency because that string changing is the owner changing.
+ * dependency because that string changing is the owner changing. `current`
+ * is read-only: a read-write property is invariant, and a ref of
+ * `HTMLInputElement` would not pass.
  */
 export hook useFormReset(
-  control: { current: HTMLElement | null },
+  control: { readonly current: HTMLElement | null },
   restore: () => void,
   form   : string | void,
 ): void {

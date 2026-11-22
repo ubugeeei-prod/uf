@@ -84,6 +84,31 @@ export component FormValue(
   disabled?: boolean = false,
   /** The form that owns this control when it is not an ancestor. A `form` attribute. */
   form?: string,
+  /** Where a reset listener finds this input, when the widget's own element is not it. */
+  inputRef?: (element: HTMLInputElement | null) => mixed,
 ) {
-  return <input disabled={disabled} form={form} name={name} type="hidden" value={value ?? ""} />;
+  return (
+    <input
+      disabled={disabled}
+      form={form}
+      name={name}
+      ref={inputRef}
+      type="hidden"
+      value={value ?? ""}
+    />
+  );
+}
+
+/**
+ * A nameless hidden input, so a root that renders no element can still hear
+ * `reset`.
+ *
+ * A date range is two fields and a calendar, and none of those is the control
+ * the form resets: the value belongs to the root. The root has to be inside
+ * the form to find it, and it renders nothing of its own — a wrapper would be
+ * an element the caller has to style around. This input is not a field. It
+ * has no name, so `FormData` does not collect it.
+ */
+export component FormAnchor(form?: string, inputRef: (element: HTMLInputElement | null) => mixed) {
+  return <input form={form} ref={inputRef} type="hidden" />;
 }

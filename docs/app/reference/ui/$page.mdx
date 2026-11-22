@@ -244,8 +244,8 @@ and proposed order of work are tracked in [#1368](https://github.com/ubugeeei-pr
 | `NumberField`, `Slider` | **Implemented**: parsing, stepping, multiple slider thumbs, form names, wheel and hold stepping, `onValueChangeEnd`, and a form reset back to `defaultValue` |
 | `Checkbox`, `Switch`, `RadioGroup` | **Implemented**: a checkbox or switch submits `value` (default `on`) only while checked, and resets to `defaultChecked`. A radio group submits its answer and resets to `defaultValue`; nothing chosen still submits an empty string |
 | `CheckboxGroup`, `SearchField`, `TextField`, `Meter`, `Toolbar`, `DropZone`, `FileTrigger` | **Missing** as public primitives |
-| `ColorPicker` and colour field/area/wheel/slider | **Partial**: hex and RGBA controls exist; HSL/HSB and the other colour primitives are **Missing** |
-| `Calendar`, `RangeCalendar`, `DateField`, `TimeField`, `DatePicker`, `DateRangePicker` | **Partial**: Gregorian dates and segmented fields work; no non-Gregorian calendar or zoned date-time values, and DatePicker uses a text input rather than segmented DateField |
+| `ColorPicker` and colour field/area/wheel/slider | **Partial**: a named picker submits the canonical hex and resets to `defaultValue`. HSL/HSB and the other colour primitives are **Missing** |
+| `Calendar`, `RangeCalendar`, `DateField`, `TimeField`, `DatePicker`, `DateRangePicker` | **Partial**: a named field submits its committed ISO value and resets with the form. No non-Gregorian calendar or zoned date-time values, and DatePicker uses a text input rather than segmented DateField |
 | `I18nProvider`, `useLocale`, `useCollator`, `useFilter` | **Implemented** for locale and direction; built-in component announcements remain mostly English |
 
 The `npm/ui` tests cover the shipped behaviours, but component-wide
@@ -358,9 +358,19 @@ parsed; arbitrary expressions are rejected. `disabled` and `readOnly` guard
 editing and stepping.
 
 `name` submits that number, not the formatted text, through a hidden input.
-Give no name and the form gains no field. A wheel steps the field only while
-it is focused, and that wheel does not also scroll the page. A wheel over a
-field nobody is editing still scrolls the page. Holding
+Give no name and the form gains no field. The same contract covers a date, a
+time, a date picker and a color: `name` submits the committed ISO value or the
+canonical hex, an empty value is an empty string, a disabled control is
+omitted, and reset returns an uncontrolled control to `defaultValue`. A date
+range names each end (`StartField` and `EndField`) and reset restores the
+root's `defaultValue` for both, including a range chosen from the calendar.
+A segment draft or an unreadable date-picker draft is not the value the form
+submits. A multiple toggle group submits each pressed value under `name`, in
+the order they were pressed; a single group submits its one answer, or an
+empty string when nothing is chosen. A one-time code submits the input the
+reader types into, and reset returns it to `defaultValue`. A wheel steps the
+field only while it is focused, and that wheel does not also scroll the page.
+A wheel over a field nobody is editing still scrolls the page. Holding
 `Increment` or `Decrement` steps once and then repeats until the pointer comes
 up or leaves the button; a click is shorter than the pause, so it steps once.
 `onValueChange` fires as the number moves. `onValueChangeEnd` fires when the
@@ -397,7 +407,8 @@ segmented fields and a popover that restores trigger focus after a completed
 choice. Typed ranges use the same unavailable-day validation as the calendar.
 
 `ColorPicker.Root` controls a CSS hex string through `value`, `defaultValue`
-and `onValueChange`. Short hex forms expand to `#rrggbb` or `#rrggbbaa`.
+and `onValueChange`. `name` submits that hex. Short hex forms expand to
+`#rrggbb` or `#rrggbbaa`.
 `Input` is a native color input, `Field` retains and marks invalid hex drafts,
 `Channel` is a range input for `red`, `green`, `blue` or `alpha`, and `Swatch`
 shows the current color. Channels support arrows, PageUp/Down and Home/End;
@@ -2173,9 +2184,10 @@ fills it, a screen reader announces one field with one name — and six
 So pasting fills every box, because a paste into one input is a single `input`
 event carrying the whole string. `Backspace`, the arrow keys, `Home` and `End`
 are the browser's text editing, unmodified. A `<form>` submits one value under
-one name. `kind` is `"numeric" | "alphanumeric"` and decides three things at
-once — which characters survive typing and pasting, which keyboard a phone
-shows, and the field's `pattern`.
+one name, and reset returns the code to `defaultValue`. `kind` is
+`"numeric" | "alphanumeric"` and decides three things at once — which
+characters survive typing and pasting, which keyboard a phone shows, and the
+field's `pattern`.
 
 What it costs is that the input has to be drawn over the slots by your
 stylesheet, which is why `InputOtp.Root` puts your DOM props on the *input* and
