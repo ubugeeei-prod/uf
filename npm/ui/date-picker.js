@@ -41,6 +41,13 @@
 // would be a wrong date in production rather than a missing feature, so the two
 // props are the seam: an application with a locale format passes both, and gets
 // its own round trip rather than this module's approximation of one.
+//
+// # What a form submits
+//
+// `name` submits the chosen date as ISO 8601. The text in the field is a draft,
+// and a draft is not the value: an unreadable one stays on screen and the form
+// still carries the last date that parsed. No `name`, no control. Reset returns
+// the picker to `defaultValue` and clears the draft.
 
 "use client";
 
@@ -52,7 +59,9 @@ import { Temporal } from "@uniflowed/core/temporal";
 
 import type { DateValue } from "./calendar.js";
 import { Root as CalendarRoot } from "./calendar.js";
+import { useFormReset } from "./internal/checkable-form.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { FormAnchor, FormValue } from "./internal/form-value.js";
 import type { Align, LogicalSide } from "./internal/anchor.js";
 import type { PartEvent, Rest } from "./internal/merge-props.js";
 import {
@@ -134,8 +143,14 @@ component DatePickerRoot(
   today?       : DateValue,
   value?       : DateValue | null,
   weekStartsOn?: number,
+  /** Submits the chosen date as ISO 8601. No name, no field. */
+  name?: string,
+  /** The form that owns this control when it is not an ancestor. */
+  form?: string,
 ) {
   const fieldRef          = useRef<HTMLElement | null>(null);
+  const hiddenRef         = useRef<HTMLInputElement | null>(null);
+  const anchorRef         = useRef<HTMLElement | null>(null);
   const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
 
   const controlled =
@@ -191,6 +206,20 @@ component DatePickerRoot(
   });
 
   const dateSettings = { isDateDisabled, locale, today, weekStartsOn };
+  // One listener. The anchor is always mounted, so a picker with no text
+  // field and a picker with no name both hear the reset, and a picker that
+  // has both tells `onValueChange` once.
+  const owned = value === undefined;
+  const restore = useStableCallback(() => {
+    setDraft(null);
+    setInvalid(false);
+    setChosen(initial);
+    if (owned || name == null) return;
+    if (hiddenRef.current != null) {
+      hiddenRef.current.value = chosen == null ? "" : chosen.toString();
+    }
+  });
+  useFormReset(anchorRef, restore, form);
 
   const state = {
     choose,
@@ -207,6 +236,24 @@ component DatePickerRoot(
     <DatePickerContext.Provider value={state}>
       <CalendarSettings.Provider value={dateSettings}>
         <PopoverRoot onOpenChange={setOpen} open={isOpen}>
+          <FormAnchor
+            form={form}
+            inputRef={(element) => {
+              // The reset listener reads this after commit, not during render.
+              anchorRef.current = element;
+            }}
+          />
+          {name == null ? null : (
+            <FormValue
+              form={form}
+              inputRef={(element) => {
+                // The reset listener reads this after commit, not during render.
+                hiddenRef.current = element;
+              }}
+              name={name}
+              value={chosen == null ? "" : chosen.toString()}
+            />
+          )}
           {children}
         </PopoverRoot>
       </CalendarSettings.Provider>

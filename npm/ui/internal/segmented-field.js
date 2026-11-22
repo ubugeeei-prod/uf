@@ -5,8 +5,10 @@ import { useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import { Temporal } from "@uniflowed/core/temporal";
 import { useControlled } from "./controlled-state.js";
-import { composeHandlers, withProps } from "./merge-props.js";
+import { composeHandlers, composeRefs, withProps, withoutComposed } from "./merge-props.js";
 import type { RenderProp, Rest } from "./merge-props.js";
+import { useFormReset } from "./checkable-form.js";
+import { FormValue } from "./form-value.js";
 import { directionOf } from "./roving-focus.js";
 import { useLocale } from "../i18n-provider.js";
 import { visuallyHiddenStyle } from "./visually-hidden-style.js";
@@ -14,15 +16,25 @@ import { visuallyHiddenStyle } from "./visually-hidden-style.js";
 type Segment = "year" | "month" | "day" | "hour" | "minute" | "second" | "dayPeriod";
 type Fields  = { [string]: string };
 export type DateFieldProps = {
-  value?             : string | null,
-  defaultValue?      : string | null,
-  onValueChange?     : (value: string | null) => void,
-  minValue?          : string,
-  isDateUnavailable? : (value: string) => boolean,
-  maxValue?          : string,
-  disabled?          : boolean,
-  readOnly?          : boolean,
-  required?          : boolean,
+  value?            : string | null,
+  defaultValue?     : string | null,
+  onValueChange?    : (value: string | null) => void,
+  minValue?         : string,
+  isDateUnavailable?: (value: string) => boolean,
+  maxValue?         : string,
+  disabled?         : boolean,
+  readOnly?         : boolean,
+  required?         : boolean,
+  /** Submits the committed ISO value. No name, no field. */
+  name?: string,
+  /**
+   * A controlled field tells `onValueChange` when the form resets.
+   * A date-range end passes false: the root restores both ends, and a report
+   * from one end would rebuild the range from the other end's stale value.
+   */
+  reportsReset?: boolean,
+  /** The form that owns this control when it is not an ancestor. */
+  form?              : string,
   granularity?       : "minute" | "second",
   hourCycle?         : "h12" | "h23",
   segmentLabels?     : { [string]: string },
@@ -93,6 +105,9 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
     disabled = false,
     readOnly = false,
     required = false,
+    name,
+    form,
+    reportsReset = true,
     granularity = "minute",
     hourCycle,
     segmentLabels,
@@ -108,7 +123,28 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
   // `draft` this render read: two keystrokes can land before React renders
   // the first (#1609). Every handler reads and writes the fields through this,
   // so none of them acts on — or commits — a render's stale copy.
-  const pending                  = useRef<Fields | null>(null);
+  const pending = useRef<Fields | null>(null);
+  const rootRef = useRef<HTMLElement | null>(null);
+  // The segments are a draft until Enter or blur; the form submits `current`,
+  // the last committed ISO value. A controlled field tells its parent, and
+  // the hidden input stays on the value still showing until that parent
+  // renders. A date-range end does not tell: the root restores both ends,
+  // and a report from one end would rebuild the range from the stale other.
+  const owned = value === undefined;
+  const restore = useStableCallback(() => {
+    pending.current = null;
+    setDraft(null);
+    if (owned) {
+      setCurrent(defaultValue);
+      return;
+    }
+    if (name != null) {
+      const input: $FlowFixMe = rootRef.current?.querySelector?.("input[type='hidden']");
+      if (input != null) input.value = current ?? "";
+    }
+    if (reportsReset) setCurrent(defaultValue);
+  });
+  useFormReset(rootRef, restore, form);
   const [announcement, announce] = useState("");
   const minimum =
     minValue == null ? null : serialize(fieldsFor(minValue, time, seconds), time, seconds);
@@ -318,15 +354,24 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
       />
     );
   });
-  const props = withProps(rest, {
+  const passed = withoutComposed(rest, ["ref"]);
+  const props = withProps(passed, {
     role            : "group",
     "data-segmented": time ? "time" : "date",
     "aria-invalid"  : invalid || rest["aria-invalid"],
     onBlur: composeHandlers(rest.onBlur, (event: $FlowFixMe) => {
       if (!event.currentTarget.contains(event.relatedTarget)) commit();
     }),
+    // React calls callback refs during commit; the reset listener reads this later.
+    // uf-lint-disable-next-line react-compiler/refs
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      rootRef.current = element;
+    }),
     children: (
       <>
+        {name == null ? null : (
+          <FormValue disabled={disabled} form={form} name={name} value={current ?? ""} />
+        )}
         {segments}
         <span role="status" aria-live="polite" style={visuallyHiddenStyle}>
           {announcement}

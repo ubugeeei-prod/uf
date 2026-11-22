@@ -46,6 +46,14 @@
 // A group with no name is announced as "group" and nothing else. Pass
 // `aria-label`, or wire `Field.Label` through `Field.Control` the way
 // `radio-group.js` shows.
+//
+// # What a form submits
+//
+// `name` on a `single` group submits the one answer, or an empty string when
+// nothing is chosen — `radio-group.js` renders that input, because that is
+// the group. `name` on a `multiple` group submits each pressed value under
+// that name, in the order they were pressed, and submits nothing when none
+// are. Reset returns either group to `defaultValue`.
 
 "use client";
 
@@ -71,7 +79,10 @@ import {
 import { moveOnKey, useFirstItem } from "./internal/roving-focus.js";
 import type { Orientation, RovingSet } from "./internal/roving-focus.js";
 import { Item as RadioGroupItem, Root as RadioGroupRoot } from "./radio-group.js";
+import { useFormReset } from "./internal/checkable-form.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { FormValue } from "./internal/form-value.js";
+import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 /** Whether the set holds one answer or any number of them. */
 export type ToggleGroupType = "single" | "multiple";
@@ -135,8 +146,10 @@ component ToggleGroupRoot(
   value?        : $ReadOnlyArray<string>,
   onValueChange?: (value: $ReadOnlyArray<string>) => void,
   orientation?  : Orientation = "horizontal",
-  render?       : RenderProp,
-  ...rest       : Rest
+  /** Submits the pressed values. No name, no field. */
+  name?  : string,
+  render?: RenderProp,
+  ...rest: Rest
 ) {
   const [pressed,  setPressed]  = useControlled<$ReadOnlyArray<string>>(
     value,
@@ -165,6 +178,25 @@ component ToggleGroupRoot(
   // Stable, so the radio group below does not get a new `onValueChange` on
   // every render and hand every one of its items a new context with it.
   const chooseOne = useCallback((next: string) => setPressed([next]), [setPressed]);
+  const form = typeof rest.form === "string" ? rest.form : undefined;
+  // Registered after `RadioGroup`'s own listener in `single` mode, so this
+  // write is the one that stands. A `multiple` group has no radio to borrow
+  // the listener from.
+  const restore = useStableCallback(() => {
+    setPressed(defaultValue);
+    if (value === undefined) return;
+    const inputs: $FlowFixMe = rootRef.current?.querySelectorAll?.("input[type='hidden']");
+    if (type === "single") {
+      const input = inputs?.[0];
+      if (input != null) input.value = pressed[0] ?? "";
+      return;
+    }
+    pressed.forEach((item, index) => {
+      const input = inputs?.[index];
+      if (input != null) input.value = item;
+    });
+  });
+  useFormReset(rootRef, restore, form);
 
   const state = useMemo(
     () => ({ type, pressed, toggle, activeId, setActiveId, firstId }),
@@ -179,7 +211,17 @@ component ToggleGroupRoot(
     return (
       <ToggleGroupContext.Provider value={state}>
         <RadioGroupRoot
-          {...forwarded(rest)}
+          {...forwarded(
+            withProps(withoutComposed(rest, ["ref"]), {
+              // React calls callback refs during commit; the reset listener reads this later.
+              // uf-lint-disable-next-line react-compiler/refs
+              ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+                rootRef.current = element;
+              }),
+            }),
+          )}
+          defaultValue={defaultValue[0] ?? null}
+          name={name}
           onValueChange={chooseOne}
           orientation={orientation}
           render={render}
@@ -191,9 +233,16 @@ component ToggleGroupRoot(
     );
   }
 
-  const passed = withoutComposed(rest, ["onKeyDown", "ref"]);
+  const passed = withoutComposed(rest, ["form", "onKeyDown", "ref"]);
   const rootProps = withProps(passed, {
-    children,
+    children: (
+      <>
+        {children}
+        {name == null
+          ? null
+          : pressed.map((item) => <FormValue form={form} key={item} name={name} value={item} />)}
+      </>
+    ),
     onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
       const group: $FlowFixMe = event.currentTarget;
       // Moves and nothing else. Pressing every button the arrows pass over

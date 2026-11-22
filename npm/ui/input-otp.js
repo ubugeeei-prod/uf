@@ -31,7 +31,10 @@
 //   * **One accessible name**, and one value a `<form>` submits under one
 //     `name` — the joined code rather than six of them. No hidden input is
 //     needed here, which is why `internal/form-value.js` is not imported: the
-//     field the reader types into is the field the form reads.
+//     field the reader types into is the field the form reads. A reset returns
+//     the code to `defaultValue`. The input is controlled — `value` is the
+//     code — so the browser putting the DOM node back is not the reset; the
+//     listener after the event is.
 //
 // # Which box is lit
 //
@@ -57,10 +60,17 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useState } from "@uniflowed/react";
+import { createContext, useContext, useRef, useState } from "@uniflowed/react";
+import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import { useFormReset } from "./internal/checkable-form.js";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
-import { composeHandlers, withProps, withoutComposed } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 /**
@@ -127,7 +137,16 @@ component InputOtpRoot(
 ) {
   const [code,    setCode]    = useControlled(value, defaultValue, onValueChange);
   const [focused, setFocused] = useState(false);
-  const passed = withoutComposed(rest, ["onBlur", "onChange", "onFocus"]);
+  const inputRef              = useRef<HTMLInputElement | null>(null);
+  const owned = value === undefined;
+  const form = typeof rest.form === "string" ? rest.form : undefined;
+  const restore = useStableCallback(() => {
+    setCode(defaultValue);
+    if (owned) return;
+    if (inputRef.current != null) inputRef.current.value = code;
+  });
+  useFormReset(inputRef, restore, form);
+  const passed = withoutComposed(rest, ["onBlur", "onChange", "onFocus", "ref"]);
   // `aria-labelledby` wins over `aria-label`, so a field wired through
   // `Field.Control` keeps the label the caller actually rendered.
   const named = rest["aria-labelledby"] != null;
@@ -158,6 +177,10 @@ component InputOtpRoot(
         })}
         onFocus={composeHandlers(rest.onFocus, () => setFocused(true))}
         pattern={kind === "numeric" ? "[0-9]*" : "[0-9A-Za-z]*"}
+        // React calls callback refs during commit; the reset listener reads this later.
+        ref={composeRefs(rest.ref, (element: HTMLInputElement | null) => {
+          inputRef.current = element;
+        })}
         type="text"
         value={code}
       />

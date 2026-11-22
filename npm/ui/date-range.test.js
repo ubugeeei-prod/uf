@@ -1,5 +1,6 @@
 "use flow";
 import * as React from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
 import { afterEach, expect, fn, it } from "@uniflowed/test";
 import {
   act,
@@ -200,6 +201,160 @@ it("compares time bounds at the selected granularity", async () => {
   screen.getByRole("spinbutton", { name: "minute" }).focus();
   await userEvent.keyboard("{Enter}");
   expect(change).toHaveBeenLastCalledWith("12:30");
+});
+
+it("submits a committed date, ignores a segment draft, and resets", async () => {
+  const { container } = render(
+    <form>
+      <DateField aria-label="Birthday" defaultValue="2026-02-10" name="birthday" />
+      <TimeField aria-label="Arrival" defaultValue="09:30" name="arrival" />
+      <DateField aria-label="Quiet" defaultValue="2026-01-01" disabled name="quiet" />
+    </form>,
+  );
+  const form: $FlowFixMe = container.querySelector("form");
+  const read = (field: string) => new form.ownerDocument.defaultView.FormData(form).get(field);
+  expect(read("birthday")).toBe("2026-02-10");
+  expect(read("arrival")).toBe("09:30");
+  // A disabled control is omitted. An unnamed one is tested with the range.
+  expect(read("quiet")).toBe(null);
+  const birthday = screen.getByRole("group", { name: "Birthday" });
+  const year = within(birthday).getByRole("spinbutton", { name: "year" });
+  year.focus();
+  await userEvent.keyboard("{ArrowUp}");
+  // The segment moved and the value did not. Enter is what commits it.
+  expect(year).toHaveValue("2027");
+  expect(read("birthday")).toBe("2026-02-10");
+  await userEvent.keyboard("{Enter}");
+  expect(read("birthday")).toBe("2027-02-10");
+  await act(async () => {
+    form.reset();
+    await Promise.resolve();
+  });
+  expect(within(birthday).getByRole("spinbutton", { name: "year" })).toHaveValue("2026");
+  expect(read("birthday")).toBe("2026-02-10");
+  expect(read("arrival")).toBe("09:30");
+});
+
+it("submits each end of a range and restores both when the form resets", async () => {
+  const change = fn();
+  const { container } = render(
+    <form>
+      <DateRangePicker.Root
+        defaultValue={{ start: "2026-02-10", end: "2026-02-12" }}
+        onValueChange={change}
+      >
+        <DateRangePicker.StartField aria-label="Arrival" name="from" />
+        <DateRangePicker.EndField aria-label="Departure" name="to" />
+      </DateRangePicker.Root>
+    </form>,
+  );
+  const form: $FlowFixMe = container.querySelector("form");
+  const read = (field: string) => new form.ownerDocument.defaultView.FormData(form).get(field);
+  expect(read("from")).toBe("2026-02-10");
+  expect(read("to")).toBe("2026-02-12");
+  const arrival = screen.getByRole("group", { name: "Arrival" });
+  const departure = screen.getByRole("group", { name: "Departure" });
+  within(arrival).getByRole("spinbutton", { name: "day" }).focus();
+  await userEvent.keyboard("{ArrowUp}{Enter}");
+  within(departure).getByRole("spinbutton", { name: "day" }).focus();
+  await userEvent.keyboard("{ArrowUp}{Enter}");
+  expect(read("from")).toBe("2026-02-11");
+  expect(read("to")).toBe("2026-02-13");
+  expect(change).toHaveBeenLastCalledWith({ start: "2026-02-11", end: "2026-02-13" });
+  await act(async () => {
+    form.reset();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  expect(read("from")).toBe("2026-02-10");
+  expect(read("to")).toBe("2026-02-12");
+  expect(within(arrival).getByRole("spinbutton", { name: "day" })).toHaveValue("10");
+  expect(within(departure).getByRole("spinbutton", { name: "day" })).toHaveValue("12");
+  expect(change).toHaveBeenLastCalledWith({ start: "2026-02-10", end: "2026-02-12" });
+});
+
+it("tells a controlled date the form reset, and keeps the value the parent kept", async () => {
+  const change = fn();
+  component Kept() {
+    const [value, setValue] = useState<string | null>("2026-02-10");
+    return (
+      <form>
+        <DateField
+          aria-label="Birthday"
+          defaultValue={null}
+          name="birthday"
+          onValueChange={(next) => {
+            change(next);
+            setValue("2026-02-10");
+          }}
+          value={value}
+        />
+      </form>
+    );
+  }
+  const { container } = render(<Kept />);
+  const form: $FlowFixMe = container.querySelector("form");
+  const read = () => new form.ownerDocument.defaultView.FormData(form).get("birthday");
+  expect(read()).toBe("2026-02-10");
+  await act(async () => {
+    form.reset();
+    await Promise.resolve();
+  });
+  expect(change).toHaveBeenLastCalledWith(null);
+  const birthday = screen.getByRole("group", { name: "Birthday" });
+  expect(within(birthday).getByRole("spinbutton", { name: "year" })).toHaveValue("2026");
+  expect(read()).toBe("2026-02-10");
+});
+
+it("tells a controlled date with no name that the form reset", async () => {
+  const change = fn();
+  component Kept() {
+    const [value, setValue] = useState<string | null>("2026-02-10");
+    return (
+      <form>
+        <DateField
+          aria-label="Birthday"
+          defaultValue={null}
+          onValueChange={(next) => {
+            change(next);
+            setValue("2026-02-10");
+          }}
+          value={value}
+        />
+      </form>
+    );
+  }
+  const { container } = render(<Kept />);
+  const form: $FlowFixMe = container.querySelector("form");
+  await act(async () => {
+    form.reset();
+    await Promise.resolve();
+  });
+  expect(change).toHaveBeenLastCalledWith(null);
+  const birthday = screen.getByRole("group", { name: "Birthday" });
+  expect(within(birthday).getByRole("spinbutton", { name: "year" })).toHaveValue("2026");
+});
+
+it("submits a range into the form the root names", () => {
+  render(
+    <div>
+      <form data-testid="booking" id="booking" />
+      <form data-testid="other" id="other" />
+      <DateRangePicker.Root
+        defaultValue={{ start: "2026-02-10", end: "2026-02-12" }}
+        form="booking"
+      >
+        <DateRangePicker.StartField aria-label="Arrival" name="from" />
+        <DateRangePicker.EndField aria-label="Departure" form="other" name="to" />
+      </DateRangePicker.Root>
+    </div>,
+  );
+  const booking: $FlowFixMe = screen.getByTestId("booking");
+  const other: $FlowFixMe = screen.getByTestId("other");
+  const data = (form: $FlowFixMe) => new form.ownerDocument.defaultView.FormData(form);
+  expect(data(booking).get("from")).toBe("2026-02-10");
+  expect(data(booking).get("to")).toBe(null);
+  expect(data(other).get("to")).toBe("2026-02-12");
 });
 
 it("rejects typed ranges that cross an unavailable day", async () => {
