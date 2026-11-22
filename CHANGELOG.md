@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.50.0
+
+- feat(ui): submit a date, a color, a toggle group, and a code, and reset them with the form (#1925) (f6cfc0b3)
+
 ## uf@0.49.0
 
 - fix: require React 19.3.1 for Server Components (#1921) (9425083d)
