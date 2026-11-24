@@ -1580,6 +1580,25 @@ pub enum ConfigError {
          does), or name a package that exports `jsx-runtime`."
     )]
     MdxJsxImportSource { path: Utf8PathBuf },
+    /// A `app.builtins.markdown.mdx.highlight.langs` entry that names a
+    /// grammar file uf cannot use.
+    ///
+    /// An entry with a `/` in it, or one ending in `.json`, is a TextMate
+    /// grammar read from the project root rather than one of Shiki's language
+    /// names. Refused here, where the config is read, so `uf check` names the
+    /// file — rather than `uf build` finishing with every fence in that
+    /// language left as plain text, or failing inside the MDX compiler.
+    #[error(
+        "{path}: app.builtins.markdown.mdx.highlight.langs names \"{entry}\" ({file}), \
+         which {reason}. A path in `langs` is a TextMate grammar in JSON, read from \
+         the project root; a name without a `/` is one of Shiki's languages."
+    )]
+    MdxHighlightGrammar {
+        path: Utf8PathBuf,
+        entry: String,
+        file: Utf8PathBuf,
+        reason: String,
+    },
     /// A runtime named as this project's, with no host behind the name.
     ///
     /// `uf`, `edge`, `serverless` and `container` parse here and have no Flow
@@ -2056,13 +2075,73 @@ fn check_cache_switches(path: &Utf8Path, cache: &CacheConfig) -> Result<(), Conf
     Ok(())
 }
 
-/// The one `mdx.jsxImportSource` that cannot be honoured; see
-/// [`ConfigError::MdxJsxImportSource`].
+/// The one `mdx.jsxImportSource` that cannot be honoured, see
+/// [`ConfigError::MdxJsxImportSource`], and the grammar files
+/// `mdx.highlight.langs` names, see [`ConfigError::MdxHighlightGrammar`].
 fn check_mdx(path: &Utf8Path, mdx: &MdxConfig) -> Result<(), ConfigError> {
     if mdx.jsx_import_source == "@uniflowed/jsx-runtime" {
         return Err(ConfigError::MdxJsxImportSource {
             path: path.to_path_buf(),
         });
+    }
+    if mdx.enabled && mdx.highlight.enabled {
+        let root = path.parent().unwrap_or_else(|| Utf8Path::new("."));
+        for entry in &mdx.highlight.langs {
+            if is_grammar_file(entry) {
+                check_grammar_file(path, root, entry)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether a `highlight.langs` entry names a grammar file rather than one of
+/// Shiki's languages: no language name Shiki ships contains a `/` or ends in
+/// `.json`, so the two spellings cannot be confused. The same rule as
+/// `npm/vite/internal/grammar-files.js`, which reads the file.
+fn is_grammar_file(entry: &str) -> bool {
+    entry.contains('/') || entry.ends_with(".json")
+}
+
+/// A grammar file has to exist, be JSON, and carry the two keys a TextMate
+/// grammar cannot do without: `scopeName`, which also names the fence, and
+/// `patterns`.
+fn check_grammar_file(path: &Utf8Path, root: &Utf8Path, entry: &str) -> Result<(), ConfigError> {
+    let file = root.join(entry.strip_prefix("./").unwrap_or(entry));
+    let refuse = |reason: String| ConfigError::MdxHighlightGrammar {
+        path: path.to_path_buf(),
+        entry: entry.to_owned(),
+        file: file.clone(),
+        reason,
+    };
+    let source = match std::fs::read_to_string(&file) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(refuse(String::from("does not exist")));
+        }
+        Err(error) => {
+            return Err(refuse(uf_infra::into_string(uf_infra::cstr!(
+                "could not be read: {error}"
+            ))));
+        }
+    };
+    let grammar: serde_json::Value = serde_json::from_str(&source).map_err(|error| {
+        refuse(uf_infra::into_string(uf_infra::cstr!(
+            "is not JSON: {error}"
+        )))
+    })?;
+    let Some(object) = grammar.as_object() else {
+        return Err(refuse(String::from("is not a TextMate grammar object")));
+    };
+    match object.get("scopeName").and_then(serde_json::Value::as_str) {
+        Some(scope) if !scope.is_empty() => {}
+        _ => return Err(refuse(String::from("has no `scopeName`"))),
+    }
+    if !object
+        .get("patterns")
+        .is_some_and(serde_json::Value::is_array)
+    {
+        return Err(refuse(String::from("has no `patterns`")));
     }
     Ok(())
 }

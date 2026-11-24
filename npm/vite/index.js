@@ -67,6 +67,7 @@ import { refuseServerErrorBoundaries } from "./internal/error-boundaries.js";
 import { inDevCacheScope } from "./internal/dev-cache.js";
 import { emit, reportRenderError, errorEvent } from "./internal/events.js";
 import remarkFrontmatterExport from "./internal/frontmatter.js";
+import { grammarFiles } from "./internal/grammar-files.js";
 import { highlightPlugin } from "./internal/highlight.js";
 import { moduleId } from "./internal/module-graph.js";
 import { styleModuleSource } from "./internal/style-module.js";
@@ -346,7 +347,7 @@ export default function uniflowed(options = {}) {
     // After the references, so a client module the rsc graph has already
     // replaced is not read for imports it no longer has; see the file.
     barrelImportsPlugin(),
-    mdxPlugin(markdown),
+    mdxPlugin(markdown, options.root ?? process.cwd()),
     assetPlugin({
       images : builtins.images ?? {},
       fonts  : builtins.fonts ?? {},
@@ -1538,14 +1539,20 @@ function flowPlugin({
   };
 }
 
-function mdxPlugin(markdown) {
+function mdxPlugin(markdown, root) {
   const mdxConfig = markdown.mdx ?? {};
   if (mdxConfig.enabled === false) return { name: "uf:mdx" };
 
   // Highlighting is on unless a project turns it off, and it happens here
   // rather than in the browser: the colours are in the HTML, so a code sample
   // is readable before any JavaScript loads and no highlighter is shipped.
-  const highlight = highlightPlugin(mdxConfig.highlight);
+  const highlight = highlightPlugin(mdxConfig.highlight, { root });
+  // Grammar files the project brings are read once, above, into the MDX
+  // compiler's options. A change to one is a change to how every page is
+  // compiled, the way a change to `uf.config.js` is, so the dev server
+  // restarts rather than serving pages coloured by the grammar it started
+  // with.
+  const grammars = highlight == null ? [] : grammarFiles(mdxConfig.highlight, root);
   const rehypePlugins = highlight == null ? [rehypeSlug] : [rehypeSlug, highlight];
 
   return {
@@ -1560,6 +1567,16 @@ function mdxPlugin(markdown) {
       rehypePlugins,
     }),
     name: "uf:mdx",
+    ...(grammars.length === 0
+      ? {}
+      : {
+          configureServer(server) {
+            server.watcher.add(grammars);
+            server.watcher.on("change", (file) => {
+              if (grammars.includes(path.resolve(file))) server.restart();
+            });
+          },
+        }),
   };
 }
 

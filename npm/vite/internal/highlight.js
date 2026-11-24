@@ -44,6 +44,7 @@
 import rehypeShiki from "@shikijs/rehype";
 
 import { shimFlowGrammar } from "./flow-grammar-shim.js";
+import { isGrammarFile, loadGrammar } from "./grammar-files.js";
 import { FLOW_MARK, KEYWORD, TYPE, markLines } from "./flow-keywords.js";
 
 /**
@@ -155,9 +156,15 @@ function flowSyntax() {
  * because a page follows the reader's light or dark preference and a build-time
  * highlighter cannot know it. The stylesheet picks between them.
  *
+ * A `langs` entry that is a path is a TextMate grammar file, read relative to
+ * `root`; see `./grammar-files.js`. It is read here, once per build, so a file
+ * that is missing or is not a grammar fails the build with its path rather
+ * than leaving its fences grey.
+ *
  * @param {{enabled?: boolean, themes?: {light?: string, dark?: string}, langs?: string[]}} options
+ * @param {{root?: string}} [context]
  */
-export function highlightPlugin(options) {
+export function highlightPlugin(options, context = {}) {
   const config = options ?? {};
   if (config.enabled === false) {
     return null;
@@ -168,7 +175,10 @@ export function highlightPlugin(options) {
     light: config.themes?.light ?? "github-light",
     dark : config.themes?.dark ?? "github-dark-dimmed",
   };
-  const langs = [...new Set([...DEFAULT_LANGS, ...(config.langs ?? [])])];
+  const root = context.root ?? process.cwd();
+  const named = (config.langs ?? []).filter((entry) => !isGrammarFile(entry));
+  const files = (config.langs ?? []).filter(isGrammarFile).map((entry) => loadGrammar(entry, root));
+  const langs = [...new Set([...DEFAULT_LANGS, ...named]), ...files];
 
   return [
     rehypeShiki,

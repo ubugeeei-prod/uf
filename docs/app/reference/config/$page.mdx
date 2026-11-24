@@ -161,7 +161,7 @@ Wrangler; they are not valid `test.runtime` values.
 | `builtins.markdown.mdx.jsxImportSource` | `"react"` | The package compiled MDX imports its JSX runtime from, as `<package>/jsx-runtime`. `"@uniflowed/jsx-runtime"`, which has no runtime in it, is refused |
 | `builtins.markdown.mdx.highlight.themes.light` | `"github-light"` | The Shiki theme for a reader who prefers light. A theme left out keeps its default |
 | `builtins.markdown.mdx.highlight.themes.dark` | `"github-dark-dimmed"` | The Shiki theme for a reader who prefers dark |
-| `builtins.markdown.mdx.highlight.langs` | `[]` | Grammars beyond the ones a uf project uses |
+| `builtins.markdown.mdx.highlight.langs` | `[]` | Grammars beyond the ones a uf project uses: a language name Shiki ships (`"nix"`), or a path to a TextMate grammar in JSON, read from the project root (`"./grammars/foo.tmLanguage.json"`) — see [custom grammars](#custom-grammars) |
 | `builtins.fonts.enabled` | `true` | Whether uf self-hosts an imported font. `false` leaves font imports to Vite |
 | `builtins.fonts.display` | `"swap"` | The `font-display` written into every `@font-face` uf generates |
 | `builtins.fonts.fallback` | `"Arial"` | The local face scaled into a metric-matched fallback. `"Arial"`, `"Times New Roman"` and `"Courier New"` are the faces uf has metrics for; any other name gets no fallback, and the build says so |
@@ -195,6 +195,36 @@ Wrangler; they are not valid `test.runtime` values.
 | `serverActions` | `true` | `false` stops `uf prepare` writing the types for `"use server"` exports |
 | `router.manifest` | `"router.js"` | Where the typed router module is generated, from the project root; native variants are named after it (`router.ios.js`) |
 | `router.nativeLinks` | none | The HTTPS links the iOS and Android apps claim: `{ origins, routes, iosAppIds, androidPackage, androidSha256 }`. `uf build` checks every claimed route exists on web and on both platforms, then writes `apple-app-site-association` and `assetlinks.json`. See [React Native](/guide/react-native) |
+
+### Custom grammars
+
+`builtins.markdown.mdx.highlight.langs` takes a language name Shiki ships, or a
+path to a TextMate grammar in JSON — the format an editor extension for a
+language already ships. A path is read from the project root:
+
+```js fragment
+markdown: {
+  mdx: {
+    highlight: {
+      langs: ["nix", "./grammars/acme.tmLanguage.json"],
+    },
+  },
+}
+```
+
+An entry with a `/` in it, or one ending in `.json`, is a path; anything else is
+a language name. A grammar colours the fences named after the last segment of
+its `scopeName`, so a grammar whose scope is `source.acme` colours
+` ```acme `. Its `aliases`, its `fileTypes` and a `name` that is already a
+fence-shaped word colour fences too, except a word that is one of Shiki's own
+languages: a grammar listing `js` among its file types does not take
+JavaScript over.
+
+The file is checked where the config is read: one that does not exist, is not
+JSON, or has no `scopeName` or `patterns` is an error naming it, and so is a
+grammar whose scope names a language Shiki already ships. `uf dev` restarts
+its server when a grammar file changes, so the pages it serves are coloured by
+the grammar on disk.
 
 ### router.redirects, router.rewrites and router.headers
 

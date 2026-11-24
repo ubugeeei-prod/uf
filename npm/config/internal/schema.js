@@ -415,7 +415,9 @@ export type UniflowedConfig = {
               readonly light?: string,
               readonly dark? : string,
             },
-            // Grammars beyond the ones a uf project uses by default.
+            // Grammars beyond the ones a uf project uses by default: a name
+            // Shiki ships (`"nix"`), or a path to a TextMate grammar in JSON,
+            // read from the project root (`"./grammars/foo.tmLanguage.json"`).
             readonly langs?: $ReadOnlyArray<string>,
           },
         },

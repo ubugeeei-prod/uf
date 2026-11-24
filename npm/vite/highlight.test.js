@@ -22,11 +22,17 @@
 // one property that rewrite must have — the reader sees the source, whatever
 // the grammar made of the stand-in.
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it } from "@uniflowed/test";
+import { createHighlighter } from "shiki";
 // By path, not by subpath export. `internal/` is not part of any package's
 // public surface — `package_surface.rs` enforces that, with one allowlisted
 // exception for the native bridge — and a test is not a reason to widen it.
 // This file is inside the repository, so it can just say where the module is.
+import { grammarFiles, isGrammarFile, loadGrammar } from "./internal/grammar-files.js";
 import { highlightPlugin } from "./internal/highlight.js";
 import { shimFlowGrammar } from "./internal/flow-grammar-shim.js";
 import { FLOW_MARK, KEYWORD, TYPE, markLine, markLines } from "./internal/flow-keywords.js";
@@ -510,5 +516,131 @@ describe("the highlighter is configured by uf.config.js", () => {
 
   it("turns off when the project turns it off", () => {
     expect(highlightPlugin({ enabled: false })).toBe(null);
+  });
+});
+
+describe("grammar files in highlight.langs", () => {
+  // A project documenting a language Shiki does not ship had no way to colour
+  // it: `langs` took names, and every fence in that language fell back to
+  // `text`. An entry may now be a TextMate grammar in JSON, read from the
+  // project root.
+
+  /** A project root holding the given files, written fresh for each test. */
+  function projectWith(files: { readonly [string]: mixed }): string {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "uf-grammar-"));
+    for (const [name, content] of Object.entries(files)) {
+      const file = path.join(root, name);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(
+        file,
+        typeof content === "string" ? content : (JSON.stringify(content) ?? ""),
+      );
+    }
+    return root;
+  }
+
+  /** A small but real grammar: keywords, strings and line comments. */
+  const ACME = {
+    name     : "Acme Rules",
+    scopeName: "source.acme",
+    fileTypes: ["acme", ".acm", "js"],
+    patterns: [
+      { match: "\\b(rule|when|then)\\b", name: "keyword.control.acme" },
+      { match: '"[^"]*"', name: "string.quoted.double.acme" },
+      { match: "#.*$", name: "comment.line.number-sign.acme" },
+    ],
+  };
+
+  it("tells a path from a language name", () => {
+    expect(isGrammarFile("nix")).toBe(false);
+    expect(isGrammarFile("objective-c")).toBe(false);
+    expect(isGrammarFile("./grammars/acme.tmLanguage.json")).toBe(true);
+    expect(isGrammarFile("grammars/acme.json")).toBe(true);
+    expect(isGrammarFile("acme.json")).toBe(true);
+  });
+
+  it("names the fence after the grammar's scope", () => {
+    const root = projectWith({ "grammars/acme.tmLanguage.json": ACME });
+    const grammar = loadGrammar("./grammars/acme.tmLanguage.json", root);
+    expect(grammar.name).toBe("acme");
+    expect(grammar.scopeName).toBe("source.acme");
+    expect(grammar.patterns).toEqual(ACME.patterns);
+  });
+
+  it("takes file types as aliases, but never one of Shiki's languages", () => {
+    const root = projectWith({ "acme.json": ACME });
+    // `acme` is the name itself, `.acm` loses its dot, and `js` stays
+    // JavaScript's: a grammar must not take over a language Shiki ships.
+    // `Acme Rules` is a display name, not a word a fence could say.
+    expect(loadGrammar("acme.json", root).aliases).toEqual(["acm"]);
+  });
+
+  it("hands Shiki the grammar beside the languages it loads anyway", () => {
+    const root = projectWith({ "grammars/acme.tmLanguage.json": ACME });
+    const [, options] = highlightPlugin(
+      { langs: ["nix", "./grammars/acme.tmLanguage.json"] },
+      { root },
+    );
+    expect(options.langs).toContain("nix");
+    expect(options.langs).toContain("javascript");
+    const registered = options.langs.find((lang) => typeof lang === "object");
+    expect(registered?.name).toBe("acme");
+  });
+
+  it("colours a fence with the grammar, which is the point", async () => {
+    // The registration is only right if Shiki accepts it and tokenises with
+    // it, so this one goes through Shiki rather than stopping at the options.
+    const root = projectWith({ "acme.json": ACME });
+    const highlighter = await createHighlighter({
+      themes: ["github-light"],
+      langs : [loadGrammar("acme.json", root)],
+    });
+    const { tokens } = highlighter.codeToTokens('rule "x" # note', {
+      // $FlowExpectedError[incompatible-type] a grammar the project brings is in none of Shiki's name types
+      lang : "acm",
+      theme: "github-light",
+    });
+    const colours = new Set(tokens[0].map((token) => token.color));
+    expect(colours.size).toBeGreaterThan(1);
+    highlighter.dispose();
+  });
+
+  it("resolves the files from the project root", () => {
+    expect(grammarFiles({ langs: ["nix", "./g/a.json", "b.json"] }, "/project")).toEqual([
+      path.resolve("/project", "./g/a.json"),
+      path.resolve("/project", "b.json"),
+    ]);
+    expect(grammarFiles(undefined, "/project")).toEqual([]);
+  });
+
+  it("names the file when it is missing", () => {
+    const root = projectWith({});
+    expect(() => loadGrammar("./grammars/missing.json", root)).toThrow(
+      /"\.\/grammars\/missing\.json" .*does not exist/,
+    );
+  });
+
+  it("names the file when it is not JSON", () => {
+    const root = projectWith({ "bad.json": "{ not json" });
+    expect(() => loadGrammar("bad.json", root)).toThrow(/"bad\.json" .*is not JSON/);
+  });
+
+  it("refuses a file that is not a TextMate grammar", () => {
+    const root = projectWith({
+      "no-scope.json"   : { patterns: [] },
+      "no-patterns.json": { scopeName: "source.acme" },
+    });
+    expect(() => loadGrammar("no-scope.json", root)).toThrow(/has no `scopeName`/);
+    expect(() => loadGrammar("no-patterns.json", root)).toThrow(/has no `patterns`/);
+  });
+
+  it("refuses a grammar for a language Shiki already ships", () => {
+    const root = projectWith({ "js.json": { scopeName: "source.js", patterns: [] } });
+    expect(() => loadGrammar("js.json", root)).toThrow(/Shiki already ships/);
+  });
+
+  it("fails the plugin with the path rather than leaving the fences grey", () => {
+    const root = projectWith({});
+    expect(() => highlightPlugin({ langs: ["./missing.json"] }, { root })).toThrow(/missing\.json/);
   });
 });
