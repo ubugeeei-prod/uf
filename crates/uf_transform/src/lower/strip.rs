@@ -8,6 +8,16 @@
 //! One deliberate departure: upstream drops an `import "x";` with no
 //! specifiers as if it had been all type imports. A bare import is a side
 //! effect the author asked for, so it stays.
+//!
+//! And one addition upstream has no reason for: the `"use flow"` and
+//! `"use js"` directives go too. They say how the type checker reads the
+//! module — a source mode, the way `// @flow` used to — and nothing at
+//! runtime reads them. Left in, they reach the bundler as directives it does
+//! not know, and Rolldown warns once per module (`MODULE_LEVEL_DIRECTIVE`) and
+//! still leaves the string at the top of the chunk. Every other directive in
+//! the prologue stays where it was, in the order it was written: `"use client"`
+//! and `"use server"` are what React's bundler integration reads, and
+//! `"use strict"` changes what the module means.
 
 use serde_json::Value;
 use uf_profiler::profile_span;
@@ -51,11 +61,47 @@ const TYPE_FIELDS: [&str; 9] = [
     "implements",
 ];
 
+/// Directives that are only for the type checker: a module's source mode.
+///
+/// `"use js"` opts a module out of Flow and `"use flow"` opts it in; with
+/// either spelling, single or double quotes, the program means the same thing
+/// to the engine that runs it.
+const SOURCE_MODE_DIRECTIVES: [&str; 2] = ["use flow", "use js"];
+
 /// Erase every type in `program`.
 pub fn lower(program: &mut Value) -> Result<(), TransformError> {
     profile_span!("lower::strip");
+    remove_source_mode_directives(program);
     transform_post(program, &mut |node| Ok(strip_node(node)))?;
     Ok(())
+}
+
+/// Drop `"use flow"` and `"use js"` from the program's directive prologue.
+///
+/// Only the program's: a function body that opens with the same string is not
+/// a source mode, and the checker does not read it as one. Only the prologue's
+/// too, which is the statements the parser marked `directive`, read from the
+/// top until the first that is not one. A later `"use flow";` is an ordinary
+/// expression statement, and `const s = "use flow";` is a string.
+///
+/// The value compared is the directive's source text between its quotes, as
+/// ECMAScript compares a directive: `"use\x20flow"` is not the directive.
+fn remove_source_mode_directives(program: &mut Value) {
+    let Some(body) = program.get_mut("body").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let prologue = body
+        .iter()
+        .take_while(|statement| str_field(statement, "directive").is_some())
+        .count();
+    let mut index = 0usize;
+    body.retain(|statement| {
+        let in_prologue = index < prologue;
+        index += 1;
+        !(in_prologue
+            && str_field(statement, "directive")
+                .is_some_and(|directive| SOURCE_MODE_DIRECTIVES.contains(&directive)))
+    });
 }
 
 /// The node types [`strip_node`] treats specially, as a value rather than a name.
@@ -229,6 +275,76 @@ mod tests {
             .iter()
             .map(|node| node_type(node).unwrap())
             .collect()
+    }
+
+    /// The prologue's directives, in order.
+    fn directives(program: &Value) -> Vec<&str> {
+        program["body"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map_while(|statement| str_field(statement, "directive"))
+            .collect()
+    }
+
+    #[test]
+    fn the_source_mode_directive_goes_and_use_client_stays_first() {
+        let after = stripped("\"use client\";\n\"use flow\";\nexport const x: number = 1;\n");
+        assert_eq!(directives(&after), ["use client"]);
+        let before = stripped("\"use flow\";\n\"use client\";\nexport const x: number = 1;\n");
+        assert_eq!(directives(&before), ["use client"]);
+        assert_eq!(
+            types(&before),
+            ["ExpressionStatement", "ExportNamedDeclaration"]
+        );
+    }
+
+    #[test]
+    fn every_spelling_of_a_source_mode_goes_and_other_directives_keep_their_order() {
+        let program = stripped(
+            "'use strict';\n'use flow'\n\"use server\";\n\"use js\";\n'use js';\nexport async function save() {}\n",
+        );
+        assert_eq!(directives(&program), ["use strict", "use server"]);
+        assert_eq!(
+            types(&program),
+            [
+                "ExpressionStatement",
+                "ExpressionStatement",
+                "ExportNamedDeclaration"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_words_outside_the_program_s_prologue_are_left_alone() {
+        let program = stripped(
+            "\"use flow\";\nconst s = \"use flow\";\nf();\n\"use flow\";\nfunction g() {\n  \"use flow\";\n}\n",
+        );
+        assert!(directives(&program).is_empty());
+        assert_eq!(
+            types(&program),
+            [
+                "VariableDeclaration",
+                "ExpressionStatement",
+                "ExpressionStatement",
+                "FunctionDeclaration"
+            ]
+        );
+        assert_eq!(
+            program["body"][0]["declarations"][0]["init"]["value"],
+            "use flow"
+        );
+        assert_eq!(program["body"][2]["expression"]["value"], "use flow");
+        assert_eq!(
+            program["body"][3]["body"]["body"][0]["directive"],
+            "use flow"
+        );
+    }
+
+    #[test]
+    fn an_escaped_spelling_is_not_the_directive() {
+        let program = stripped("\"use\\x20flow\";\nexport const x = 1;\n");
+        assert_eq!(directives(&program), ["use\\x20flow"]);
     }
 
     #[test]

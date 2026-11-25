@@ -391,6 +391,78 @@ mod tests {
         assert!(out.map.is_some());
     }
 
+    /// The module's directive prologue, as the emitted code spells it.
+    fn prologue(code: &str) -> Vec<&str> {
+        code.lines()
+            .map(str::trim)
+            .take_while(|line| line.starts_with('"') || line.starts_with('\''))
+            .collect()
+    }
+
+    #[test]
+    fn the_source_mode_directive_is_not_in_the_output_and_use_client_stays_first() {
+        for source in [
+            "\"use client\";\n\"use flow\";\nexport component Note(text: string) { return <p>{text}</p>; }\n",
+            "\"use flow\";\n\"use client\";\nexport component Note(text: string) { return <p>{text}</p>; }\n",
+            "'use flow';\n'use client';\nexport component Note(text: string) { return <p>{text}</p>; }\n",
+            "\"use js\";\n\"use client\";\nexport function Note() { return <p />; }\n",
+        ] {
+            let out = transform(source, &TransformOptions::new("Note.js")).unwrap();
+            assert_eq!(prologue(&out.code), ["\"use client\";"], "{}", out.code);
+            assert!(!out.code.contains("use flow"), "{}", out.code);
+            assert!(!out.code.contains("use js"), "{}", out.code);
+        }
+    }
+
+    #[test]
+    fn use_strict_survives_beside_the_source_mode() {
+        let source = "\"use strict\";\n\"use flow\";\n\"use server\";\nexport async function save(id: string) {}\n";
+        let out = transform(source, &TransformOptions::new("save.js")).unwrap();
+        assert_eq!(
+            prologue(&out.code),
+            ["\"use strict\";", "\"use server\";"],
+            "{}",
+            out.code
+        );
+        assert!(!out.code.contains("use flow"), "{}", out.code);
+    }
+
+    #[test]
+    fn the_words_as_a_string_are_a_string() {
+        let source = "\"use flow\";\nexport const s: string = \"use flow\";\n";
+        let out = transform(source, &TransformOptions::new("s.js")).unwrap();
+        assert!(prologue(&out.code).is_empty(), "{}", out.code);
+        assert!(
+            out.code.contains("export const s = \"use flow\";"),
+            "{}",
+            out.code
+        );
+    }
+
+    #[test]
+    fn the_map_still_points_at_the_line_below_the_removed_directive() {
+        let source = "\"use client\";\n\"use flow\";\n//\n// The answer.\nexport const answer: number = 42;\n";
+        let out = transform(source, &TransformOptions::new("answer.js")).unwrap();
+        let map = oxc_sourcemap::SourceMap::from_json_string(out.map.as_deref().unwrap()).unwrap();
+        let line = out
+            .code
+            .lines()
+            .position(|line| line.contains("answer"))
+            .and_then(|line| u32::try_from(line).ok())
+            .unwrap();
+        let mapped: Vec<u32> = map
+            .get_tokens()
+            .filter(|token| token.get_dst_line() == line)
+            .map(|token| token.get_src_line())
+            .collect();
+        assert!(!mapped.is_empty(), "{}", out.code);
+        assert!(
+            mapped.iter().all(|&src| src == 4),
+            "{mapped:?}\n{}",
+            out.code
+        );
+    }
+
     #[test]
     fn a_syntax_error_names_its_position() {
         let error = transform("const a = ;\n", &TransformOptions::new("x.js")).unwrap_err();
