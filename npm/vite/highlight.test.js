@@ -32,8 +32,13 @@ import { createHighlighter } from "shiki";
 // public surface — `package_surface.rs` enforces that, with one allowlisted
 // exception for the native bridge — and a test is not a reason to widen it.
 // This file is inside the repository, so it can just say where the module is.
-import { grammarFiles, isGrammarFile, loadGrammar } from "./internal/grammar-files.js";
-import { highlightPlugin } from "./internal/highlight.js";
+import {
+  grammarFiles,
+  isGrammarFile,
+  loadGrammar,
+  refuseShippedScopes,
+} from "./internal/grammar-files.js";
+import { highlightPlugin, reloadGrammars } from "./internal/highlight.js";
 import { shimFlowGrammar } from "./internal/flow-grammar-shim.js";
 import { FLOW_MARK, KEYWORD, TYPE, markLine, markLines } from "./internal/flow-keywords.js";
 
@@ -637,6 +642,63 @@ describe("grammar files in highlight.langs", () => {
   it("refuses a grammar for a language Shiki already ships", () => {
     const root = projectWith({ "js.json": { scopeName: "source.js", patterns: [] } });
     expect(() => loadGrammar("js.json", root)).toThrow(/Shiki already ships/);
+  });
+
+  it("refuses a grammar whose scope is one Shiki ships under another name", async () => {
+    // `basic` is no language's name, so the id check lets it through; the
+    // scope is Shiki's HTML grammar's, which every grammar embedding HTML
+    // would then resolve to whichever of the two was registered last.
+    const root = projectWith({ "page.json": { scopeName: "text.html.basic", patterns: [] } });
+    const grammar = loadGrammar("page.json", root);
+    await expect(refuseShippedScopes([grammar], ["page.json"], root)).rejects.toThrow(
+      /"page\.json" .*the scope `text\.html\.basic`, which Shiki already ships as `html`/,
+    );
+    await expect(
+      refuseShippedScopes(
+        [loadGrammar("acme.json", projectWith({ "acme.json": ACME }))],
+        ["acme.json"],
+        root,
+      ),
+    ).resolves.toBe(undefined);
+  });
+
+  it("colours with an edited grammar once it is reloaded, without a restart", async () => {
+    // Shiki's singleton highlighter registers a language once per name and
+    // keeps it, so a grammar edited during `uf dev` kept its old patterns.
+    // The plugin owns its highlighter, and `reloadGrammars` replaces it.
+    const root = projectWith({ "acme.json": ACME });
+    const [plugin, options] = highlightPlugin({ langs: ["./acme.json"] }, { root });
+    const transform = plugin.call({}, options);
+    const keywordStyle = async () => {
+      const tree = {
+        type: "root",
+        children: [
+          {
+            type      : "element",
+            tagName   : "pre",
+            properties: {},
+            children: [
+              {
+                type      : "element",
+                tagName   : "code",
+                properties: { className: ["language-acme"] },
+                children  : [{ type: "text", value: "rule" }],
+              },
+            ],
+          },
+        ],
+      };
+      await transform(tree);
+      return JSON.stringify(tree).match(/"style":"([^"]*)"[^}]*\}[^}]*"value":"rule"/)?.[1] ?? "";
+    };
+    const before = await keywordStyle();
+    fs.writeFileSync(
+      path.join(root, "acme.json"),
+      JSON.stringify({ ...ACME, patterns: ACME.patterns.slice(1) }),
+    );
+    reloadGrammars(options);
+    const after = await keywordStyle();
+    expect(before).not.toBe(after);
   });
 
   it("fails the plugin with the path rather than leaving the fences grey", () => {

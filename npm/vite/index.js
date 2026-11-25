@@ -68,7 +68,7 @@ import { inDevCacheScope } from "./internal/dev-cache.js";
 import { emit, reportRenderError, errorEvent } from "./internal/events.js";
 import remarkFrontmatterExport from "./internal/frontmatter.js";
 import { grammarFiles } from "./internal/grammar-files.js";
-import { highlightPlugin } from "./internal/highlight.js";
+import { highlightPlugin, reloadGrammars } from "./internal/highlight.js";
 import { moduleId } from "./internal/module-graph.js";
 import { styleModuleSource } from "./internal/style-module.js";
 import remarkOxContent from "./internal/markdown.js";
@@ -1549,9 +1549,8 @@ function mdxPlugin(markdown, root) {
   const highlight = highlightPlugin(mdxConfig.highlight, { root });
   // Grammar files the project brings are read once, above, into the MDX
   // compiler's options. A change to one is a change to how every page is
-  // compiled, the way a change to `uf.config.js` is, so the dev server
-  // restarts rather than serving pages coloured by the grammar it started
-  // with.
+  // compiled, so the dev server re-reads them and recompiles every page
+  // rather than serving pages coloured by the grammar it started with.
   const grammars = highlight == null ? [] : grammarFiles(mdxConfig.highlight, root);
   const rehypePlugins = highlight == null ? [rehypeSlug] : [rehypeSlug, highlight];
 
@@ -1570,10 +1569,24 @@ function mdxPlugin(markdown, root) {
     ...(grammars.length === 0
       ? {}
       : {
+          // A grammar edit re-reads the grammars into the plugin's own
+          // highlighter and recompiles the pages, without restarting the
+          // server: a restart replaces the watcher, and with it the listeners
+          // the driver attached for sources and env files.
           configureServer(server) {
             server.watcher.add(grammars);
             server.watcher.on("change", (file) => {
-              if (grammars.includes(path.resolve(file))) server.restart();
+              if (!grammars.includes(path.resolve(file))) return;
+              try {
+                reloadGrammars(highlight[1]);
+              } catch (error) {
+                server.config.logger.error(error?.message ?? String(error));
+                return;
+              }
+              for (const environment of Object.values(server.environments ?? {})) {
+                environment.moduleGraph.invalidateAll();
+              }
+              server.ws.send({ type: "full-reload" });
             });
           },
         }),

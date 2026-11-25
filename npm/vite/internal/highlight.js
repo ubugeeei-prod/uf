@@ -41,10 +41,11 @@
 // grammar recognises, so there was nothing to copy from. A class moves the
 // decision to CSS, which is where the theme's colours already live.
 
-import rehypeShiki from "@shikijs/rehype";
+import rehypeShikiFromHighlighter from "@shikijs/rehype/core";
+import { createHighlighter } from "shiki";
 
 import { shimFlowGrammar } from "./flow-grammar-shim.js";
-import { isGrammarFile, loadGrammar } from "./grammar-files.js";
+import { isGrammarFile, loadGrammar, refuseShippedScopes } from "./grammar-files.js";
 import { FLOW_MARK, KEYWORD, TYPE, markLines } from "./flow-keywords.js";
 
 /**
@@ -161,6 +162,12 @@ function flowSyntax() {
  * that is missing or is not a grammar fails the build with its path rather
  * than leaving its fences grey.
  *
+ * The highlighter is the plugin's own rather than Shiki's process-wide
+ * singleton, which registers a language once per name and keeps it: a grammar
+ * file edited during `uf dev` would otherwise go on colouring with the
+ * patterns it had when the server started. `reloadGrammars` re-reads the
+ * files and replaces it.
+ *
  * @param {{enabled?: boolean, themes?: {light?: string, dark?: string}, langs?: string[]}} options
  * @param {{root?: string}} [context]
  */
@@ -177,20 +184,82 @@ export function highlightPlugin(options, context = {}) {
   };
   const root = context.root ?? process.cwd();
   const named = (config.langs ?? []).filter((entry) => !isGrammarFile(entry));
-  const files = (config.langs ?? []).filter(isGrammarFile).map((entry) => loadGrammar(entry, root));
+  const entries = (config.langs ?? []).filter(isGrammarFile);
+  const files = entries.map((entry) => loadGrammar(entry, root));
   const langs = [...new Set([...DEFAULT_LANGS, ...named]), ...files];
 
-  return [
-    rehypeShiki,
-    {
-      themes,
-      langs,
-      langAlias   : ALIASES,
-      defaultColor: false,
-      // A fence naming a language Shiki does not have should render as plain
-      // code, not fail the build.
-      fallbackLanguage: "text",
-      transformers    : [flowSyntax()],
-    },
-  ];
+  const shikiOptions = {
+    themes,
+    langs,
+    langAlias   : ALIASES,
+    defaultColor: false,
+    // A fence naming a language Shiki does not have should render as plain
+    // code, not fail the build.
+    fallbackLanguage: "text",
+    transformers    : [flowSyntax()],
+  };
+  OWNED.set(shikiOptions, { entries, root, handler: null, highlighter: null });
+
+  return [rehypeOwnedShiki, shikiOptions];
+}
+
+/**
+ * What each plugin instance owns, by the options object it was given: the
+ * grammar files it reads, and the highlighter built from them.
+ */
+const OWNED = new WeakMap();
+
+/**
+ * Re-read the grammar files a plugin instance was configured with, and build
+ * its highlighter afresh on the next page it compiles.
+ *
+ * Throws, naming the file, when one no longer reads as a grammar; the
+ * previous highlighter is kept in that case, so the pages still compile.
+ *
+ * @param {Object} options the options `highlightPlugin` returned
+ */
+export function reloadGrammars(options) {
+  const owned = OWNED.get(options);
+  if (owned == null) {
+    return;
+  }
+  const grammars = owned.entries.map((entry) => loadGrammar(entry, owned.root));
+  options.langs = [...options.langs.filter((lang) => typeof lang !== "object"), ...grammars];
+  owned.handler = null;
+}
+
+/**
+ * The rehype plugin: Shiki's own transform, over a highlighter this instance
+ * owns and builds on the first page it is asked to colour.
+ */
+function rehypeOwnedShiki(options) {
+  const processor = this;
+  return async (tree) => {
+    const owned = OWNED.get(options);
+    if (owned.handler == null) {
+      const previous = owned.highlighter;
+      owned.handler = ownHighlighter(options, owned).then((highlighter) => {
+        owned.highlighter = highlighter;
+        previous?.dispose();
+        return rehypeShikiFromHighlighter.call(processor, highlighter, options);
+      });
+      // A handler that failed is not kept: the next page asks again, so a
+      // grammar fixed in place is picked up without a restart.
+      owned.handler.catch(() => {
+        owned.handler = null;
+      });
+    }
+    const handler = await owned.handler;
+    return handler(tree);
+  };
+}
+
+async function ownHighlighter(options, owned) {
+  const grammars = options.langs.filter((lang) => typeof lang === "object");
+  await refuseShippedScopes(grammars, owned.entries, owned.root);
+  return createHighlighter({
+    themes   : Object.values(options.themes),
+    langs    : options.langs,
+    langAlias: options.langAlias,
+  });
 }

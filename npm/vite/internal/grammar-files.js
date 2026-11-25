@@ -29,7 +29,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { bundledLanguagesInfo } from "shiki";
+import { bundledLanguages, bundledLanguagesInfo } from "shiki";
 
 /** A fence-shaped word: what a reader types after the backticks. */
 const FENCE_WORD = /^[a-z0-9][a-z0-9_+#.-]*$/;
@@ -69,8 +69,7 @@ export function grammarFiles(options, root) {
  */
 export function loadGrammar(entry, root) {
   const file = path.resolve(root, entry);
-  const refuse = (reason) =>
-    new Error(`uf: app.builtins.markdown.mdx.highlight.langs: "${entry}" (${file}) ${reason}`);
+  const refuse = (reason) => refusal(entry, root, reason);
 
   let source;
   try {
@@ -125,4 +124,64 @@ export function loadGrammar(entry, root) {
   ];
 
   return { ...grammar, name: id, aliases };
+}
+
+/** The error a grammar entry is refused with, naming it as written and as resolved. */
+function refusal(entry, root, reason) {
+  return new Error(
+    `uf: app.builtins.markdown.mdx.highlight.langs: "${entry}" (${path.resolve(root, entry)}) ${reason}`,
+  );
+}
+
+/**
+ * Every scope name Shiki ships, with the language it belongs to.
+ *
+ * Read by loading every bundled language, which is a fraction of a second
+ * and done at most once per process, and only for a project that brings a
+ * grammar file.
+ */
+let shippedScopes /*: ?Promise<Map<string, string>> */ = null;
+
+function shippedScopeNames() {
+  shippedScopes ??= (async () => {
+    const scopes = new Map();
+    for (const load of new Set(Object.values(bundledLanguages))) {
+      for (const registration of (await load()).default) {
+        if (!scopes.has(registration.scopeName)) {
+          scopes.set(registration.scopeName, registration.name);
+        }
+      }
+    }
+    return scopes;
+  })();
+  return shippedScopes;
+}
+
+/**
+ * Refuse a grammar file whose `scopeName` is one Shiki already ships.
+ *
+ * The id check in `loadGrammar` reads only the last segment, and a scope such
+ * as `text.html.basic` ends in a word no language is called. Registered beside
+ * Shiki's own HTML grammar it would share that grammar's scope, and every
+ * grammar that embeds HTML would pick up whichever of the two came last.
+ *
+ * @param {$ReadOnlyArray<{scopeName: string}>} grammars the loaded grammars, in `entries` order
+ * @param {$ReadOnlyArray<string>} entries the `langs` entries they came from
+ * @param {string} root the project root the entries are relative to
+ */
+export async function refuseShippedScopes(grammars, entries, root) {
+  if (grammars.length === 0) {
+    return;
+  }
+  const scopes = await shippedScopeNames();
+  grammars.forEach((grammar, index) => {
+    const language = scopes.get(grammar.scopeName);
+    if (language != null) {
+      throw refusal(
+        entries[index],
+        root,
+        `has the scope \`${grammar.scopeName}\`, which Shiki already ships as \`${language}\`; list "${language}" in \`langs\` instead of a file`,
+      );
+    }
+  });
 }
