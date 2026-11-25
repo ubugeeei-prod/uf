@@ -24,6 +24,12 @@ A PR also runs the release-only suites it can break (#1434), chosen by
   saves snapshots. Compiling jobs use separate target disks. Fresh disks can
   restore the previous Actions cache without pruning workspace crates.
 - Cargo checks contents instead of checkout timestamps on the pinned nightly.
+- Toolchain, Clippy, Test and Upstream typecheck compile this checkout's
+  crates with rustc's parallel frontend at 8 threads: they set
+  `frontend-jobs: "8"` on `.github/actions/rust-cache`, which routes Cargo
+  through `tools/ci/rustc-wrapper.sh`. Bench compile measures, and Upstream
+  Flow is the moving-nightly canary, so both keep the default of 1. CI does
+  not use kache. See "Build speed" in `docs/rust-performance.md`.
 - The Rust suite runs once with all features. Another job compiles disabled
   default features. Benchmark compile checks use `ci`; release archives use
   `dist`.
