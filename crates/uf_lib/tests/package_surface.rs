@@ -719,6 +719,17 @@ fn shipped_package_contains_no_flow_declaration_files() {
     );
 }
 
+/// The tree-sitter grammars `@uniflowed/vite` highlights Markdown fences with:
+/// one WebAssembly parser and one highlight query per language, plus the
+/// license and provenance of the package they are vendored from. They are
+/// data the highlighter loads at run time, not modules, so they are the one
+/// non-module payload a package ships.
+fn is_vendored_grammar_file(path: &Utf8Path) -> bool {
+    path.starts_with("vite/internal/grammars")
+        && (matches!(path.extension(), Some("wasm" | "scm"))
+            || matches!(path.file_name(), Some("LICENSE" | "SOURCES.txt")))
+}
+
 #[test]
 fn shipped_package_contains_only_modules_and_manifests() {
     let offenders = shipped_files()
@@ -726,6 +737,7 @@ fn shipped_package_contains_only_modules_and_manifests() {
         .filter(|path| {
             !matches!(path.extension(), Some("js" | "cjs"))
                 && path.file_name() != Some("package.json")
+                && !is_vendored_grammar_file(path)
         })
         .collect::<Vec<_>>();
 
