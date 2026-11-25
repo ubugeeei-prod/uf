@@ -47,8 +47,9 @@
 #     five `'none'` directives must still be `'none'`. Those are the promises
 #     the prose in the worker makes, and prose is not enforcement.
 #
-# `style-src` is where the site pays for Shiki, which colours every token of
-# every code sample with a `style` attribute — 9,602 of them across the site.
+# `style-src` is where the site pays for syntax highlighting, which colours
+# every token of every code sample with a `style` attribute — 9,602 of them
+# across the site.
 # That is `'unsafe-inline'` on `style-src` and it is checked *for*: this asserts
 # the site still has such attributes, so that if the highlighter ever stops
 # emitting them somebody is told the exemption is no longer bought.
@@ -445,7 +446,7 @@ async function main() {
     finding(
       workerFile,
       "`style-src` allows inline styles and nothing in the build uses one. The exemption " +
-        "was bought for Shiki's per-token `style` attributes; if those are gone, so is the " +
+        "was bought for the highlighter's per-token `style` attributes; if those are gone, so is the " +
         "reason",
     );
   }

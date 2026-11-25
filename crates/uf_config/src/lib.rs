@@ -1583,15 +1583,16 @@ pub enum ConfigError {
     /// A `app.builtins.markdown.mdx.highlight.langs` entry that names a
     /// grammar file uf cannot use.
     ///
-    /// An entry with a `/` in it, or one ending in `.json`, is a TextMate
-    /// grammar read from the project root rather than one of Shiki's language
-    /// names. Refused here, where the config is read, so `uf check` names the
+    /// An entry with a `/` in it, or one ending in `.wasm`, is a tree-sitter
+    /// grammar read from the project root rather than one of the languages uf
+    /// ships. Refused here, where the config is read, so `uf check` names the
     /// file — rather than `uf build` finishing with every fence in that
     /// language left as plain text, or failing inside the MDX compiler.
     #[error(
         "{path}: app.builtins.markdown.mdx.highlight.langs names \"{entry}\" ({file}), \
-         which {reason}. A path in `langs` is a TextMate grammar in JSON, read from \
-         the project root; a name without a `/` is one of Shiki's languages."
+         which {reason}. A path in `langs` is a tree-sitter grammar: a `.wasm` \
+         module read from the project root, with a `<name>.highlights.scm` query \
+         beside it. A name without a `/` is one of the languages uf ships."
     )]
     MdxHighlightGrammar {
         path: Utf8PathBuf,
@@ -2096,16 +2097,16 @@ fn check_mdx(path: &Utf8Path, mdx: &MdxConfig) -> Result<(), ConfigError> {
 }
 
 /// Whether a `highlight.langs` entry names a grammar file rather than one of
-/// Shiki's languages: no language name Shiki ships contains a `/` or ends in
-/// `.json`, so the two spellings cannot be confused. The same rule as
+/// the languages uf ships: no such name contains a `/` or ends in `.wasm`, so
+/// the two spellings cannot be confused. The same rule as
 /// `npm/vite/internal/grammar-files.js`, which reads the file.
 fn is_grammar_file(entry: &str) -> bool {
-    entry.contains('/') || entry.ends_with(".json")
+    entry.contains('/') || entry.ends_with(".wasm")
 }
 
-/// A grammar file has to exist, be JSON, and carry the two keys a TextMate
-/// grammar cannot do without: `scopeName`, which also names the fence, and
-/// `patterns`.
+/// A grammar file has to exist, start with the WebAssembly magic, and have a
+/// non-empty `<name>.highlights.scm` beside it. The module is not parsed here:
+/// a wasm that is not a grammar fails in the build, which names the file.
 fn check_grammar_file(path: &Utf8Path, root: &Utf8Path, entry: &str) -> Result<(), ConfigError> {
     let file = root.join(entry.strip_prefix("./").unwrap_or(entry));
     let refuse = |reason: String| ConfigError::MdxHighlightGrammar {
@@ -2114,8 +2115,8 @@ fn check_grammar_file(path: &Utf8Path, root: &Utf8Path, entry: &str) -> Result<(
         file: file.clone(),
         reason,
     };
-    let source = match std::fs::read_to_string(&file) {
-        Ok(source) => source,
+    let bytes = match std::fs::read(&file) {
+        Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Err(refuse(String::from("does not exist")));
         }
@@ -2125,23 +2126,33 @@ fn check_grammar_file(path: &Utf8Path, root: &Utf8Path, entry: &str) -> Result<(
             ))));
         }
     };
-    let grammar: serde_json::Value = serde_json::from_str(&source).map_err(|error| {
-        refuse(uf_infra::into_string(uf_infra::cstr!(
-            "is not JSON: {error}"
-        )))
-    })?;
-    let Some(object) = grammar.as_object() else {
-        return Err(refuse(String::from("is not a TextMate grammar object")));
-    };
-    match object.get("scopeName").and_then(serde_json::Value::as_str) {
-        Some(scope) if !scope.is_empty() => {}
-        _ => return Err(refuse(String::from("has no `scopeName`"))),
+    if !bytes.starts_with(b"\0asm") {
+        return Err(refuse(String::from(
+            "is not a tree-sitter grammar: it does not start with the WebAssembly magic",
+        )));
     }
-    if !object
-        .get("patterns")
-        .is_some_and(serde_json::Value::is_array)
-    {
-        return Err(refuse(String::from("has no `patterns`")));
+    let Some(stem) = file.file_stem() else {
+        return Err(refuse(String::from(
+            "is not a tree-sitter grammar: it has no name",
+        )));
+    };
+    let query_name = format!("{stem}.highlights.scm");
+    let query = file.with_file_name(&query_name);
+    let source = match std::fs::read_to_string(&query) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(refuse(uf_infra::into_string(uf_infra::cstr!(
+                "has no highlight query at {query_name}"
+            ))));
+        }
+        Err(error) => {
+            return Err(refuse(uf_infra::into_string(uf_infra::cstr!(
+                "could not be read: {error}"
+            ))));
+        }
+    };
+    if source.trim().is_empty() {
+        return Err(refuse(String::from("has an empty highlight query")));
     }
     Ok(())
 }

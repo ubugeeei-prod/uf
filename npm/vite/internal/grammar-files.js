@@ -1,79 +1,88 @@
 // @noflow
 //
-// TextMate grammars a project brings itself, for fenced code in a language
-// Shiki does not ship.
+// Tree-sitter grammars a project brings itself, for fenced code in a language
+// uf does not ship.
 //
 // `app.builtins.markdown.mdx.highlight.langs` names grammars to load beside the
-// default ones. A name is one of Shiki's; a project whose documentation is
+// ones uf highlights. A name is one of those. A project whose documentation is
 // about its own language had no way to colour it, and every fence in that
-// language came out as the `text` fallback. So an entry may also be a file: a
-// TextMate grammar in JSON, the format every editor extension already ships,
-// read relative to the project root.
+// language came out as plain text. So an entry may also be a file: a
+// tree-sitter grammar compiled to WebAssembly, read relative to the project
+// root, with its highlight query in the file beside it.
 //
 // # What an entry is
 //
-// A path, when it contains a `/` or ends in `.json`; a language name
-// otherwise. No language Shiki ships has either in its name, so the two
-// cannot be confused, and `./` is the spelling the reference shows.
+// A path, when it contains a `/` or ends in `.wasm`; a language name
+// otherwise. No language uf ships has either in its name, so the two cannot
+// be confused, and `./` is the spelling the reference shows.
 //
 // # Which fence it colours
 //
-// A grammar file says what it is in `scopeName` (`source.foo`), and the fence
-// is the last segment of that (`foo`). `name` is a display name in most
-// editor grammars (`Foo Language`), so it is an alias only when it is already
-// a fence-shaped word. `aliases` and `fileTypes` (`["foo", ".fooz"]`) are
-// aliases too. An alias that is one of Shiki's own languages is dropped rather
-// than allowed to take that language over: a grammar listing `js` among its
-// file types must not recolour every JavaScript sample on the site.
+// The file's own name. `acme.wasm` colours `acme`, and `tree-sitter-acme.wasm`
+// colours `acme` too: the `tree-sitter-` packages use is not part of the
+// language. The query is `<stem>.highlights.scm` in the same directory, and
+// the stem keeps that prefix, so the query for `tree-sitter-acme.wasm` is
+// `tree-sitter-acme.highlights.scm`. A name uf already highlights is refused:
+// a file must not take over JavaScript.
 
 import fs from "node:fs";
 import path from "node:path";
 
-import { bundledLanguages, bundledLanguagesInfo } from "shiki";
+import { shippedNames } from "./grammars.js";
 
 /** A fence-shaped word: what a reader types after the backticks. */
 const FENCE_WORD = /^[a-z0-9][a-z0-9_+#.-]*$/;
 
-/** Every id and alias Shiki ships, which a grammar file may not claim. */
-const SHIPPED = new Set(bundledLanguagesInfo.flatMap((info) => [info.id, ...(info.aliases ?? [])]));
+/** The four bytes every WebAssembly module starts with. */
+const WASM_MAGIC = [0x00, 0x61, 0x73, 0x6d];
 
 /**
  * Whether a `highlight.langs` entry names a grammar file rather than one of
- * Shiki's languages.
+ * the languages uf ships.
  *
  * @param {string} entry
  */
 export function isGrammarFile(entry) {
-  return entry.includes("/") || entry.endsWith(".json");
+  return entry.includes("/") || entry.endsWith(".wasm");
 }
 
 /**
- * The absolute paths of the grammar files a config names, in order.
+ * The absolute paths a dev server should watch for one grammar entry: the
+ * module, and the highlight query beside it. A change to either is a change
+ * to how every page is coloured.
  *
  * @param {{langs?: string[]} | undefined} options
  * @param {string} root
  */
 export function grammarFiles(options, root) {
-  return (options?.langs ?? []).filter(isGrammarFile).map((entry) => path.resolve(root, entry));
+  const files = [];
+  for (const entry of options?.langs ?? []) {
+    if (!isGrammarFile(entry)) continue;
+    const wasm = path.resolve(root, entry);
+    files.push(wasm, queryFile(wasm));
+  }
+  return files;
 }
 
 /**
- * Read one grammar file into the registration Shiki takes in `langs`.
+ * Read one grammar file into the registration the highlighter loads.
  *
  * Throws an error naming the entry as written and the file it resolved to,
  * because a missing grammar would otherwise be a page of grey code and no
- * message at all.
+ * message at all. The bytes are checked for the WebAssembly magic and the
+ * query for being present; that the bytes are a grammar tree-sitter can load
+ * is the build's question, asked when the module is compiled.
  *
  * @param {string} entry the `langs` entry, as written in `uf.config.js`
  * @param {string} root the project root it is relative to
  */
 export function loadGrammar(entry, root) {
   const file = path.resolve(root, entry);
-  const refuse = (reason) => refusal(entry, root, reason);
+  const refuse = (reason) => grammarError(entry, root, reason);
 
-  let source;
+  let wasm;
   try {
-    source = fs.readFileSync(file, "utf8");
+    wasm = fs.readFileSync(file);
   } catch (error) {
     throw refuse(
       error?.code === "ENOENT"
@@ -81,107 +90,55 @@ export function loadGrammar(entry, root) {
         : `could not be read: ${error?.message ?? error}`,
     );
   }
-  let grammar;
+  if (!isWasm(wasm)) {
+    throw refuse("is not a tree-sitter grammar: it does not start with the WebAssembly magic");
+  }
+
+  const name = path
+    .basename(file, ".wasm")
+    .replace(/^tree-sitter-/, "")
+    .toLowerCase();
+  if (!FENCE_WORD.test(name)) {
+    throw refuse(`names \`${name}\`, which cannot be a fence language`);
+  }
+  if (shippedNames().has(name)) {
+    throw refuse(
+      `names the language \`${name}\`, which uf already highlights; list "${name}" in \`langs\` instead of a file`,
+    );
+  }
+
+  const queryPath = queryFile(file);
+  let query;
   try {
-    grammar = JSON.parse(source);
+    query = fs.readFileSync(queryPath, "utf8");
   } catch (error) {
-    throw refuse(`is not JSON: ${error?.message ?? error}`);
-  }
-  if (grammar == null || typeof grammar !== "object" || Array.isArray(grammar)) {
-    throw refuse("is not a TextMate grammar: it is not an object");
-  }
-  if (typeof grammar.scopeName !== "string" || grammar.scopeName === "") {
-    throw refuse("is not a TextMate grammar: it has no `scopeName`");
-  }
-  if (!Array.isArray(grammar.patterns)) {
-    throw refuse("is not a TextMate grammar: it has no `patterns`");
-  }
-
-  const id = grammar.scopeName.split(".").pop().toLowerCase();
-  if (!FENCE_WORD.test(id)) {
     throw refuse(
-      `has the scope \`${grammar.scopeName}\`, whose last segment \`${id}\` cannot be a fence language`,
+      error?.code === "ENOENT"
+        ? `has no highlight query at ${path.basename(queryPath)}`
+        : `could not be read: ${error?.message ?? error}`,
     );
   }
-  if (SHIPPED.has(id)) {
-    throw refuse(
-      `names the language \`${id}\`, which Shiki already ships; list "${id}" in \`langs\` instead of a file`,
-    );
+  if (query.trim() === "") {
+    throw refuse(`has an empty highlight query (${path.basename(queryPath)})`);
   }
 
-  const candidates = [
-    ...(Array.isArray(grammar.aliases) ? grammar.aliases : []),
-    ...(Array.isArray(grammar.fileTypes) ? grammar.fileTypes : []),
-    typeof grammar.name === "string" ? grammar.name : "",
-  ];
-  const aliases = [
-    ...new Set(
-      candidates
-        .filter((alias) => typeof alias === "string")
-        .map((alias) => alias.replace(/^\./, "").toLowerCase())
-        .filter((alias) => alias !== id && FENCE_WORD.test(alias) && !SHIPPED.has(alias)),
-    ),
-  ];
-
-  return { ...grammar, name: id, aliases };
+  return { name, wasm, query, queryFile: queryPath, entry, root };
 }
 
 /** The error a grammar entry is refused with, naming it as written and as resolved. */
-function refusal(entry, root, reason) {
+export function grammarError(entry, root, reason) {
   return new Error(
     `uf: app.builtins.markdown.mdx.highlight.langs: "${entry}" (${path.resolve(root, entry)}) ${reason}`,
   );
 }
 
-/**
- * Every scope name Shiki ships, with the language it belongs to.
- *
- * Read by loading every bundled language, which is a fraction of a second
- * and done at most once per process, and only for a project that brings a
- * grammar file.
- */
-let shippedScopes /*: ?Promise<Map<string, string>> */ = null;
-
-function shippedScopeNames() {
-  shippedScopes ??= (async () => {
-    const scopes = new Map();
-    for (const load of new Set(Object.values(bundledLanguages))) {
-      for (const registration of (await load()).default) {
-        if (!scopes.has(registration.scopeName)) {
-          scopes.set(registration.scopeName, registration.name);
-        }
-      }
-    }
-    return scopes;
-  })();
-  return shippedScopes;
+/** `<stem>.highlights.scm` beside a wasm module. The stem keeps `tree-sitter-`. */
+function queryFile(wasmFile) {
+  const stem = path.basename(wasmFile, ".wasm");
+  return path.join(path.dirname(wasmFile), `${stem}.highlights.scm`);
 }
 
-/**
- * Refuse a grammar file whose `scopeName` is one Shiki already ships.
- *
- * The id check in `loadGrammar` reads only the last segment, and a scope such
- * as `text.html.basic` ends in a word no language is called. Registered beside
- * Shiki's own HTML grammar it would share that grammar's scope, and every
- * grammar that embeds HTML would pick up whichever of the two came last.
- *
- * @param {$ReadOnlyArray<{scopeName: string}>} grammars the loaded grammars, in `entries` order
- * @param {$ReadOnlyArray<string>} entries the `langs` entries they came from
- * @param {string} root the project root the entries are relative to
- */
-export async function refuseShippedScopes(grammars, entries, root) {
-  if (grammars.length === 0) {
-    return;
-  }
-  const scopes = await shippedScopeNames();
-  grammars.forEach((grammar, index) => {
-    const language = scopes.get(grammar.scopeName);
-    if (language != null) {
-      throw refusal(
-        entries[index],
-        root,
-        `has the scope \`${grammar.scopeName}\`, which Shiki already ships as \`${language}\`; list "${language}" in \`langs\` instead of a file`,
-      );
-    }
-  });
+/** Whether `bytes` open with the WebAssembly magic. */
+function isWasm(bytes) {
+  return WASM_MAGIC.every((byte, index) => bytes[index] === byte);
 }

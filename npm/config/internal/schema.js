@@ -416,8 +416,9 @@ export type UniflowedConfig = {
               readonly dark? : string,
             },
             // Grammars beyond the ones a uf project uses by default: a name
-            // Shiki ships (`"nix"`), or a path to a TextMate grammar in JSON,
-            // read from the project root (`"./grammars/foo.tmLanguage.json"`).
+            // uf ships (`"rust"`), or a path to a tree-sitter grammar compiled
+            // to WebAssembly, read from the project root
+            // (`"./grammars/acme.wasm"`), with `acme.highlights.scm` beside it.
             readonly langs?: $ReadOnlyArray<string>,
           },
         },

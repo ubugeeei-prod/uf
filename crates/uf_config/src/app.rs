@@ -330,12 +330,12 @@ pub struct HighlightConfig {
     pub enabled: bool,
     pub themes: HighlightThemes,
     /// Grammars to load beyond the ones a uf project uses by default: a
-    /// language name Shiki ships (`"nix"`), or a path to a TextMate grammar
-    /// in JSON, read from the project root (`"./grammars/foo.tmLanguage.json"`).
-    /// An entry with a `/` in it, or one ending in `.json`, is a path. A
-    /// grammar file colours the fence its `scopeName` ends in (`source.foo`
-    /// is `foo`), and is checked where the config is read; see
-    /// [`crate::ConfigError::MdxHighlightGrammar`].
+    /// language uf ships (`"rust"`), or a path to a tree-sitter grammar
+    /// compiled to WebAssembly, read from the project root
+    /// (`"./grammars/acme.wasm"`, with `acme.highlights.scm` beside it).
+    /// An entry with a `/` in it, or one ending in `.wasm`, is a path. The
+    /// fence is the file's name, and the file is checked where the config is
+    /// read; see [`crate::ConfigError::MdxHighlightGrammar`].
     pub langs: Vec<CompactString>,
 }
 
