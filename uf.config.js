@@ -1143,7 +1143,7 @@ export default defineConfig({
     // Cargo's own queries. See "Build speed" in `docs/rust-performance.md`.
     "rust:wrapper:test": {
       command: "tools/ci/test-rustc-wrapper.sh",
-      inputs : [
+      inputs: [
         "tools/ci/rustc-wrapper.sh",
         "tools/ci/parallel-frontend-env.sh",
         "tools/ci/test-rustc-wrapper.sh",
