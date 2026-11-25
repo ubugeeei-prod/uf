@@ -1575,11 +1575,12 @@ function mdxPlugin(markdown, root) {
           // the driver attached for sources and env files.
           configureServer(server) {
             server.watcher.add(grammars);
-            server.watcher.on("change", (file) => {
+            server.watcher.on("change", async (file) => {
               if (!grammars.includes(path.resolve(file))) return;
               try {
-                reloadGrammars(highlight[1]);
+                await reloadGrammars(highlight[1]);
               } catch (error) {
+                // The previous grammars and highlighter are still in place.
                 server.config.logger.error(error?.message ?? String(error));
                 return;
               }

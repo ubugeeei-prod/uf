@@ -213,17 +213,21 @@ const OWNED = new WeakMap();
  * Re-read the grammar files a plugin instance was configured with, and build
  * its highlighter afresh on the next page it compiles.
  *
- * Throws, naming the file, when one no longer reads as a grammar; the
- * previous highlighter is kept in that case, so the pages still compile.
+ * Every check a grammar is held to — that it reads as one, and that its scope
+ * is not one Shiki ships — runs before anything is replaced. A file that fails
+ * rejects the promise, naming it, and leaves the languages and the working
+ * highlighter as they were, so the pages still compile.
  *
  * @param {Object} options the options `highlightPlugin` returned
+ * @returns {Promise<void>}
  */
-export function reloadGrammars(options) {
+export async function reloadGrammars(options) {
   const owned = OWNED.get(options);
   if (owned == null) {
     return;
   }
   const grammars = owned.entries.map((entry) => loadGrammar(entry, owned.root));
+  await refuseShippedScopes(grammars, owned.entries, owned.root);
   options.langs = [...options.langs.filter((lang) => typeof lang !== "object"), ...grammars];
   owned.handler = null;
 }
@@ -254,12 +258,18 @@ function rehypeOwnedShiki(options) {
   };
 }
 
+/**
+ * Build the highlighter from one snapshot of the languages: the list checked
+ * is the list registered, even when `reloadGrammars` replaces `options.langs`
+ * while the check is awaited.
+ */
 async function ownHighlighter(options, owned) {
-  const grammars = options.langs.filter((lang) => typeof lang === "object");
+  const langs = options.langs;
+  const grammars = langs.filter((lang) => typeof lang === "object");
   await refuseShippedScopes(grammars, owned.entries, owned.root);
   return createHighlighter({
     themes   : Object.values(options.themes),
-    langs    : options.langs,
+    langs,
     langAlias: options.langAlias,
   });
 }

@@ -696,9 +696,20 @@ describe("grammar files in highlight.langs", () => {
       path.join(root, "acme.json"),
       JSON.stringify({ ...ACME, patterns: ACME.patterns.slice(1) }),
     );
-    reloadGrammars(options);
+    await reloadGrammars(options);
     const after = await keywordStyle();
     expect(before).not.toBe(after);
+
+    // A replacement that fails a check is refused before anything changes:
+    // the languages and the working highlighter stay as they were.
+    const langs = options.langs;
+    fs.writeFileSync(
+      path.join(root, "acme.json"),
+      JSON.stringify({ scopeName: "text.html.basic", patterns: [] }),
+    );
+    await expect(reloadGrammars(options)).rejects.toThrow(/Shiki already ships as `html`/);
+    expect(options.langs).toBe(langs);
+    expect(await keywordStyle()).toBe(after);
   });
 
   it("fails the plugin with the path rather than leaving the fences grey", () => {
