@@ -268,7 +268,7 @@ async function ownHighlighter(options, owned) {
   const grammars = langs.filter((lang) => typeof lang === "object");
   await refuseShippedScopes(grammars, owned.entries, owned.root);
   return createHighlighter({
-    themes   : Object.values(options.themes),
+    themes: Object.values(options.themes),
     langs,
     langAlias: options.langAlias,
   });
