@@ -2136,7 +2136,7 @@ fn check_grammar_file(path: &Utf8Path, root: &Utf8Path, entry: &str) -> Result<(
             "is not a tree-sitter grammar: it has no name",
         )));
     };
-    let query_name = format!("{stem}.highlights.scm");
+    let query_name = uf_infra::into_string(uf_infra::cstr!("{stem}.highlights.scm"));
     let query = file.with_file_name(&query_name);
     let source = match std::fs::read_to_string(&query) {
         Ok(source) => source,
