@@ -29,8 +29,9 @@ const SETUP_URL = "https://setup.uniflowed.dev";
 //     changes their bytes, and a hash that has gone stale means Suspense
 //     content that never appears. It fails in CI with the line to paste rather
 //     than in a browser nobody is watching.
-//   * `style-src 'self' 'unsafe-inline'` — Shiki colours every token of every
-//     code sample with a `style` attribute, and one page has 1,564 of them.
+//   * `style-src 'self' 'unsafe-inline'` — the highlighter colours every token
+//     of every code sample with a `style` attribute, and one page has 1,564 of
+//     them.
 //     Hashing 9,602 attribute values is not a policy anybody can maintain, and
 //     `style-src-attr` alone would fall back to `style-src` on a browser that
 //     does not implement it and take the colour away. A style attribute cannot

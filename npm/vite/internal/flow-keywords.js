@@ -433,10 +433,10 @@ export function markLines(lines) {
 /**
  * One line, read as if the block began there.
  *
- * Exported because it is where the decision is visible without starting Shiki:
- * give it the token split a grammar would produce and it says which words it
- * marked. `npm/vite/highlight.test.js` uses exactly that, and the splits
- * in it are the ones that had bugs.
+ * Exported because it is where the decision is visible without running a
+ * grammar: give it the token split a grammar would produce and it says which
+ * words it marked. `npm/vite/highlight.test.js` uses exactly that, and the
+ * splits in it are the ones that had bugs.
  */
 export function markLine(line) {
   return markLines([line])[0];
@@ -492,9 +492,9 @@ function split(line, text, marks) {
 /**
  * A slice of one token.
  *
- * `offset` is carried through for every piece, because Shiki and any other
- * transformer use it to map a token back to the source; a piece with the wrong
- * offset breaks anything that reads positions, such as line highlighting.
+ * `offset` is carried through for every piece, because a transformer uses it
+ * to map a token back to the source; a piece with the wrong offset breaks
+ * anything that reads positions, such as line highlighting.
  */
 function piece(token, content, at) {
   return {

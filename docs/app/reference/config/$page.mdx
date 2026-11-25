@@ -159,9 +159,9 @@ Wrangler; they are not valid `test.runtime` values.
 | `builtins.markdown.mdx.highlight.enabled` | `true` | Highlight fenced code during the build |
 | `builtins.markdown.mdx.enabled` | `true` | `false` turns uf's `.mdx` compilation off |
 | `builtins.markdown.mdx.jsxImportSource` | `"react"` | The package compiled MDX imports its JSX runtime from, as `<package>/jsx-runtime`. `"@uniflowed/jsx-runtime"`, which has no runtime in it, is refused |
-| `builtins.markdown.mdx.highlight.themes.light` | `"github-light"` | The Shiki theme for a reader who prefers light. A theme left out keeps its default |
-| `builtins.markdown.mdx.highlight.themes.dark` | `"github-dark-dimmed"` | The Shiki theme for a reader who prefers dark |
-| `builtins.markdown.mdx.highlight.langs` | `[]` | Grammars beyond the ones a uf project uses |
+| `builtins.markdown.mdx.highlight.themes.light` | `"github-light"` | The palette for a reader who prefers light. uf ships `github-light` and `github-dark-dimmed`; another name is refused when a fence is highlighted. A theme left out keeps its default |
+| `builtins.markdown.mdx.highlight.themes.dark` | `"github-dark-dimmed"` | The palette for a reader who prefers dark |
+| `builtins.markdown.mdx.highlight.langs` | `[]` | Grammars beyond the ones a uf project uses: a language uf ships (`"rust"`), or a path to a tree-sitter grammar compiled to WebAssembly, read from the project root (`"./grammars/acme.wasm"`, with `acme.highlights.scm` beside it) — see [custom grammars](#custom-grammars) |
 | `builtins.fonts.enabled` | `true` | Whether uf self-hosts an imported font. `false` leaves font imports to Vite |
 | `builtins.fonts.display` | `"swap"` | The `font-display` written into every `@font-face` uf generates |
 | `builtins.fonts.fallback` | `"Arial"` | The local face scaled into a metric-matched fallback. `"Arial"`, `"Times New Roman"` and `"Courier New"` are the faces uf has metrics for; any other name gets no fallback, and the build says so |
@@ -195,6 +195,41 @@ Wrangler; they are not valid `test.runtime` values.
 | `serverActions` | `true` | `false` stops `uf prepare` writing the types for `"use server"` exports |
 | `router.manifest` | `"router.js"` | Where the typed router module is generated, from the project root; native variants are named after it (`router.ios.js`) |
 | `router.nativeLinks` | none | The HTTPS links the iOS and Android apps claim: `{ origins, routes, iosAppIds, androidPackage, androidSha256 }`. `uf build` checks every claimed route exists on web and on both platforms, then writes `apple-app-site-association` and `assetlinks.json`. See [React Native](/guide/react-native) |
+
+### Custom grammars
+
+`builtins.markdown.mdx.highlight.langs` takes a language uf already highlights,
+or a path to a tree-sitter grammar: a `.wasm` module, read from the project
+root, with a highlight query beside it.
+
+```js fragment
+markdown: {
+  mdx: {
+    highlight: {
+      langs: ["./grammars/acme.wasm"],
+    },
+  },
+}
+```
+
+An entry with a `/` in it, or one ending in `.wasm`, is a path; anything else is
+a language name. The fence is the file's name with `.wasm` removed and a
+leading `tree-sitter-` dropped, so `acme.wasm` colours a fence labelled `acme`,
+and the query read beside it is `acme.highlights.scm`. A name uf already highlights
+cannot be claimed by a file. Those names are `javascript`, `json`, `css`,
+`html`, `bash`, `rust`, `yaml`, `toml`, `markdown` and `diff`, and the fence
+spellings `js`, `jsx`, `flow`, `sh`, `shell`, `shellscript`, `console`, `yml`,
+`md` and `mdx`.
+
+uf ships those languages and no others. A name it does not highlight fails the
+build; a bare name is not looked up as a file. The palettes uf can colour a
+fence with are `github-light` and `github-dark-dimmed`. Another theme name is
+kept on the config and refused when a fence is highlighted.
+
+The file is checked where the config is read: one that does not exist, does not
+start with the WebAssembly magic, or has no highlight query beside it — or an
+empty one — is an error naming it. `uf dev` re-reads the module and the query
+when either changes, and recompiles the pages, without restarting the server.
 
 ### router.redirects, router.rewrites and router.headers
 
