@@ -1740,30 +1740,30 @@ tbody tr:last-child :is(td, th) {
  * rather than the theme's background, so a code sample sits in the page
  * instead of on top of it.
  */
-.prose .shiki,
-.home-section .shiki {
+.prose .uf-highlight,
+.home-section .uf-highlight {
   background: var(--doc-code-ground) !important;
-  color: var(--shiki-light);
+  color: var(--uf-highlight-light);
 }
 
-.shiki span {
-  color: var(--shiki-light);
+.uf-highlight span {
+  color: var(--uf-highlight-light);
 }
 
 :root:not([data-theme="light"]) {
   @media (prefers-color-scheme: dark) {
-    .prose .shiki,
-    .home-section .shiki,
-    .shiki span {
-      color: var(--shiki-dark);
+    .prose .uf-highlight,
+    .home-section .uf-highlight,
+    .uf-highlight span {
+      color: var(--uf-highlight-dark);
     }
   }
 }
 
-:root[data-theme="dark"] .prose .shiki,
-:root[data-theme="dark"] .home-section .shiki,
-:root[data-theme="dark"] .shiki span {
-  color: var(--shiki-dark);
+:root[data-theme="dark"] .prose .uf-highlight,
+:root[data-theme="dark"] .home-section .uf-highlight,
+:root[data-theme="dark"] .uf-highlight span {
+  color: var(--uf-highlight-dark);
 }
 
 /*
@@ -1814,9 +1814,9 @@ tbody tr:last-child :is(td, th) {
   color: var(--doc-flow-type-dark) !important;
 }
 
-/* Shiki wraps each line in a span, so a long line has to be allowed to scroll
-   with the block rather than wrapping mid-token. */
-.shiki code {
+/* Each line is one span, so a long line has to be allowed to scroll with the
+   block rather than wrapping mid-token. */
+.uf-highlight code {
   display: block;
   width: max-content;
   min-width: 100%;

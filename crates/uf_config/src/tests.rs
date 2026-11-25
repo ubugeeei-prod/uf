@@ -1527,6 +1527,83 @@ fn mdx_highlighting_defaults_to_both_github_themes() {
     assert!(mdx.highlight.langs.is_empty());
 }
 
+/// A `highlight.langs` entry with a `/` in it is a tree-sitter grammar read
+/// from the project root, and the config is refused where it is read when the
+/// file cannot be one — so the error names the file rather than a build
+/// leaving every fence in that language as plain text.
+#[test]
+fn highlight_grammar_files_are_checked_where_the_config_is_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    let path = root.join("uf.config.js");
+    fs::create_dir_all(root.join("grammars")).unwrap();
+    fs::write(root.join("grammars/acme.wasm"), b"\0asmrest").unwrap();
+    fs::write(
+        root.join("grammars/acme.highlights.scm"),
+        "(identifier) @variable\n",
+    )
+    .unwrap();
+    fs::write(root.join("grammars/broken.wasm"), b"not wasm").unwrap();
+    fs::write(root.join("grammars/no-query.wasm"), b"\0asmrest").unwrap();
+    fs::write(root.join("grammars/empty.wasm"), b"\0asmrest").unwrap();
+    fs::write(root.join("grammars/empty.highlights.scm"), "  \n").unwrap();
+
+    let langs = |entries: &[&str]| {
+        parse_config_projection(
+            &path,
+            serde_json::json!({
+                "app": { "builtins": { "markdown": { "mdx": { "highlight": { "langs": entries } } } } }
+            }),
+        )
+    };
+
+    let config = langs(&["nix", "./grammars/acme.wasm"]).expect("a grammar file");
+    assert_eq!(
+        config.app.builtins.markdown.mdx.highlight.langs,
+        vec![
+            CompactString::const_new("nix"),
+            CompactString::const_new("./grammars/acme.wasm"),
+        ]
+    );
+
+    for (entry, reason) in [
+        ("./grammars/missing.wasm", "does not exist"),
+        (
+            "./grammars/broken.wasm",
+            "is not a tree-sitter grammar: it does not start with the WebAssembly magic",
+        ),
+        (
+            "./grammars/no-query.wasm",
+            "has no highlight query at no-query.highlights.scm",
+        ),
+        ("./grammars/empty.wasm", "has an empty highlight query"),
+    ] {
+        let error = langs(&[entry]).expect_err(entry);
+        assert!(
+            matches!(error, ConfigError::MdxHighlightGrammar { .. }),
+            "{entry}: {error}"
+        );
+        let message = error.to_string();
+        assert!(message.contains(entry), "{message}");
+        assert!(message.contains(reason), "{message}");
+    }
+
+    // A name without a `/` is one uf ships, and is not looked for on disk.
+    langs(&["objective-c"]).expect("a language name");
+
+    // And a project with highlighting off does not need the file.
+    parse_config_projection(
+        &path,
+        serde_json::json!({
+            "app": { "builtins": { "markdown": { "mdx": { "highlight": {
+                "enabled": false,
+                "langs": ["./grammars/missing.wasm"]
+            } } } } }
+        }),
+    )
+    .expect("highlighting is off");
+}
+
 /// The key path the reference documents is the one that serializes.
 ///
 /// The reference is read as a contract, and the failure this guards is the one

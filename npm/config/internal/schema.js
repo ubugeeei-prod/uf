@@ -415,7 +415,10 @@ export type UniflowedConfig = {
               readonly light?: string,
               readonly dark? : string,
             },
-            // Grammars beyond the ones a uf project uses by default.
+            // Grammars beyond the ones a uf project uses by default: a name
+            // uf ships (`"rust"`), or a path to a tree-sitter grammar compiled
+            // to WebAssembly, read from the project root
+            // (`"./grammars/acme.wasm"`), with `acme.highlights.scm` beside it.
             readonly langs?: $ReadOnlyArray<string>,
           },
         },
