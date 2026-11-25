@@ -1137,6 +1137,21 @@ export default defineConfig({
       command: "tools/ci/test-no-conflict-markers.sh",
       inputs : ["tools/ci/no-conflict-markers.sh", "tools/ci/test-no-conflict-markers.sh"],
     },
+    // And that the rustc wrapper the dev shell and the Rust CI jobs share adds
+    // the parallel frontend to this checkout's crates and to nothing else:
+    // not to registry dependencies, not to build-script probes, not to
+    // Cargo's own queries. See "Build speed" in `docs/rust-performance.md`.
+    "rust:wrapper:test": {
+      command: "tools/ci/test-rustc-wrapper.sh",
+      inputs: [
+        "tools/ci/rustc-wrapper.sh",
+        "tools/ci/parallel-frontend-env.sh",
+        "tools/ci/test-rustc-wrapper.sh",
+        "flake.nix",
+        ".github/actions/rust-cache/action.yml",
+        ".github/workflows/ci.yml",
+      ],
+    },
 
     "native:smoke": "tools/ci/native-bundle-smoke.sh",
     "native:example": {
@@ -1215,6 +1230,7 @@ export default defineConfig({
         "ci:runtimes:test",
         "ci:conflict-markers",
         "ci:conflict-markers:test",
+        "rust:wrapper:test",
         // `docs:verify` rather than the checks under it, because that is
         // what the `Docs build` job runs and this list is the whole of
         // `uf run` in `.github/workflows/`. It reaches the output, security
