@@ -67,6 +67,59 @@
       # the pin, because there is now one pin.
       rustToolchainFor = pkgs: pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
 
+      # kache, the dev shell's compiler cache: one content-addressed store of
+      # compiled crates shared by every worktree and target directory on the
+      # machine, restored as copy-on-write clones where the filesystem has
+      # them. The shell hands rustc to it through `tools/ci/rustc-wrapper.sh`;
+      # CI does not use it (see "Build speed" in `docs/rust-performance.md`).
+      # The release binaries, pinned to the release's own `.sha256` files.
+      kacheFor = pkgs:
+        let
+          version = "2.3.1";
+          artifacts = {
+            aarch64-darwin = {
+              triple = "aarch64-apple-darwin";
+              hash = "sha256-viLTAsQCOLOnX5aVrRgCLlo64ygwDCdKE4bEa6DmuNE=";
+            };
+            x86_64-darwin = {
+              triple = "x86_64-apple-darwin";
+              hash = "sha256-b7pg5tQ8zfRKcwRQQolUiBb3IByekT/tBoeREd01zL8=";
+            };
+            aarch64-linux = {
+              triple = "aarch64-unknown-linux-musl";
+              hash = "sha256-/dOmWIRM5Xw5HSMHPSUOVKH8Fk8pFzbI0Yd1ZEQ4R18=";
+            };
+            x86_64-linux = {
+              triple = "x86_64-unknown-linux-musl";
+              hash = "sha256-bx/z+fr1qbsOOFAcW/6atbSpgINPHINdCa1bD9+bark=";
+            };
+          };
+          artifact = artifacts.${pkgs.stdenv.hostPlatform.system};
+        in
+        pkgs.stdenvNoCC.mkDerivation {
+          pname = "kache";
+          inherit version;
+          src = pkgs.fetchurl {
+            url = "https://github.com/kunobi-ninja/kache/releases/download/v${version}/kache-${artifact.triple}.tar.gz";
+            inherit (artifact) hash;
+          };
+          sourceRoot = ".";
+          # kache launches kache-engine, and the two must come from one release.
+          installPhase = ''
+            runHook preInstall
+            install -Dm755 kache $out/bin/kache
+            install -Dm755 kache-engine $out/bin/kache-engine
+            runHook postInstall
+          '';
+          meta = {
+            description = "Compiler cache for Rust, C/C++ and CUDA";
+            homepage = "https://github.com/kunobi-ninja/kache";
+            license = pkgs.lib.licenses.asl20;
+            mainProgram = "kache";
+            platforms = builtins.attrNames artifacts;
+          };
+        };
+
       ufFor = pkgs:
         let
           rustToolchain = rustToolchainFor pkgs;
@@ -293,6 +346,7 @@
       devShells = forAllSystems (_system: pkgs:
         let
           rustToolchain = rustToolchainFor pkgs;
+          kache = kacheFor pkgs;
         in
         {
           default = pkgs.mkShell {
@@ -307,6 +361,7 @@
               openssl
               pkg-config
               rustToolchain
+              kache
               (pkgs.opentofu or pkgs.terraform)
               why3
               z3
@@ -320,6 +375,25 @@
               # noticed, by reading its own banner back as a compiler version.
               echo "uniflowed dev shell: Rust $(rustc --version | cut -d' ' -f2), Node $(node --version), Bun $(bun --version)" >&2
               echo "next: tools/upstream/sync.sh && cargo build --release --bin uf" >&2
+
+              # The Rust build accelerators ("Build speed" in
+              # `docs/rust-performance.md`): crates from this checkout compile
+              # with rustc's parallel frontend, and kache shares every compiled
+              # crate across worktrees. Enter the shell with
+              # UF_RUSTC_FRONTEND_JOBS=1 or UF_KACHE= to turn either off. The
+              # root rather than $PWD, because `nix develop` may start anywhere
+              # in the checkout.
+              uf_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+              if [ -x "$uf_root/tools/ci/rustc-wrapper.sh" ]; then
+                case "''${RUSTC_WRAPPER:-}" in
+                  "" | */tools/ci/rustc-wrapper.sh)
+                    export RUSTC_WRAPPER="$uf_root/tools/ci/rustc-wrapper.sh"
+                    ;;
+                esac
+              fi
+              unset uf_root
+              export UF_KACHE="''${UF_KACHE-${kache}/bin/kache}"
+              export UF_RUSTC_FRONTEND_JOBS="''${UF_RUSTC_FRONTEND_JOBS:-8}"
             '';
           };
         });

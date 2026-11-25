@@ -4,9 +4,26 @@ inputs:
   key:
     description: Separate build profiles and concurrent writers.
     required: true
+  frontend-jobs:
+    description: >-
+      rustc frontend threads for the crates this checkout compiles (1: off).
+      Jobs that measure compile time or binaries keep 1.
+    required: false
+    default: "1"
 runs:
   using: composite
   steps:
+    # Cargo then runs every rustc call through `tools/ci/rustc-wrapper.sh`,
+    # which adds the parallel frontend to this checkout's crates only.
+    # Dependencies, build-script probes and Cargo's fingerprints are unchanged,
+    # so the sticky target disks below stay warm. See "Build speed" in
+    # `docs/rust-performance.md`.
+    - name: Compile this checkout's crates with the parallel frontend
+      if: runner.os != 'Windows' && inputs.frontend-jobs != '1'
+      shell: bash
+      env:
+        UF_RUSTC_FRONTEND_JOBS: ${{ inputs.frontend-jobs }}
+      run: sh "$GITHUB_WORKSPACE/tools/ci/parallel-frontend-env.sh"
     - uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
       with:
         key: ${{ github.repository }}-rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.key }}
