@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.51.0
+
+- feat(mdx): highlight fences with tree-sitter (#1927) (7f5490cf)
+
 ## uf@0.50.0
 
 - feat(ui): submit a date, a color, a toggle group, and a code, and reset them with the form (#1925) (f6cfc0b3)
