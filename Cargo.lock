@@ -981,17 +981,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "filedescriptor"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e40758ed24c9b2eeb76c35fb0aebc66c626084edd827e07e1552279814c6682d"
-dependencies = [
- "libc",
- "thiserror 1.0.69",
- "winapi",
-]
-
-[[package]]
 name = "filetime"
 version = "0.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1066,60 +1055,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow_command_spec"
-version = "0.0.0"
-
-[[package]]
-name = "flow_command_utils"
-version = "0.0.0"
-dependencies = [
- "bincode",
- "flow_command_spec",
- "flow_commands_connect",
- "flow_common",
- "flow_common_errors",
- "flow_common_exit",
- "flow_common_exit_status",
- "flow_common_semver",
- "flow_common_socket",
- "flow_common_vcs",
- "flow_config",
- "flow_data_structure_wrapper",
- "flow_edenfs_watcher",
- "flow_event_logger",
- "flow_flowlib",
- "flow_hh_logger",
- "flow_lint_settings",
- "flow_monitor_rpc",
- "flow_parser",
- "flow_server_env",
- "flow_server_files",
- "flow_server_monitor",
- "flow_server_utils",
- "flow_utils_concurrency",
- "flow_utils_find",
- "flow_utils_tty",
- "regex",
- "serde",
- "vec1",
-]
-
-[[package]]
-name = "flow_commands_connect"
-version = "0.0.0"
-dependencies = [
- "bincode",
- "flow_common",
- "flow_common_exit_status",
- "flow_common_socket",
- "flow_event_logger",
- "flow_server_env",
- "flow_server_files",
- "flow_utils_tty",
- "serde_json",
-]
-
-[[package]]
 name = "flow_common"
 version = "0.0.0"
 dependencies = [
@@ -1172,15 +1107,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow_common_exit"
-version = "0.0.0"
-dependencies = [
- "flow_common_exit_status",
- "flow_hh_json",
- "serde_json",
-]
-
-[[package]]
 name = "flow_common_exit_status"
 version = "0.0.0"
 dependencies = [
@@ -1208,18 +1134,6 @@ dependencies = [
 [[package]]
 name = "flow_common_semver"
 version = "0.0.0"
-
-[[package]]
-name = "flow_common_socket"
-version = "0.0.0"
-dependencies = [
- "flow_common",
- "flow_common_exit_status",
- "flow_tokio_runtime",
- "md-5",
- "socket2",
- "tokio",
-]
 
 [[package]]
 name = "flow_common_tarjan"
@@ -1292,18 +1206,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow_daemon"
-version = "0.0.0"
-dependencies = [
- "bincode",
- "flow_common",
- "rand 0.10.2",
- "serde",
- "tempfile",
- "tracing",
-]
-
-[[package]]
 name = "flow_data_structure_wrapper"
 version = "0.0.0"
 dependencies = [
@@ -1314,27 +1216,6 @@ dependencies = [
  "rpds",
  "serde",
  "smol_str",
-]
-
-[[package]]
-name = "flow_dfind"
-version = "0.0.0"
-dependencies = [
- "flow_daemon",
- "flow_hh_logger",
- "notify",
- "regex",
- "serde",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "flow_edenfs_watcher"
-version = "0.0.0"
-dependencies = [
- "flow_common",
- "serde_json",
 ]
 
 [[package]]
@@ -1379,14 +1260,6 @@ dependencies = [
  "serde",
  "serde_json",
 ]
-
-[[package]]
-name = "flow_event_logger_common"
-version = "0.0.0"
-
-[[package]]
-name = "flow_event_logger_lwt"
-version = "0.0.0"
 
 [[package]]
 name = "flow_flowlib"
@@ -1465,13 +1338,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow_interaction_logger"
-version = "0.0.0"
-dependencies = [
- "flow_common",
-]
-
-[[package]]
 name = "flow_lazy"
 version = "0.0.0"
 dependencies = [
@@ -1485,17 +1351,6 @@ dependencies = [
  "dupe",
  "flow_parser",
  "serde",
-]
-
-[[package]]
-name = "flow_logging_utils"
-version = "0.0.0"
-dependencies = [
- "flow_common",
- "flow_event_logger",
- "flow_event_logger_common",
- "flow_hh_logger",
- "flow_interaction_logger",
 ]
 
 [[package]]
@@ -1514,29 +1369,10 @@ dependencies = [
 name = "flow_lsp_server"
 version = "0.0.0"
 dependencies = [
- "crossbeam",
  "dupe",
- "flow_command_utils",
- "flow_commands_connect",
- "flow_common",
- "flow_common_exit_status",
- "flow_common_semver",
- "flow_common_socket",
- "flow_config",
- "flow_event_logger",
- "flow_event_logger_lwt",
- "flow_flowlib",
- "flow_interaction_logger",
  "flow_lsp",
  "flow_parser",
- "flow_server_env",
- "flow_server_files",
- "flow_server_utils",
- "flow_tokio_runtime",
  "lsp-types",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -1685,91 +1521,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow_server"
-version = "0.0.0"
-dependencies = [
- "flow_aloc",
- "flow_cgroup",
- "flow_common",
- "flow_common_errors",
- "flow_common_exit_status",
- "flow_common_utils",
- "flow_common_vcs",
- "flow_daemon",
- "flow_data_structure_wrapper",
- "flow_event_logger",
- "flow_event_logger_common",
- "flow_event_logger_lwt",
- "flow_flowlib",
- "flow_heap",
- "flow_hh_logger",
- "flow_logging_utils",
- "flow_parser",
- "flow_profiling",
- "flow_server_command_handler",
- "flow_server_env",
- "flow_server_files",
- "flow_server_rechecker",
- "flow_services_inference",
- "flow_tokio_runtime",
- "flow_typing_errors",
- "flow_utils_concurrency",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "flow_server_command_handler"
-version = "0.0.0"
-dependencies = [
- "bincode",
- "dupe",
- "flow_aloc",
- "flow_analysis",
- "flow_check_cache",
- "flow_common",
- "flow_common_errors",
- "flow_common_modulename",
- "flow_common_tarjan",
- "flow_common_ty",
- "flow_common_utils",
- "flow_data_structure_wrapper",
- "flow_event_logger",
- "flow_heap",
- "flow_hh_logger",
- "flow_parser",
- "flow_parser_utils",
- "flow_parser_utils_output",
- "flow_parsing",
- "flow_saved_state",
- "flow_server_env",
- "flow_server_utils",
- "flow_services_autocomplete",
- "flow_services_code_action",
- "flow_services_coverage",
- "flow_services_export",
- "flow_services_get_def",
- "flow_services_inference",
- "flow_services_inference_types",
- "flow_services_jsx",
- "flow_services_module",
- "flow_services_references",
- "flow_services_type_info",
- "flow_services_type_of_name",
- "flow_type_sig",
- "flow_typing",
- "flow_typing_context",
- "flow_typing_errors",
- "flow_typing_ty_normalizer",
- "flow_typing_type",
- "flow_typing_utils",
- "lsp-types",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "flow_server_env"
 version = "0.0.0"
 dependencies = [
@@ -1808,14 +1559,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow_server_file_watcher_spec"
-version = "0.0.0"
-dependencies = [
- "flow_common",
- "flow_server_files",
-]
-
-[[package]]
 name = "flow_server_files"
 version = "0.0.0"
 dependencies = [
@@ -1824,85 +1567,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow_server_monitor"
-version = "0.0.0"
-dependencies = [
- "bincode",
- "crossbeam",
- "dupe",
- "filedescriptor",
- "flow_common",
- "flow_common_exit_status",
- "flow_common_semver",
- "flow_common_socket",
- "flow_common_vcs",
- "flow_daemon",
- "flow_dfind",
- "flow_edenfs_watcher",
- "flow_event_logger",
- "flow_hh_logger",
- "flow_logging_utils",
- "flow_monitor_rpc",
- "flow_parser",
- "flow_server",
- "flow_server_env",
- "flow_server_file_watcher_spec",
- "flow_server_files",
- "flow_server_watchman_expression_terms",
- "flow_tokio_runtime",
- "flow_watchman",
- "futures 0.3.34",
- "libc",
- "lsp-types",
- "nix",
- "serde",
- "serde_json",
- "signal-hook",
- "tokio",
-]
-
-[[package]]
-name = "flow_server_rechecker"
-version = "0.0.0"
-dependencies = [
- "crossbeam",
- "dupe",
- "flow_common",
- "flow_common_exit_status",
- "flow_common_semver",
- "flow_common_utils",
- "flow_config",
- "flow_data_structure_wrapper",
- "flow_event_logger",
- "flow_flowlib",
- "flow_heap",
- "flow_hh_logger",
- "flow_parser",
- "flow_parsing",
- "flow_server_env",
- "flow_server_files",
- "flow_services_inference",
- "flow_services_module",
- "flow_services_references",
- "flow_tokio_runtime",
- "flow_utils_concurrency",
- "serde_json",
-]
-
-[[package]]
 name = "flow_server_utils"
 version = "0.0.0"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "flow_server_watchman_expression_terms"
-version = "0.0.0"
-dependencies = [
- "flow_common",
- "flow_server_file_watcher_spec",
- "serde_json",
 ]
 
 [[package]]
@@ -2193,35 +1861,6 @@ dependencies = [
  "flow_utils_concurrency",
  "regex",
  "serde_json",
-]
-
-[[package]]
-name = "flow_services_type_of_name"
-version = "0.0.0"
-dependencies = [
- "dupe",
- "flow_aloc",
- "flow_check_cache",
- "flow_common",
- "flow_common_ty",
- "flow_heap",
- "flow_parser",
- "flow_server_env",
- "flow_services_autocomplete",
- "flow_services_export",
- "flow_services_inference",
- "flow_services_inference_types",
- "flow_typing",
- "flow_typing_ty_normalizer",
- "flow_typing_type",
-]
-
-[[package]]
-name = "flow_tokio_runtime"
-version = "0.0.0"
-dependencies = [
- "flow_utils_concurrency",
- "tokio",
 ]
 
 [[package]]
@@ -2651,10 +2290,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow_utils_find"
-version = "0.0.0"
-
-[[package]]
 name = "flow_utils_tty"
 version = "0.0.0"
 
@@ -2663,18 +2298,6 @@ name = "flow_utils_union_find"
 version = "0.0.0"
 dependencies = [
  "flow_data_structure_wrapper",
-]
-
-[[package]]
-name = "flow_watchman"
-version = "0.0.0"
-dependencies = [
- "flow_common_vcs",
- "flow_event_logger",
- "flow_hh_json",
- "flow_hh_logger",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -2717,75 +2340,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "futures"
-version = "0.1.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a471a38ef8ed83cd6e40aa59c1ffe17db6855c18e3604d9c4ed8c08ebc28678"
-
-[[package]]
-name = "futures"
-version = "0.3.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a31d2a3fbaaeb2af2368bbdd904aa8e812d3c04a1ee10d3171f52d556e5d0a3"
-dependencies = [
- "futures-channel",
- "futures-core",
- "futures-executor",
- "futures-io",
- "futures-sink",
- "futures-task",
- "futures-util",
-]
-
-[[package]]
-name = "futures-channel"
-version = "0.3.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f9e3d69d39e4862ffed03ed071a76f9a13ba1d9109d355b0f0aa6b15e393c4"
-dependencies = [
- "futures-core",
- "futures-sink",
-]
-
-[[package]]
 name = "futures-core"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
-
-[[package]]
-name = "futures-executor"
-version = "0.3.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "031b47cf1a3c6cc8bc2fc76cd437f521619387907d469316e7c0bc278f1f5432"
-dependencies = [
- "futures-core",
- "futures-task",
- "futures-util",
-]
-
-[[package]]
-name = "futures-io"
-version = "0.3.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53c0fa8157de1303bfffdaa1cc2a673bfffb60102f76b0ef4441659124373fed"
-
-[[package]]
-name = "futures-macro"
-version = "0.3.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.4",
-]
-
-[[package]]
-name = "futures-sink"
-version = "0.3.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1944426bf7d03f1d14f708785e4b33efd750b36d48a157b836b3efc15ede8e1d"
 
 [[package]]
 name = "futures-task"
@@ -2799,15 +2357,8 @@ version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc"
 dependencies = [
- "futures 0.1.31",
- "futures-channel",
  "futures-core",
- "futures-io",
- "futures-macro",
- "futures-sink",
  "futures-task",
- "libc",
- "memchr",
  "pin-project-lite",
  "slab",
 ]
@@ -4909,16 +4460,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
-name = "signal-hook"
-version = "0.3.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2"
-dependencies = [
- "libc",
- "signal-hook-registry",
-]
-
-[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5459,7 +5000,7 @@ checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
 
 [[package]]
 name = "uf_assets"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "ab_glyph",
  "base64",
@@ -5481,7 +5022,7 @@ dependencies = [
 
 [[package]]
 name = "uf_bundle"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "base64",
  "brotli",
@@ -5499,7 +5040,7 @@ dependencies = [
 
 [[package]]
 name = "uf_check"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "bumpalo",
  "compact_str",
@@ -5549,7 +5090,7 @@ dependencies = [
 
 [[package]]
 name = "uf_cli"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -5602,7 +5143,7 @@ dependencies = [
 
 [[package]]
 name = "uf_config"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "compact_str",
@@ -5623,7 +5164,7 @@ dependencies = [
 
 [[package]]
 name = "uf_declare"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "compact_str",
  "oxc_allocator",
@@ -5638,7 +5179,7 @@ dependencies = [
 
 [[package]]
 name = "uf_doc"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "ox_content_allocator",
@@ -5657,7 +5198,7 @@ dependencies = [
 
 [[package]]
 name = "uf_dts"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "compact_str",
  "criterion",
@@ -5675,7 +5216,7 @@ dependencies = [
 
 [[package]]
 name = "uf_env"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "compact_str",
@@ -5690,7 +5231,7 @@ dependencies = [
 
 [[package]]
 name = "uf_flow"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "flow_parser",
  "thiserror 2.0.20",
@@ -5699,7 +5240,7 @@ dependencies = [
 
 [[package]]
 name = "uf_fmt"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "compact_str",
@@ -5717,7 +5258,7 @@ dependencies = [
 
 [[package]]
 name = "uf_i18n"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "serde",
@@ -5732,7 +5273,7 @@ dependencies = [
 
 [[package]]
 name = "uf_infra"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "bumpalo",
  "compact_str",
@@ -5749,7 +5290,7 @@ dependencies = [
 
 [[package]]
 name = "uf_lib"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "compact_str",
@@ -5764,7 +5305,7 @@ dependencies = [
 
 [[package]]
 name = "uf_lint"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "criterion",
  "index_vec",
@@ -5788,7 +5329,7 @@ dependencies = [
 
 [[package]]
 name = "uf_plugin"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "compact_str",
@@ -5804,7 +5345,7 @@ dependencies = [
 
 [[package]]
 name = "uf_pm"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -5829,7 +5370,7 @@ dependencies = [
 
 [[package]]
 name = "uf_prepare"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "compact_str",
@@ -5844,14 +5385,14 @@ dependencies = [
 
 [[package]]
 name = "uf_profiler"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "criterion",
 ]
 
 [[package]]
 name = "uf_project"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "compact_str",
@@ -5870,7 +5411,7 @@ dependencies = [
 
 [[package]]
 name = "uf_rm"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "compact_str",
  "serde",
@@ -5881,7 +5422,7 @@ dependencies = [
 
 [[package]]
 name = "uf_router"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "compact_str",
@@ -5898,7 +5439,7 @@ dependencies = [
 
 [[package]]
 name = "uf_rsc"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "compact_str",
@@ -5917,7 +5458,7 @@ dependencies = [
 
 [[package]]
 name = "uf_runtime"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "serde",
  "smallvec",
@@ -5926,7 +5467,7 @@ dependencies = [
 
 [[package]]
 name = "uf_sqlc"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "base64",
  "serde",
@@ -5939,7 +5480,7 @@ dependencies = [
 
 [[package]]
 name = "uf_std"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "compact_str",
  "rustc-hash",
@@ -5953,7 +5494,7 @@ dependencies = [
 
 [[package]]
 name = "uf_stylex"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "compact_str",
  "criterion",
@@ -5969,7 +5510,7 @@ dependencies = [
 
 [[package]]
 name = "uf_task"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "base64",
  "camino",
@@ -5987,7 +5528,7 @@ dependencies = [
 
 [[package]]
 name = "uf_term"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "criterion",
  "uf_infra",
@@ -5995,7 +5536,7 @@ dependencies = [
 
 [[package]]
 name = "uf_test"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "compact_str",
@@ -6015,7 +5556,7 @@ dependencies = [
 
 [[package]]
 name = "uf_transform"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "criterion",
  "flow_parser",
@@ -6043,7 +5584,7 @@ dependencies = [
 
 [[package]]
 name = "uf_tui"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "compact_str",
  "serde",
@@ -6053,7 +5594,7 @@ dependencies = [
 
 [[package]]
 name = "uf_ui"
-version = "0.51.0"
+version = "0.50.0"
 dependencies = [
  "camino",
  "compact_str",
