@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.51.1
+
+- fix: drop "use flow" and "use js" when a module is compiled (#1928) (b754f85d)
+
 ## uf@0.51.0
 
 - feat(mdx): highlight fences with tree-sitter (#1927) (7f5490cf)
