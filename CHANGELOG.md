@@ -3,6 +3,7 @@
 ## uf@0.51.0
 
 - feat(mdx): highlight fences with tree-sitter (#1927) (7f5490cf)
+- ci: compile with rustc's parallel frontend and add kache to the dev shell (#1929) (99e14428)
 
 ## uf@0.50.0
 
