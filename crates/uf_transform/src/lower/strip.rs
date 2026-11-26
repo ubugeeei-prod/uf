@@ -69,9 +69,11 @@ const TYPE_FIELDS: [&str; 9] = [
 const SOURCE_MODE_DIRECTIVES: [&str; 2] = ["use flow", "use js"];
 
 /// Erase every type in `program`.
+///
+/// The source-mode directives go in [`remove_source_mode_directives`], which
+/// `super::lower` runs before any pass that adds statements to the top.
 pub fn lower(program: &mut Value) -> Result<(), TransformError> {
     profile_span!("lower::strip");
-    remove_source_mode_directives(program);
     transform_post(program, &mut |node| Ok(strip_node(node)))?;
     Ok(())
 }
@@ -86,7 +88,7 @@ pub fn lower(program: &mut Value) -> Result<(), TransformError> {
 ///
 /// The value compared is the directive's source text between its quotes, as
 /// ECMAScript compares a directive: `"use\x20flow"` is not the directive.
-fn remove_source_mode_directives(program: &mut Value) {
+pub fn remove_source_mode_directives(program: &mut Value) {
     let Some(body) = program.get_mut("body").and_then(Value::as_array_mut) else {
         return;
     };
@@ -262,8 +264,10 @@ mod tests {
     use super::*;
     use crate::estree::parse;
 
+    /// What `super::lower` does with these two: the directives first, then the types.
     fn stripped(source: &str) -> Value {
         let mut program = parse(source).unwrap();
+        remove_source_mode_directives(&mut program);
         lower(&mut program).unwrap();
         program
     }

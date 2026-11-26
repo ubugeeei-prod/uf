@@ -415,6 +415,16 @@ mod tests {
     }
 
     #[test]
+    fn the_source_mode_directive_goes_when_enum_helpers_are_prepended() {
+        // Lowering an enum puts its runtime in front of the module's first
+        // statement, which would hide the directive from a prologue read
+        // after it.
+        let source = "\"use flow\";\nexport enum Status { Active, Off }\n";
+        let out = transform(source, &TransformOptions::new("status.js")).unwrap();
+        assert!(!out.code.contains("use flow"), "{}", out.code);
+    }
+
+    #[test]
     fn use_strict_survives_beside_the_source_mode() {
         let source = "\"use strict\";\n\"use flow\";\n\"use server\";\nexport async function save(id: string) {}\n";
         let out = transform(source, &TransformOptions::new("save.js")).unwrap();

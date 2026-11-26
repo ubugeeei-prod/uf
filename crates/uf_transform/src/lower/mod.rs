@@ -54,6 +54,9 @@ pub struct Lowered {
 /// promised.
 pub fn lower(program: &mut Value, source: &str) -> Result<Lowered, TransformError> {
     profile_span!("lower::lower");
+    // First, while the module's own prologue is still at the top: lowering an
+    // enum puts its runtime in front of it.
+    strip::remove_source_mode_directives(program);
     let may_compile = components::lower(program)?;
     matches::lower(program)?;
     enums::lower(program, source)?;
