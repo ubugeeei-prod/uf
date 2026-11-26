@@ -41,6 +41,11 @@ template literals or later expressions do not select a mode. Files with no
 mode retain uf's default of type checking. Existing `@flow` and `@noflow`
 pragmas are supported; a source directive takes precedence.
 
+The mode is for the checker alone. When uf compiles a module, it removes
+`"use flow";` and `"use js";` along with the types, so the bundler never sees
+a directive it does not know. `"use client";`, `"use server";` and
+`"use strict";` stay where they were, in the order they were written.
+
 ## Choose a checker version
 
 Set `flow: { version: "0.333.0" }` in `uf.config.js` to use that official
