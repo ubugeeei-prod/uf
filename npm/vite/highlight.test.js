@@ -22,12 +22,19 @@
 // one property that rewrite must have — the reader sees the source, whatever
 // the grammar made of the stand-in.
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "@uniflowed/test";
 // By path, not by subpath export. `internal/` is not part of any package's
 // public surface — `package_surface.rs` enforces that, with one allowlisted
 // exception for the native bridge — and a test is not a reason to widen it.
 // This file is inside the repository, so it can just say where the module is.
-import { highlightPlugin } from "./internal/highlight.js";
+import { grammarFiles, isGrammarFile, loadGrammar } from "./internal/grammar-files.js";
+import { highlightPlugin, reloadGrammars } from "./internal/highlight.js";
 import { shimFlowGrammar } from "./internal/flow-grammar-shim.js";
 import { FLOW_MARK, KEYWORD, TYPE, markLine, markLines } from "./internal/flow-keywords.js";
 
@@ -466,11 +473,10 @@ describe("the highlighter is configured by uf.config.js", () => {
   // time; what it got was `undefined`, and a project that set a theme got no
   // error and no effect. See ubugeeei-prod/uf#646.
   //
-  // What is asserted is the boundary uf owns: the options handed to Shiki.
-  // Shiki's own rendering is Shiki's, and a test that re-rendered it would be
-  // testing the dependency rather than the wiring that was missing.
+  // What is asserted here is the boundary uf owns: the options the highlighter
+  // is built from. Rendering is asserted separately, on a real grammar.
 
-  it("hands Shiki the themes the project asked for", () => {
+  it("keeps the themes the project asked for", () => {
     const [, options] = highlightPlugin({
       themes: { light: "solarized-light", dark: "nord" },
     });
@@ -488,27 +494,248 @@ describe("the highlighter is configured by uf.config.js", () => {
   });
 
   it("adds the grammars a project names to the ones uf loads anyway", () => {
-    const [, options] = highlightPlugin({ langs: ["nix", "toml"] });
-    // Extended, not replaced: a project naming one extra grammar must not lose
-    // the ones its own source is written in.
-    expect(options.langs).toContain("nix");
+    const [, options] = highlightPlugin({ langs: ["toml"] });
+    // Extended, not replaced: naming one grammar must not lose the ones a
+    // uf project's own source is written in.
     expect(options.langs).toContain("javascript");
     expect(options.langs).toContain("mdx");
     // `toml` is one uf loads anyway, so naming it is the overlapping case —
     // and it must appear once rather than twice.
     expect(options.langs).toContain("toml");
+    expect(options.langs.filter((lang) => lang === "toml")).toEqual(["toml"]);
     expect(options.langs.length).toBe(new Set(options.langs).size);
   });
 
-  it("emits both themes as variables rather than one as colours", () => {
-    // `defaultColor: false` is what makes the page follow the reader's
-    // preference: a build cannot know whether they want light or dark, so it
-    // writes both and the stylesheet chooses.
-    const [, options] = highlightPlugin({});
-    expect(options.defaultColor).toBe(false);
+  it("refuses a language uf does not ship", () => {
+    // There is no catalogue to fetch a name from. A name that is not one of
+    // the vendored grammars fails the build, rather than colouring nothing.
+    expect(() => highlightPlugin({ langs: ["nix"] })).toThrow(/nix/);
   });
 
   it("turns off when the project turns it off", () => {
     expect(highlightPlugin({ enabled: false })).toBe(null);
+  });
+});
+
+describe("grammar files in highlight.langs", () => {
+  // A project documenting a language uf does not ship had no way to colour it:
+  // `langs` took names, and every fence in that language fell back to plain
+  // text. An entry may now be a tree-sitter grammar compiled to WebAssembly,
+  // read from the project root, with its highlight query beside it.
+
+  const HERE = path.dirname(fileURLToPath(import.meta.url));
+  // JSON's grammar, borrowed as a fixture. The query below is the project's,
+  // which is the point of the file: uf does not colour with the query the
+  // wasm was published next to.
+  const JSON_WASM = fs.readFileSync(
+    path.join(HERE, "internal/grammars/json/tree-sitter-json.wasm"),
+  );
+  const ACME_QUERY = "(string) @string\n(number) @number\n";
+
+  /** A project root holding the given files, written fresh for each test. */
+  function projectWith(files: { readonly [string]: mixed }): string {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "uf-grammar-"));
+    for (const [name, content] of Object.entries(files)) {
+      const file = path.join(root, name);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      if (typeof content === "string") {
+        fs.writeFileSync(file, content);
+      } else if (content instanceof Buffer) {
+        fs.writeFileSync(file, content);
+      } else {
+        fs.writeFileSync(file, JSON.stringify(content) ?? "");
+      }
+    }
+    return root;
+  }
+
+  /** One fenced block, as the MDX compiler hands it to the rehype plugin. */
+  function fence(language: string, source: string) {
+    return {
+      type: "root",
+      children: [
+        {
+          type      : "element",
+          tagName   : "pre",
+          properties: {},
+          children: [
+            {
+              type      : "element",
+              tagName   : "code",
+              properties: { className: [`language-${language}`] },
+              children  : [{ type: "text", value: source }],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  /** Every inline style in a rendered block, in order. */
+  function stylesIn(html: string): Array<string> {
+    return html
+      .split('"style":"')
+      .slice(1)
+      .map((part) => part.slice(0, part.indexOf('"')));
+  }
+
+  /** The style of the token whose text is `value`, which is written just before it. */
+  function styleOf(html: string, value: string): string {
+    const at = html.indexOf(`"value":${JSON.stringify(value)}`);
+    if (at < 0) return "";
+    return stylesIn(html.slice(0, at)).pop() ?? "";
+  }
+
+  it("tells a path from a language name", () => {
+    expect(isGrammarFile("nix")).toBe(false);
+    expect(isGrammarFile("objective-c")).toBe(false);
+    expect(isGrammarFile("./grammars/acme.wasm")).toBe(true);
+    expect(isGrammarFile("grammars/acme.wasm")).toBe(true);
+    expect(isGrammarFile("acme.wasm")).toBe(true);
+  });
+
+  it("names the fence after the file", () => {
+    const root = projectWith({
+      "grammars/acme.wasm"          : JSON_WASM,
+      "grammars/acme.highlights.scm": ACME_QUERY,
+    });
+    expect(loadGrammar("./grammars/acme.wasm", root).name).toBe("acme");
+    const prefixed = projectWith({
+      "tree-sitter-acme.wasm"          : JSON_WASM,
+      "tree-sitter-acme.highlights.scm": ACME_QUERY,
+    });
+    expect(loadGrammar("tree-sitter-acme.wasm", prefixed).name).toBe("acme");
+  });
+
+  it("lists the grammar beside the languages uf loads anyway", () => {
+    const root = projectWith({
+      "grammars/acme.wasm"          : JSON_WASM,
+      "grammars/acme.highlights.scm": ACME_QUERY,
+    });
+    const [, options] = highlightPlugin({ langs: ["./grammars/acme.wasm"] }, { root });
+    expect(options.langs).toContain("acme");
+    expect(options.langs).toContain("javascript");
+    expect(options.langs.every((lang) => typeof lang === "string")).toBe(true);
+  });
+
+  it("writes both themes into the block, and marks Flow's words", async () => {
+    // Both variables, because a build cannot know which the reader prefers.
+    // And `component` carries the class the stylesheet colours: the grammar
+    // was shown `function` and must not have left it there.
+    const [plugin, options] = highlightPlugin({});
+    const tree = fence("flow", "export component Avatar(src: string) {\n  return null;\n}\n");
+    await plugin.call({}, options)(tree);
+    const html = JSON.stringify(tree);
+    expect(html).toContain("uf-highlight");
+    expect(html).toContain("--uf-highlight-light:#d73a49");
+    expect(html).toContain("--uf-highlight-dark:#f47067");
+    expect(html).toContain("uf-flow-keyword");
+    expect(html).toContain("component");
+    expect(html).not.toContain("function Avatar");
+  });
+
+  it("leaves a language it does not know as plain text", async () => {
+    const [plugin, options] = highlightPlugin({});
+    const tree = fence("python", "def answer():\n    return 1\n");
+    await plugin.call({}, options)(tree);
+    const html = JSON.stringify(tree);
+    const styles = stylesIn(html);
+    expect(new Set(styles).size).toBe(1);
+    expect(html).toContain("--uf-highlight-light:#24292e");
+    expect(html).toContain("--uf-highlight-dark:#adbac7");
+  });
+
+  it("refuses a theme it does not ship when a fence is coloured", async () => {
+    const [plugin, options] = highlightPlugin({
+      themes: { light: "solarized-light", dark: "nord" },
+    });
+    expect(options.themes).toEqual({ light: "solarized-light", dark: "nord" });
+    await expect(plugin.call({}, options)(fence("js", "const x = 1;"))).rejects.toThrow(
+      /solarized-light/,
+    );
+  });
+
+  it("colours a fence with the grammar, which is the point", async () => {
+    const root = projectWith({ "acme.wasm": JSON_WASM, "acme.highlights.scm": ACME_QUERY });
+    const [plugin, options] = highlightPlugin({ langs: ["./acme.wasm"] }, { root });
+    const tree = fence("acme", '{ "a": 1 }');
+    await plugin.call({}, options)(tree);
+    const html = JSON.stringify(tree);
+    expect(new Set(stylesIn(html)).size).toBeGreaterThan(1);
+  });
+
+  it("resolves the module and its query from the project root", () => {
+    expect(grammarFiles({ langs: ["rust", "./g/a.wasm", "b.wasm"] }, "/project")).toEqual([
+      path.resolve("/project", "./g/a.wasm"),
+      path.resolve("/project", "./g/a.highlights.scm"),
+      path.resolve("/project", "b.wasm"),
+      path.resolve("/project", "b.highlights.scm"),
+    ]);
+    expect(grammarFiles(undefined, "/project")).toEqual([]);
+  });
+
+  it("names the file when it is missing", () => {
+    const root = projectWith({});
+    expect(() => loadGrammar("./grammars/missing.wasm", root)).toThrow(
+      /"\.\/grammars\/missing\.wasm" .*does not exist/,
+    );
+  });
+
+  it("names the file when it is not a grammar", () => {
+    const root = projectWith({ "bad.wasm": "not wasm" });
+    expect(() => loadGrammar("bad.wasm", root)).toThrow(
+      /"bad\.wasm" .*does not start with the WebAssembly magic/,
+    );
+  });
+
+  it("names the query when it is missing or empty", () => {
+    const root = projectWith({
+      "no-query.wasm"       : JSON_WASM,
+      "empty.wasm"          : JSON_WASM,
+      "empty.highlights.scm": "  \n",
+    });
+    expect(() => loadGrammar("no-query.wasm", root)).toThrow(
+      /has no highlight query at no-query\.highlights\.scm/,
+    );
+    expect(() => loadGrammar("empty.wasm", root)).toThrow(/has an empty highlight query/);
+  });
+
+  it("refuses a grammar for a language uf already highlights", () => {
+    const root = projectWith({
+      "javascript.wasm"          : JSON_WASM,
+      "javascript.highlights.scm": ACME_QUERY,
+    });
+    expect(() => loadGrammar("javascript.wasm", root)).toThrow(/uf already highlights/);
+  });
+
+  it("colours with an edited grammar once it is reloaded, without a restart", async () => {
+    // The plugin owns its registry, and `reloadGrammars` replaces it. A
+    // query that no longer parses is refused before anything changes: the
+    // languages and the working registry stay as they were.
+    const root = projectWith({ "acme.wasm": JSON_WASM, "acme.highlights.scm": ACME_QUERY });
+    const [plugin, options] = highlightPlugin({ langs: ["./acme.wasm"] }, { root });
+    const transform = plugin.call({}, options);
+    const numberStyle = async () => {
+      const tree = fence("acme", '{ "a": 1 }');
+      await transform(tree);
+      return styleOf(JSON.stringify(tree), "1");
+    };
+    const before = await numberStyle();
+    fs.writeFileSync(path.join(root, "acme.highlights.scm"), "(string) @string\n");
+    await reloadGrammars(options);
+    const after = await numberStyle();
+    expect(before).not.toBe("");
+    expect(before).not.toBe(after);
+
+    const langs = options.langs;
+    fs.writeFileSync(path.join(root, "acme.highlights.scm"), "(((\n");
+    await expect(reloadGrammars(options)).rejects.toThrow(/highlight query/);
+    expect(options.langs).toBe(langs);
+    expect(await numberStyle()).toBe(after);
+  });
+
+  it("fails the plugin with the path rather than leaving the fences grey", () => {
+    const root = projectWith({});
+    expect(() => highlightPlugin({ langs: ["./missing.wasm"] }, { root })).toThrow(/missing\.wasm/);
   });
 });

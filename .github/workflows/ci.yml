@@ -62,6 +62,7 @@ jobs:
       - uses: $/.github/actions/rust-cache
         with:
           key: toolchain
+          frontend-jobs: "8"
       # Built once and shared, because every job below runs its checks through
       # `uf run` — this repository is a uf project, and its pipeline uses the
       # toolchain it ships rather than a second description of the same checks.
@@ -116,6 +117,7 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         with:
           key: clippy
+          frontend-jobs: "8"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: needs.changes.outputs.code == 'true'
         with:
@@ -150,6 +152,7 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         with:
           key: test
+          frontend-jobs: "8"
       # `uf dev` and `uf build` run Vite on a JavaScript host, and the end-to-end
       # tests build the docs site through it, so the workspace's npm packages
       # are installed the way a project's would be.
@@ -886,6 +889,9 @@ jobs:
       # docs build rendered it as a paragraph with every check green.
       - run: ./target/release/uf run ci:conflict-markers
       - run: ./target/release/uf run ci:conflict-markers:test
+      # And that the rustc wrapper the Rust jobs above opt into touches only
+      # this checkout's crates (`docs/rust-performance.md`, "Build speed").
+      - run: ./target/release/uf run rust:wrapper:test
 
   upstream-integrations:
     name: Upstream Integrations
@@ -943,6 +949,7 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         with:
           key: upstream-typecheck
+          frontend-jobs: "8"
       # The full suite runs once, with all features, in Test.
       - run: cargo check --workspace --all-targets --no-default-features --profile ci
         if: needs.changes.outputs.code == 'true'

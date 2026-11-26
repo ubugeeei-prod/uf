@@ -1,0 +1,6 @@
+Grammars and highlight queries vendored from tree-sitter-wasm 2.0.4 (MIT),
+which builds the upstream tree-sitter grammars to WebAssembly.
+https://www.npmjs.com/package/tree-sitter-wasm
+
+javascript, json, css, html, bash, rust, yaml, toml, markdown, diff.
+The license of that package is LICENSE in this directory.

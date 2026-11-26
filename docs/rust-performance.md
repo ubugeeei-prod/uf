@@ -62,3 +62,48 @@ stripped `ci-opt` binaries built with the same toolchain and profile. Those
 binary numbers describe `ci-opt`, not the release profile with LTO. Results are
 uploaded as `primitives-performance` by the Bench Compile job. Timings apply
 to the recorded fixtures and are not a claim about every uf workload.
+
+## Build speed
+
+Two accelerators cut compile time without changing the compiler or what it
+produces. Both work through `tools/ci/rustc-wrapper.sh`, Cargo's
+`RUSTC_WRAPPER`. A wrapper adds no flag that Cargo's fingerprints can see, so
+existing target directories and CI's sticky target disks stay warm.
+
+- **Parallel frontend.** The pinned nightly accepts
+  `-Zunstable-options --jobs-frontend=N`. The wrapper adds it only to a crate
+  compiled from this checkout, and only when `--crate-name` matches
+  `CARGO_CRATE_NAME`. That covers the workspace and the Flow port under
+  `upstream/`, the crates an edit recompiles. Registry dependencies already
+  compile side by side, so they reach rustc unchanged, and so do build-script
+  probes and Cargo's `-vV` queries. `RUSTFLAGS` would have been simpler, but
+  Cargo hashes it into every crate's metadata, so any change to it rebuilds
+  every target directory from scratch. The dev shell and CI use 8 threads.
+  In CI, `.github/actions/rust-cache` takes `frontend-jobs`; it defaults to
+  `1` (off). Toolchain, Clippy, Test and Upstream typecheck set it to `8`.
+  Bench compile measures compile output, and Upstream Flow is the canary for
+  the moving nightly, so both keep the default.
+- **kache, in the dev shell only.** `nix develop` provides
+  [kache](https://github.com/kunobi-ninja/kache) 2.3.1. The release binaries
+  are pinned in `flake.nix` to the release's own `.sha256` files. The wrapper
+  hands every call to kache, and every worktree and target directory on the
+  machine shares one content-addressed store. CI does not use kache: it
+  rewrites the paths it hashes in debug information, so its output is not
+  byte-identical to an uncached build, and release and measurement builds must
+  not depend on it.
+
+`UF_RUSTC_FRONTEND_JOBS=1` and `UF_KACHE=` (empty) turn either off when
+entering the shell. `tools/ci/test-rustc-wrapper.sh` (`uf run
+rust:wrapper:test`) holds which calls the wrapper changes and which jobs opt
+in.
+
+Local measurement on macOS arm64, `cargo check -p uf_check` from an empty
+target. The machine was shared at a load average of 28 to 41, so these
+numbers are directional only:
+
+| Build | Wall |
+| --- | --: |
+| frontend off (`j1`) | 162 s |
+| frontend `j8` | 100 s |
+| `j8` + kache, empty store | 120 s |
+| `j8` + kache, a new target directory against that store | 12 s |

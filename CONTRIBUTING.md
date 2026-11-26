@@ -70,6 +70,22 @@ Use `nix develop` for the pinned development environment. It reads
 pins rather than a second opinion about it — which is what the shell used to
 hand you, and no crate here builds on a stable compiler.
 
+The shell also makes Rust builds faster on that same compiler. Cargo runs every
+`rustc` call through `tools/ci/rustc-wrapper.sh`, which:
+
+- compiles the crates in this checkout, the Flow port under `upstream/`
+  included, with rustc's parallel frontend (`UF_RUSTC_FRONTEND_JOBS`, default
+  8). Registry dependencies and build-script probes compile as before.
+- hands the call to [kache](https://github.com/kunobi-ninja/kache)
+  (`UF_KACHE`). kache shares compiled crates across every worktree and target
+  directory on the machine, so a crate one worktree built is not built again
+  by the next.
+
+Enter the shell with `UF_RUSTC_FRONTEND_JOBS=1` or `UF_KACHE=` to turn either
+off, for example while measuring compile times. `kache stats` reports hits and
+the store size; `kache clean` frees space. The measurements are under "Build
+speed" in `docs/rust-performance.md`.
+
 ## Reviews On Test Fixtures
 
 The JavaScript under `crates/` is fixtures — input to the tool the Rust tests
